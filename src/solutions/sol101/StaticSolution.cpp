@@ -831,7 +831,13 @@ struct LoadBasisPlan
 {
     std::unique_ptr<linalg::NodeGraph> massGraph;
     std::unique_ptr<linalg::SparsePattern> massPattern;
-    std::vector<std::pair<assembly::MassAssemblyOptions, std::unique_ptr<linalg::BlockSparseMatrix>>> masses;
+    struct Mass
+    {
+        assembly::MassAssemblyOptions options;
+        std::optional<base::EntityId> selection;
+        std::unique_ptr<linalg::BlockSparseMatrix> matrix;
+    };
+    std::vector<Mass> masses;
     std::vector<std::unique_ptr<StaticLoadCases>> cases; // per constraint set
     std::uint64_t estimatedBytes = 0;                    // what the units keep and hold while made
 };
@@ -888,7 +894,6 @@ LoadBasisPlan planLoadBasis(const input::ModelSnapshot& snapshot, const StaticOp
     }
     LoadBasisPlan plan;
     const input::ParamTable* params = model.params();
-    const assembly::NonStructuralMassShares shares(model.elementSet());
     for (const std::vector<std::size_t>& group : groups)
     {
         const linalg::BlockSparseMatrix* mass = nullptr;
@@ -904,11 +909,12 @@ LoadBasisPlan planLoadBasis(const input::ModelSnapshot& snapshot, const StaticOp
             const auto found = std::find_if(plan.masses.begin(), plan.masses.end(),
                                             [&](const auto& entry)
                                             {
-                                                return entry.first.formulation == massOptions.formulation &&
-                                                       entry.first.weightToMass == massOptions.weightToMass;
+                                                return entry.options.formulation == massOptions.formulation &&
+                                                       entry.options.weightToMass == massOptions.weightToMass &&
+                                                       entry.selection == subcases[group.front()].nonStructuralMass;
                                             });
             if (found != plan.masses.end())
-                mass = found->second.get();
+                mass = found->matrix.get();
             else
             {
                 if (!plan.massPattern)
@@ -920,10 +926,13 @@ LoadBasisPlan planLoadBasis(const input::ModelSnapshot& snapshot, const StaticOp
                         std::make_unique<linalg::SparsePattern>(*plan.massGraph, model.nodeDofCounts(), budget);
                 }
                 auto matrix = std::make_unique<linalg::BlockSparseMatrix>(*plan.massPattern, budget, "load basis Mgg");
+                const assembly::NonStructuralMassShares shares(model.elementSet(),
+                                                               subcases[group.front()].nonStructuralMass, budget, sink);
+                stopOnErrors(sink, "the selected non-structural mass");
                 assembly::MassAssembler(model.elementSet(), dofMap, shares, massOptions)
                     .assemble(*matrix, options.pool, options.cancellation);
                 mass = matrix.get();
-                plan.masses.emplace_back(massOptions, std::move(matrix));
+                plan.masses.push_back({massOptions, subcases[group.front()].nonStructuralMass, std::move(matrix)});
             }
         }
         StaticLoadCases::Inputs caseInputs;
@@ -1192,22 +1201,16 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
     };
     modelOptions.checkBeforeConnectivity = [&](const assembly::ElementSet& elementSet, const assembly::DofMap& dofMap)
     {
-        const input::MassTable* nsm =
-            snapshot.hasTable(input::TableRole::NonStructuralMass) ? &snapshot.masses() : nullptr;
-        if (nsm != nullptr && nsm->rowCount() > 0)
+        std::vector<base::EntityId> checkedMassSets;
+        for (const StaticSubcase& subcase : subcases)
         {
-            base::Diagnostic diagnostic;
-            diagnostic.severity = base::Severity::Warning;
-            diagnostic.code = "nsm-not-selected";
-            diagnostic.card = "NonStructMass";
-            diagnostic.message =
-                "the model has NonStructMass cards, but O_o_Reader does not give the NonStructMass set a subcase "
-                "selects (Case Control NonStructMassSelection): the non-structural mass of the NonStructMass "
-                "cards is not in the mass of this run (it changes GravityLoad "
-                "loads "
-                "only)";
-            sink.report(diagnostic);
+            if (!subcase.nonStructuralMass || std::find(checkedMassSets.begin(), checkedMassSets.end(),
+                                                        *subcase.nonStructuralMass) != checkedMassSets.end())
+                continue;
+            const assembly::NonStructuralMassShares shares(elementSet, subcase.nonStructuralMass, budget, sink);
+            checkedMassSets.push_back(*subcase.nonStructuralMass);
         }
+        stopOnErrors(sink, "the selected non-structural mass");
         output::OutputVolumeEstimate estimate(elementSet, dofMap);
         const bool hasMset = (rigidElements != nullptr && rigidElements->reader().rowCount() > 0) ||
                              (constraints != nullptr && constraints->mpcReader().rowCount() > 0) ||
@@ -1465,6 +1468,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         {
             const std::size_t first = group.front();
             if (subcases[first].mpc == subcases[s].mpc && subcases[first].contact == subcases[s].contact &&
+                subcases[first].nonStructuralMass == subcases[s].nonStructuralMass &&
                 spcSets[first].hasSameConstrainedDofs(spcSets[s]) && supports[first] == supports[s] &&
                 reliefModes[first] == reliefModes[s])
             {
@@ -2472,7 +2476,8 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         if (needsMass)
         {
             mass = std::make_unique<linalg::BlockSparseMatrix>(system.pattern(), budget, "mass Mgg");
-            const assembly::NonStructuralMassShares shares(elementSet);
+            const assembly::NonStructuralMassShares shares(elementSet, first.nonStructuralMass, budget, sink);
+            stopOnErrors(sink, "the selected non-structural mass");
             assembly::MassAssembler(elementSet, dofMap, shares,
                                     assembly::MassAssemblyOptions::fromParams(params, paramSubcase, sink))
                 .assemble(*mass, pool, cancellation);

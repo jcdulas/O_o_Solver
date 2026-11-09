@@ -16,6 +16,8 @@ Use Node.js 24 or later, or a browser supporting Memory64. The reader and solver
 
 ## Run linear statics
 
+See [static input checks and added mass](static-inputs.md) for support diagnostics and per-subcase mass selections.
+
 This two-node bar is fixed at its first node and loaded axially at its second node. Save the script as
 `solve-model.mjs` in the solver repository root:
 

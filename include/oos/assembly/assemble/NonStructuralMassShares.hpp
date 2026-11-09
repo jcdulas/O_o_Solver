@@ -8,6 +8,7 @@
 #include "oos/input/tables/MassTable.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -30,10 +31,13 @@ namespace oos::assembly
 class NonStructuralMassShares
 {
 public:
-    // The shares of the set `setId` (nothing when `table` is null). `set` gives the batches; the arrays follow its
-    // batch order.
+    // The shares of the set `setId` (an error when no table or no selected rows exist). `set` gives the batches; the
+    // arrays follow its batch order.
     NonStructuralMassShares(const ElementSet& set, const input::MassTable* table, base::EntityId setId,
                             base::MemoryBudget& budget, base::DiagnosticSink& sink);
+    // The selected set in the element set's snapshot; an absent selection adds no mass.
+    NonStructuralMassShares(const ElementSet& set, std::optional<base::EntityId> selected, base::MemoryBudget& budget,
+                            base::DiagnosticSink& sink);
     // No added mass at all.
     explicit NonStructuralMassShares(const ElementSet& set);
 

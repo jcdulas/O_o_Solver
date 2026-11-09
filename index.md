@@ -41,6 +41,7 @@ repository with its own access policy.
 docs/getting-started
 docs/optimization
 docs/threading
+docs/static-inputs
 README
 docs/table-package
 docs/naming

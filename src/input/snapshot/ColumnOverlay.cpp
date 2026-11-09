@@ -579,6 +579,7 @@ ModelSnapshot ColumnOverlay::applyTo(const ModelSnapshot& base, const std::share
 
     SnapshotBuilder builder;
     builder.setVersions(base.versions().structureVersion, base.versions().contentVersion);
+    builder.setSourceCards(base.sourceCards());
     if (base.unsupportedOffsetDefinition().empty())
         builder.setOffsetDefinition(base.offsetDefinition());
     else

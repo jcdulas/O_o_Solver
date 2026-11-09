@@ -23,6 +23,12 @@ struct AddedColumn
     std::vector<double> values;
 };
 
+struct SourceCard
+{
+    std::string card;
+    std::int64_t count = 0;
+};
+
 // The model of one analysis, gathered table by table: the tables of O_o_Reader as table packages (the bytes of its
 // QueryTable.toPackage(), which keep the exact Arrow layout), the rotations of the displacement systems and the version
 // counters of the model. build() checks every table against what the solver reads and makes the snapshot the analyses
@@ -39,6 +45,9 @@ public:
     ModelInput() = default;
 
     void setVersions(std::int64_t structureVersion, std::int64_t contentVersion);
+
+    // All source card types and counts, including data not present in the exported tables.
+    void setSourceCards(std::vector<SourceCard> cards);
 
     // A table of a snapshot role ("nodes", "singlePointConstrTable", ...), with optional added columns. Throws
     // ContractError for a name that is not a role or bytes that are not a table package.
@@ -63,11 +72,12 @@ public:
     // value is reported by the support check.
     void setOffsetDefinition(const std::string& value);
 
-    // The formulation of every element of one card type ("ShellQuad4", "ClassicFormulation"; elementFormulations() lists
-    // them), before the model's <Card>Formulation parameter; a second call for the same card replaces the first.
-    // The card is the neutral card type exactly as elementFormulations() names it: a deck keyword ("CQUAD4") is refused,
-    // so that a program names a card one way only. A formulation the card does not have is reported by the support check. Throws
-    // std::invalid_argument for an empty name or a card that is not an element card type of the solver.
+    // The formulation of every element of one card type ("ShellQuad4", "ClassicFormulation"; elementFormulations()
+    // lists them), before the model's <Card>Formulation parameter; a second call for the same card replaces the first.
+    // The card is the neutral card type exactly as elementFormulations() names it: a deck keyword ("CQUAD4") is
+    // refused, so that a program names a card one way only. A formulation the card does not have is reported by the
+    // support check. Throws std::invalid_argument for an empty name or a card that is not an element card type of the
+    // solver.
     void setElementFormulation(const std::string& card, const std::string& formulation);
 
     // Checks every table and makes the snapshot; the object is empty afterwards. Throws ContractError naming the

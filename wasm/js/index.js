@@ -145,6 +145,7 @@ export class OosSolver {
       }
       const versions = reader.modelVersions(deck);
       input.setVersions(versions.structure, versions.content);
+      input.setSourceCards(Object.entries(deck.cardCounts()).map(([card, count]) => ({ card, count })));
       const catalogue = new Map(oor.queryCatalogue().map((query) => [query.name, query]));
       const hasQuery = (name) => catalogue.has(name);
       const takesParameter = (name, parameter) =>

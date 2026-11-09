@@ -29,8 +29,8 @@ public:
     [[nodiscard]] base::DictionaryView kinds() const { return m_reader.dictionaryTexts("kind"); }
 
     // The set a subcase selects with a Case Control command ("spc", "mpc", "load", "dynamicLoadSelection", "method",
-    // "temperatureLoad", "temperatureInitial"), or nothing when it selects none. Throws std::invalid_argument for
-    // another command or a subcase that does not exist.
+    // "temperatureLoad", "temperatureInitial", "nonStructMass"), or nothing when it selects none. Throws
+    // std::invalid_argument for another command or a subcase that does not exist.
     [[nodiscard]] std::optional<std::int32_t> selectedSet(std::int32_t subcase, const std::string& command) const;
 
     // The set the subcase of row `row` selects (same commands as selectedSet), or nothing. Throws

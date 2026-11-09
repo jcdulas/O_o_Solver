@@ -136,6 +136,9 @@ modal assurance values and uncertainty flags let JavaScript preserve and inspect
 `analysisResults()` includes tracking warnings. With `deckOutputs: true`, it also contains the outputs requested by
 the deck, beyond those required by responses.
 
+Selected bulk non-structural mass sets currently require a [direct static run](static-inputs.md). Optimization
+refuses `NonStructMassSelection` because its mass derivatives are not implemented.
+
 Gradients use closed forms where element families provide them and numerical element derivatives elsewhere.
 Second-order products reuse element Hessian blocks where available and otherwise difference the response linearisation
 along the direction. Reports expose reuse and `hessianBlocksReason`. These are numerical engineering derivatives,

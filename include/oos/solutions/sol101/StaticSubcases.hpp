@@ -32,6 +32,7 @@ struct StaticSubcase
     // temperatures are (assembly::TemperatureField).
     std::optional<base::EntityId> deformation;
     std::optional<base::EntityId> contact; // BCONTACT: the contact table of the subcase, glued contact
+    std::optional<base::EntityId> nonStructuralMass;
     bool isCombination = false;
     std::vector<base::EntityId> combined; // bounded by the subcases of the deck
     std::vector<double> coefficients;

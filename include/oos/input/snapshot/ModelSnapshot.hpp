@@ -32,6 +32,13 @@
 namespace oos::input
 {
 
+// The complete source inventory, including cards not represented by the analysis tables.
+struct SourceCard
+{
+    std::string card;
+    std::int64_t count = 0;
+};
+
 // The formulation the program that built the snapshot chose for the elements of one card: the neutral card name
 // (ShellQuad4) and the formulation name. The element layer reads it (elements::ElementRegistry::forModel), before the
 // model's <card>Formulation parameter.
@@ -83,6 +90,7 @@ public:
     ~ModelSnapshot() = default;
 
     [[nodiscard]] const ModelVersions& versions() const noexcept { return m_versions; }
+    [[nodiscard]] const std::vector<SourceCard>& sourceCards() const noexcept { return m_sourceCards; }
     [[nodiscard]] const NodeTable& nodes() const noexcept { return m_nodes; }
     // The element formulations chosen by the program that built the snapshot, one per card at most, sorted by card
     // (empty: the deck's PARAMs and the defaults decide).
@@ -189,6 +197,7 @@ private:
     struct Parts
     {
         ModelVersions versions;
+        std::vector<SourceCard> sourceCards;
         OffsetDefinition offsetDefinition = OffsetDefinition::ElementOffsets;
         std::string unsupportedOffsetDefinition;
         std::vector<ElementFormulationChoice> elementFormulations;
@@ -227,6 +236,7 @@ private:
     explicit ModelSnapshot(Parts parts);
 
     ModelVersions m_versions;
+    std::vector<SourceCard> m_sourceCards;
     OffsetDefinition m_offsetDefinition = OffsetDefinition::ElementOffsets;
     std::string m_unsupportedOffsetDefinition;
     std::vector<ElementFormulationChoice> m_elementFormulations;

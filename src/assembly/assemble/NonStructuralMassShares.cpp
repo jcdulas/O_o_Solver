@@ -3,6 +3,7 @@
 #include "oos/base/errors/ErrorMessage.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -23,9 +24,10 @@ enum class MassMeasure : std::uint8_t
 
 MassMeasure measureOf(std::string_view card) noexcept
 {
-    constexpr std::array<std::string_view, 5> LINE_CARDS{"Rod2", "Rod2InlineSection", "Tube2", "Bar2",
-                                                         "Beam2"};
-    constexpr std::array<std::string_view, 2> AREA_CARDS{"ShellQuad4", "ShellTria3"};
+    constexpr std::array<std::string_view, 5> LINE_CARDS{"Rod2", "Rod2InlineSection", "Tube2", "Bar2", "Beam2"};
+    constexpr std::array<std::string_view, 7> AREA_CARDS{"ShellQuad4",         "ShellTria3", "ShellQuad4Drilling",
+                                                         "ShellTria3Drilling", "ShellQuad8", "ShellTria6",
+                                                         "ShearPanel4"};
     for (const std::string_view line : LINE_CARDS)
         if (card == line)
             return MassMeasure::PerLength;
@@ -49,13 +51,35 @@ base::Diagnostic nsmProblem(std::string code, std::string_view card, std::int32_
 
 NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set) : m_shares(set.batches().size()) {}
 
+NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set, std::optional<base::EntityId> selected,
+                                                 base::MemoryBudget& budget, base::DiagnosticSink& sink)
+    : NonStructuralMassShares(set)
+{
+    if (!selected)
+        return;
+    if (*selected <= 0)
+    {
+        sink.report(nsmProblem("nsm-invalid-selection", "NonStructMassSelection", *selected,
+                               "expected a positive non-structural mass set ID"));
+        return;
+    }
+    const auto& snapshot = set.index().snapshot();
+    *this = NonStructuralMassShares(
+        set, snapshot.hasTable(input::TableRole::NonStructuralMass) ? &snapshot.masses() : nullptr, *selected, budget,
+        sink);
+}
+
 NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set, const input::MassTable* table,
                                                  base::EntityId setId, base::MemoryBudget& budget,
                                                  base::DiagnosticSink& sink)
     : m_shares(set.batches().size())
 {
     if (table == nullptr)
+    {
+        sink.report(nsmProblem("nsm-unknown-set", "NonStructMassSelection", setId,
+                               "the selected non-structural mass set has no exported rows"));
         return;
+    }
     const base::ContractReader& rows = table->reader();
     const std::span<const std::int32_t> setIds = rows.values<std::int32_t>("setId");
     const base::DictionaryView cards = rows.dictionaryTexts("card");
@@ -73,13 +97,21 @@ NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set, const in
         return m_shares[b];
     };
 
+    bool hasSelection = false;
     for (std::int64_t row = 0; row < rows.rowCount(); ++row)
     {
         const auto index = static_cast<std::size_t>(row);
         if (setIds[index] != setId)
             continue;
+        hasSelection = true;
         const std::string_view card = cards[row];
         const std::string_view kind = kinds[row];
+        if (!rows.validity("value").isValid(row) || !std::isfinite(values[index]) || values[index] < 0.0)
+        {
+            sink.report(
+                nsmProblem("nsm-invalid-value", card, setId, "expected a finite, nonnegative non-structural mass"));
+            continue;
+        }
         if (kind == "lumped")
         {
             sink.report(nsmProblem(
@@ -88,6 +120,12 @@ NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set, const in
                                    card,
                                    " (a lumped mass shared between elements), which this version does not distribute; "
                                    "write the mass as NonStructMass or NonStructMass1 per unit length or area"})));
+            continue;
+        }
+        if (kind != "perArea" && kind != "perLength")
+        {
+            sink.report(
+                nsmProblem("nsm-unknown-kind", card, setId, "expected a perArea or perLength non-structural mass"));
             continue;
         }
         const MassMeasure wanted = kind == "perArea" ? MassMeasure::PerArea : MassMeasure::PerLength;
@@ -135,6 +173,9 @@ NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set, const in
                                                                                      : "a mass per unit area or none",
                                                       "; name only line elements (per length) or shells (per area)"})));
     }
+    if (!hasSelection)
+        sink.report(nsmProblem("nsm-unknown-set", "NonStructMassSelection", setId,
+                               "the selected non-structural mass set has no exported rows"));
 }
 
 } // namespace oos::assembly

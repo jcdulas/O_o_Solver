@@ -18,6 +18,15 @@ void ModelInput::setVersions(std::int64_t structureVersion, std::int64_t content
     m_builder.setVersions(structureVersion, contentVersion);
 }
 
+void ModelInput::setSourceCards(std::vector<SourceCard> cards)
+{
+    std::vector<input::SourceCard> source;
+    source.reserve(cards.size());
+    for (SourceCard& card : cards)
+        source.push_back({std::move(card.card), card.count});
+    m_builder.setSourceCards(std::move(source));
+}
+
 void ModelInput::setTable(const std::string& name, std::vector<std::uint8_t> package, std::vector<AddedColumn> added)
 {
     const std::optional<input::TableRole> role = input::findTableRole(name);

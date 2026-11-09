@@ -81,6 +81,15 @@ DesignProblem::DesignProblem(std::shared_ptr<const input::ModelSnapshot> snapsho
       m_responses(std::move(responses), m_model, *m_snapshot),
       m_constraints(std::move(constraints), m_responses)
 {
+    if (m_snapshot->hasTable(input::TableRole::Subcases))
+    {
+        const auto& subcases = m_snapshot->subcases();
+        for (std::int64_t row = 0; row < subcases.rowCount(); ++row)
+            if (subcases.selectedSetAtRow(row, "nonStructMass"))
+                throw base::OptimisationError(
+                    "selected non-structural mass sets are supported in static runs, but their design derivatives "
+                    "are not implemented; optimization with NonStructMassSelection is refused");
+    }
 }
 
 std::vector<std::int64_t> DesignProblem::drivenUnits() const

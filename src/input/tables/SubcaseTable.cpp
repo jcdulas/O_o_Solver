@@ -18,8 +18,8 @@ namespace oos::input
 namespace
 {
 
-constexpr std::array<std::string_view, 7> SELECTION_COLUMNS{
-    "spc", "mpc", "load", "dynamicLoadSelection", "method", "temperatureLoad", "temperatureInitial"};
+constexpr std::array<std::string_view, 8> SELECTION_COLUMNS{
+    "spc", "mpc", "load", "dynamicLoadSelection", "method", "temperatureLoad", "temperatureInitial", "nonStructMass"};
 
 } // namespace
 
@@ -74,7 +74,7 @@ std::optional<std::int32_t> SubcaseTable::selectedSetAtRow(std::int64_t row, con
     if (row < 0 || row >= rowCount())
         throw std::invalid_argument(base::concatenate(
             {"subcasesTable: expected a row in [0, ", std::to_string(rowCount()), "), found ", std::to_string(row)}));
-    if (!m_reader.validity(command).isValid(row))
+    if (!m_reader.hasColumn(command) || !m_reader.validity(command).isValid(row))
         return std::nullopt;
     return m_reader.values<std::int32_t>(command, base::NullPolicy::Allow)[static_cast<std::size_t>(row)];
 }

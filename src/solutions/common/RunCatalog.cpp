@@ -20,10 +20,10 @@ namespace
 // The cards a static run ignores (damping, dynamic or thermal-only data, plot elements), restricted to the cards the
 // snapshot can hold, and the eigenvalue methods; sorted for the binary search.
 constexpr std::array<std::string_view, 23> IGNORED_CARDS{
-    "BucklingEigenMethod", "BushPropFreq", "ComplexEigenMethod", "ComplexEigenPoles", "DamperDofInline",
-    "DamperDofProperty", "DamperProp", "DamperPropFreq", "DamperScalarInline", "DamperScalarProperty",
-    "HeatAnisoMat",        "HeatCapacity2", "HeatCapacityProp5",  "HeatIsoMat",        "LanczosEigenMethod",
-    "PlotLine2",        "PlotQuad4",      "PlotTria3",       "RealEigenMethod",   "SpringPropFreq",
+    "BucklingEigenMethod", "BushPropFreq",   "ComplexEigenMethod", "ComplexEigenPoles",  "DamperDofInline",
+    "DamperDofProperty",   "DamperProp",     "DamperPropFreq",     "DamperScalarInline", "DamperScalarProperty",
+    "HeatAnisoMat",        "HeatCapacity2",  "HeatCapacityProp5",  "HeatIsoMat",         "LanczosEigenMethod",
+    "PlotLine2",           "PlotQuad4",      "PlotTria3",          "RealEigenMethod",    "SpringPropFreq",
     "TableModalDamping1",  "ViscousDamper2", "ViscousDamperProp"};
 static_assert(std::is_sorted(IGNORED_CARDS.begin(), IGNORED_CARDS.end()));
 
@@ -38,12 +38,12 @@ struct IgnoredParameter
 // K6ROT: the scale of a drilling penalty on shells, which no shell of this version has: the ShellQuad4Drilling and
 // ShellTria3Drilling take a membrane with a drilling DOF, the other shells no stiffness for the rotation about their
 // normal.
-constexpr std::array<IgnoredParameter, 1> IGNORED_PARAMETERS{
-    IgnoredParameter{"ShellDrillingStiffness",
-                     "no shell element of O_o_Solver has a drilling penalty: the ShellQuad4, ShellTria3, ShellQuad8 and "
-                     "ShellTria6 have no stiffness for the rotation about their normal (the automatic constraint "
-                     "of singular degrees of freedom, PARAM AutoSingularityConstr, removes it on a flat mesh), and the "
-                     "ShellQuad4Drilling and ShellTria3Drilling have their own drilling membrane"}};
+constexpr std::array<IgnoredParameter, 1> IGNORED_PARAMETERS{IgnoredParameter{
+    "ShellDrillingStiffness",
+    "no shell element of O_o_Solver has a drilling penalty: the ShellQuad4, ShellTria3, ShellQuad8 and "
+    "ShellTria6 have no stiffness for the rotation about their normal (the automatic constraint "
+    "of singular degrees of freedom, PARAM AutoSingularityConstr, removes it on a flat mesh), and the "
+    "ShellQuad4Drilling and ShellTria3Drilling have their own drilling membrane"}};
 
 // One warning per ignored PARAM the model gives, in the Bulk Data or in any Case Control section.
 void reportIgnoredParameters(const input::ModelSnapshot& snapshot, std::vector<base::Diagnostic>& ignored)
@@ -99,6 +99,53 @@ input::SupportCatalog staticSupportCatalog(const elements::ElementRegistry& regi
                                                      "RigidBar", "RigidRod"};
     for (const char* card : RIGID_CARDS)
         catalog.addCard(card);
+    // Source cards consumed by Reader queries or by the solver's auxiliary tables. Keep this list explicit:
+    // every other source card must appear in the support report even if no query exported its fields.
+    constexpr const char* INPUT_CARDS[]{"Node",
+                                        "NodeDefaults",
+                                        "ScalarPoint",
+                                        "ExtraPoint",
+                                        "RectFrame1",
+                                        "RectFrame2",
+                                        "RectFrame3",
+                                        "CylindricalFrame1",
+                                        "CylindricalFrame2",
+                                        "SphericalFrame1",
+                                        "SphericalFrame2",
+                                        "SinglePointConstrUnion",
+                                        "MultiPointConstrUnion",
+                                        "LoadCombination",
+                                        "Parameter",
+                                        "ModelParams",
+                                        "NonStructMass",
+                                        "NonStructMass1",
+                                        "NonStructMassLumped",
+                                        "NonStructMassLumped1",
+                                        "NonStructMassUnion",
+                                        "Bar2Defaults",
+                                        "Beam2Defaults",
+                                        "IdListSet1",
+                                        "TypedListSet3",
+                                        "PropertyListSet4",
+                                        "ContactTable",
+                                        "ContactTable1",
+                                        "ContactPair",
+                                        "ContactSet",
+                                        "ContactSetUnion",
+                                        "ContactBody",
+                                        "ContactBody1",
+                                        "ContactElemSurface",
+                                        "ContactFaceRegion",
+                                        "ContactMaterialRegion",
+                                        "ContactNodeRegion",
+                                        "ContactPropertyRegion",
+                                        "ContactSlideline",
+                                        "SlidelineSegments",
+                                        "ContactPairGeomParams",
+                                        "ContactPairPhysicalParams",
+                                        "ContactParams"};
+    for (const char* card : INPUT_CARDS)
+        catalog.addCard(card);
     return catalog;
 }
 
@@ -137,7 +184,16 @@ base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const ele
     for (base::Diagnostic& diagnostic : report.refusals)
     {
         // The diagnostics of the catalog name the card by its deck keyword (EIGRL): the list is of neutral names.
-        if (diagnostic.code != "unsupported-card" || !isIgnoredByStaticRun(diagnostic.card))
+        constexpr std::string_view DESIGN_DECLARATIONS[]{
+            "DesignVar",           "DesignVarLink",        "DesignDiscreteValues", "DesignPropRelation1",
+            "DesignPropRelation2", "DesignMatRelation1",   "DesignMatRelation2",   "DesignElemRelation1",
+            "DesignElemRelation2", "DesignLoadRelation1",  "DesignResp1",          "DesignResp2",
+            "DesignResp3",         "DesignConstr",         "DesignConstrUnion",    "DesignConstrScreen",
+            "DesignConstants",     "DesignFieldConstants", "DesignEquation",       "DesignNodeMove",
+            "DesignShapeBasis",    "DesignOptimParams"};
+        const bool designDeclaration = std::find(std::begin(DESIGN_DECLARATIONS), std::end(DESIGN_DECLARATIONS),
+                                                 diagnostic.card) != std::end(DESIGN_DECLARATIONS);
+        if (diagnostic.code != "unsupported-card" || (!isIgnoredByStaticRun(diagnostic.card) && !designDeclaration))
         {
             refusals.push_back(std::move(diagnostic));
             continue;
@@ -145,15 +201,87 @@ base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const ele
         diagnostic.severity = base::Severity::Warning;
         diagnostic.code = "ignored-card";
         diagnostic.message =
-            base::concatenate({"the card ", diagnostic.card, " has no effect on ", analysisName,
-                               " and is ignored, like all the Bulk Data this analysis does not read (damping, "
-                               "dynamic or thermal-only data, plot elements, eigenvalue methods); nothing to do"});
+            designDeclaration
+                ? base::concatenate({"the declaration ", diagnostic.card,
+                                     " does not enter this analysis directly; design declarations are processed by the "
+                                     "optimization API"})
+                : base::concatenate(
+                      {"the card ", diagnostic.card, " has no effect on ", analysisName,
+                       " and is ignored, like all the Bulk Data this analysis does not read (damping, "
+                       "dynamic or thermal-only data, plot elements, eigenvalue methods); nothing to do"});
         report.ignored.push_back(std::move(diagnostic));
     }
     // The element formulations the model chose that the registry could not follow (a name a card does not have).
     for (const base::Diagnostic& problem : registry.selectionProblems())
         refusals.push_back(problem);
     report.refusals = std::move(refusals);
+    if (snapshot.hasTable(input::TableRole::Subcases))
+    {
+        const auto& table = snapshot.subcases().reader();
+        if (table.hasColumn("analysis"))
+        {
+            const auto kinds = table.dictionaryTexts("analysis", base::NullPolicy::Allow);
+            constexpr std::string_view LINEAR_ANALYSES[]{"Statics",        "LinearStatics",       "Modes",
+                                                         "NormalModes",    "RealEigen",           "Buckling",
+                                                         "LinearBuckling", "StaticAeroelasticity"};
+            for (std::int64_t row = 0; row < table.rowCount(); ++row)
+            {
+                if (!table.validity("analysis").isValid(row) || kinds[row].empty() ||
+                    std::find(std::begin(LINEAR_ANALYSES), std::end(LINEAR_ANALYSES), kinds[row]) !=
+                        std::end(LINEAR_ANALYSES))
+                    continue;
+                base::Diagnostic diagnostic;
+                diagnostic.code = "unsupported-analysis";
+                diagnostic.card = "SubcaseStart";
+                diagnostic.field = "analysis";
+                diagnostic.id = snapshot.subcases().ids()[static_cast<std::size_t>(row)];
+                diagnostic.message = base::concatenate(
+                    {"AnalysisKind ", kinds[row],
+                     " requires an analysis that is not implemented; it cannot be replaced by a linear calculation"});
+                report.refusals.push_back(std::move(diagnostic));
+            }
+        }
+        // Effective selections, including inherited global commands. Their presence must not silently turn a
+        // nonlinear, transient or material-temperature calculation into a linear elastic one.
+        constexpr const char* UNSUPPORTED_SELECTIONS[]{"nonlinearStaticParamsSelection", "dynamicLoadSelection", "freq",
+                                                       "timeStepSelection", "temperatureMaterial"};
+        for (const char* column : UNSUPPORTED_SELECTIONS)
+        {
+            if (!table.hasColumn(column))
+                continue;
+            const auto valid = table.validity(column);
+            for (std::int64_t row = 0; row < table.rowCount(); ++row)
+            {
+                if (!valid.isValid(row))
+                    continue;
+                base::Diagnostic diagnostic;
+                diagnostic.code = "unsupported-selection";
+                diagnostic.card = "SubcaseStart";
+                diagnostic.id = snapshot.subcases().ids()[static_cast<std::size_t>(row)];
+                diagnostic.field = column;
+                diagnostic.message =
+                    base::concatenate({"the selection ", column, " is not supported by ", analysisName,
+                                       "; remove it or use an analysis implementing the requested behavior"});
+                report.refusals.push_back(std::move(diagnostic));
+            }
+        }
+        if (analysis != AnalysisKind::Statics && table.hasColumn("nonStructMass"))
+        {
+            for (std::int64_t row = 0; row < table.rowCount(); ++row)
+            {
+                if (!table.validity("nonStructMass").isValid(row))
+                    continue;
+                base::Diagnostic diagnostic;
+                diagnostic.code = "unsupported-selection";
+                diagnostic.card = "SubcaseStart";
+                diagnostic.field = "nonStructMass";
+                diagnostic.id = snapshot.subcases().ids()[static_cast<std::size_t>(row)];
+                diagnostic.message =
+                    "selected non-structural mass sets are currently implemented for static analysis only";
+                report.refusals.push_back(std::move(diagnostic));
+            }
+        }
+    }
     reportIgnoredParameters(snapshot, report.ignored);
     return report;
 }

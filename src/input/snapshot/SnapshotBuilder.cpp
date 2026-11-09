@@ -265,6 +265,7 @@ ModelSnapshot SnapshotBuilder::takeAll()
 {
     ModelSnapshot::Parts parts;
     parts.versions = m_versions;
+    parts.sourceCards = std::move(m_sourceCards);
     parts.offsetDefinition = m_offsetDefinition;
     parts.unsupportedOffsetDefinition = m_unsupportedOffsetDefinition;
     parts.elementFormulations = std::move(m_elementFormulations);

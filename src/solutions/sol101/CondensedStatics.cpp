@@ -607,6 +607,10 @@ CondensedStatics::CondensedStatics(const Inputs& inputs, base::MemoryBudget& bud
             "kernels, and one SPC set and output plan per subcase");
     if (inputs.cache != nullptr)
         m_cacheSession.emplace(inputs.cache->openSession(inputs.cacheModelTag));
+    for (const StaticSubcase& subcase : inputs.subcases)
+        if (subcase.nonStructuralMass)
+            throw base::SolverError(
+                "selected non-structural mass sets require the full static path; disable condensation");
     condenseUnits(inputs, budget, sink);
 }
 

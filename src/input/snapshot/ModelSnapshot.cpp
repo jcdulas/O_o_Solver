@@ -52,6 +52,7 @@ constexpr std::string_view AERO_CARDS_PREFIX = "aeroCards/";
 
 ModelSnapshot::ModelSnapshot(Parts parts)
     : m_versions(parts.versions),
+      m_sourceCards(std::move(parts.sourceCards)),
       m_offsetDefinition(parts.offsetDefinition),
       m_unsupportedOffsetDefinition(std::move(parts.unsupportedOffsetDefinition)),
       m_elementFormulations(std::move(parts.elementFormulations)),

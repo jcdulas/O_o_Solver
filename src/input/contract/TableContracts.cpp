@@ -161,6 +161,7 @@ TableContract contractOf(TableRole role)
                               optional("coefficients", REAL_LIST),
                               // The contact table the subcase's BCONTACT selects, effective (null: none).
                               optional("contactSelection", INT32),
+                              optional("nonStructMass", INT32),
                               // The element deformation set its DEFORM selects, effective: int32 as O_o_Reader gives
                               // it (contract 59), float64 (NaN: none) as the snapshot adds it from the Case Control
                               // for an older O_o_Reader; absent: no subcase selects one.

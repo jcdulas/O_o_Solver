@@ -41,6 +41,7 @@ StaticSubcase subcaseAtRow(const input::SubcaseTable& table, std::int64_t row, b
     subcase.temperatureInitial = table.selectedSetAtRow(row, "temperatureInitial");
     subcase.deformation = table.deformationSetAtRow(row);
     subcase.contact = table.contactTableAtRow(row);
+    subcase.nonStructuralMass = table.selectedSetAtRow(row, "nonStructMass");
     return subcase;
 }
 

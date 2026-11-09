@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace oos::input
@@ -37,6 +38,7 @@ public:
     ~SnapshotBuilder() = default;
 
     void setVersions(std::int64_t structureVersion, std::int64_t contentVersion);
+    void setSourceCards(std::vector<SourceCard> cards) { m_sourceCards = std::move(cards); }
 
     // Throws std::invalid_argument when the role was already given, ContractError when the table carries a contract
     // version that is not accepted or differs from that of the tables given before.
@@ -99,6 +101,7 @@ private:
     [[nodiscard]] ModelSnapshot takeAll();
 
     ModelVersions m_versions;
+    std::vector<SourceCard> m_sourceCards;
     OffsetDefinition m_offsetDefinition = OffsetDefinition::ElementOffsets;
     std::string m_unsupportedOffsetDefinition;
     std::vector<ElementFormulationChoice> m_elementFormulations; // sorted by card

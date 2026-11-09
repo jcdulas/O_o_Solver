@@ -216,11 +216,29 @@ std::vector<std::int64_t> candidateBounds(const linalg::FrontStreamEstimate& who
 // into one component.
 bool isConnectionCard(std::string_view card) noexcept
 {
-    constexpr std::string_view CONNECTIONS[] = {
-        "Bushing",    "Bushing1D",  "Bushing2D",        "Fastener", "Weld",    "SpringDofProperty",
-        "SpringDofInline", "SpringScalarProperty", "SpringScalarInline",       "DamperDofProperty",  "DamperDofInline", "DamperScalarProperty",
-        "DamperScalarInline", "Gap2",     "ViscousDamper2", "PlotLine2", "PointMassMatrix",  "PointMassInertia",
-        "MassDofProperty",   "MassDofInline",   "MassScalarProperty",         "MassScalarInline",    "GeneralMatrix"};
+    constexpr std::string_view CONNECTIONS[] = {"Bushing",
+                                                "Bushing1D",
+                                                "Bushing2D",
+                                                "Fastener",
+                                                "Weld",
+                                                "SpringDofProperty",
+                                                "SpringDofInline",
+                                                "SpringScalarProperty",
+                                                "SpringScalarInline",
+                                                "DamperDofProperty",
+                                                "DamperDofInline",
+                                                "DamperScalarProperty",
+                                                "DamperScalarInline",
+                                                "Gap2",
+                                                "ViscousDamper2",
+                                                "PlotLine2",
+                                                "PointMassMatrix",
+                                                "PointMassInertia",
+                                                "MassDofProperty",
+                                                "MassDofInline",
+                                                "MassScalarProperty",
+                                                "MassScalarInline",
+                                                "GeneralMatrix"};
     return std::find(std::begin(CONNECTIONS), std::end(CONNECTIONS), card) != std::end(CONNECTIONS);
 }
 
@@ -610,7 +628,8 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
     stopOnErrors(sink, "the full path streamed");
     record.placementSeconds = watch.lap();
 
-    const assembly::NonStructuralMassShares shares(model.elementSet());
+    const assembly::NonStructuralMassShares shares(model.elementSet(), first.nonStructuralMass, budget, sink);
+    stopOnErrors(sink, "the selected non-structural mass");
     StreamedFront::Inputs frontInputs;
     frontInputs.model = &model;
     frontInputs.elements = &elements;

@@ -134,6 +134,11 @@ CardUses cardUsesOf(const ModelSnapshot& snapshot)
                           constraints.spcReader().validity("setId"), constraints.spcNodeIds());
         addRows(uses, MULTIPOINT_CONSTRAINT_CARD, "constraint", constraints.mpcSetIds());
     }
+    for (const SourceCard& source : snapshot.sourceCards())
+    {
+        if (source.count > 0 && !uses.contains(source.card))
+            uses.emplace(source.card, CardUse{"source", source.count, {}, false});
+    }
     return uses;
 }
 
@@ -155,7 +160,8 @@ Diagnostic unsupportedCard(const std::string& card, const CardUse& use)
     diagnostic.id = use.firstIds.empty() ? 0 : use.firstIds.front();
     diagnostic.message = base::concatenate(
         {"the ", use.kind, " card ", diagnostic.card, " is not supported by this version of O_o_Solver (",
-         std::to_string(use.entryCount), use.entryCount == 1 ? " entry" : " entries", ", IDs ", idList(use),
+         std::to_string(use.entryCount), use.entryCount == 1 ? " entry" : " entries",
+         use.firstIds.empty() ? "" : base::concatenate({", IDs ", idList(use)}),
          "); remove these cards from the model, or use a version of O_o_Solver that supports them"});
     return diagnostic;
 }

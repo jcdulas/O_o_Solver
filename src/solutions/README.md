@@ -40,9 +40,9 @@ Folders: `common/`, `sol101/`, `sol103/`, `sol105/`, `sol144/`, `superelements/`
   the calling thread, which may report the progress and cancel the analysis.
 
 The PARAMs read (through the typed Parameter table, defaults when absent): AutoSingularityConstr, PivotZeroThreshold, PrintSingularities (singularities),
-MaxDiagonalRatio, SingularityBailOut (factorisation), CoupledMass, WeightToMass (mass, for GravityLoad), DofSetPrint (the UserDofSet table). The NonStructMass set of a subcase
-(case section NonStructMass) is not in O_o_Reader's subcasesTable: the NonStructMass cards are left out of the mass of a run with a
-warning ("nsm-not-selected").
+MaxDiagonalRatio, SingularityBailOut (factorisation), CoupledMass, WeightToMass (mass, for GravityLoad), DofSetPrint (the UserDofSet table). The effective `NonStructMassSelection` of each subcase selects added mass from `nonStructMassTable`
+for full and streamed statics; different selections have separate mass matrices and load bases. See
+[static input checks and added mass](../../docs/static-inputs.md) for supported kinds and explicit restrictions.
 
 ## Pre-flight check and mechanism shapes
 

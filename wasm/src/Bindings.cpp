@@ -94,6 +94,20 @@ void setVersions(api::ModelInput& input, double structure, double content)
     guarded([&] { input.setVersions(static_cast<std::int64_t>(structure), static_cast<std::int64_t>(content)); });
 }
 
+void setSourceCards(api::ModelInput& input, const val& cards)
+{
+    guarded(
+        [&]
+        {
+            std::vector<api::SourceCard> source;
+            const unsigned size = cards["length"].as<unsigned>();
+            for (unsigned i = 0; i < size; ++i)
+                source.push_back(
+                    {cards[i]["card"].as<std::string>(), static_cast<std::int64_t>(cards[i]["count"].as<double>())});
+            input.setSourceCards(std::move(source));
+        });
+}
+
 // setTable(name, package, added): `added` is null or {columnName: Float64Array, ...}.
 void setTable(api::ModelInput& input, const std::string& name, const val& package, const val& added)
 {
@@ -442,6 +456,7 @@ EMSCRIPTEN_BINDINGS(oos_solver)
     class_<api::ModelInput>("ModelInput")
         .constructor<>()
         .function("setVersions", &setVersions)
+        .function("setSourceCards", &setSourceCards)
         .function("setTable", &setTable)
         .function("addElementTable", &addElementTable)
         .function("addPropertyTable", &addPropertyTable)
