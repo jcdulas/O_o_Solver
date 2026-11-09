@@ -66,8 +66,8 @@ namespace oos::solutions::trim
 constexpr std::size_t FLEXIBILITY_BLOCK = 32;
 // The rigid-body variables of AeroRigidTrimVariable with an aerodynamic effect, and the accelerations (in the reference
 // frame RCSID: three translations, then three rotations).
-constexpr const auto& AERODYNAMIC_LABELS = aero::AERODYNAMIC_RIGID_BODY_LABELS;
-constexpr const auto& ACCELERATION_LABELS = aero::RIGID_ACCELERATION_LABELS;
+inline constexpr const auto& AERODYNAMIC_LABELS = aero::AERODYNAMIC_RIGID_BODY_LABELS;
+inline constexpr const auto& ACCELERATION_LABELS = aero::RIGID_ACCELERATION_LABELS;
 // The flow, the x axis of the aerodynamic frame.
 const base::Vec3 FLOW_AXIS{1.0, 0.0, 0.0};
 // The share of its own length below which a rigid-body direction, seen at the supports, is taken as dependent on

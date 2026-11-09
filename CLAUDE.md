@@ -31,7 +31,7 @@ O_o_Reader module (table packages) and gives its results as plain arrays. Start 
 cmake --preset release && cmake --build build/release -j          # native (MSYS2 UCRT64 on the PATH on Windows)
 emcmake cmake -S . -B build/wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOS_BUILD_WASM=ON -DOOS_WARNINGS_AS_ERRORS=OFF
 cmake --build build/wasm -j
-node --test wasm/test/smoke.test.mjs                               # needs ../O_o_Reader/build/wasm/dist
+node --test wasm/test/*.test.mjs                               # needs ../O_o_Reader/build/wasm/dist
 ```
 
 ## Way of working

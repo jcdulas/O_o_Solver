@@ -12,8 +12,10 @@
 // untranslated. Errors of the solver become JavaScript errors whose message is the solver's (what was expected, what
 // was found, and what to do).
 
+#include "Model.hpp"
 #include "oos/api/Analyses.hpp"
 #include "oos/api/ModelInput.hpp"
+#include "oos/api/Optimization.hpp"
 
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
@@ -83,10 +85,7 @@ std::vector<double> numbersOf(const val& array)
 // ------------------------------------------------------------------------------------------------- model input
 
 // A built model: the snapshot the analyses read (immutable, shared).
-struct Model
-{
-    std::shared_ptr<const input::ModelSnapshot> snapshot;
-};
+using oos::wasm::Model;
 
 void setVersions(api::ModelInput& input, double structure, double content)
 {
@@ -355,6 +354,57 @@ std::string version()
 }
 
 } // namespace
+
+namespace oos::wasm
+{
+val optimizationResults(api::OptimizationEvaluation& point)
+{
+    return guarded(
+        [&]
+        {
+            const auto& analysis = point.evaluation().analysis;
+            val result = val::object();
+            val nodal = val::array();
+            val elements = val::array();
+            val forces = val::array();
+            const auto appendArrays = [&](const output::ResultArrays& tables)
+            {
+                for (const auto& table : tables.nodalTables)
+                    nodal.call<void>("push", nodalTableObject(table));
+                for (const auto& table : tables.elementTables)
+                    elements.call<void>("push", elementTableObject(table));
+                for (const auto& table : tables.gridPointForceTables)
+                    forces.call<void>("push", gridPointForceObject(table));
+            };
+            appendArrays(analysis.results.arrays);
+            val eigenvalues = val::array();
+            auto diagnostics = analysis.results.diagnostics;
+            if (analysis.modes)
+            {
+                appendArrays(analysis.modes->arrays);
+                for (const auto& subcase : analysis.modes->subcases)
+                    eigenvalues.call<void>("push", eigenvalueTableObject(subcase.eigenvalues));
+                diagnostics.insert(diagnostics.end(), analysis.modes->diagnostics.begin(),
+                                   analysis.modes->diagnostics.end());
+            }
+            if (analysis.buckling)
+            {
+                for (const auto& solve : analysis.buckling->solves)
+                    eigenvalues.call<void>("push", eigenvalueTableObject(solve.eigenvalues));
+                diagnostics.insert(diagnostics.end(), analysis.buckling->diagnostics.begin(),
+                                   analysis.buckling->diagnostics.end());
+            }
+            diagnostics.insert(diagnostics.end(), point.evaluation().trackingWarnings.begin(),
+                               point.evaluation().trackingWarnings.end());
+            result.set("nodalTables", nodal);
+            result.set("elementTables", elements);
+            result.set("gridPointForces", forces);
+            result.set("eigenvalues", eigenvalues);
+            result.set("diagnostics", diagnosticArray(diagnostics));
+            return result;
+        });
+}
+} // namespace oos::wasm
 
 EMSCRIPTEN_BINDINGS(oos_solver)
 {

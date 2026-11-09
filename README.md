@@ -2,8 +2,8 @@
 
 A linear finite element solver written in C++20 and compiled to WebAssembly for the web. It solves models written in
 the O_o model format (`.oos`, O_o_Reader `docs/model-format.md`; O_o_Converter converts decks of the Nastran bulk data
-format to it): linear statics, normal modes, linear buckling (and, in the C++ library, static
-aeroelastic trim, condensation of components and design optimisation).
+format to it): linear statics, normal modes, linear buckling and design evaluations with derivatives for a
+JavaScript-driven optimization. The C++ library also provides static aeroelastic trim and condensation of components.
 
 It does not read model files itself. The O_o_Reader module reads the model, and the solver takes the reader's tables:
 
@@ -34,6 +34,8 @@ The whole interface: [wasm/js/index.d.ts](wasm/js/index.d.ts). How a table cross
 solver's: [docs/table-package.md](docs/table-package.md).
 
 ## Documentation
+
+[JavaScript optimization](docs/optimization.md): design interfaces, derivatives and accepted model updates.
 
 **[Read online](https://jcdulas.github.io/O_o_Solver/)** · [Architecture with diagrams](docs/architecture.md) · [Documentation index](index.md)
 
@@ -85,7 +87,7 @@ WebAssembly (64-bit WebAssembly, Memory64: Node.js 24 or a browser that supports
 ```bash
 emcmake cmake -S . -B build/wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOS_BUILD_WASM=ON -DOOS_WARNINGS_AS_ERRORS=OFF
 cmake --build build/wasm -j
-node --test wasm/test/smoke.test.mjs      # needs the O_o_Reader package built in ../O_o_Reader/build/wasm/dist
+node --test wasm/test/*.test.mjs      # needs the O_o_Reader package built in ../O_o_Reader/build/wasm/dist
 ```
 
 The package is in `build/wasm/dist` (`oos_solver_core.js`, `.wasm`, `index.js`, `index.d.ts`, `package.json`).

@@ -15,6 +15,13 @@ Load the built package from ``build/wasm/dist/index.js``. The declarations below
    :language: typescript
    :linenos:
 
+Optimization declarations
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. literalinclude:: ../wasm/js/optimization.d.ts
+   :language: typescript
+   :linenos:
+
 C++ entry points
 ----------------
 
@@ -29,5 +36,12 @@ Analyses.hpp
 ~~~~~~~~~~~~
 
 .. literalinclude:: ../include/oos/api/Analyses.hpp
+   :language: cpp
+   :linenos:
+
+Optimization.hpp
+~~~~~~~~~~~~~~~~
+
+.. literalinclude:: ../include/oos/api/Optimization.hpp
    :language: cpp
    :linenos:

@@ -1,3 +1,6 @@
+import type { OptimizationProblem, OptimizationDeclarations, OptimizationSettings } from "./optimization.js";
+export * from "./optimization.js";
+
 // Types of the oos-solver package (index.js).
 //
 // Every name the interface gives or takes is an exact neutral name of O_o_Reader: card and result element types use
@@ -105,6 +108,10 @@ export declare class OosSolver {
   // of elementFormulations(), exactly: an unknown card type throws an Error.
   modelFromReader(oor: unknown, deck: unknown,
                   options?: { elementFormulations?: Record<string, string> }): Model;
+  createOptimization(model: Model, declarations?: OptimizationDeclarations, settings?: OptimizationSettings): OptimizationProblem;
+  optimizationFromReader(oor: unknown, deck: unknown, declarations?: OptimizationDeclarations,
+    settings?: OptimizationSettings): OptimizationProblem;
+
   checkSupport(model: Model, analysis?: Analysis): SupportCheck;
   run(model: Model, analysis?: Analysis,
       settings?: { subcases?: number[]; memoryBytes?: number }): AnalysisResult;

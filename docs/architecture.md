@@ -51,7 +51,10 @@ facade. The [API reference](api.rst) includes the facade headers and current Jav
 
 The [input guide](../src/input/README.md), [assembly guide](../src/assembly/README.md),
 [reduction guide](../src/reduction/README.md) and [solution guide](../src/solutions/README.md) cover these stages.
-The C++ library also exposes component, trim and design workflows beyond the three JavaScript analysis entry points.
+The [optimization facade](optimization.md) retains these analyses at each design point, then computes responses,
+first derivatives and supported second derivatives. JavaScript drives the iteration through `OptimizationProblem`
+and `OptimizationEvaluation`; trial snapshots do not edit the Reader model. The C++ library also provides component
+workflows beyond these entry points.
 
 ## Element families and formulations
 

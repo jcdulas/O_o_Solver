@@ -3,7 +3,7 @@
 #   oos_solver_core.js / .wasm   the module made by Emscripten
 #   index.js, index.d.ts         the wrapper a web application imports
 #   package.json
-add_executable(oos_solver_core src/Bindings.cpp)
+add_executable(oos_solver_core src/Bindings.cpp src/OptimizationBindings.cpp)
 target_link_libraries(oos_solver_core PRIVATE oos::api)
 set_target_properties(oos_solver_core PROPERTIES
     SUFFIX ".js"
@@ -24,7 +24,7 @@ target_link_options(oos_solver_core PRIVATE
     "-sEXPORTED_RUNTIME_METHODS=['FS']")
 
 # The wrapper, its types and the package description, next to the module.
-foreach(file index.js index.d.ts)
+foreach(file index.js index.d.ts optimization.js optimization.d.ts)
     add_custom_command(TARGET oos_solver_core POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/js/${file}"
                 "${CMAKE_BINARY_DIR}/dist/${file}")

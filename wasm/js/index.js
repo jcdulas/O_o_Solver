@@ -12,6 +12,8 @@
 //   run.nodalTables[0];          // { kind: "displacements", subcase: 1, ids, values, ... }
 
 import createOosSolverCore from "./oos_solver_core.js";
+import { OptimizationProblem } from "./optimization.js";
+export { OptimizationProblem, OptimizationEvaluation } from "./optimization.js";
 
 // True when the JavaScript runtime runs 64-bit WebAssembly (Memory64), which the module needs.
 export function supportsMemory64() {
@@ -239,6 +241,23 @@ export class OosSolver {
     } finally {
       input.delete();
     }
+  }
+
+  createOptimization(model, declarations = {}, settings = {}) {
+    return new OptimizationProblem(this.core.createOptimization(model, declarations, settings));
+  }
+
+  optimizationFromReader(oor, deck, declarations = {}, settings = {}) {
+    const design = oor.designVariables(deck);
+    if (design.problems.length || design.notApplied.length)
+      throw new Error("the reader cannot export this design: " +
+        [...design.problems, ...design.notApplied.map(p => `${p.card} ${p.id}: ${p.reason}`)].join("; "));
+    const model = this.modelFromReader(oor, deck);
+    try {
+      return this.createOptimization(model, {
+        ...declarations, tables: { ...oor.optimizationTables(deck), ...declarations.tables },
+      }, settings);
+    } finally { model.delete(); }
   }
 
   // The cards and fields of the model the analysis cannot take (refusals) or will not use (ignored), found in one pass.

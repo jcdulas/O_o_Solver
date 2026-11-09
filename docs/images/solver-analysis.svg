@@ -80,6 +80,6 @@
 <text x="435" y="843" font-size="21" font-weight="700">Application arrays</text>
 <text x="435" y="872" font-size="20" fill="#43546d">IDs, components, values, diagnostics</text>
 <text x="435" y="896" font-size="20" fill="#43546d">Optional handoff to Reader result storage</text>
-<text x="45" y="984" font-size="16" fill="#43546d">This view follows the JavaScript analysis path. The C++ library also exposes trim, component and design workflows.</text>
+<text x="45" y="984" font-size="16" fill="#43546d">JavaScript optimization reuses these analyses for responses, gradients and Hessian-vector products.</text>
 </g>
 </svg>

@@ -9,6 +9,8 @@
   "files": [
     "index.js",
     "index.d.ts",
+    "optimization.js",
+    "optimization.d.ts",
     "oos_solver_core.js",
     "oos_solver_core.wasm"
   ],

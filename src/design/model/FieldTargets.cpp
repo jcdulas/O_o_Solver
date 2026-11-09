@@ -34,6 +34,23 @@ const std::string MATERIALS_TABLE = "materialsTable";
 // The column of the node table that holds the positions in the basic system (NodeTable::positionsInBasic).
 const std::string NODE_POSITION_COLUMN = "xyzGlobal";
 
+// The material summary uses compact engineering symbols; relations from card fields use their explicit names.
+// Overlay both representations, since rods and beams read the summary while shells also read material card tables.
+[[nodiscard]] std::string materialSummaryField(const std::string& field)
+{
+    static constexpr std::pair<const char*, const char*> FIELDS[] = {
+        {"youngsModulus", "e"},         {"shearModulus", "g"},      {"poissonRatio", "nu"},
+        {"thermalExpansion", "a"},      {"tensionAllowable", "st"}, {"compressionAllowable", "sc"},
+        {"shearAllowable", "ss"},       {"youngsModulus1", "e1"},   {"youngsModulus2", "e2"},
+        {"poissonRatio12", "nu12"},     {"shearModulus12", "g12"},  {"tensionStrength1", "xt"},
+        {"compressionStrength1", "xc"}, {"tensionStrength2", "yt"}, {"compressionStrength2", "yc"},
+        {"shearStrength", "s"}};
+    for (const auto& [name, summary] : FIELDS)
+        if (field == name)
+            return summary;
+    return field;
+}
+
 [[nodiscard]] bool isMaterialIdColumn(const std::string& name)
 {
     // matId, matId1 ... and the materials a shell names by their role (membraneMatId, bendingMatId, ...); not
@@ -347,11 +364,14 @@ private:
                 if (ids[static_cast<std::size_t>(row)] != relation.targetId || types[row] != relation.targetCard)
                     continue;
                 hasTable = true;
-                if (materials.reader().hasColumn(relation.field))
+                const std::string column = materialSummaryField(relation.field);
+                if (materials.reader().hasColumn(column))
                 {
                     hasColumn = true;
-                    if (isFieldColumn(relation, materials.reader(), MATERIALS_TABLE, row))
-                        target.cells.push_back({MATERIALS_TABLE, relation.field, row, relation.fieldItem});
+                    auto summaryRelation = relation;
+                    summaryRelation.field = column;
+                    if (isFieldColumn(summaryRelation, materials.reader(), MATERIALS_TABLE, row))
+                        target.cells.push_back({MATERIALS_TABLE, column, row, relation.fieldItem});
                 }
                 break;
             }

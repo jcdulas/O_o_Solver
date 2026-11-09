@@ -1,7 +1,7 @@
 # Getting started
 
 O_o_Solver receives typed model tables from O_o_Reader. Its JavaScript entry points expose linear statics,
-normal modes and linear buckling. The C++ library has additional entry points described in the
+normal modes, linear buckling and [JavaScript-driven optimization](optimization.md). The C++ library has additional entry points described in the
 [solution guide](../src/solutions/README.md) and [design guide](../src/design/README.md).
 
 ## Build the packages
