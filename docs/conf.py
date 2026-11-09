@@ -28,3 +28,5 @@ html_theme_options = {
     "light_css_variables": {"color-brand-primary": "#245d78", "color-brand-content": "#245d78"},
 }
 repository_url = "https://github.com/jcdulas/O_o_Solver"
+
+html_baseurl = "https://jcdulas.github.io/O_o_Solver/"

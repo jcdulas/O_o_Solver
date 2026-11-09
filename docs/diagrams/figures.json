@@ -1,0 +1,789 @@
+[
+  {
+    "id": "reader-solver-boundary",
+    "title": "Two modules, an explicit data boundary",
+    "description": "JavaScript coordinates two independent WebAssembly memories. Reader query tables cross as byte packages. Solver results return as arrays and may be added to Reader result storage.",
+    "size": [
+      1120,
+      840
+    ],
+    "nodes": [
+      {
+        "title": "O_o_Reader",
+        "box": [
+          55,
+          195,
+          365,
+          130
+        ],
+        "body": [
+          "Read .oos records",
+          "Build and query typed tables"
+        ],
+        "color": "blue",
+        "tag": "Memory A"
+      },
+      {
+        "title": "Table package",
+        "box": [
+          465,
+          205,
+          190,
+          110
+        ],
+        "body": [
+          "Uint8Array"
+        ],
+        "color": "amber",
+        "tag": "JavaScript"
+      },
+      {
+        "title": "O_o_Solver",
+        "box": [
+          700,
+          195,
+          365,
+          130
+        ],
+        "body": [
+          "Validate imported tables",
+          "Build a model snapshot"
+        ],
+        "color": "purple",
+        "tag": "Memory B"
+      },
+      {
+        "title": "Results in memory",
+        "box": [
+          55,
+          495,
+          365,
+          140
+        ],
+        "body": [
+          "Attach arrays to a model",
+          "Query, archive or export"
+        ],
+        "color": "teal",
+        "tag": "Reader result API"
+      },
+      {
+        "title": "Result arrays",
+        "box": [
+          465,
+          510,
+          190,
+          110
+        ],
+        "body": [
+          "IDs + values"
+        ],
+        "color": "amber",
+        "tag": "JavaScript"
+      },
+      {
+        "title": "Finite element analysis",
+        "box": [
+          700,
+          495,
+          365,
+          140
+        ],
+        "body": [
+          "Statics, modes, buckling",
+          "Recover requested outputs"
+        ],
+        "color": "purple",
+        "tag": "Solver run API"
+      }
+    ],
+    "arrows": [
+      {
+        "path": "M420 260 H465",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M655 260 H700",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M882 325 V495",
+        "label": "solve",
+        "label_at": [
+          882,
+          416
+        ],
+        "dashed": false
+      },
+      {
+        "path": "M700 565 H655",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M465 565 H420",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      }
+    ],
+    "groups": [
+      {
+        "box": [
+          30,
+          120,
+          415,
+          560
+        ],
+        "title": "Reader module",
+        "subtitle": "Owns model parsing and result storage",
+        "color": "blue"
+      },
+      {
+        "box": [
+          675,
+          120,
+          415,
+          560
+        ],
+        "title": "Solver module",
+        "subtitle": "Owns finite element computations",
+        "color": "purple"
+      }
+    ],
+    "notes": [
+      {
+        "at": [
+          55,
+          727
+        ],
+        "text": [
+          "Data contract checked on import. Each module owns its memory.",
+          "The modules exchange bytes and arrays; C++ pointers stay within their owning module.",
+          "Adding result arrays to the reader is an explicit application step."
+        ]
+      }
+    ],
+    "category": "Data ownership"
+  },
+  {
+    "id": "solver-layers",
+    "title": "Solver library dependency spine",
+    "description": "The main direct library dependencies from the project build files. An arrow points from a library to a library it requires.",
+    "size": [
+      1120,
+      1128
+    ],
+    "nodes": [
+      {
+        "title": "api",
+        "box": [
+          55,
+          130,
+          450,
+          116
+        ],
+        "body": [
+          "Model input, analyses and discovery"
+        ],
+        "color": "blue",
+        "tag": "01 Library"
+      },
+      {
+        "title": "design",
+        "box": [
+          610,
+          130,
+          450,
+          116
+        ],
+        "body": [
+          "Design points, responses, sensitivities"
+        ],
+        "color": "purple",
+        "tag": "02 Library"
+      },
+      {
+        "title": "solutions",
+        "box": [
+          610,
+          288,
+          450,
+          116
+        ],
+        "body": [
+          "Analysis orchestration and shared plans"
+        ],
+        "color": "blue",
+        "tag": "03 Library"
+      },
+      {
+        "title": "output",
+        "box": [
+          55,
+          288,
+          450,
+          116
+        ],
+        "body": [
+          "Requested result tables and diagnostics"
+        ],
+        "color": "purple",
+        "tag": "04 Library"
+      },
+      {
+        "title": "aero",
+        "box": [
+          55,
+          446,
+          450,
+          116
+        ],
+        "body": [
+          "Aerodynamic and aeroelastic operators"
+        ],
+        "color": "teal",
+        "tag": "05 Library"
+      },
+      {
+        "title": "reduction",
+        "box": [
+          610,
+          446,
+          450,
+          116
+        ],
+        "body": [
+          "Component boundaries and condensation"
+        ],
+        "color": "amber",
+        "tag": "06 Library"
+      },
+      {
+        "title": "assembly",
+        "box": [
+          610,
+          604,
+          450,
+          116
+        ],
+        "body": [
+          "DOFs, constraints, loads and systems"
+        ],
+        "color": "blue",
+        "tag": "07 Library"
+      },
+      {
+        "title": "elements",
+        "box": [
+          55,
+          604,
+          450,
+          116
+        ],
+        "body": [
+          "Families, formulations and element facets"
+        ],
+        "color": "teal",
+        "tag": "08 Library"
+      },
+      {
+        "title": "input",
+        "box": [
+          55,
+          762,
+          450,
+          116
+        ],
+        "body": [
+          "Validated views and immutable snapshots"
+        ],
+        "color": "teal",
+        "tag": "09 Library"
+      },
+      {
+        "title": "linalg",
+        "box": [
+          610,
+          762,
+          450,
+          116
+        ],
+        "body": [
+          "Sparse factors, eigenproblems, kernels"
+        ],
+        "color": "gray",
+        "tag": "10 Library"
+      },
+      {
+        "title": "base",
+        "box": [
+          610,
+          920,
+          450,
+          116
+        ],
+        "body": [
+          "Memory budgets, math, diagnostics"
+        ],
+        "color": "gray",
+        "tag": "11 Library"
+      }
+    ],
+    "arrows": [
+      {
+        "path": "M505 188 H610",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M835 246 V288",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M610 346 H505",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M280 404 V446",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M505 504 H610",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M835 562 V604",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M610 662 H505",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M280 720 V762",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M505 820 H610",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M835 878 V920",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "at": [
+          55,
+          1094
+        ],
+        "text": [
+          "Arrows point to required libraries. Read the detailed module guides for each interface."
+        ]
+      }
+    ],
+    "category": "C++ dependencies"
+  },
+  {
+    "id": "solver-analysis",
+    "title": "A calculation from tables to result arrays",
+    "description": "Imported model tables become a validated snapshot. Support checks precede assembly and solving. Element recovery and output requests produce typed result arrays.",
+    "size": [
+      1120,
+      1040
+    ],
+    "nodes": [
+      {
+        "title": "ModelInput",
+        "box": [
+          45,
+          135,
+          290,
+          125
+        ],
+        "body": [
+          "Import table packages"
+        ],
+        "color": "teal",
+        "tag": "Input boundary"
+      },
+      {
+        "title": "ModelSnapshot",
+        "box": [
+          415,
+          135,
+          290,
+          125
+        ],
+        "body": [
+          "Checked schemas and views"
+        ],
+        "color": "teal",
+        "tag": "input"
+      },
+      {
+        "title": "Support + plan",
+        "box": [
+          785,
+          135,
+          290,
+          125
+        ],
+        "body": [
+          "Cards, fields, requested run"
+        ],
+        "color": "amber",
+        "tag": "Preflight"
+      },
+      {
+        "title": "Diagnostics",
+        "box": [
+          785,
+          340,
+          290,
+          125
+        ],
+        "body": [
+          "Refusals and ignored data"
+        ],
+        "color": "amber",
+        "tag": "Report"
+      },
+      {
+        "title": "DOFs + constraints",
+        "box": [
+          415,
+          340,
+          290,
+          125
+        ],
+        "body": [
+          "Grid/scalar DOFs and sets"
+        ],
+        "color": "blue",
+        "tag": "assembly"
+      },
+      {
+        "title": "Element operators",
+        "box": [
+          45,
+          340,
+          290,
+          125
+        ],
+        "body": [
+          "Stiffness, mass and loads"
+        ],
+        "color": "teal",
+        "tag": "elements"
+      },
+      {
+        "title": "Global system",
+        "box": [
+          45,
+          555,
+          290,
+          125
+        ],
+        "body": [
+          "Assemble and reduce"
+        ],
+        "color": "blue",
+        "tag": "assembly / reduction"
+      },
+      {
+        "title": "Analysis solve",
+        "box": [
+          415,
+          555,
+          290,
+          125
+        ],
+        "body": [
+          "Statics, modes or buckling"
+        ],
+        "color": "blue",
+        "tag": "solutions + linalg"
+      },
+      {
+        "title": "Recovery + requests",
+        "box": [
+          785,
+          555,
+          290,
+          125
+        ],
+        "body": [
+          "Element and nodal outputs"
+        ],
+        "color": "purple",
+        "tag": "elements / output"
+      },
+      {
+        "title": "Application arrays",
+        "box": [
+          415,
+          790,
+          660,
+          125
+        ],
+        "body": [
+          "IDs, components, values, diagnostics",
+          "Optional handoff to Reader result storage"
+        ],
+        "color": "purple",
+        "tag": "Public result API"
+      }
+    ],
+    "arrows": [
+      {
+        "path": "M335 197 H415",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M705 197 H785",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M930 260 V340",
+        "label": "report",
+        "label_at": [
+          930,
+          309
+        ],
+        "dashed": false
+      },
+      {
+        "path": "M785 260 V300 H560 V340",
+        "label": "supported",
+        "label_at": [
+          600,
+          296
+        ],
+        "dashed": false
+      },
+      {
+        "path": "M415 402 H335",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M190 465 V555",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M335 617 H415",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M705 617 H785",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M930 680 V790",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "at": [
+          45,
+          984
+        ],
+        "text": [
+          "This view follows the JavaScript analysis path. The C++ library also exposes trim, component and design workflows."
+        ]
+      }
+    ],
+    "category": "Architecture"
+  },
+  {
+    "id": "solver-element-facets",
+    "title": "One element family, several numerical responsibilities",
+    "description": "The registry chooses one formulation for each card type. An ElementFamily reads a batch view and declares the facets it supports. Assembly and recovery consume those facets.",
+    "size": [
+      1120,
+      940
+    ],
+    "nodes": [
+      {
+        "title": "ElementRegistry",
+        "box": [
+          45,
+          135,
+          475,
+          140
+        ],
+        "body": [
+          "Select a formulation per card type",
+          "Example: ShellQuad4 + ClassicFormulation"
+        ],
+        "color": "amber",
+        "tag": "Selection"
+      },
+      {
+        "title": "ElementBatchView",
+        "box": [
+          600,
+          135,
+          475,
+          140
+        ],
+        "body": [
+          "Rows, connectivity and property views",
+          "Data borrowed from the snapshot"
+        ],
+        "color": "teal",
+        "tag": "Input data"
+      },
+      {
+        "title": "ElementFamily",
+        "box": [
+          315,
+          365,
+          490,
+          160
+        ],
+        "body": [
+          "ShellQuad4Element, SolidHexaElement, ...",
+          "Capabilities declared by facets()",
+          "Validated numerical inputs"
+        ],
+        "color": "blue",
+        "tag": "Numerical interface"
+      },
+      {
+        "title": "Assembly facets",
+        "box": [
+          45,
+          635,
+          300,
+          150
+        ],
+        "body": [
+          "Stiffness, mass, loads",
+          "Differential stiffness"
+        ],
+        "color": "teal",
+        "tag": "Form systems"
+      },
+      {
+        "title": "Recovery facets",
+        "box": [
+          410,
+          635,
+          300,
+          150
+        ],
+        "body": [
+          "Stress, strain, forces",
+          "Layer and nodal outputs"
+        ],
+        "color": "purple",
+        "tag": "Recover values"
+      },
+      {
+        "title": "Design facets",
+        "box": [
+          775,
+          635,
+          300,
+          150
+        ],
+        "body": [
+          "Field derivatives",
+          "Sensitivity operators"
+        ],
+        "color": "amber",
+        "tag": "Optional capability"
+      }
+    ],
+    "arrows": [
+      {
+        "path": "M282 275 V315 H455 V365",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M837 275 V315 H665 V365",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M455 525 V580 H195 V635",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M560 525 V635",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      },
+      {
+        "path": "M665 525 V580 H925 V635",
+        "label": null,
+        "label_at": null,
+        "dashed": false
+      }
+    ],
+    "groups": [],
+    "notes": [
+      {
+        "at": [
+          45,
+          851
+        ],
+        "text": [
+          "Each family implements its supported facets. A requested unsupported card or field is reported before solving.",
+          "The element type is shared by model records and result metadata; suffixes describe code roles."
+        ]
+      }
+    ],
+    "category": "Architecture"
+  }
+]

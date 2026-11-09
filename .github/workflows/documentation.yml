@@ -7,6 +7,8 @@ on:
       - '**/*.md'
       - '**/*.rst'
       - 'docs/**'
+      - 'CMakeLists.txt'
+      - 'src/**/CMakeLists.txt'
       - 'include/**'
       - 'wasm/js/**'
       - '.github/workflows/documentation.yml'
@@ -15,6 +17,8 @@ on:
       - '**/*.md'
       - '**/*.rst'
       - 'docs/**'
+      - 'CMakeLists.txt'
+      - 'src/**/CMakeLists.txt'
       - 'include/**'
       - 'wasm/js/**'
       - '.github/workflows/documentation.yml'
@@ -29,7 +33,7 @@ concurrency:
 
 jobs:
   html:
-    name: Build private HTML documentation
+    name: Build HTML documentation
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -43,8 +47,9 @@ jobs:
           cache-dependency-path: docs/requirements.txt
       - name: Install documentation dependencies
         run: python -m pip install -r docs/requirements.txt
-      - name: Build HTML and check internal links
+      - name: Verify diagrams, build HTML and check local resources
         run: |
+          python docs/diagrams/render.py --check
           python -m sphinx -W --keep-going -b html -c docs -d build/docs/doctrees . build/docs/html
           python docs/check_html.py build/docs/html
       - name: Archive HTML documentation
@@ -60,5 +65,32 @@ jobs:
           ARTIFACT_URL: ${{ steps.archive.outputs.artifact-url }}
         run: |
           echo '## Documentation' >> "$GITHUB_STEP_SUMMARY"
-          echo "[Download the HTML site]($ARTIFACT_URL) (repository access required)." >> "$GITHUB_STEP_SUMMARY"
-          echo 'Extract the archive and open index.html. For local search, serve it with python -m http.server 8000 --bind 127.0.0.1.' >> "$GITHUB_STEP_SUMMARY"
+          echo '[Read the published site](https://jcdulas.github.io/O_o_Solver/).' >> "$GITHUB_STEP_SUMMARY"
+          echo "[Download the HTML archive]($ARTIFACT_URL)." >> "$GITHUB_STEP_SUMMARY"
+          echo 'Extract the archive and open index.html, or serve it with python -m http.server 8000 --bind 127.0.0.1.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Package the public site
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: build/docs/html/
+
+  deploy:
+    name: Publish documentation
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: html
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the public site
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

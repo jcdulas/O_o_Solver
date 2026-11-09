@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1128" viewBox="0 0 1120 1128" role="img" aria-labelledby="title description">
+<title id="title">Solver library dependency spine</title>
+<desc id="description">The main direct library dependencies from the project build files. An arrow points from a library to a library it requires.</desc>
+<rect width="100%" height="100%" rx="18" fill="#f8fafc"/>
+<g font-family="sans-serif" fill="#1c2e48">
+<text x="36" y="40" font-size="13" font-weight="700" letter-spacing="1.5" fill="#52647e">C++ DEPENDENCIES</text>
+<text x="36" y="77" font-size="28" font-weight="700">Solver library dependency spine</text>
+<path d="M505 188 H610" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="610,188 598,183 598,193" fill="#50627b"/>
+<path d="M835 246 V288" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="835,288 840,276 830,276" fill="#50627b"/>
+<path d="M610 346 H505" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="505,346 517,351 517,341" fill="#50627b"/>
+<path d="M280 404 V446" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="280,446 285,434 275,434" fill="#50627b"/>
+<path d="M505 504 H610" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="610,504 598,499 598,509" fill="#50627b"/>
+<path d="M835 562 V604" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="835,604 840,592 830,592" fill="#50627b"/>
+<path d="M610 662 H505" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="505,662 517,667 517,657" fill="#50627b"/>
+<path d="M280 720 V762" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="280,762 285,750 275,750" fill="#50627b"/>
+<path d="M505 820 H610" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="610,820 598,815 598,825" fill="#50627b"/>
+<path d="M835 878 V920" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="835,920 840,908 830,908" fill="#50627b"/>
+<rect x="55" y="130" width="450" height="116" rx="12" fill="#edf3ff" stroke="#4366b3" stroke-width="1.5"/>
+<rect x="56" y="144" width="4" height="88" rx="2" fill="#4366b3"/>
+<text x="75" y="155" font-size="12" font-weight="700" letter-spacing="1.2" fill="#4366b3">01 LIBRARY</text>
+<text x="75" y="183" font-size="21" font-weight="700">api</text>
+<text x="75" y="212" font-size="20" fill="#43546d">Model input, analyses and discovery</text>
+<rect x="610" y="130" width="450" height="116" rx="12" fill="#f3edfc" stroke="#7951a8" stroke-width="1.5"/>
+<rect x="611" y="144" width="4" height="88" rx="2" fill="#7951a8"/>
+<text x="630" y="155" font-size="12" font-weight="700" letter-spacing="1.2" fill="#7951a8">02 LIBRARY</text>
+<text x="630" y="183" font-size="21" font-weight="700">design</text>
+<text x="630" y="212" font-size="20" fill="#43546d">Design points, responses, sensitivities</text>
+<rect x="610" y="288" width="450" height="116" rx="12" fill="#edf3ff" stroke="#4366b3" stroke-width="1.5"/>
+<rect x="611" y="302" width="4" height="88" rx="2" fill="#4366b3"/>
+<text x="630" y="313" font-size="12" font-weight="700" letter-spacing="1.2" fill="#4366b3">03 LIBRARY</text>
+<text x="630" y="341" font-size="21" font-weight="700">solutions</text>
+<text x="630" y="370" font-size="20" fill="#43546d">Analysis orchestration and shared plans</text>
+<rect x="55" y="288" width="450" height="116" rx="12" fill="#f3edfc" stroke="#7951a8" stroke-width="1.5"/>
+<rect x="56" y="302" width="4" height="88" rx="2" fill="#7951a8"/>
+<text x="75" y="313" font-size="12" font-weight="700" letter-spacing="1.2" fill="#7951a8">04 LIBRARY</text>
+<text x="75" y="341" font-size="21" font-weight="700">output</text>
+<text x="75" y="370" font-size="20" fill="#43546d">Requested result tables and diagnostics</text>
+<rect x="55" y="446" width="450" height="116" rx="12" fill="#e9f6f2" stroke="#237d69" stroke-width="1.5"/>
+<rect x="56" y="460" width="4" height="88" rx="2" fill="#237d69"/>
+<text x="75" y="471" font-size="12" font-weight="700" letter-spacing="1.2" fill="#237d69">05 LIBRARY</text>
+<text x="75" y="499" font-size="21" font-weight="700">aero</text>
+<text x="75" y="528" font-size="20" fill="#43546d">Aerodynamic and aeroelastic operators</text>
+<rect x="610" y="446" width="450" height="116" rx="12" fill="#fff5df" stroke="#a56b18" stroke-width="1.5"/>
+<rect x="611" y="460" width="4" height="88" rx="2" fill="#a56b18"/>
+<text x="630" y="471" font-size="12" font-weight="700" letter-spacing="1.2" fill="#a56b18">06 LIBRARY</text>
+<text x="630" y="499" font-size="21" font-weight="700">reduction</text>
+<text x="630" y="528" font-size="20" fill="#43546d">Component boundaries and condensation</text>
+<rect x="610" y="604" width="450" height="116" rx="12" fill="#edf3ff" stroke="#4366b3" stroke-width="1.5"/>
+<rect x="611" y="618" width="4" height="88" rx="2" fill="#4366b3"/>
+<text x="630" y="629" font-size="12" font-weight="700" letter-spacing="1.2" fill="#4366b3">07 LIBRARY</text>
+<text x="630" y="657" font-size="21" font-weight="700">assembly</text>
+<text x="630" y="686" font-size="20" fill="#43546d">DOFs, constraints, loads and systems</text>
+<rect x="55" y="604" width="450" height="116" rx="12" fill="#e9f6f2" stroke="#237d69" stroke-width="1.5"/>
+<rect x="56" y="618" width="4" height="88" rx="2" fill="#237d69"/>
+<text x="75" y="629" font-size="12" font-weight="700" letter-spacing="1.2" fill="#237d69">08 LIBRARY</text>
+<text x="75" y="657" font-size="21" font-weight="700">elements</text>
+<text x="75" y="686" font-size="20" fill="#43546d">Families, formulations and element facets</text>
+<rect x="55" y="762" width="450" height="116" rx="12" fill="#e9f6f2" stroke="#237d69" stroke-width="1.5"/>
+<rect x="56" y="776" width="4" height="88" rx="2" fill="#237d69"/>
+<text x="75" y="787" font-size="12" font-weight="700" letter-spacing="1.2" fill="#237d69">09 LIBRARY</text>
+<text x="75" y="815" font-size="21" font-weight="700">input</text>
+<text x="75" y="844" font-size="20" fill="#43546d">Validated views and immutable snapshots</text>
+<rect x="610" y="762" width="450" height="116" rx="12" fill="#f0f3f7" stroke="#64748b" stroke-width="1.5"/>
+<rect x="611" y="776" width="4" height="88" rx="2" fill="#64748b"/>
+<text x="630" y="787" font-size="12" font-weight="700" letter-spacing="1.2" fill="#64748b">10 LIBRARY</text>
+<text x="630" y="815" font-size="21" font-weight="700">linalg</text>
+<text x="630" y="844" font-size="20" fill="#43546d">Sparse factors, eigenproblems, kernels</text>
+<rect x="610" y="920" width="450" height="116" rx="12" fill="#f0f3f7" stroke="#64748b" stroke-width="1.5"/>
+<rect x="611" y="934" width="4" height="88" rx="2" fill="#64748b"/>
+<text x="630" y="945" font-size="12" font-weight="700" letter-spacing="1.2" fill="#64748b">11 LIBRARY</text>
+<text x="630" y="973" font-size="21" font-weight="700">base</text>
+<text x="630" y="1002" font-size="20" fill="#43546d">Memory budgets, math, diagnostics</text>
+<text x="55" y="1094" font-size="16" fill="#43546d">Arrows point to required libraries. Read the detailed module guides for each interface.</text>
+</g>
+</svg>

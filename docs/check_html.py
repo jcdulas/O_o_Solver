@@ -1,4 +1,4 @@
-"""Check local HTML destinations and anchors without requesting private remote URLs."""
+"""Check local HTML destinations and anchors and image resources without external requests."""
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -18,6 +18,8 @@ class Page(HTMLParser):
             self.ids.add(attributes["id"])
         if tag == "a" and attributes.get("href"):
             self.links.append(attributes["href"])
+        if tag == "img" and attributes.get("src"):
+            self.links.append(attributes["src"])
 
 
 def main():
@@ -40,7 +42,7 @@ def main():
         print(failure)
     if failures:
         raise SystemExit(1)
-    print(f"Checked {len(pages)} HTML pages: all local links and anchors resolve.")
+    print(f"Checked {len(pages)} HTML pages: all local links, images and anchors resolve.")
 
 
 if __name__ == "__main__":

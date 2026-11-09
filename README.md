@@ -35,10 +35,10 @@ solver's: [docs/table-package.md](docs/table-package.md).
 
 ## Documentation
 
-[Documentation index](index.md) · [Download the private HTML site](https://github.com/jcdulas/O_o_Solver/actions/workflows/documentation.yml)
+**[Read online](https://jcdulas.github.io/O_o_Solver/)** · [Architecture with diagrams](docs/architecture.md) · [Documentation index](index.md)
 
-The Sphinx site is built by the Documentation workflow and downloadable as a private artifact.
-See [build and download instructions](docs/documentation.md).
+The Documentation workflow publishes the HTML site and provides a downloadable archive.
+See [read, download and build instructions](docs/documentation.md).
 
 ## Shell elements
 

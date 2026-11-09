@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="940" viewBox="0 0 1120 940" role="img" aria-labelledby="title description">
+<title id="title">One element family, several numerical responsibilities</title>
+<desc id="description">The registry chooses one formulation for each card type. An ElementFamily reads a batch view and declares the facets it supports. Assembly and recovery consume those facets.</desc>
+<rect width="100%" height="100%" rx="18" fill="#f8fafc"/>
+<g font-family="sans-serif" fill="#1c2e48">
+<text x="36" y="40" font-size="13" font-weight="700" letter-spacing="1.5" fill="#52647e">ARCHITECTURE</text>
+<text x="36" y="77" font-size="28" font-weight="700">One element family, several numerical responsibilities</text>
+<path d="M282 275 V315 H455 V365" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="455,365 460,353 450,353" fill="#50627b"/>
+<path d="M837 275 V315 H665 V365" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="665,365 670,353 660,353" fill="#50627b"/>
+<path d="M455 525 V580 H195 V635" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="195,635 200,623 190,623" fill="#50627b"/>
+<path d="M560 525 V635" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="560,635 565,623 555,623" fill="#50627b"/>
+<path d="M665 525 V580 H925 V635" fill="none" stroke="#50627b" stroke-width="2.4" stroke-linejoin="round"/>
+<polygon points="925,635 930,623 920,623" fill="#50627b"/>
+<rect x="45" y="135" width="475" height="140" rx="12" fill="#fff5df" stroke="#a56b18" stroke-width="1.5"/>
+<rect x="46" y="149" width="4" height="112" rx="2" fill="#a56b18"/>
+<text x="65" y="160" font-size="12" font-weight="700" letter-spacing="1.2" fill="#a56b18">SELECTION</text>
+<text x="65" y="188" font-size="21" font-weight="700">ElementRegistry</text>
+<text x="65" y="217" font-size="20" fill="#43546d">Select a formulation per card type</text>
+<text x="65" y="241" font-size="20" fill="#43546d">Example: ShellQuad4 + ClassicFormulation</text>
+<rect x="600" y="135" width="475" height="140" rx="12" fill="#e9f6f2" stroke="#237d69" stroke-width="1.5"/>
+<rect x="601" y="149" width="4" height="112" rx="2" fill="#237d69"/>
+<text x="620" y="160" font-size="12" font-weight="700" letter-spacing="1.2" fill="#237d69">INPUT DATA</text>
+<text x="620" y="188" font-size="21" font-weight="700">ElementBatchView</text>
+<text x="620" y="217" font-size="20" fill="#43546d">Rows, connectivity and property views</text>
+<text x="620" y="241" font-size="20" fill="#43546d">Data borrowed from the snapshot</text>
+<rect x="315" y="365" width="490" height="160" rx="12" fill="#edf3ff" stroke="#4366b3" stroke-width="1.5"/>
+<rect x="316" y="379" width="4" height="132" rx="2" fill="#4366b3"/>
+<text x="335" y="390" font-size="12" font-weight="700" letter-spacing="1.2" fill="#4366b3">NUMERICAL INTERFACE</text>
+<text x="335" y="418" font-size="21" font-weight="700">ElementFamily</text>
+<text x="335" y="447" font-size="20" fill="#43546d">ShellQuad4Element, SolidHexaElement, ...</text>
+<text x="335" y="471" font-size="20" fill="#43546d">Capabilities declared by facets()</text>
+<text x="335" y="495" font-size="20" fill="#43546d">Validated numerical inputs</text>
+<rect x="45" y="635" width="300" height="150" rx="12" fill="#e9f6f2" stroke="#237d69" stroke-width="1.5"/>
+<rect x="46" y="649" width="4" height="122" rx="2" fill="#237d69"/>
+<text x="65" y="660" font-size="12" font-weight="700" letter-spacing="1.2" fill="#237d69">FORM SYSTEMS</text>
+<text x="65" y="688" font-size="21" font-weight="700">Assembly facets</text>
+<text x="65" y="717" font-size="20" fill="#43546d">Stiffness, mass, loads</text>
+<text x="65" y="741" font-size="20" fill="#43546d">Differential stiffness</text>
+<rect x="410" y="635" width="300" height="150" rx="12" fill="#f3edfc" stroke="#7951a8" stroke-width="1.5"/>
+<rect x="411" y="649" width="4" height="122" rx="2" fill="#7951a8"/>
+<text x="430" y="660" font-size="12" font-weight="700" letter-spacing="1.2" fill="#7951a8">RECOVER VALUES</text>
+<text x="430" y="688" font-size="21" font-weight="700">Recovery facets</text>
+<text x="430" y="717" font-size="20" fill="#43546d">Stress, strain, forces</text>
+<text x="430" y="741" font-size="20" fill="#43546d">Layer and nodal outputs</text>
+<rect x="775" y="635" width="300" height="150" rx="12" fill="#fff5df" stroke="#a56b18" stroke-width="1.5"/>
+<rect x="776" y="649" width="4" height="122" rx="2" fill="#a56b18"/>
+<text x="795" y="660" font-size="12" font-weight="700" letter-spacing="1.2" fill="#a56b18">OPTIONAL CAPABILITY</text>
+<text x="795" y="688" font-size="21" font-weight="700">Design facets</text>
+<text x="795" y="717" font-size="20" fill="#43546d">Field derivatives</text>
+<text x="795" y="741" font-size="20" fill="#43546d">Sensitivity operators</text>
+<text x="45" y="851" font-size="16" fill="#43546d">Each family implements its supported facets. A requested unsupported card or field is reported before solving.</text>
+<text x="45" y="875" font-size="16" fill="#43546d">The element type is shared by model records and result metadata; suffixes describe code roles.</text>
+</g>
+</svg>
