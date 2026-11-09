@@ -1,0 +1,33 @@
+#include "oos/elements/solids/solidHexa/SolidHexaElement.hpp"
+
+namespace oos::elements
+{
+
+// FacePressureLoad on a face of the element: the face from face_nodes, uniform or corner pressures, consistent nodal
+// loads along the inward normal (SolidPressure).
+void SolidHexaElement::checkPressureLoads(const ElementBatchView& view, std::span<const ElementPressure> pressures,
+                                         base::DiagnosticSink& sink) const
+{
+    KERNEL.checkPressureLoads(view, pressures, sink);
+}
+
+void SolidHexaElement::computePressureLoads(const ElementBatchView& view, std::span<const ElementPressure> pressures,
+                                           ElementVectorBlock& block) const
+{
+    KERNEL.computePressureLoads(view, pressures, block);
+}
+
+// Thermal loads of the grid point temperatures (SolidElementKernel: f = ∫ Bᵀ·D·ε_T dV).
+void SolidHexaElement::checkThermalLoads(const ElementBatchView& view, const ElementTemperatures& temperatures,
+                                        base::DiagnosticSink& sink) const
+{
+    KERNEL.checkThermalLoads(view, temperatures, sink);
+}
+
+void SolidHexaElement::computeThermalLoads(const ElementBatchView& view, ElementRange range,
+                                          const ElementTemperatures& temperatures, ElementVectorBlock& block) const
+{
+    KERNEL.computeThermalLoads(view, range, temperatures, block);
+}
+
+} // namespace oos::elements

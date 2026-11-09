@@ -1,0 +1,21 @@
+{
+  "name": "oos-solver",
+  "version": "0.2.0",
+  "description": "Linear finite element solver (statics, normal modes, buckling) for models read by oor-reader, in WebAssembly.",
+  "license": "MIT",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "oos_solver_core.js",
+    "oos_solver_core.wasm"
+  ],
+  "peerDependencies": {
+    "oor-reader": ">=0.2.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
