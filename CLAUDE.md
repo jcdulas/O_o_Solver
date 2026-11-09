@@ -6,8 +6,8 @@ O_o_Reader module (table packages) and gives its results as plain arrays. Start 
 
 ## Rules
 
-1. **Legal** ([LEGAL.md](LEGAL.md)): no vendor or product name in code, comments, messages or documents ("Nastran"
-   only to describe the input format, "NASTRAN-95" only to cite NASA's open-source release as a source); never copy or
+1. **Legal** ([LEGAL.md](LEGAL.md)): no vendor or product name in code, comments, messages or documents
+   ("NASTRAN-95" only to cite NASA's open-source release as a source); never copy or
    quote a vendor's documentation, never add it, an example deck or a result file of a vendor to the repository; no
    vendor file format (no F06-style listing, no binary result format). NASTRAN-95 code is never translated line by line.
    Scientific publications and NASA reports may be cited as the source of a method, with the name the publication

@@ -1,11 +1,11 @@
 # O_o_Solver
 
-A linear finite element solver written in C++20 and compiled to WebAssembly for the web. It solves models written in
-the O_o model format (`.oos`, O_o_Reader `docs/model-format.md`; O_o_Converter converts decks of the Nastran bulk data
-format to it): linear statics, normal modes, linear buckling and design evaluations with derivatives for a
-JavaScript-driven optimization. The C++ library also provides static aeroelastic trim and condensation of components.
+A linear finite element solver written in C++20 and compiled to WebAssembly for the web. It solves models supplied
+as typed table packages by O_o_Reader: linear statics, normal modes, linear buckling and design evaluations with
+derivatives for a JavaScript-driven optimization. The C++ library also provides static aeroelastic trim and
+condensation of components.
 
-It does not read model files itself. The O_o_Reader module reads the model, and the solver takes the reader's tables:
+O_o_Reader loads native `.oos` models or `.oorh5` model archives, and the solver takes the reader's tables:
 
 ```js
 import { loadOorReader } from "oor-reader";
