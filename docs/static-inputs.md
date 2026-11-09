@@ -63,6 +63,9 @@ their distribution is not implemented. Selected sets are also explicitly refused
 in modal, buckling and trim analyses, and in optimization, whose added-set mass derivatives are not implemented.
 These restrictions concern selected bulk mass sets; the existing mass fields in element properties remain available.
 
-The end-to-end checks in `wasm/test/static-inputs.test.mjs` compare gravity displacements with the independent
+The end-to-end checks in `wasm/test/cases/static-inputs.mjs` compare gravity displacements with the independent
 axial-rod solution, test inherited and overridden selections, unions, property mass and unit scaling, and verify
 that unsupported input stops the calculation.
+
+The [fast combination suite](testing.md) extends these checks across element families, loads, constraints and mass
+options, with a watchdog below one second per test.

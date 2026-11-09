@@ -1,25 +1,14 @@
 // End-to-end test of the WebAssembly package: a model file is read by the O_o_Reader module, its tables are handed to the
 // solver, and the results are compared with the analytic solutions of a cantilever plate.
 //
-//   node --test wasm/test/smoke.test.mjs
+//   node --test wasm/test/*.test.mjs
 //
 // The reader package is taken from OOR_READER_DIST, or from the sibling O_o_Reader build (../O_o_Reader/build/wasm/
 // dist); the solver package from OOS_SOLVER_DIST, or build/wasm/dist.
 
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(here, "../..");
-const readerDist = process.env.OOR_READER_DIST ?? path.resolve(root, "../O_o_Reader/build/wasm/dist");
-const solverDist = process.env.OOS_SOLVER_DIST ?? path.resolve(root, "build/wasm/dist");
-const { loadOorReader } = await import(pathToFileURL(path.join(readerDist, "index.js")).href);
-const { loadOosSolver } = await import(pathToFileURL(path.join(solverDist, "index.js")).href);
-
-const oor = await loadOorReader();
-const solver = await loadOosSolver();
+import { test } from "../helpers/register.mjs";
+import { oor, solver } from "../helpers/runtime.mjs";
 
 // A cantilever plate in the XY plane, clamped along x = 0, meshed with nx × ny four-node shells (or two three-node
 // shells per square), written as a model file (O_o_Reader docs/model-format.md). The model file and the interface name
@@ -75,7 +64,7 @@ function modelOf(modelText, name) {
   const file = `/work/${name}.oos`;
   oor.writeFile(file, modelText);
   const deck = oor.readModel(file);
-  return solver.modelFromReader(oor, deck);
+  try { return solver.modelFromReader(oor, deck); } finally { deck.delete(); }
 }
 
 // The vertical displacement of every point of the free edge, from the displacement table of a static run.
@@ -182,12 +171,12 @@ test("a cantilever plate of ShellQuad4 vibrates at the beam's first frequency (n
   model.delete();
 });
 
-test("bars and beams read every neutral offset frame combination", () => {
-  const frameKinds = ["", "OffsetsGlobalGlobalGlobal", "OffsetsGlobalGlobalOrient", "OffsetsGlobalOrientGlobal",
-    "OffsetsGlobalOrientOrient", "OffsetsBasicGlobalGlobal", "OffsetsBasicGlobalOrient", "OffsetsBasicOrientGlobal",
-    "OffsetsBasicOrientOrient"];
-  for (const card of ["Bar2", "Beam2"]) {
-    for (const kind of frameKinds) {
+const frameKinds = ["", "OffsetsGlobalGlobalGlobal", "OffsetsGlobalGlobalOrient", "OffsetsGlobalOrientGlobal",
+  "OffsetsGlobalOrientOrient", "OffsetsBasicGlobalGlobal", "OffsetsBasicGlobalOrient", "OffsetsBasicOrientGlobal",
+  "OffsetsBasicOrientOrient"];
+for (const card of ["Bar2", "Beam2"]) {
+  for (const kind of frameKinds) {
+    test(`${card} reads offset frame ${kind || "default"}`, () => {
       const property = card === "Bar2" ? "BarProp;1;1;0.01;1.e-6;2.e-6;1.e-6"
         : "BeamProp;1;1;0.01;1.e-6;2.e-6;;1.e-6";
       const text = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1",
@@ -208,9 +197,9 @@ test("bars and beams read every neutral offset frame combination", () => {
       } finally {
         model.delete();
       }
-    }
+    });
   }
-});
+}
 
 test("each element card has the ClassicFormulation formulation by default, and a formulation it lacks is refused", () => {
   const formulations = solver.elementFormulations();
@@ -264,6 +253,7 @@ test("each element card has the ClassicFormulation formulation by default, and a
     assert.throws(() => solver.modelFromReader(oor, deck, { elementFormulations: { [card]: "ClassicFormulation" } }),
       /neutral name/, `${card} is refused`);
   }
+  deck.delete();
 });
 
 for (const card of ["Rod2", "Rod2InlineSection"]) {

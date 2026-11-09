@@ -1,16 +1,7 @@
 // Independent elastic-rod checks: u_tip = (rho*A + nsm)*g*L^2/(2*E*A).
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const readerDist = process.env.OOR_READER_DIST ?? path.resolve(root, "../O_o_Reader/build/wasm/dist");
-const solverDist = process.env.OOS_SOLVER_DIST ?? path.resolve(root, "build/wasm/dist");
-const { loadOorReader } = await import(pathToFileURL(path.join(readerDist, "index.js")));
-const { loadOosSolver } = await import(pathToFileURL(path.join(solverDist, "index.js")));
-const oor = await loadOorReader();
-const solver = await loadOosSolver();
+import { test } from "../helpers/register.mjs";
+import { oor, solver } from "../helpers/runtime.mjs";
 
 const BULK = `Node;1;;0.;0.;0.
 Node;2;;3.;0.;0.

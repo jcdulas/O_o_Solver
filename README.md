@@ -92,6 +92,9 @@ cmake --build build/wasm -j
 node --test wasm/test/*.test.mjs      # needs the O_o_Reader package built in ../O_o_Reader/build/wasm/dist
 ```
 
+The [fast input combination tests](docs/testing.md) enforce a one-second ceiling per case. Use
+`node wasm/test/run.mjs` for a compact summary and a JSON timing report.
+
 The package is in `build/wasm/dist` (`oos_solver_core.js`, `.wasm`, `index.js`, `index.d.ts`, `package.json`).
 
 The default WebAssembly build runs on its calling thread. The `wasm-threads` variant enables shared-memory

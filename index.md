@@ -42,6 +42,7 @@ docs/getting-started
 docs/optimization
 docs/threading
 docs/static-inputs
+docs/testing
 README
 docs/table-package
 docs/naming

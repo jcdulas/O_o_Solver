@@ -1,16 +1,8 @@
 // Original axial bar: u = P*L/(E*A). Every derivative below follows from this scalar expression.
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { test } from "../helpers/register.mjs";
+import { oor, solver } from "../helpers/runtime.mjs";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const readerDist = process.env.OOR_READER_DIST ?? path.resolve(root, "../O_o_Reader/build/wasm/dist");
-const solverDist = process.env.OOS_SOLVER_DIST ?? path.resolve(root, "build/wasm/dist");
-const { loadOorReader } = await import(pathToFileURL(path.join(readerDist, "index.js")));
-const { loadOosSolver } = await import(pathToFileURL(path.join(solverDist, "index.js")));
-const oor = await loadOorReader();
-const solver = await loadOosSolver();
 const MODEL = `[executive]
 SolutionSequence;101
 [case]

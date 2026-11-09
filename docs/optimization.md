@@ -116,7 +116,7 @@ starts; a Promise is not a numerical batch result. A callback must not re-enter 
 For second order, `hessianVector` receives those arguments, `items`, `outputs`, output `weights` and argument
 `directions`. It returns, per argument, the weighted Hessian-vector product with shape `items × components(a)`.
 The solver chains these products through the structural analysis. The executable
-[optimization tests](../wasm/test/optimization.test.mjs) include `u -> u²` with its first and second derivatives.
+[optimization tests](../wasm/test/cases/optimization.mjs) include `u -> u²` with its first and second derivatives.
 
 For a relation of form `supplied`, `suppliedAt(x)` returns its `relationIndex`, value and gradient with respect to
 the relation's arguments, in declaration order. It is also called at the initial design and perturbed states used
