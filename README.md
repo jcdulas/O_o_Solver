@@ -75,6 +75,8 @@ Each module has a `README.md` in `src/<module>/` that says what it holds and whe
 
 ## Build
 
+For the shared-memory build, use the `wasm-threads` preset and [threading guide](docs/threading.md).
+
 Native (Windows: MSYS2 UCRT64 first on the PATH, `C:\msys64\ucrt64\bin`; Linux: GCC 12 or later):
 
 ```bash
@@ -92,8 +94,8 @@ node --test wasm/test/*.test.mjs      # needs the O_o_Reader package built in ..
 
 The package is in `build/wasm/dist` (`oos_solver_core.js`, `.wasm`, `index.js`, `index.d.ts`, `package.json`).
 
-WebAssembly runs on one thread: the thread pool has no worker there, and the dense kernels use their portable
-(reference) family instead of the AVX2 and AVX-512 ones.
+The default WebAssembly build runs on its calling thread. The `wasm-threads` variant enables shared-memory
+workers through the same C++ thread pool. Both variants use the portable reference dense kernels.
 
 ## Licence
 

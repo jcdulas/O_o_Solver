@@ -28,6 +28,7 @@ struct AnalysisSettings
 {
     // The subcases to solve, in this order; empty: every subcase of the Case Control.
     std::vector<std::int32_t> subcases;
+    std::size_t threads = 1;
     // The memory the analysis may use, in bytes; 0: what is left in the module's memory.
     std::uint64_t memoryBytes = 0;
 };

@@ -12,6 +12,7 @@
 //   run.nodalTables[0];          // { kind: "displacements", subcase: 1, ids, values, ... }
 
 import createOosSolverCore from "./oos_solver_core.js";
+import { THREADED_BUILD, MAXIMUM_THREADS } from "./build-info.js";
 import { OptimizationProblem } from "./optimization.js";
 export { OptimizationProblem, OptimizationEvaluation } from "./optimization.js";
 
@@ -25,15 +26,29 @@ export function supportsMemory64() {
   }
 }
 
-// Loads the WebAssembly module. `options` are passed to Emscripten (for example `locateFile`).
+// Memory64 shared memory must be available in the runtime and permitted by the browser's isolation policy.
+export function supportsWasmThreads() {
+  if (typeof WebAssembly === "undefined" || typeof SharedArrayBuffer === "undefined") return false;
+  const browser = typeof window !== "undefined" || typeof WorkerGlobalScope !== "undefined";
+  if (browser && globalThis.crossOriginIsolated !== true) return false;
+  const module = new Uint8Array([0,97,115,109,1,0,0,0,5,4,1,7,1,1]);
+  return WebAssembly.validate(module);
+}
+
+// Loads one build variant. A threaded browser module runs inside a dedicated Worker.
 export async function loadOosSolver(options = {}) {
-  if (!supportsMemory64()) {
-    throw new Error(
-      "oos-solver needs 64-bit WebAssembly (Memory64), which this JavaScript runtime does not support: " +
-        "use Node.js 24 or later, or a browser that supports Memory64.");
-  }
-  const core = await createOosSolverCore(options);
-  return new OosSolver(core);
+  if (!supportsMemory64())
+    throw new Error("oos-solver needs a runtime supporting 64-bit WebAssembly (Memory64)");
+  if (THREADED_BUILD && !supportsWasmThreads())
+    throw new Error("the threaded solver needs shared Memory64 and cross-origin isolation (COOP/COEP)");
+  if (THREADED_BUILD && typeof window !== "undefined" && typeof document !== "undefined")
+    throw new Error("load the threaded solver inside a dedicated Worker, outside the display thread");
+  const suggested = Math.min(4, globalThis.navigator?.hardwareConcurrency ?? 4, MAXIMUM_THREADS);
+  const { threads = THREADED_BUILD ? suggested : 1, ...moduleOptions } = options;
+  if (!Number.isInteger(threads) || threads < 1 || threads > MAXIMUM_THREADS)
+    throw new RangeError(`threads must be an integer from 1 to ${MAXIMUM_THREADS} for this build`);
+  const core = await createOosSolverCore(moduleOptions);
+  return new OosSolver(core, threads);
 }
 
 // ---- what the solver reads from the reader (the same tables, under the same names, as the model snapshot)
@@ -97,9 +112,12 @@ const CONTACT_PAIR_QUERIES = ["contactNodePairs", "contactPairsTable"];
 const CONTACT_RULE = "components";
 
 export class OosSolver {
-  constructor(core) {
+  constructor(core, threads = 1) {
     this.core = core;
+    this.defaultThreads = threads;
   }
+
+  threading() { return { ...this.core.threadingInfo(), defaultThreads: this.defaultThreads }; }
 
   // The name and version of the solver.
   version() {
@@ -244,7 +262,7 @@ export class OosSolver {
   }
 
   createOptimization(model, declarations = {}, settings = {}) {
-    return new OptimizationProblem(this.core.createOptimization(model, declarations, settings));
+    return new OptimizationProblem(this.core.createOptimization(model, declarations, { threads: this.defaultThreads, ...settings }));
   }
 
   optimizationFromReader(oor, deck, declarations = {}, settings = {}) {
@@ -267,9 +285,9 @@ export class OosSolver {
   }
 
   // Runs an analysis ("statics", "modes" or "buckling") on a model.
-  // settings: { subcases?: number[], memoryBytes?: number }.
+  // settings: { subcases?: number[], memoryBytes?: number, threads?: number }.
   // Gives { nodalTables, elementTables, gridPointForces, eigenvalues, diagnostics }.
   run(model, analysis = "statics", settings = {}) {
-    return this.core.runAnalysis(model, analysis, settings);
+    return this.core.runAnalysis(model, analysis, { threads: this.defaultThreads, ...settings });
   }
 }

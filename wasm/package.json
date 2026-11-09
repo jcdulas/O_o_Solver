@@ -7,12 +7,14 @@
   "main": "index.js",
   "types": "index.d.ts",
   "files": [
+    "build-info.js",
     "index.js",
     "index.d.ts",
     "optimization.js",
     "optimization.d.ts",
-    "oos_solver_core.js",
-    "oos_solver_core.wasm"
+    "oos_solver_core.wasm",
+    "oos_solver_core*.js",
+    "oos_solver_core*.mjs"
   ],
   "peerDependencies": {
     "oor-reader": ">=0.2.0"

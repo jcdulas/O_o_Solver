@@ -45,3 +45,10 @@ Optimization.hpp
 .. literalinclude:: ../include/oos/api/Optimization.hpp
    :language: cpp
    :linenos:
+
+Threading.hpp
+~~~~~~~~~~~~~
+
+.. literalinclude:: ../include/oos/api/Threading.hpp
+   :language: cpp
+   :linenos:

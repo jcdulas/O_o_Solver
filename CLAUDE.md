@@ -20,7 +20,8 @@ O_o_Reader module (table packages) and gives its results as plain arrays. Start 
    `oos::api`. Operating-system headers only in `src/base/platform`, SIMD intrinsics only in `src/linalg/kernels/`.
 5. **Coupling by data**: no O_o_Reader header nor library; its tables arrive as table packages
    ([docs/table-package.md](docs/table-package.md)) and are read by the data contract (`src/input/contract/`).
-6. **WebAssembly is single-threaded**: threads go through `base::ThreadPool`, which has no worker there.
+6. **WebAssembly threading**: the default build is single-threaded; `OOS_WASM_THREADS` enables shared-memory workers.
+   All numerical threading goes through `base::ThreadPool`. JS callbacks stay on the module's calling thread.
 7. **C++20 within what GCC 12 has**, `-Wall -Wextra -Wpedantic -Werror` natively. Names: types `CamelCase`, functions
    and variables `camelCase`, members `m_name`, constants `UPPER_CASE`; `.clang-format` (4 spaces, 120 columns).
 8. **Only ShellQuad4 and ShellTria3** follow NASTRAN-95; ShellQuad4Drilling, ShellTria3Drilling and the other elements keep their own formulation.

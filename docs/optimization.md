@@ -124,6 +124,9 @@ by second-order calculations. It must be deterministic and provide consistent va
 
 ## Analyses, accuracy and current limits
 
+The [threaded variant](threading.md) accepts `threads` in the problem settings and shares its workers across
+retained evaluations. Numerical work uses the pool; JS callbacks stay on the calling thread.
+
 The default is statics. `settings.analyses` can select `statics`, `modes`, `buckling` and `aeroelastic` subcases;
 an absent kind is disabled, an empty array selects all of that kind. Responses, eigenvalue sensitivities and supported
 model features follow the native [design module](../src/design/README.md). The WebAssembly facade does not add a

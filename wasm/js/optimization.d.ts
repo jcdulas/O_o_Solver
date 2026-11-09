@@ -43,7 +43,7 @@ export interface OptimizationDeclarations {
   suppliedAt?(x: Float64Array): SuppliedField[];
 }
 export interface OptimizationSettings {
-  memoryBytes?: number; maximumOutputBytes?: number; blockItems?: number; deckOutputs?: boolean;
+  threads?: number; memoryBytes?: number; maximumOutputBytes?: number; blockItems?: number; deckOutputs?: boolean;
   // Missing kind: disabled. Empty array: all subcases of that kind. Default: statics only.
   analyses?: { statics?: number[]; modes?: number[]; buckling?: number[]; aeroelastic?: number[] };
 }

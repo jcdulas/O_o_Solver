@@ -8,7 +8,8 @@ normal modes, linear buckling and [JavaScript-driven optimization](optimization.
 
 Build [O_o_Reader](https://github.com/jcdulas/O_o_Reader/blob/main/README.md) first, then follow the solver's
 [build instructions](../README.md#build). Keep the two checkouts next to each other for the example below.
-Each package is written to `build/wasm/dist/` in its own repository.
+The default packages are written to `build/wasm/dist/` in each repository. The solver also provides a
+[shared-memory variant](threading.md) in `build/wasm-threads/dist/`.
 
 Use Node.js 24 or later, or a browser supporting Memory64. The reader and solver exchange tables through the
 [table package contract](table-package.md); use compatible builds of the two projects.

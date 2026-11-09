@@ -9,6 +9,7 @@ Solve finite element models through typed tables and return numerical results.
 - [Getting started](docs/getting-started.md): build requirements and a first working example.
 - [Project overview](README.md): capabilities, repository layout and build commands.
 - [API reference](docs/api.rst): the current JavaScript types and C++ entry points, included directly from source.
+- [WebAssembly threads](docs/threading.md): shared-memory builds, runtime settings and browser Workers.
 - [JavaScript optimization](docs/optimization.md): design points, derivatives and model updates.
 - [Architecture with diagrams](docs/architecture.md): module dependencies, data ownership and execution flow.
 - [Module guide](docs/modules.md): implementation structure and detailed technical guides.
@@ -39,6 +40,7 @@ repository with its own access policy.
 
 docs/getting-started
 docs/optimization
+docs/threading
 README
 docs/table-package
 docs/naming

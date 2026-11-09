@@ -1,5 +1,6 @@
 #include "oos/api/Analyses.hpp"
 
+#include "oos/api/Threading.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/base/platform/MemoryInfo.hpp"
 #include "oos/elements/core/ElementRegistry.hpp"
@@ -42,10 +43,11 @@ std::uint64_t budgetBytes(const AnalysisSettings& settings)
 }
 
 AnalysisOutput runStatics(const input::ModelSnapshot& snapshot, const AnalysisSettings& settings,
-                          base::MemoryBudget& budget)
+                          base::MemoryBudget& budget, base::ThreadPool* pool)
 {
     solutions::StaticOptions options;
     options.subcases = settings.subcases;
+    options.pool = pool;
     options.kernel = linalg::KernelSelection::selectForThisProcess().kind();
     solutions::StaticResults results = solutions::StaticSolution(snapshot, options).run(budget);
     AnalysisOutput output;
@@ -55,10 +57,11 @@ AnalysisOutput runStatics(const input::ModelSnapshot& snapshot, const AnalysisSe
 }
 
 AnalysisOutput runModes(const input::ModelSnapshot& snapshot, const AnalysisSettings& settings,
-                        base::MemoryBudget& budget)
+                        base::MemoryBudget& budget, base::ThreadPool* pool)
 {
     solutions::ModesOptions options;
     options.subcases = settings.subcases;
+    options.pool = pool;
     options.kernel = linalg::KernelSelection::selectForThisProcess().kind();
     solutions::ModesResults results = solutions::ModesSolution(snapshot, options).run(budget);
     AnalysisOutput output;
@@ -70,10 +73,11 @@ AnalysisOutput runModes(const input::ModelSnapshot& snapshot, const AnalysisSett
 }
 
 AnalysisOutput runBuckling(const input::ModelSnapshot& snapshot, const AnalysisSettings& settings,
-                           base::MemoryBudget& budget)
+                           base::MemoryBudget& budget, base::ThreadPool* pool)
 {
     solutions::BucklingOptions options;
     options.subcases = settings.subcases;
+    options.pool = pool;
     options.kernel = linalg::KernelSelection::selectForThisProcess().kind();
     solutions::BucklingResults results = solutions::BucklingSolution(snapshot, options).run(budget);
     AnalysisOutput output;
@@ -121,18 +125,19 @@ SupportCheck checkSupport(const input::ModelSnapshot& snapshot, Analysis analysi
 
 AnalysisOutput runAnalysis(const input::ModelSnapshot& snapshot, Analysis analysis, const AnalysisSettings& settings)
 {
+    const auto pool = acquireThreadPool(settings.threads);
     auto budget = std::make_shared<base::MemoryBudget>(budgetBytes(settings));
     AnalysisOutput output;
     switch (analysis)
     {
     case Analysis::Statics:
-        output = runStatics(snapshot, settings, *budget);
+        output = runStatics(snapshot, settings, *budget, pool.get());
         break;
     case Analysis::Modes:
-        output = runModes(snapshot, settings, *budget);
+        output = runModes(snapshot, settings, *budget, pool.get());
         break;
     case Analysis::Buckling:
-        output = runBuckling(snapshot, settings, *budget);
+        output = runBuckling(snapshot, settings, *budget, pool.get());
         break;
     }
     output.budget = std::move(budget);

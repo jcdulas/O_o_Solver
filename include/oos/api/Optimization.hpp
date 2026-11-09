@@ -26,6 +26,7 @@ struct OptimizationInput
 struct OptimizationSettings
 {
     std::uint64_t memoryBytes = 0;
+    std::size_t threads = 1;
     std::uint64_t maximumOutputBytes = 256ULL * 1024 * 1024;
     std::size_t blockItems = design::EQUATION_BATCH_ITEMS;
     design::DesignAnalyses analyses;
@@ -52,6 +53,7 @@ public:
 private:
     OptimizationInput m_input;
     OptimizationSettings m_settings;
+    std::shared_ptr<base::ThreadPool> m_pool;
     design::DesignProblem m_problem;
 };
 

@@ -8,7 +8,8 @@ export * from "./optimization.js";
 // Messages (Diagnostic.message, Diagnostic.card, Diagnostic.field and errors) use the same neutral names.
 
 export declare function supportsMemory64(): boolean;
-export declare function loadOosSolver(options?: Record<string, unknown>): Promise<OosSolver>;
+export declare function supportsWasmThreads(): boolean;
+export declare function loadOosSolver(options?: Record<string, unknown> & { threads?: number }): Promise<OosSolver>;
 
 export type Analysis = "statics" | "modes" | "buckling";
 
@@ -100,6 +101,7 @@ export interface Model {
 
 export declare class OosSolver {
   version(): string;
+  threading(): { enabled: boolean; maximumThreads: number; activeWorkers: number; defaultThreads: number };
   // `oor` is a loaded OorReader (package oor-reader), `deck` one of its decks.
   // Every element card type the solver computes ("ShellQuad4") with its formulations, the default first.
   elementFormulations(): { card: string; formulations: string[] }[];
@@ -114,5 +116,5 @@ export declare class OosSolver {
 
   checkSupport(model: Model, analysis?: Analysis): SupportCheck;
   run(model: Model, analysis?: Analysis,
-      settings?: { subcases?: number[]; memoryBytes?: number }): AnalysisResult;
+      settings?: { subcases?: number[]; memoryBytes?: number; threads?: number }): AnalysisResult;
 }

@@ -27,8 +27,8 @@ struct ThreadPool::Batch
 
 ThreadPool::ThreadPool(std::size_t threadCount)
 {
-#if defined(OOS_WASM)
-    // WebAssembly runs on one thread (the module is built without pthreads): every batch runs on the caller.
+#if defined(OOS_WASM) && !defined(__EMSCRIPTEN_PTHREADS__)
+    // The build without shared-memory workers runs every batch on the caller.
     (void)threadCount;
     const std::size_t workerCount = 0;
 #else

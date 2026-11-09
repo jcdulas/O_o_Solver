@@ -30,11 +30,18 @@
         "CMAKE_BUILD_TYPE": "Release",
         "OOS_BUILD_WASM": "ON"
       }
+    },
+    {
+      "name": "wasm-threads",
+      "description": "Shared-memory WebAssembly module",
+      "inherits": "wasm",
+      "cacheVariables": { "OOS_WASM_THREADS": "ON", "OOS_BUILD_WASM_TESTS": "ON" }
     }
   ],
   "buildPresets": [
     { "name": "release", "configurePreset": "release" },
     { "name": "debug", "configurePreset": "debug" },
-    { "name": "wasm", "configurePreset": "wasm" }
+    { "name": "wasm", "configurePreset": "wasm" },
+    { "name": "wasm-threads", "configurePreset": "wasm-threads" }
   ]
 }

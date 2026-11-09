@@ -75,8 +75,9 @@ Model records and result `elementType` values use the same exact root. Code adds
 
 ## Execution and ownership
 
-Native builds can use the project's thread pool. The WebAssembly build runs its work on the calling thread and uses
-Memory64. Budgeted objects and retained owners govern the lifetime of imported data, factors and cached structures.
+Native builds and the [threaded WebAssembly variant](threading.md) use the project's thread pool. The default
+WebAssembly variant runs on its calling thread. Both WebAssembly variants use Memory64. Budgeted objects and
+retained owners govern the lifetime of imported data, factors and cached structures.
 Release model objects held by native code with `delete()` after their last use.
 
 The diagrams are committed SVG images. Their editable specifications and renderer are described in the

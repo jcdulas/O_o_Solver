@@ -1,0 +1,3 @@
+// Generated from the same build settings as the module.
+export const THREADED_BUILD = @OOS_THREADED_JS@;
+export const MAXIMUM_THREADS = @OOS_MAX_THREADS_JS@;

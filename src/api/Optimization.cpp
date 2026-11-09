@@ -1,5 +1,6 @@
 #include "oos/api/Optimization.hpp"
 
+#include "oos/api/Threading.hpp"
 #include "oos/base/arrow/TablePackage.hpp"
 #include "oos/base/platform/MemoryInfo.hpp"
 #include "oos/design/constraints/ConstraintTables.hpp"
@@ -132,11 +133,15 @@ std::uint64_t budgetBytes(std::uint64_t requested)
 
 OptimizationProblem::OptimizationProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, OptimizationInput input,
                                          OptimizationSettings settings)
-    : m_input(std::move(input)), m_settings(std::move(settings)), m_problem(makeProblem(std::move(snapshot), m_input))
+    : m_input(std::move(input)),
+      m_settings(std::move(settings)),
+      m_pool(acquireThreadPool(m_settings.threads)),
+      m_problem(makeProblem(std::move(snapshot), m_input))
 {
     if (m_settings.blockItems == 0 || m_settings.maximumOutputBytes == 0)
         throw std::invalid_argument("blockItems and maximumOutputBytes must be positive");
     m_settings.analysisOptions.kernel = linalg::KernelSelection::selectForThisProcess().kind();
+    m_settings.analysisOptions.pool = m_pool.get();
     m_problem.setDeckOutputs(m_settings.deckOutputs);
     m_input.tables.clear(); // the checked design parts own their data
 }

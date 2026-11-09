@@ -16,10 +16,12 @@
 #include "oos/api/Analyses.hpp"
 #include "oos/api/ModelInput.hpp"
 #include "oos/api/Optimization.hpp"
+#include "oos/api/Threading.hpp"
 
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 
+#include <cmath>
 #include <cstdint>
 #include <exception>
 #include <memory>
@@ -323,6 +325,15 @@ val runAnalysis(Model& model, const std::string& analysis, const val& settings)
                 if (const val bytes = settings["memoryBytes"]; !bytes.isUndefined() && !bytes.isNull())
                     chosen.memoryBytes = static_cast<std::uint64_t>(bytes.as<double>());
             }
+            if (const val threads =
+                    settings.isUndefined() || settings.isNull() ? val::undefined() : settings["threads"];
+                !threads.isUndefined() && !threads.isNull())
+            {
+                const double count = threads.as<double>();
+                if (!std::isfinite(count) || count < 1 || count > 64 || std::floor(count) != count)
+                    throw std::invalid_argument("threads must be an integer from 1 to 64");
+                chosen.threads = static_cast<std::size_t>(count);
+            }
             const api::AnalysisOutput output = api::runAnalysis(*model.snapshot, analysisNamed(analysis), chosen);
 
             val nodal = val::array();
@@ -344,6 +355,20 @@ val runAnalysis(Model& model, const std::string& analysis, const val& settings)
             result.set("gridPointForces", forces);
             result.set("eigenvalues", eigenvalues);
             result.set("diagnostics", diagnosticArray(output.diagnostics));
+            return result;
+        });
+}
+
+val threadingInfo()
+{
+    return guarded(
+        []
+        {
+            const auto info = api::threadingInfo();
+            auto result = val::object();
+            result.set("enabled", info.enabled);
+            result.set("maximumThreads", double(info.maximumThreads));
+            result.set("activeWorkers", double(info.activeWorkers));
             return result;
         });
 }
@@ -411,6 +436,7 @@ EMSCRIPTEN_BINDINGS(oos_solver)
     using namespace emscripten;
 
     function("version", &version);
+    function("threadingInfo", &threadingInfo);
     function("elementFormulations", &elementFormulations);
 
     class_<api::ModelInput>("ModelInput")

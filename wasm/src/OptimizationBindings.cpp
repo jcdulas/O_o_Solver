@@ -355,6 +355,7 @@ std::shared_ptr<api::OptimizationProblem> createOptimization(const std::shared_p
                 };
             api::OptimizationSettings chosen;
             chosen.memoryBytes = countOf(get(settings, "memoryBytes"));
+            chosen.threads = countOf(get(settings, "threads"), 1);
             chosen.maximumOutputBytes = countOf(get(settings, "maximumOutputBytes"), chosen.maximumOutputBytes);
             chosen.blockItems = countOf(get(settings, "blockItems"), chosen.blockItems);
             chosen.deckOutputs = option<bool>(settings, "deckOutputs", false);
