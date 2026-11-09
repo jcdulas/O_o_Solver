@@ -16,7 +16,7 @@ or the `ShellQuad4` key of `elementFormulations`. Call `elementFormulations()` t
 The selected formulation does not change the element type or the result container name. Result layout suffixes such
 as `Composite` and `LoadStations` describe the rows in a result table.
 
-Version `0.2.0` uses reader data contract **75**. Reader writes native `.oorh5` archives in format **4**, with native
+Version `0.2.0` uses reader data contract **75**. Reader writes native `.ooh5` archives in format **4**, with native
 model schema **1**, and accepts version **3** result archives. Solver consumes the reader's table packages and returns
 plain result arrays. Rebuild Reader and Solver together and update clients and input records. Earlier names have no
 compatibility aliases.

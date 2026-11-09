@@ -5,7 +5,7 @@ as typed table packages by O_o_Reader: linear statics, normal modes, linear buck
 derivatives for a JavaScript-driven optimization. The C++ library also provides static aeroelastic trim and
 condensation of components.
 
-O_o_Reader loads native `.oos` models or `.oorh5` model archives, and the solver takes the reader's tables:
+O_o_Reader loads native `.oos` models or `.ooh5` model archives, and the solver takes the reader's tables:
 
 ```js
 import { loadOorReader } from "oor-reader";

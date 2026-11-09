@@ -5,7 +5,7 @@ document is not legal advice.
 
 ## Input and output
 
-- O_o_Reader reads the project's native `.oos` models and `.oorh5` model/results archives. The solver consumes its
+- O_o_Reader reads the project's native `.oos` models and `.ooh5` model/results archives. The solver consumes its
   typed table packages and produces plain result arrays.
 - The solver writes no vendor file format, binary or printed.
 
