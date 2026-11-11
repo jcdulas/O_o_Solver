@@ -39,6 +39,7 @@ trim variables, stability derivatives, hinge moments and monitoring loads.
 | 144 static aeroelastic | Native sizing gradients and analytic Hessian products for closed trim/state/coefficient formulations; shape columns from complete trim differences | Trim and structural outputs, including driven load changes, full analysis differences |
 
 The [native design module](../src/design/README.md) details the exact response formulations and restrictions.
+The [derivative coverage guide](derivatives.md) explains how to distinguish analytic and numerical paths in reports.
 The [modal derivative guide](modal-derivatives.md) describes field selection, normalisation and the bordered systems
 used by the C++ first- and second-order calculations.
 The [coupled derivative guide](coupled-derivatives.md) describes analytic buckling and trim products and their limits.

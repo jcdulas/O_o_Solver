@@ -4,10 +4,34 @@
 optimization consumers use the same element facets. The formulas differentiate the existing flexibility
 formulation, including shear flexibility, coupled bending, taper and end releases.
 
+See [derivative coverage and reports](derivatives.md) for solution-level prerequisites and
+the [native element API](element-derivative-api.rst) for declarations included directly from the C++ headers.
+
+## Stations
+
+A station is a cross-section at a position along the element axis. Its position is the ratio `x/L`, where x is the
+distance from end A and L is the element length. A station does not require a mesh node at that position.
+
+| Position `x/L` | Meaning |
+| --- | --- |
+| `0` | End A |
+| `0.5` | Midspan |
+| `1` | End B |
+
+A `BeamProp` can define different areas, inertias and recovery points at several stations. Area, inertias, torsion,
+NSM and axis/centre offsets are interpolated linearly between stations. Recovery points follow the station's
+output/inheritance rules. Intermediate output stations follow their stress-output setting; both ends always have
+a recovered row. The optimization item-code selector currently exposes the two ends.
+
+The source station index used in `fieldItem` is its position in the property table's original station list. It is
+not the ratio `x/L` or its rank after sorting. For source ratios `[0, 1, 0.4]`, `stationSection` item `8` is I2 of
+source station 1, at end B. A uniform single-source property synthesizes an end-B section from the same values,
+without creating another source station index.
+
 ## Supported fields
 
 The names below are the columns accepted by JavaScript design relations. A vector or nested-list column uses
-`fieldItem`; a scalar column leaves it unset.
+`fieldItem`; a scalar column leaves it unset. NSM denotes non-structural mass per unit length.
 
 | Card | Field | Item |
 | --- | --- | --- |

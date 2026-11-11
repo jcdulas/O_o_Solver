@@ -5,6 +5,8 @@ These declarations are read from the same source files as the packages and C++ f
 therefore reflects the checked-out revision rather than a separately maintained copy of the signatures.
 
 For a runnable example, start with :doc:`getting-started`. The module guides explain implementation details.
+For analytic coverage, fallback behavior and report flags, see :doc:`derivatives`. Element implementers can use
+the live C++ contexts and facets in :doc:`element-derivative-api`.
 
 JavaScript and TypeScript
 -------------------------
@@ -17,6 +19,10 @@ Load the built package from ``build/wasm/dist/index.js``. The declarations below
 
 Optimization declarations
 ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``DesignResponse.mode`` selects a modal field with a positive, one-based mode number. A modal result item includes
+its ``mode`` label. ``ProductReport`` distinguishes static Hessian blocks from modal, buckling and trim tangent
+paths; the flags are described in :doc:`derivatives`.
 
 .. literalinclude:: ../wasm/js/optimization.d.ts
    :language: typescript

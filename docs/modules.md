@@ -14,8 +14,9 @@ entry points and numerical or data conventions.
 - [solutions](../src/solutions/README.md)
 - [design](../src/design/README.md)
 
-[Bar and beam derivatives](beam-derivatives.md) describes the shared flexibility, release, mass and recovery
-derivative kernels and the native optimization paths that use them.
+The [bar and beam derivative guide](beam-derivatives.md) describes the shared flexibility, release, mass and
+recovery derivative kernels. [Derivative coverage](derivatives.md) summarizes solution paths and report flags;
+the [native element derivative API](element-derivative-api.rst) includes current C++ declarations from the headers.
 
 ~~~{toctree}
 :hidden:

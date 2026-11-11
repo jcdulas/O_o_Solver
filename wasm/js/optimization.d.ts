@@ -15,6 +15,8 @@ export interface DesignResponse {
   id: number; label?: string; type: string; propertyType?: string; region?: number;
   attributeA?: number; attributeB?: number; componentName?: string;
   targets?: number[]; plies?: number[]; subcases?: number[]; tracksMode?: boolean;
+  /** Positive, one-based mode selector for a modal field response; omitted for a static field. */
+  mode?: number;
   sections?: SectionDefinition[]; cuts?: CutDefinition[]; zones?: number[];
 }
 export interface SectionDefinition {
@@ -79,7 +81,7 @@ export interface DesignPoint {
   variables: Float64Array; variableGradients: SparseGradient[];
   fields: (SparseGradient & { value: number })[];
 }
-export interface ResponseItem { subcase: number; entity: number; component: number; layer: number }
+export interface ResponseItem { subcase: number; entity: number; component: number; layer: number; mode?: number }
 export interface ResponseValues {
   id: number; label: string; values: Float64Array; items: ResponseItem[];
   statuses: ("ok" | "failed" | "not_evaluated")[];
@@ -114,6 +116,8 @@ export interface ProductReport {
   isLinearisationReused: boolean; linearisationBytes: number; adjointSolves: number; isAdjointReused: boolean;
   perturbedLinearisations: number;
   hasHessianBlocks: boolean; areHessianBlocksReused: boolean; hessianBlocksReason: string;
+  /** Analytic coupled Hessian paths; hasHessianBlocks identifies the separate static block path. */
+  usesModalTangents: boolean; usesBucklingTangents: boolean; usesTrimTangents: boolean;
 }
 export interface ProductResult { rows: number; columns: number; values?: Float64Array; report: ProductReport }
 export interface ProductSettings {

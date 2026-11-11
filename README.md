@@ -1,5 +1,9 @@
 # O_o_Solver
 
+**[Sphinx documentation](https://jcdulas.github.io/O_o_Solver/)** ·
+[Derivative coverage](https://jcdulas.github.io/O_o_Solver/docs/derivatives.html) ·
+[API reference](https://jcdulas.github.io/O_o_Solver/docs/api.html)
+
 A linear finite element solver written in C++20 and compiled to WebAssembly for the web. It solves models supplied
 as typed table packages by O_o_Reader: linear statics (SOL 101), normal modes (SOL 103), linear buckling (SOL 105),
 static aeroelastic trim (SOL 144) and design evaluations driven by JavaScript. The C++ library also provides
@@ -40,7 +44,7 @@ solver's: [docs/table-package.md](docs/table-package.md).
 workers and accepted-point archives.
 [Bar and beam derivatives](docs/beam-derivatives.md): analytic section, material, mass and recovery rates.
 
-**[Read online](https://jcdulas.github.io/O_o_Solver/)** · [Architecture with diagrams](docs/architecture.md) · [Documentation index](index.md)
+**[Read Sphinx documentation](https://jcdulas.github.io/O_o_Solver/)** · [Architecture with diagrams](docs/architecture.md) · [Documentation index](index.md)
 
 The Documentation workflow publishes the HTML site and provides a downloadable archive.
 See [read, download and build instructions](docs/documentation.md).

@@ -26,8 +26,8 @@ struct DesignedField
 // snapshots with the field moved by ±h) compute only these. Leaving a computation out is an optimisation, never a
 // change of result: a computation the field does not enter gives the same bits at +h and −h, a zero difference.
 // `changesLoads` covers the thermal loads an element computes itself, `changesDistributedLoads` its pressure and line
-// loads (a section or material field does not move them, their derivative is zero); the inertial loads
-// follow the mass.
+// loads, including field-dependent equivalent nodal loads of shear-flexible beams. The inertial loads follow
+// the mass.
 struct FieldUse
 {
     bool changesStiffness = false;
@@ -80,7 +80,7 @@ struct FieldUseRule
 // static effect);
 //   TREF and the expansion coefficients (A, A1 ... A6) the thermal loads and the recovery; the stress and strain
 //   allowables (ST, SC, SS, XT, XC, YT, YC, S, F12, STRN) the recovery only (margins, failure indices); every other
-//   field all but the pressure and line loads (no element reads a material to distribute them);
+//   field all but the pressure and line loads; families override this when their equivalent loads read a material;
 // - NSM of any property the mass only (a non-structural mass per unit length or area);
 // - GE of any property or element (PELAS, BushProp, SpringDofInline, SpringScalarInline) nothing.
 [[nodiscard]] FieldUse commonFieldUse(const DesignedField& field) noexcept;

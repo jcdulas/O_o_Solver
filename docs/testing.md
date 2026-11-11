@@ -35,6 +35,28 @@ To investigate one input without running the entire matrix:
 node wasm/test/run.mjs --test-name-pattern="line matrix element=Tube2 load=gravity"
 ```
 
+## Derivative checks
+
+The [derivative coverage guide](derivatives.md) describes which paths these suites exercise. Each case compares
+small, independently perturbed analyses or gradients with the native derivative; product checks also compare
+direct/adjoint results, symmetry and Jacobian/Hessian actions where applicable.
+
+| Suite | Main checks |
+| --- | --- |
+| [Bar and beam derivatives](../wasm/test/cases/beam-derivatives.mjs) | Section/material first and mixed rates, release maps, lumped/coupled mass, thermal sources, span loads, loaded end results and mixed loaded/unloaded batches |
+| [Modal derivatives](../wasm/test/cases/modal-derivatives.mjs) | Mode-selected fields, normalization, bordered derivatives and root/field Hessian products |
+| [Buckling derivatives](../wasm/test/cases/buckling-derivatives.mjs) | Mechanical preload tangents, load sharing, simple-root curvature and shell geometric stiffness |
+| [Trim derivatives](../wasm/test/cases/trim-derivatives.mjs) | Structural/trim fields, stability coefficients, support accelerations and mass-dependent loads |
+
+For example, run the bar/beam cases with the same watchdog as the full suite:
+
+```bash
+node wasm/test/run.mjs --test-name-pattern="analytic (bar sizing|beam)"
+```
+
+The timing report records the tested revision's local execution. Use representative models to assess larger
+optimization workloads; the small derivative fixtures verify formulas and interactions.
+
 ## Coverage domains
 
 Numerical values and model sizes are unbounded, so no finite suite can enumerate every possible input. The suite

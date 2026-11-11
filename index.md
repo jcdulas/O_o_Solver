@@ -12,6 +12,7 @@ Solve finite element models through typed tables and return numerical results.
 - [WebAssembly threads](docs/threading.md): shared-memory builds, runtime settings and browser Workers.
 - [JavaScript optimization](docs/optimization.md): design points, derivatives and model updates.
 - [External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, workers and archives.
+- [Derivative coverage](docs/derivatives.md): analytic paths, numerical fallbacks and diagnostic reports.
 - [Architecture with diagrams](docs/architecture.md): module dependencies, data ownership and execution flow.
 - [Module guide](docs/modules.md): implementation structure and detailed technical guides.
 - [Download or build the documentation](docs/documentation.md): published site, HTML archives and local builds.
@@ -21,6 +22,7 @@ Solve finite element models through typed tables and return numerical results.
 - [Element names](docs/naming.md): shared roots, implementation roles and compatibility.
 - [Table packages](docs/table-package.md): reader-to-solver data contract.
 - [Bar and beam derivatives](docs/beam-derivatives.md): native sizing rates and their solution paths.
+- [Native element derivative API](docs/element-derivative-api.rst): live C++ contexts and derivative facets.
 - [Elements](src/elements/README.md), [assembly](src/assembly/README.md) and [reduction](src/reduction/README.md).
 - [Analysis solutions](src/solutions/README.md), [output](src/output/README.md) and [design](src/design/README.md).
 
@@ -39,11 +41,6 @@ The reader and solver have public documentation sites and exchange model data th
 :caption: User guide
 
 docs/getting-started
-docs/optimization
-docs/external-optimization
-docs/beam-derivatives
-docs/modal-derivatives
-docs/coupled-derivatives
 docs/threading
 docs/static-inputs
 docs/testing
@@ -55,9 +52,23 @@ docs/naming
 ~~~{toctree}
 :hidden:
 :maxdepth: 2
+:caption: Optimization and derivatives
+
+docs/optimization
+docs/external-optimization
+docs/derivatives
+docs/beam-derivatives
+docs/modal-derivatives
+docs/coupled-derivatives
+~~~
+
+~~~{toctree}
+:hidden:
+:maxdepth: 2
 :caption: Reference and development
 
 docs/api
+docs/element-derivative-api
 docs/architecture
 docs/modules
 src/output/sections/README

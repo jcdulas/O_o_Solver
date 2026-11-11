@@ -7,6 +7,9 @@ case-control parameters, numerical derivatives, parallel workers and accepted-po
 The application owns the optimization algorithm. WebAssembly evaluates design points, responses and derivatives;
 JavaScript chooses the next point, convergence rules, multipliers and line search. No optimizer is started implicitly.
 
+The [derivative coverage guide](derivatives.md) summarizes first- and second-order paths for all four solutions,
+their numerical fallbacks and the report fields that identify the calculation actually used.
+
 Reader and Solver have independent memories. Reader exports owned table packages, Solver keeps an immutable model
 snapshot, and each evaluation keeps its own analysis factors and memory budget. Evaluating a trial point does not edit
 the Reader model. Apply the accepted point explicitly when the iteration ends.
