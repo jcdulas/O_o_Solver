@@ -17,8 +17,9 @@ bool SizingMatrixRates::hasPlainRelations() const
         if (quantities[q].gradient.empty())
             continue;
         const auto& target = m_problem.targets()[q];
-        if (m_problem.model().relations()[q].form != RelationForm::Linear || target.cells.size() != 1 ||
-            target.cells.front().scale != 1.0 || m_problem.targets().hasDerivedMaterial(q) ||
+        const auto& relation = m_problem.model().relations()[q];
+        if (relation.form != RelationForm::Linear || !isDirectFieldTarget(relation, target) ||
+            m_problem.targets().hasDerivedMaterial(q) ||
             m_problem.targets().derivedProperties().groupOf(q))
             return false;
     }

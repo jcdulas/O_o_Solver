@@ -142,12 +142,14 @@ std::array<double, 12> beamGridLoads(const BeamData& beam, std::span<const BeamL
 }
 
 std::vector<BeamLineLoad> resolveLineLoadsOrThrow(const ElementBatchView& view, std::span<const ElementLineLoad> loads,
-                                                  const BeamGeometry& geometry)
+                                                    const BeamGeometry& geometry, std::int64_t row)
 {
     std::vector<BeamLineLoad> resolved;
     resolved.reserve(loads.size());
     for (const ElementLineLoad& load : loads)
     {
+        if (row >= 0 && load.elementRow != row)
+            continue;
         auto result = resolveLineLoad(load, geometry, view.card(), view.elementId(load.elementRow));
         if (const auto* problem = std::get_if<base::Diagnostic>(&result))
             throw std::invalid_argument(

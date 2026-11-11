@@ -103,9 +103,8 @@ public:
         // The current closed preload path keeps applied loads fixed and does not differentiate M.
         if (!matrices.prepare({}, false))
             return std::nullopt;
-        for (const auto& target : matrices.targets())
-            if (target.use.changesDistributedLoads)
-                return std::nullopt;
+        const bool changesDistributed = std::any_of(matrices.targets().begin(), matrices.targets().end(),
+            [](const auto& target) { return target.use.changesDistributedLoads; });
         detail::DifferentialMatrixRates differential(model, matrices.targets());
         assembly::LoadVectorBuilder loads(model.elementSet(), model.dofMap(), m_budget);
         values.assign(m_problem.model().independentCount() * count, 0.0);
@@ -127,9 +126,16 @@ public:
             const auto cases = solutions::staticSubcasesOf(*m_evaluation.analysis.snapshot,
                                                            {solve.preloadSubcase}, sink);
             for (const auto& selected : cases)
-                if (selected.isCombination || selected.hasInitialStrains() ||
-                    (selected.load && loads.needsMass(*selected.load)))
+            {
+                if (selected.isCombination || selected.hasInitialStrains())
                     return std::nullopt;
+                if (!selected.load)
+                    continue;
+                const bool movesDistributed = changesDistributed &&
+                    loads.hasFamilyLoads(*selected.load, assembly::LoadFamily::Distributed);
+                if (loads.needsMass(*selected.load) || movesDistributed)
+                    return std::nullopt;
+            }
             const detail::ModalSystem pencil(model, solve.subcase, m_budget, m_pool);
             linalg::BlockSparseMatrix dgg(pencil.constraints().pattern(), m_budget, "buckling Hessian Kdgg");
             assembly::DifferentialStiffnessAssembler(model.elementSet(), model.dofMap()).assemble(

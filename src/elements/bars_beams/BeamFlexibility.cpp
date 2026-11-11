@@ -167,6 +167,12 @@ base::MatN<12> BeamFlexibility::stiffness() const
     return congruence(m_naturalStiffness, cantileverDeformation(m_length));
 }
 
+void BeamFlexibility::visitIntegrationPoints(const std::function<void(double, double)>& visit,
+                                            std::span<const double> breaks) const
+{
+    integrate(breaks, visit);
+}
+
 std::array<double, 12> BeamFlexibility::equivalentLoads(std::span<const BeamLineLoad> loads) const
 {
     std::vector<double> breaks;

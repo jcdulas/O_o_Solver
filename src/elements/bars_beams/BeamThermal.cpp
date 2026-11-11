@@ -33,6 +33,13 @@ std::optional<double> meanTemperature(const ElementBatchView& view, std::int64_t
 
 } // namespace
 
+bool beamUsesReferenceTemperature(const ElementBatchView& view, std::int64_t row,
+                                 const BeamData& beam, const ElementTemperatures& temperatures)
+{
+    return temperatures.hasTemperatureLoad &&
+           !meanTemperature(view, row, beam.geometry, temperatures.initial).has_value();
+}
+
 Resolution<double> resolveBeamTemperatureChange(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
                                                 const ElementTemperatures& temperatures)
 {

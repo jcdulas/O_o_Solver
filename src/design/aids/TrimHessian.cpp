@@ -2,7 +2,9 @@
 
 #include "RecoveredFieldCurvature.hpp"
 #include "SizingMatrixRates.hpp"
+#include "oos/assembly/loads/LoadVectorBuilder.hpp"
 #include "oos/base/errors/OptimisationError.hpp"
+#include "oos/solutions/sol101/StaticSubcases.hpp"
 
 #include <algorithm>
 #include <array>
@@ -124,6 +126,7 @@ public:
         base::DiagnosticSink sink;
         solutions::AnalysisModel model(*m_evaluation.analysis.snapshot, solutions::AnalysisKind::StaticAeroelastic,
                                         m_budget, m_pool, nullptr, sink);
+        assembly::LoadVectorBuilder loads(model.elementSet(), model.dofMap(), m_budget);
         values.assign(m_problem.model().independentCount() * count, 0.0);
         for (const auto& [subcase, selected] : weights)
         {
@@ -132,9 +135,14 @@ public:
             detail::SizingMatrixRates matrices(m_problem, m_evaluation, model, m_budget);
             if (!matrices.prepare(options))
                 return std::nullopt;
-            for (const auto& target : matrices.targets())
-                if (target.use.changesDistributedLoads)
-                    return std::nullopt;
+            const bool changesDistributed = std::any_of(matrices.targets().begin(), matrices.targets().end(),
+                [](const auto& target) { return target.use.changesDistributedLoads; });
+            if (changesDistributed)
+                for (const auto& selectedCase :
+                     solutions::staticSubcasesOf(*m_evaluation.analysis.snapshot, {label}, sink))
+                    if (selectedCase.load &&
+                        loads.hasFamilyLoads(*selectedCase.load, assembly::LoadFamily::Distributed))
+                        return std::nullopt;
             detail::RecoveredFieldCurvature recovery(model, m_evaluation.analysis.snapshot, m_budget);
             const auto base = m_trim.trimmedState(subcase);
             if (!recovery.prepare(selected.fields, matrices.targets(), base.displacements))

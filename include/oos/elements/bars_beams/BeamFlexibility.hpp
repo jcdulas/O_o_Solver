@@ -6,6 +6,7 @@
 #include "oos/elements/core/IsotropicMaterial.hpp"
 
 #include <array>
+#include <functional>
 #include <span>
 
 namespace oos::elements
@@ -53,6 +54,10 @@ public:
 
     [[nodiscard]] const base::MatN<6>& flexibility() const noexcept { return m_flexibility; }
     [[nodiscard]] const base::MatN<6>& naturalStiffness() const noexcept { return m_naturalStiffness; }
+    // The same quadrature points as the mechanical flexibility, for its analytic section derivatives. Positions
+    // remain fixed: sizing changes section values, while a station-position design uses the general geometry path.
+    void visitIntegrationPoints(const std::function<void(double, double)>& visit,
+                                std::span<const double> breaks = {}) const;
 
 private:
     // c(x) at a distance x from end A.

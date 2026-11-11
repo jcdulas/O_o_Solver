@@ -40,6 +40,10 @@ struct FieldTarget
     std::vector<std::size_t> units; // indices into FieldTargets::unitIds(), increasing
 };
 
+// A single unscaled card field. A material summary and its card-table copy describe the same field, so they
+// may share one analytic derivative. Derived sections and completed material defaults still need a chain rule.
+[[nodiscard]] bool isDirectFieldTarget(const DesignRelation& relation, const FieldTarget& target);
+
 // The grid points one shape variable moves (a ShapeBasis), bound to the node table of a snapshot.
 struct ShapeTarget
 {

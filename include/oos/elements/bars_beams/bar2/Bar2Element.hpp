@@ -60,6 +60,11 @@ public:
         return {Facet::Stiffness, Facet::Mass, Facet::Differential, Facet::Loads, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool loadFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                             const ElementLoadContext& loads, ElementVectorBlock& block) const override;
+    bool loadFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                  const DesignedField& first, const DesignedField& second,
+                                  const ElementLoadContext& loads, ElementVectorBlock& block) const override;
     [[nodiscard]] std::vector<std::string> propertyCards() const override
     {
         return {"BarProp", "BarShapeProp", "IsoMat"};
@@ -106,6 +111,37 @@ public:
     void recoverUnderLineLoads(const ElementBatchView& view, std::span<const ElementLineLoad> loads,
                                ElementOutput output, const NodalDisplacements& displacements,
                                ElementResultBlock& block) const override;
+
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementMatrixBlock& block) const override;
+    bool stiffnessFieldSecondDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                        ElementMatrixBlock& block) const override;
+    bool stiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& first,
+                                       const DesignedField& second, ElementMatrixBlock& block) const override;
+    bool massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                             const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool massFieldSecondDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                   const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool massFieldMixedDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& first,
+                                  const DesignedField& second, const MassOptions& options,
+                                  ElementMatrixBlock& block) const override;
+    bool recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, const NodalDisplacements& displacements,
+                            ElementResultBlock& rates) const override;
+    bool recoveryFieldSecondRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementOutput output, const NodalDisplacements& displacements,
+                                  ElementResultBlock& rates) const override;
+    bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row, const DesignedField& first,
+                                 const DesignedField& second, ElementOutput output,
+                                 const NodalDisplacements& displacements, ElementResultBlock& rates) const override;
+    bool recoverySlopeRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, RecoverySlopes& rates) const override;
+    bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                              const DesignedField& field, const NodalDisplacements& preload,
+                                              ElementMatrixBlock& block) const override;
+    bool differentialStiffnessFieldMixedDerivative(
+        const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
+        const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
 
 private:
     // The batch's columns and those of the BarProp and BarShapeProp tables (empty when the model has none), and of the

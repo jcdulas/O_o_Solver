@@ -400,6 +400,18 @@ void ElementFamily::completeRecoveredLayerRows(const ElementBatchView& /*view*/,
     refuseFacet("vectorised layer recovery");
 }
 
+bool ElementFamily::loadFieldDerivative(const ElementBatchView&, std::int64_t, const DesignedField&,
+                                      const ElementLoadContext&, ElementVectorBlock&) const
+{
+    return false;
+}
+
+bool ElementFamily::loadFieldMixedDerivative(const ElementBatchView&, std::int64_t, const DesignedField&,
+                                           const DesignedField&, const ElementLoadContext&, ElementVectorBlock&) const
+{
+    return false;
+}
+
 bool ElementFamily::stiffnessFieldDerivative(const ElementBatchView& /*view*/, std::int64_t /*row*/,
                                              const DesignedField& /*field*/, ElementMatrixBlock& /*block*/) const
 {

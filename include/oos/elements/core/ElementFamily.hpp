@@ -165,6 +165,15 @@ struct ElementLineLoad
     double p2 = 0.0;
 };
 
+// The element-owned applied loads at fixed geometry and fixed load values. Spans contain only loads of the
+// selected element. Derivative facets may accept thermal, pressure and line loads independently or together.
+struct ElementLoadContext
+{
+    const ElementTemperatures* temperatures = nullptr;
+    std::span<const ElementPressure> pressures{};
+    std::span<const ElementLineLoad> lineLoads{};
+};
+
 // The displacements of the whole model a recovery facet reads from: six values per grid point row (translations then
 // rotations, in the displacement system CD of the grid point), one per scalar point row; and the temperatures of the
 // subcase when it has a thermal load (the recovery subtracts the thermal strains: σ = E (ε − α ΔT)).
@@ -183,6 +192,9 @@ struct NodalDisplacements
     std::span<const double> scalar;                    // one per scalar point row (per scalar slot)
     const ElementTemperatures* temperatures = nullptr; // null: no thermal load; not owned
     const DisplacementSlots* slots = nullptr;          // null: the rows of the model; not owned
+    // Optional line loads for recovery, with batch row indices. Families select the loads of each recovered row.
+    // They change the affine part of a linear output; its displacement slopes keep the ordinary output layout.
+    std::span<const ElementLineLoad> lineLoads{};
 
     [[nodiscard]] double valueAt(const ElementDof& dof) const
     {
@@ -440,6 +452,13 @@ public:
                                            std::span<std::uint8_t> isClosed) const;
     virtual bool massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                                      const MassOptions& options, ElementMatrixBlock& block) const;
+    // Derivatives of applied element loads, in grid displacement coordinates. True with an empty block means a
+    // known zero. False retains numerical element differences. Equal fields request the same-field second rate.
+    virtual bool loadFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                    const ElementLoadContext& loads, ElementVectorBlock& block) const;
+    virtual bool loadFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                         const DesignedField& first, const DesignedField& second,
+                                         const ElementLoadContext& loads, ElementVectorBlock& block) const;
     // dK_d/dv of the element of batch row `row` at fixed preload displacements and temperatures (`preload`, as
     // computeDifferentialStiffness takes it), appended as computeDifferentialStiffness appends it; false when the
     // family has no closed form for that field, element and preload (the buckling load factors' explicit

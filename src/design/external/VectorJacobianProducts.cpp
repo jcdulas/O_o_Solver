@@ -1192,19 +1192,18 @@ public:
             if (fields[r].gradient.empty() || affected.of(r).empty())
                 continue;
             const DesignRelation& relation = m_in.model->relations()[r];
-            const std::vector<TargetCell>& cells = (*m_in.targets)[r].cells;
             const bool isDerived = m_in.targets->derivedProperties().groupOf(r).has_value() ||
                                    m_in.targets->hasDerivedMaterial(r);
             const bool isPlainCell =
-                cells.size() == 1 && cells.front().scale == 1.0 && !isDerived;
+                isDirectFieldTarget(relation, (*m_in.targets)[r]) && !isDerived;
             if (relation.form != RelationForm::Linear)
             {
                 result.reason = base::concatenate({"the relation ", relation.label(),
                                                    " is not linear in x (its second derivatives in x are not formed)"});
                 return result;
             }
-            // A derived card or a scaled multi-cell target needs its own second-order chain rule. A scalar cell or
-            // one fixed-list item is passed to the family, which decides whether it gives closed second derivatives.
+            // A derived card or scaled target needs its own second-order chain rule. A direct field, including
+            // a material's summary copy, is passed to the family for its closed second derivatives.
             if (!isPlainCell)
             {
                 const elements::DesignedField designed{relation.targetCard, relation.field, relation.targetId,
@@ -1664,6 +1663,39 @@ public:
         elements::ElementMatrixBlock secondStiffnessRate;
     };
 
+    // The applied-load contribution to the element's Lagrangian curvature: lambda^T P_pq.
+    // Fixed geometry makes P independent of displacement, so there is no extra displacement/field block.
+    [[nodiscard]] std::optional<double> loadCurvatureOf(const ElementRef& element, const detail::SubcaseState& state,
+                                                       const elements::DesignedField& first,
+                                                       const elements::DesignedField& second,
+                                                       std::span<const double> adjoint) const
+    {
+        const auto& batch = m_set.batches()[element.batch];
+        const auto& family = *batch.family;
+        const auto a = family.designFieldUse(first), b = family.designFieldUse(second);
+        elements::ElementLoadContext context;
+        if ((a.changesLoads || b.changesLoads) && !family.isThermallyInert() && state.temperatures)
+            context.temperatures = &state.temperatures->temperatures();
+        if (a.changesDistributedLoads || b.changesDistributedLoads)
+            if (const auto found = state.elementLoads.find(element); found != state.elementLoads.end())
+            {
+                context.pressures = found->second.first;
+                context.lineLoads = found->second.second;
+            }
+        if (!context.temperatures && context.pressures.empty() && context.lineLoads.empty())
+            return 0.0;
+        if (state.isCombination())
+            return std::nullopt; // Combined applied-load curvature needs the weighted loads of its source cases.
+        elements::ElementVectorBlock rate;
+        if (!family.loadFieldMixedDerivative(batch.view, element.row, first, second, context, rate))
+            return std::nullopt;
+        double result = 0.0;
+        for (std::size_t k = 0; k < rate.size(); ++k)
+            for (std::size_t i = 0; i < rate.dofs(k).size(); ++i)
+                result += rate.values(k)[i] * adjoint[static_cast<std::size_t>(m_dofMap.dofOf(rate.dofs(k)[i]))];
+        return result;
+    }
+
     // The block of one element in one subcase (hessianBlocks), or the reason the closed forms do not give it. `copy`
     // the piece's copy of the displacements for the recoveries at unit displacements of a family without slopes;
     // `parts` what the element's blocks of its other subcases formed already.
@@ -1785,7 +1817,8 @@ public:
                 if (const auto found = weightOf.find(job.keys[k]); found != weightOf.end())
                     itemWeights[k] = found->second;
             const std::optional<ItemSecondOrder> items =
-                job.function->secondOrder(view, state.nodal(m_dofMap), itemWeights, designed, scratch, &parts.slopes);
+                job.function->secondOrder(view, state.nodal(m_dofMap, job.element), itemWeights,
+                                           designed, scratch, &parts.slopes);
             if (!items)
                 return base::concatenate({"the weighted items of ", name(), " have no closed second derivatives",
                                           inField(), " in this version"});
@@ -1795,13 +1828,10 @@ public:
         if (!designed.empty() && !adjoint.empty())
         {
             const elements::FieldUse use = family.designFieldUse(designed.front());
-            if (use.changesLoads && !family.isThermallyInert() && state.temperatures)
-                return base::concatenate({"the thermal loads of ", name(), " move with ", designed.front().card, " ",
-                                          designed.front().column, ", whose second derivatives are not formed"});
-            if (use.changesDistributedLoads && state.elementLoads.count(element) != 0)
-                return base::concatenate({"the pressures or line loads of ", name(), " move with ",
-                                          designed.front().card, " ", designed.front().column,
-                                          ", whose second derivatives are not formed"});
+            const auto loadTerm = loadCurvatureOf(element, state, designed.front(), designed.front(), adjoint);
+            if (!loadTerm)
+                return base::concatenate({name(), " has no closed applied-load curvature", inField()});
+            block.fieldTerm += *loadTerm;
             const auto valueAt = [](const std::vector<double>& vector, base::DofIndex dof)
             { return vector[static_cast<std::size_t>(dof)]; };
             if (use.changesStiffness && family.facets().has(elements::Facet::Stiffness))
@@ -1919,7 +1949,7 @@ public:
             for (std::size_t k = 0; k < job.keys.size(); ++k)
                 if (const auto found = weightOf.find(job.keys[k]); found != weightOf.end())
                     weights[k] = found->second;
-            const auto rate = job.function->mixedFieldRate(view, state.nodal(m_dofMap), weights, a, b);
+            const auto rate = job.function->mixedFieldRate(view, state.nodal(m_dofMap, job.element), weights, a, b);
             if (!rate)
                 return unavailable();
             block.fieldTerm += *rate;
@@ -1948,6 +1978,10 @@ public:
         }
         if (adjoint.empty())
             return {};
+        const auto loadTerm = loadCurvatureOf(element, state, a, b, adjoint);
+        if (!loadTerm)
+            return unavailable();
+        block.fieldTerm += *loadTerm;
         const auto product = [&](const elements::ElementMatrixBlock& matrices, std::span<const double> right)
         {
             double value = 0.0;

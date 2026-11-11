@@ -159,7 +159,12 @@ frequencies and selected fields use bordered tangent and adjoint derivatives whe
 second derivatives are closed; their report sets `usesModalTangents: true` and `perturbedLinearisations: 0`.
 Closed buckling and trim sizing products differentiate the coupled state directly, including the preload or support
 motion, and set `usesBucklingTangents` or `usesTrimTangents`. See [coupled derivatives](coupled-derivatives.md) for
-the formulas, supported loads and remaining numerical paths.
+the formulas, supported loads and remaining numerical paths. [Bar and beam derivatives](beam-derivatives.md)
+lists the analytic `Bar2`/`Beam2` section, material, release and recovery rates.
+Their applied-load facets also provide thermal/initial-strain and line-load rates. Supported thermal field responses
+and line-loaded displacement responses use those rates in static gradients and Hessian blocks. Linear force,
+stress and strain items of loaded bars/beams now include their line-load recovery terms as well; shared `Bar2`
+axial, shear and torque items select end A of its loaded station table.
 Products that difference native gradients respect variable bounds and reuse the current mode shapes
 as tracking references. An ambiguous mode match stops the product. Reports expose the method through
 `hessianBlocksReason`. These are numerical engineering derivatives, not a guarantee of exact arithmetic or

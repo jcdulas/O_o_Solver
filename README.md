@@ -38,6 +38,7 @@ solver's: [docs/table-package.md](docs/table-package.md).
 [JavaScript optimization](docs/optimization.md): native design interfaces and derivatives.
 [External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, full-analysis derivatives,
 workers and accepted-point archives.
+[Bar and beam derivatives](docs/beam-derivatives.md): analytic section, material, mass and recovery rates.
 
 **[Read online](https://jcdulas.github.io/O_o_Solver/)** · [Architecture with diagrams](docs/architecture.md) · [Documentation index](index.md)
 

@@ -180,11 +180,17 @@ struct SubcaseState
 
     [[nodiscard]] bool isCombination() const noexcept { return subcase.isCombination; }
 
-    [[nodiscard]] elements::NodalDisplacements nodal(const assembly::DofMap& dofMap) const
+    [[nodiscard]] elements::NodalDisplacements nodal(const assembly::DofMap& dofMap,
+                                                    std::optional<ElementRef> element = std::nullopt) const
     {
         const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(dofMap.gridCount());
         const std::span<const double> all = displacements.span();
-        return {all.first(gridValues), all.subspan(gridValues), temperatures ? &temperatures->temperatures() : nullptr};
+        elements::NodalDisplacements result{all.first(gridValues), all.subspan(gridValues),
+                                             temperatures ? &temperatures->temperatures() : nullptr};
+        if (element)
+            if (const auto found = elementLoads.find(*element); found != elementLoads.end())
+                result.lineLoads = found->second.second;
+        return result;
     }
 };
 
@@ -2148,7 +2154,7 @@ protected:
         // Measured: the element derivatives of a design point, slopes against differences.
         if (m_options.elementDerivatives == ElementDerivativeMethod::Analytic)
             if (std::optional<ItemSlopes> slopes = job.function->slopes(
-                    view, m_in.overlaid, state.nodal(m_dofMap),
+                    view, m_in.overlaid, state.nodal(m_dofMap, job.element),
                     [&]
                     {
                         const std::span<double> copy = perturbedOf();
@@ -2167,13 +2173,13 @@ protected:
                     for (std::size_t d = 0; d < n; ++d)
                         if (const double weight = slopes->weights[k * n + d]; weight != 0.0)
                             weights[k].emplace_back(indices[d], weight);
-                finishElementJob(job, state, view, state.nodal(m_dofMap), weights);
+                finishElementJob(job, state, view, state.nodal(m_dofMap, job.element), weights);
                 return;
             }
         const std::span<double> perturbed = perturbedOf();
-        const elements::NodalDisplacements displacements{
-            perturbed.first(gridValues), perturbed.subspan(gridValues),
-            state.temperatures ? &state.temperatures->temperatures() : nullptr};
+        auto displacements = state.nodal(m_dofMap, job.element);
+        displacements.grid = perturbed.first(gridValues);
+        displacements.scalar = perturbed.subspan(gridValues);
         std::vector<ItemForm> forms; // bounded by the job's items
         job.baseValues = job.function->values(view, m_in.overlaid, displacements, m_budget, &forms);
         // ∂r/∂u_e by central differences on each DOF of the element, the others fixed.
@@ -2548,14 +2554,11 @@ protected:
                 }
                 const elements::DesignedField designed{relation.targetCard, relation.field, relation.targetId,
                                                        relation.fieldItem};
-                // The closed forms of the families (the AnisoMat2D terms included) take a field that
-                // is one cell, the field itself (a scalar column, or one item of a fixed-list column): not the derived
-                // cells of a section, nor a field written in two tables or scaled. A laminate's ply thickness is its
-                // card's cell, the derived stack the families' rates follow (LaminateRate).
-                const std::vector<TargetCell>& cells = (*m_in.targets)[r].cells;
+                // Closed family formulas take one independent field, including a material's summary copy.
+                // Derived section cells and scaled targets need their own chain rule. A laminate's ply
+                // thickness is its card's cell; LaminateRate follows the derived stack.
                 const std::optional<std::size_t> derivedGroup = m_in.targets->derivedProperties().groupOf(r);
-                const bool isPlainCell = cells.size() == 1 && cells.front().item == relation.fieldItem &&
-                                         cells.front().scale == 1.0 &&
+                const bool isPlainCell = isDirectFieldTarget(relation, (*m_in.targets)[r]) &&
                                          !m_in.targets->hasDerivedMaterial(r) &&
                                          (!derivedGroup || m_in.targets->derivedProperties().isLaminate(*derivedGroup));
                 if (isWaved)
@@ -2911,7 +2914,7 @@ protected:
                                         m_pseudoLoads->energyRate(q, job.subcase));
                 continue;
             }
-            const elements::NodalDisplacements displacements = state.nodal(m_dofMap);
+            const elements::NodalDisplacements displacements = state.nodal(m_dofMap, job.element);
             // PERFORMANCE: the explicit parts in closed form where the family gives them for the field,
             // instead of four recoveries of the job on the perturbed sides.
             // Measured: the element derivatives of a design point, closed forms against differences.
@@ -3156,7 +3159,8 @@ protected:
                     jobRates.emplace_back(
                         found->second,
                         job.function->fieldRatesOfFields(
-                            batch.view, m_owner->m_subcases[job.subcase].nodal(m_owner->m_dofMap), jobFields));
+                            batch.view, m_owner->m_subcases[job.subcase].nodal(m_owner->m_dofMap, job.element),
+                            jobFields));
                 }
             }
             for (std::size_t i = 0; i < tasks.size(); ++i)
@@ -3276,8 +3280,8 @@ protected:
                 // A SUBCOM's temperatures recover its items; its loads are its terms' (addCombination).
                 if (!m_subcases[s].temperatures || m_subcases[s].isCombination())
                     continue;
-                ElementVectorDerivative loads =
-                    derivatives().thermalLoads(element.row, m_subcases[s].temperatures->temperatures());
+                const elements::ElementLoadContext context{&m_subcases[s].temperatures->temperatures()};
+                ElementVectorDerivative loads = loadDerivativeOf(matrices, context, out.counts);
                 std::vector<base::DofIndex> dofs; // bounded by the element's DOFs
                 for (const elements::ElementDof& dof : loads.dofs)
                     dofs.push_back(m_dofMap.dofOf(dof));
@@ -3293,8 +3297,8 @@ protected:
                 const auto found = m_subcases[s].elementLoads.find(element);
                 if (found == m_subcases[s].elementLoads.end())
                     continue;
-                ElementVectorDerivative loads =
-                    derivatives().distributedLoads(element.row, found->second.first, found->second.second);
+                const elements::ElementLoadContext context{nullptr, found->second.first, found->second.second};
+                ElementVectorDerivative loads = loadDerivativeOf(matrices, context, out.counts);
                 std::vector<base::DofIndex> dofs; // bounded by the element's DOFs
                 for (const elements::ElementDof& dof : loads.dofs)
                     dofs.push_back(m_dofMap.dofOf(dof));
@@ -3371,6 +3375,39 @@ protected:
         const elements::DesignedField* designed; // null: differences only
         const ElementDifferences& derivatives;
     };
+
+    [[nodiscard]] static ElementVectorDerivative loadDerivativeOf(const ElementMatrices& matrices,
+                                                                  const elements::ElementLoadContext& context,
+                                                                  DerivativeCounts& counts)
+    {
+        if (matrices.designed != nullptr)
+        {
+            elements::ElementVectorBlock block;
+            if (matrices.family.loadFieldDerivative(matrices.view, matrices.row, *matrices.designed, context, block))
+            {
+                ++counts.analytic;
+                ElementVectorDerivative result;
+                for (std::size_t k = 0; k < block.size(); ++k)
+                    for (std::size_t i = 0; i < block.dofs(k).size(); ++i)
+                    {
+                        const auto dof = block.dofs(k)[i];
+                        const auto found = std::find(result.dofs.begin(), result.dofs.end(), dof);
+                        if (found == result.dofs.end())
+                        {
+                            result.dofs.push_back(dof);
+                            result.values.push_back(block.values(k)[i]);
+                        }
+                        else result.values[static_cast<std::size_t>(found - result.dofs.begin())] += block.values(k)[i];
+                    }
+                return result;
+            }
+        }
+        ++counts.differenced;
+        // Callers keep thermal and distributed contributions separate in PseudoLoads.
+        if (context.temperatures)
+            return matrices.derivatives().thermalLoads(matrices.row, *context.temperatures);
+        return matrices.derivatives().distributedLoads(matrices.row, context.pressures, context.lineLoads);
+    }
 
     // The one matrix of an element in a block (empty when the facet appended none).
     [[nodiscard]] static ElementMatrixDerivative derivativeIn(const elements::ElementMatrixBlock& block)

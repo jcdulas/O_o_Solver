@@ -74,6 +74,10 @@ struct ItemLocation
 [[nodiscard]] std::variant<ItemLocation, std::string> locateItem(ResponseType type, std::string_view card,
                                                                  std::int32_t itemCode);
 
+// A standard Bar2 item in the station layout written under line loads. Shared axial/shear/torque items select
+// end A; end-specific bending/stress items retain their end. Margins have no equivalent station column.
+[[nodiscard]] std::optional<ItemLocation> barStationLocation(const ItemLocation& location);
+
 // The FORCE item code of force column `component` of a member of a section of family `family` (output::SectionLoads:
 // the components of its family, a beam's at end A then at end B) on an element of card `card`: the code whose location
 // is that column at the centre, or at end A or B of a beam; 0 when none. A section's rows are then the weighted sums

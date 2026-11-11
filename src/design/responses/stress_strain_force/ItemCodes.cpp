@@ -340,6 +340,31 @@ std::variant<ItemLocation, std::string> plyItem(ResponseType type, std::string_v
 
 } // namespace
 
+std::optional<ItemLocation> barStationLocation(const ItemLocation& source)
+{
+    ItemLocation result = source;
+    result.place = ItemPlace::EndA;
+    const auto& name = source.column;
+    if (name.size() == 3 && (name.front() == 's' || name.front() == 'e') &&
+        name[1] >= '1' && name[1] <= '4' && (name.back() == 'a' || name.back() == 'b'))
+    {
+        constexpr std::array<std::string_view, 4> POINTS{"sxc", "sxd", "sxe", "sxf"};
+        result.column = POINTS[static_cast<std::size_t>(name[1] - '1')];
+        result.place = name.back() == 'a' ? ItemPlace::EndA : ItemPlace::EndB;
+        return result;
+    }
+    if (name == "bendingMomentA1" || name == "bendingMomentB1") result.column = "bendingMoment1";
+    else if (name == "bendingMomentA2" || name == "bendingMomentB2") result.column = "bendingMoment2";
+    else if (name == "smaxa" || name == "smaxb" || name == "emaxa" || name == "emaxb") result.column = "smax";
+    else if (name == "smina" || name == "sminb" || name == "emina" || name == "eminb") result.column = "smin";
+    else if (name != "axial" && name != "shear1" && name != "shear2" && name != "torque")
+        return std::nullopt;
+    if (name == "bendingMomentB1" || name == "bendingMomentB2" ||
+        name == "smaxb" || name == "sminb" || name == "emaxb" || name == "eminb")
+        result.place = ItemPlace::EndB;
+    return result;
+}
+
 std::optional<std::size_t> ItemLocation::columnIn(std::span<const std::string> names) const
 {
     for (std::size_t c = 0; c < names.size(); ++c)

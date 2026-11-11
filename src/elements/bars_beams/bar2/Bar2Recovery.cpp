@@ -161,7 +161,8 @@ void Bar2Element::recover(const ElementBatchView& view, ElementRange range, Elem
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const BeamData beam = resolve(view, columns, row).required();
-        const BeamResponse response(beam, displacements, {}, beamThermalStrain(view, row, beam, displacements));
+        const auto loads = resolveLineLoadsOrThrow(view, displacements.lineLoads, beam.geometry, row);
+        const BeamResponse response(beam, displacements, loads, beamThermalStrain(view, row, beam, displacements));
         const Bar2Row values = bar2RowOf(beam, response, output);
         block.append(row, view.elementId(row), std::span<const double>(values.values.data(), values.count));
     }

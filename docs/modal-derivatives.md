@@ -84,3 +84,6 @@ paths; the modal formulas do not replace them.
 
 The modal tests compare closed scalar formulas, coupled modes, rigid constraints and rotated rigid-body mass
 matrices against independent analysis differences. The normal test runner enforces a one-second ceiling per test.
+
+[Bar and beam derivatives](beam-derivatives.md) cover `Bar2`/`Beam2` section and material rates, lumped/coupled
+mass, polar inertia, mass-centre offsets and linear recovered-field curvature on this modal path.

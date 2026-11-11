@@ -114,7 +114,8 @@ void checkBeamLineLoads(const ElementBatchView& view, std::span<const ElementLin
 // The resolved loads of one element, or std::invalid_argument for a load checkBeamLineLoads() refuses.
 [[nodiscard]] std::vector<BeamLineLoad> resolveLineLoadsOrThrow(const ElementBatchView& view,
                                                                 std::span<const ElementLineLoad> loads,
-                                                                const BeamGeometry& geometry);
+                                                                  const BeamGeometry& geometry,
+                                                                  std::int64_t row = -1);
 
 template <typename Resolve>
 void appendBeamLineLoads(const ElementBatchView& view, std::span<const ElementLineLoad> loads,

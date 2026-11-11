@@ -9,6 +9,11 @@
 namespace oos::elements
 {
 
+// Whether the material reference temperature supplies the initial temperature of this element. An explicitly
+// supplied initial temperature takes precedence, including a zero value.
+[[nodiscard]] bool beamUsesReferenceTemperature(const ElementBatchView& view, std::int64_t row,
+                                              const BeamData& beam, const ElementTemperatures& temperatures);
+
 // The thermal load of a bar or beam in linear statics (TEMPERATURE(LOAD), LineElemTemperatureLoad): the mean
 // temperature change of the element, ΔT = T̄ − T̄0, gives the free axial strain ε_T = α·ΔT, and the thermal load is the
 // force that holds the free expansion,

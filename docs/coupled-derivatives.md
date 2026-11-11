@@ -66,6 +66,12 @@ families supply thickness curvature, including their drilling variants. `Rod2` s
 rates: its geometric stiffness is linear in area and independent of torsion. Scalar connection stiffness can
 contribute to the elastic matrix and to load sharing without adding its own geometric stiffness.
 
+`Bar2` and `Beam2` provide first and mixed sizing rates of geometric stiffness, including the derivatives of the
+released-end completion map. Their section/material stiffness and mass curvature also feed the trim path.
+A potentially section-dependent distributed-load facet only excludes a closed product when the selected subcase
+actually contains distributed loads. Fixed concentrated-load cases can use the beam rates. See
+[bar and beam derivatives](beam-derivatives.md) for the field list and remaining load/recovery restrictions.
+
 For `ShellQuad4` and `ShellTria3`, thickness derivatives of stiffness, mass and recovered rows now use
 `SecondOrderScalar`. Each scalar carries its value and first two derivatives through the ordinary kernel operations,
 including quotients and square roots. This replaces the former difference of complex-step first derivatives.

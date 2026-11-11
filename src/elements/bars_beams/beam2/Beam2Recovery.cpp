@@ -309,7 +309,8 @@ void Beam2Element::recover(const ElementBatchView& view, ElementRange range, Ele
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const BeamData beam = resolve(view, columns, row).required();
-        appendStationRows(view, row, beam, {}, output, displacements, block);
+        const auto loads = resolveLineLoadsOrThrow(view, displacements.lineLoads, beam.geometry, row);
+        appendStationRows(view, row, beam, loads, output, displacements, block);
     }
 }
 

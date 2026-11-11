@@ -236,6 +236,22 @@ first derivatives). Their thickness curvature propagates the exact chain rule th
 step size. This covers stiffness, mass, recovered rows and fixed-preload geometric stiffness. The rows below name
 the fields.
 
+`Bar2` and `Beam2` also provide first, second and mixed sizing rates of stiffness, mass, linear recovery and
+fixed-preload geometric stiffness through `bars_beams/BeamFieldDerivatives`. `BeamSizing` differentiates the
+integrated flexibility and end-release condensation; `BeamSizingRecovery` carries the same rates through station
+resultants. `MixedScalar` holds two first partials and their mixed partial. Section and material directions,
+supported fields and numerical fallbacks are documented in [bar and beam derivatives](../../docs/beam-derivatives.md).
+
+`ElementLoadContext`, `loadFieldDerivative` and `loadFieldMixedDerivative` extend the derivative facets to applied
+element loads. The bar/beam implementation differentiates thermal strain, imposed elongation and equivalent nodal
+line loads, including end-release condensation and the load transform. Static gradient assembly uses these rates
+before numerical differences; static Hessian blocks add the diagonal and mixed applied-load curvature.
+
+The optional `NodalDisplacements::lineLoads` recovery context also carries those loads into the ordinary bar/beam
+result layouts and their first, second and mixed field rates. The end-force map subtracts the condensed fixed-end
+loads and section equilibrium includes the loads on the left span. Displacement slopes and their field rates stay
+independent of load values, so their existing caches remain valid across subcases.
+
 | What | Facet | Families |
 |---|---|---|
 | The form of each output column in u (`ColumnForm`: Linear, PlaneVonMises of three Linear columns, Other) | `outputColumnForms`, `layerOutputColumnForms` | the shells (`shellOutputColumnForms`, `laminateOutputColumnForms`, the ply states all Linear), the rods, `Bar2`, `Beam2`, `ShearPanel4`, the solids (`solidOutputColumnForms`: the six components Linear), the springs and fasteners (every column Linear but the `Weld`'s stresses, whose axial stress alone is: `core/LinearRowRecovery`) |

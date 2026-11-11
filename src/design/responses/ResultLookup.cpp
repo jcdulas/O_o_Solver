@@ -90,14 +90,18 @@ std::optional<double> ResultLookup::elementValue(const ItemLocation& location, s
                                                  std::int32_t mode)
 {
     const output::ElementResultTable* table = elementTable(location.tableKind, elementType, subcase, mode);
-    if (table == nullptr)
-        return std::nullopt;
-    const std::optional<std::size_t> column = location.columnIn(table->components);
-    const std::span<const double> row =
-        elementRow(location.tableKind, elementType, subcase, elementId, location.place, layer, mode);
-    if (!column || *column >= row.size())
-        return std::nullopt;
-    return row[*column];
+    if (table != nullptr)
+    {
+        const auto column = location.columnIn(table->components);
+        const auto row = elementRow(location.tableKind, elementType, subcase, elementId, location.place, layer, mode);
+        if (column && *column < row.size())
+            return row[*column];
+    }
+    // Loaded and unloaded bars of the same batch can occupy different result tables in one subcase.
+    if (elementType == "Bar2")
+        if (const auto station = barStationLocation(location))
+            return elementValue(*station, "Bar2LoadStations", subcase, elementId, layer, mode);
+    return std::nullopt;
 }
 
 } // namespace oos::design

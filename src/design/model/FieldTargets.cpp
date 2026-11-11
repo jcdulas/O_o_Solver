@@ -669,6 +669,25 @@ private:
 
 } // namespace
 
+bool isDirectFieldTarget(const DesignRelation& relation, const FieldTarget& target)
+{
+    if (target.cells.empty() || target.cells.size() > 2)
+        return false;
+    for (const auto& cell : target.cells)
+        if (cell.scale != 1.0 || cell.item != relation.fieldItem)
+            return false;
+    if (target.cells.size() == 1)
+        return true;
+    if (relation.targetKind != TargetKind::Material)
+        return false;
+    const auto isSummary = [&](const TargetCell& cell)
+    { return cell.table == MATERIALS_TABLE && cell.column == materialSummaryField(relation.field); };
+    const auto isCard = [&](const TargetCell& cell)
+    { return cell.table == "materials/" + relation.targetCard && cell.column == relation.field; };
+    return (isSummary(target.cells[0]) && isCard(target.cells[1])) ||
+           (isSummary(target.cells[1]) && isCard(target.cells[0]));
+}
+
 FieldTargets::FieldTargets(const DesignModel& model, const input::ModelSnapshot& snapshot,
                            std::shared_ptr<const SectionLibrary> sections)
     : m_sections(std::move(sections))
