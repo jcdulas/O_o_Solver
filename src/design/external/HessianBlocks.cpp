@@ -29,6 +29,12 @@ void HessianBlocks::apply(std::span<const std::vector<double>> moves, std::span<
 {
     for (const Block& block : m_blocks)
     {
+        if (block.otherField != NO_FIELD)
+        {
+            terms[block.field] += block.fieldTerm * fieldMoves[block.otherField];
+            terms[block.otherField] += block.fieldTerm * fieldMoves[block.field];
+            continue;
+        }
         const std::vector<double>& move = moves[block.subcase];
         std::vector<double>& load = loads[block.subcase];
         const std::size_t n = block.dofs.size();

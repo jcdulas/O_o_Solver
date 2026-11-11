@@ -30,7 +30,7 @@
 // recovery coefficients of BushProp RCV (PBUSH: SA, ST the stress coefficients of the translational and rotational
 // components, EA, ET the strain coefficients; stress_i = SA·f_i for i = 1-3, ST·m_i for 4-6; strain_i = EA·Δu_i,
 // ET·Δθ_i, the element displacements; their default 1.0 is given by O_o_Reader). B and GE (damping) play no part in
-// SOL 101, 103, 105. The differential stiffness, loads and design derivatives are not written yet.
+// SOL 101, 103, 105. Stiffness, mass and recovery have exact field derivatives in K1-K6, M and RCV.
 //
 // Not supported: a cylindrical or spherical CID or OCID (the element axes are then those of the curvilinear system
 // at GA, which this element does not compute); CID blank with neither GO nor X1-X3 — refused by check(). Problems
@@ -67,6 +67,29 @@ public:
         return {Facet::Stiffness, Facet::Mass, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row,
+                                 const DesignedField& first, const DesignedField& second,
+                                 ElementOutput output, const NodalDisplacements& displacements,
+                                 ElementResultBlock& rates) const override;
+    bool stiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                       const DesignedField& first, const DesignedField& second,
+                                       ElementMatrixBlock& block) const override;
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementMatrixBlock& block) const override;
+    bool massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                             const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, const NodalDisplacements& displacements,
+                            ElementResultBlock& rates) const override;
+    bool stiffnessFieldSecondDerivative(const ElementBatchView& view, std::int64_t row,
+                                        const DesignedField& field, ElementMatrixBlock& block) const override;
+    bool massFieldSecondDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                   const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool recoverySlopeRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, RecoverySlopes& rates) const override;
+    bool recoveryFieldSecondRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementOutput output, const NodalDisplacements& displacements,
+                                  ElementResultBlock& rates) const override;
     [[nodiscard]] std::vector<std::string> propertyCards() const override { return {"BushProp"}; }
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;

@@ -9,8 +9,9 @@ FieldUse Rod2Element::designFieldUse(const DesignedField& field) const
 {
     // RodProp: A enters every computation; J the torsional stiffness and the torque, C the torsional stress only,
     // NSM the mass only.
-    return findFieldUse(field, {{"RodProp", "torsionConstant", FieldUse::stiffnessAndRecovery()},
-                                {"RodProp", "torsionStressCoefficient", FieldUse::recoveryOnly()}});
+    const auto use = findFieldUse(field, {{"RodProp", "torsionConstant", FieldUse::stiffnessAndRecovery()},
+                                          {"RodProp", "torsionStressCoefficient", FieldUse::recoveryOnly()}});
+    return field.card == card() ? use : use.withoutDistributedLoads();
 }
 
 // The closed forms of A and J (appendRodStiffnessRate, appendRodMassRate); every other field is differenced.
@@ -42,6 +43,38 @@ bool Rod2Element::recoveryFieldRates(const ElementBatchView& view, std::int64_t 
     return appendRodRowRates(view, row, isOwn && field.column == "area", isOwn && field.column == "torsionConstant",
                              output, displacements, rates,
                              [&](std::int64_t r) { return resolve(view, columns, r).required(); });
+}
+
+bool Rod2Element::differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                                      const DesignedField& field, const NodalDisplacements& preload,
+                                                      ElementMatrixBlock& block) const
+{
+    if (field.card != "RodProp" || (field.column != "area" && field.column != "torsionConstant"))
+        return false;
+    if (field.column == "torsionConstant")
+        return true; // Torque contributes no geometric stiffness in the rod formulation.
+    const Columns columns(view);
+    RodData rod = resolve(view, columns, row).required();
+    rod.section.area = 1.0;
+    const RodInitialStrain initial = preload.temperatures == nullptr
+        ? RodInitialStrain{} : resolveRodInitialStrain(view, row, rod, *preload.temperatures).required();
+    const auto matrix = rodDifferentialStiffness(rod, rodForces(rod, preload, initial).axial);
+    const auto dofs = rodStiffnessDofs(rod.geometry);
+    block.append(row, dofs, matrix.values);
+    return true;
+}
+
+bool Rod2Element::differentialStiffnessFieldMixedDerivative(
+    const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
+    const NodalDisplacements& preload, ElementMatrixBlock& block) const
+{
+    const auto isSection = [](const DesignedField& field)
+    {
+        return field.card == "RodProp" && (field.column == "area" || field.column == "torsionConstant");
+    };
+    // At fixed preload the axial force is linear in A and independent of J.
+    return (isSection(first) && isSection(second)) ||
+           ElementFamily::differentialStiffnessFieldMixedDerivative(view, row, first, second, preload, block);
 }
 
 // The second derivatives of A and J (hasRodSecondDerivative): zero matrices and second rates, the

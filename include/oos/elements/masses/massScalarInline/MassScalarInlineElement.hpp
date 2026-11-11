@@ -8,8 +8,7 @@
 // lies between the two connection points): M·[1 −1; −1 1] on (u1, u2), [M] when one end is blank (grounded) — the
 // usual use, a mass on one DOF. The same matrix for the lumped and the coupled formulations.
 //
-// Facets: mass. No stiffness, no recovery (a scalar mass has no output). Design derivatives are not written
-// yet.
+// Facets: mass and its exact design derivatives. A scalar mass has no stiffness or recovery output.
 //
 // Not supported: nothing on this card. Problems reported by check(): an S that is not a scalar point, both ends blank
 // or equal.
@@ -31,6 +30,10 @@ public:
     [[nodiscard]] std::string_view card() const noexcept override { return "MassScalarInline"; }
     [[nodiscard]] FacetSet facets() const noexcept override { return {Facet::Mass, Facet::Derivatives}; }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                             const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool massFieldSecondDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                   const MassOptions& options, ElementMatrixBlock& block) const override;
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,

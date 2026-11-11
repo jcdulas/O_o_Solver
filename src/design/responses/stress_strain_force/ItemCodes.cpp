@@ -139,6 +139,13 @@ constexpr std::array<ItemColumn, 6> BUSH_STRESS_ITEMS{
     {{2, "tx"}, {3, "ty"}, {4, "tz"}, {5, "rx"}, {6, "ry"}, {7, "rz"}}};
 constexpr std::array<ItemColumn, 6> BUSH_FORCE_ITEMS{
     {{2, "fx"}, {3, "fy"}, {4, "fz"}, {5, "mx"}, {6, "my"}, {7, "mz"}}};
+constexpr std::array<ItemColumn, 7> BUSH_1D_RESULT_ITEMS{
+    {{2, "elementForce"}, {3, "axialDisplacement"}, {4, "axialVelocity"}, {5, "axialStress"},
+     {6, "axialStrain"}, {7, "plasticStrain"}, {8, "isFailed"}}};
+constexpr std::array<ItemColumn, 6> FASTENER_STRESS_ITEMS{
+    {{2, "forceX"}, {3, "forceY"}, {4, "forceZ"}, {5, "momentX"}, {6, "momentY"}, {7, "momentZ"}}};
+constexpr std::array<ItemColumn, 8> GAP_FORCE_ITEMS{
+    {{2, "fx"}, {3, "sfy"}, {4, "sfz"}, {5, "u"}, {6, "v"}, {7, "w"}, {8, "sv"}, {9, "sw"}}};
 
 // The plies of a laminated shell (item 2, the lamina number, is the ATTB of the response), and their failure indices.
 constexpr std::array<ItemColumn, 9> PLY_STRESS_ITEMS{{{3, "o11"},
@@ -174,6 +181,9 @@ enum class Family : std::uint8_t
     ShearPanel4,
     Spring,
     Bushing,
+    Bushing1D,
+    Fastener,
+    Gap2,
     Other
 };
 
@@ -195,6 +205,12 @@ Family familyOf(std::string_view card)
         return Family::Spring;
     if (card == "Bushing")
         return Family::Bushing;
+    if (card == "Bushing1D")
+        return Family::Bushing1D;
+    if (card == "Fastener")
+        return Family::Fastener;
+    if (card == "Gap2")
+        return Family::Gap2;
     return Family::Other;
 }
 
@@ -376,12 +392,24 @@ std::variant<ItemLocation, std::string> locateItem(ResponseType type, std::strin
                        : plainItem(type, card, itemCode, SPRING_STRESS_ITEMS, "2");
     case Family::Bushing:
         return plainItem(type, card, itemCode, isForce ? BUSH_FORCE_ITEMS : BUSH_STRESS_ITEMS, "2 to 7");
+    case Family::Bushing1D:
+        if (isForce)
+            return "Bushing1D puts its element force in the stress and strain tables, not in a force table";
+        return plainItem(type, card, itemCode, BUSH_1D_RESULT_ITEMS, "2 to 8");
+    case Family::Fastener:
+        if (isStrain)
+            return "Fastener gives forces and stresses, with no strain table";
+        return plainItem(type, card, itemCode, isForce ? BUSH_FORCE_ITEMS : FASTENER_STRESS_ITEMS, "2 to 7");
+    case Family::Gap2:
+        if (!isForce)
+            return "Gap2 gives a force table only";
+        return plainItem(type, card, itemCode, GAP_FORCE_ITEMS, "2 to 9");
     case Family::Other:
         break;
     }
     return base::concatenate({"expected an element whose ", responseTypeName(type),
                               " items O_o_Solver maps (rods, Bar2, Beam2, shells, ShearPanel4, SpringDofProperty to "
-                              "SpringScalarInline, Bushing), found a ",
+                              "SpringScalarInline, Bushing, Bushing1D, Fastener and Gap2), found a ",
                               card, "; constrain a supported element, or its results through an equation response"});
 }
 

@@ -136,15 +136,24 @@ DesignResp1Response::DesignResp1Response(DesignResp1Definition definition, const
     : m_definition(std::move(definition))
 {
     const ResponseType type = m_definition.type;
+    if (m_definition.mode)
+    {
+        const bool isField = type == ResponseType::Displacement || type == ResponseType::Stress ||
+                             type == ResponseType::Strain || type == ResponseType::Force ||
+                             type == ResponseType::CompositeStress || type == ResponseType::CompositeStrain;
+        if (!isField || *m_definition.mode < 1)
+            problems.push_back(problem(design_code::INVALID_RESPONSE, m_definition, "mode",
+                                       "expected a positive vibration mode for a displacement, stress, strain or "
+                                       "force field"));
+    }
     const bool takesAttributeB = type == ResponseType::Weight || isComposite(type) || isEigenType(type) ||
                                  type == ResponseType::StabilityDerivative;
     if (m_definition.attributeB && !takesAttributeB)
         problems.push_back(
             problem(design_code::UNSUPPORTED_RESPONSE, m_definition, "attributeB",
                     base::concatenate({"expected DesignResp1.attributeB blank on a ", responseTypeName(type),
-                                       " response of a static analysis, found a mode number; the eigenvector "
-                                       "responses of a MODES analysis (the DISP, STRESS ... of a mode) are not "
-                                       "supported by this version: constrain the eigenvalues (EIGN, FREQ) instead"})));
+                                       " response, found a value; use the mode selector for a vibration field "
+                                       "response"})));
     if (m_definition.region && (isGlobalType(type) || isEigenType(type) || isAeroelasticType(type)))
         problems.push_back(
             problem(design_code::INVALID_RESPONSE, m_definition, "regionId",
@@ -829,7 +838,8 @@ double DesignResp1Response::massOfSelection(const input::ModelSnapshot& snapshot
 }
 
 double DesignResp1Response::elementItem(const ElementTarget& target, std::int32_t code, const ItemLocation& location,
-                                        std::int32_t lamina, std::int32_t subcase, ResponseContext& context) const
+                                         std::int32_t lamina, std::int32_t subcase, ResponseContext& context,
+                                         std::int32_t mode) const
 {
     const auto missing = [&](const std::string& what)
     {
@@ -864,7 +874,7 @@ double DesignResp1Response::elementItem(const ElementTarget& target, std::int32_
         ItemLocation energy = location;
         energy.column = STRAIN_ENERGY_COLUMN;
         const std::optional<double> value =
-            context.results->elementValue(energy, target.elementType, subcase, target.elementId, 0);
+            context.results->elementValue(energy, target.elementType, subcase, target.elementId, 0, mode);
         if (!context.elementVolumes)
             context.elementVolumes =
                 MassProperties::elementVolumes(*context.snapshot, context.snapshotOwner, {}, *context.budget);
@@ -874,7 +884,8 @@ double DesignResp1Response::elementItem(const ElementTarget& target, std::int32_
         return *value / volume->second;
     }
     const std::optional<double> value =
-        context.results->elementValue(location, target.elementType, subcase, target.elementId, location.layer + lamina);
+        context.results->elementValue(location, target.elementType, subcase, target.elementId,
+                                       location.layer + lamina, mode);
     if (!value || !std::isfinite(*value))
         missing("expected a finite result value, found none");
     if (!location.isStrengthRatio)
@@ -884,7 +895,8 @@ double DesignResp1Response::elementItem(const ElementTarget& target, std::int32_
     if (location.column == BOND_FAILURE_INDEX_COLUMN)
         return StrengthRatio::ofBond(*value);
     const std::span<const double> stresses =
-        context.results->elementRow("stress", target.elementType, subcase, target.elementId, ItemPlace::Centre, lamina);
+        context.results->elementRow("stress", target.elementType, subcase, target.elementId, ItemPlace::Centre,
+                                     lamina, mode);
     if (stresses.size() < 3)
         missing("expected the ply stresses of the strength ratio, found none");
     const elements::SnapshotIndex& index = context.snapshotIndex();
@@ -973,6 +985,11 @@ double DesignResp1Response::pointValue(std::int32_t grid, std::int32_t subcase, 
 void DesignResp1Response::evaluate(std::int32_t subcase, ResponseContext& context, ResponseValues& values) const
 {
     const ResponseType type = m_definition.type;
+    std::int32_t mode = m_definition.mode.value_or(0);
+    if (mode != 0)
+        if (const auto tracked = context.trackedModes.find({m_definition.id, subcase});
+            tracked != context.trackedModes.end())
+            mode = tracked->second;
     const auto append = [&values](ResponseItem item, double value)
     {
         values.items.push_back(item);
@@ -1014,18 +1031,19 @@ void DesignResp1Response::evaluate(std::int32_t subcase, ResponseContext& contex
     case ResponseType::Displacement:
     case ResponseType::SpcForce:
     {
-        const char* kind = type == ResponseType::Displacement ? "displacements" : "singlePointConstrForces";
+        const char* kind = type == ResponseType::Displacement ? (mode == 0 ? "displacements" : "eigenvectors")
+                                                             : "singlePointConstrForces";
         for (const std::int32_t grid : m_grids)
             for (const std::int32_t component : m_components)
             {
-                const std::optional<double> value = context.results->nodalValue(kind, subcase, grid, component);
+                const std::optional<double> value = context.results->nodalValue(kind, subcase, grid, component, mode);
                 if (!value)
                     throw base::OptimisationError(base::concatenate(
                         {"DesignResp1 ", std::to_string(m_definition.id), " (", m_definition.label, "): expected the ",
                          kind, " of grid point ", std::to_string(grid), " in subcase ", std::to_string(subcase),
                          ", found none in the results of the analysis; evaluate the response on an analysis of the "
                          "design problem, which recovers the grid points of its responses"}));
-                append({subcase, grid, component, 0}, *value);
+                append({subcase, grid, component, 0, mode}, *value);
             }
         return;
     }
@@ -1062,8 +1080,8 @@ void DesignResp1Response::evaluate(std::int32_t subcase, ResponseContext& contex
     for (const ElementTarget& target : m_elements)
         for (const std::int32_t lamina : laminae)
             for (const auto& [code, location] : target.items)
-                append({subcase, target.elementId, code, lamina},
-                       elementItem(target, code, location, lamina, subcase, context));
+                append({subcase, target.elementId, code, lamina, mode},
+                       elementItem(target, code, location, lamina, subcase, context, mode));
 }
 
 } // namespace oos::design

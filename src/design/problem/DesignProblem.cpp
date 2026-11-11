@@ -325,12 +325,24 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         modesOptions.monitor = options.monitor;
         modesOptions.structures = options.structures;
         condensedOptions(modesOptions);
+        for (const auto& definition : m_responses.parts().designResp1)
+            if (definition.mode)
+            {
+                m_responses.findDesignResp1(definition.id)->addRequiredOutputs(modesOptions.requiredOutputs);
+                // The bordered modal derivative uses the original pencil, including every interior DOF.
+                modesOptions.condensation.reset();
+            }
         solutions::ModesResults modes = solutions::ModesSolution(overlaid, modesOptions).run(budget);
         for (const solutions::ModesSubcaseResult& subcase : modes.subcases)
             evaluation.modesSubcases.push_back(subcase.subcase);
         // The diagnostics of the analyses together (the warnings of a point, whatever its analysis).
         evaluation.results.diagnostics.insert(evaluation.results.diagnostics.end(), modes.diagnostics.begin(),
                                               modes.diagnostics.end());
+        for (auto& table : modes.arrays.nodalTables)
+            evaluation.results.arrays.nodalTables.push_back(std::move(table));
+        for (auto& table : modes.arrays.elementTables)
+            evaluation.results.arrays.elementTables.push_back(std::move(table));
+        modes.arrays = output::ResultArrays{};
         evaluation.modes.emplace(std::move(modes));
     }
     if (analyses.aeroelastic)
@@ -488,7 +500,7 @@ void DesignProblem::trackModes(const StaticDesignEvaluation& analysis, const Res
 {
     for (const DesignResp1Definition& definition : m_responses.parts().designResp1)
     {
-        if (!definition.tracksMode || !isEigenType(definition.type))
+        if (!definition.tracksMode || (!isEigenType(definition.type) && !definition.mode))
             continue;
         const auto found = subcases.find(definition.id);
         if (found == subcases.end())
@@ -501,7 +513,7 @@ void DesignProblem::trackModes(const StaticDesignEvaluation& analysis, const Res
             TrackedMode mode;
             mode.responseId = definition.id;
             mode.subcase = subcase;
-            mode.requestedMode = definition.attributeA.value_or(1);
+            mode.requestedMode = definition.mode.value_or(definition.attributeA.value_or(1));
             mode.mode = mode.requestedMode;
             const auto reference =
                 references != nullptr ? references->find({definition.id, subcase}) : ModeReferences::const_iterator{};

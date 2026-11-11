@@ -24,6 +24,7 @@ struct ResponseItem
     std::int32_t entity = 0;
     std::int32_t component = 0;
     std::int32_t layer = 0;
+    std::int32_t mode = 0; // 0 for a static item; the selected vibration mode for a modal field item
 
     friend bool operator==(const ResponseItem&, const ResponseItem&) = default;
 };

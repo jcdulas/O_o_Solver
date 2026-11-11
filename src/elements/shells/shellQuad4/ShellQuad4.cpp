@@ -1,4 +1,5 @@
 #include "oos/elements/shells/shellQuad4/ShellQuad4.hpp"
+#include "oos/elements/shells/SecondOrderScalar.hpp"
 
 #include "ShellQuad4Kinematics.hpp"
 
@@ -352,5 +353,13 @@ template ScalarMatrix<double, ShellQuad4::DOFS> ShellQuad4::stiffness(const Geom
 template ScalarMatrix<Complex, ShellQuad4::DOFS> ShellQuad4::stiffness(const Geometry&,
                                                                        const PlateConstitutive<Complex>&,
                                                                        const std::array<Complex, NODES>&);
+
+template ScalarMatrix<SecondOrderScalar, ShellQuad4::DOFS> ShellQuad4::stiffness(
+    const Geometry&, const PlateConstitutive<SecondOrderScalar>&, const std::array<SecondOrderScalar, NODES>&);
+template std::array<SecondOrderScalar, 2> quad4_detail::recoveryShearFactors(
+    const ShellQuad4Geometry&, const PlateConstitutive<SecondOrderScalar>&,
+    const quad4_detail::ShearCorrection<SecondOrderScalar>&, const SecondOrderScalar&, double, double, bool);
+template quad4_detail::ShearCorrection<SecondOrderScalar> quad4_detail::shearCorrectionOf(
+    const ShellQuad4Geometry&, const PlateConstitutive<SecondOrderScalar>&, const SecondOrderScalar&);
 
 } // namespace oos::elements

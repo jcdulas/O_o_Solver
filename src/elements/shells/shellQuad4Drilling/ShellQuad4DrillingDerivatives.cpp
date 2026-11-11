@@ -253,6 +253,27 @@ bool ShellQuad4DrillingElement::differentialStiffnessFieldDerivative(const Eleme
     return true;
 }
 
+bool ShellQuad4DrillingElement::differentialStiffnessFieldMixedDerivative(
+    const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
+    const NodalDisplacements& preload, ElementMatrixBlock& block) const
+{
+    if (!isShellThickness(first) || !isShellThickness(second) || first.id != second.id ||
+        preload.temperatures != nullptr)
+        return ElementFamily::differentialStiffnessFieldMixedDerivative(view, row, first, second, preload, block);
+    const Columns columns(view);
+    const Data data = resolve(view, columns, row).required();
+    if (!cornersFollowThickness(data.section, columns.thicknessFlag[static_cast<std::size_t>(row)],
+                                columns.cornerThickness[row]))
+        return false;
+    const ShellQuad4DrillingPlate plate(data.geometry, data.section, data.thickness);
+    const auto q = data.frames.localDisplacements(preload);
+    const auto states = plate.placeStates(q, data.gridIds);
+    const auto secondRates = plate.placeStateSecondRates(states, q, data.section.thickness);
+    appendMatrix(block, row, data.frames.dofs(),
+                 data.frames.toDisplacementSystems(plate.differentialStiffness(secondRates[0].membraneForce)));
+    return true;
+}
+
 // The rows' rates with respect to T at fixed displacements (ShellQuad4DrillingPlate::placeStateRates, appendShellRowRates), or
 // to a AnisoMat2D stiffness term without a temperature change (placeStateSectionRates).
 bool ShellQuad4DrillingElement::recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,

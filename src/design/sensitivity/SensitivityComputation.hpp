@@ -6,6 +6,7 @@
 // included by the sources of the design module only.
 
 #include "EigenItems.hpp"
+#include "ModalItems.hpp"
 #include "TrimItems.hpp"
 #include "oos/assembly/assemble/ElementSet.hpp"
 #include "oos/assembly/assemble/MassAssembler.hpp"
@@ -398,6 +399,9 @@ public:
                 inputs.modes, inputs.buckling, &m_dofMap, &m_set,
                 inputs.overlaid->hasTable(input::TableRole::Params) ? &inputs.overlaid->params() : nullptr,
                 m_variableCount, &budget});
+        if (inputs.modes != nullptr)
+            m_modal = std::make_unique<ModalItems>(ModalItems::Inputs{
+                inputs.overlaid, inputs.modes, &m_set, &m_dofMap, inputs.kernel, inputs.pool, &budget});
         // The items of the SAERO subcases (TrimItems), on the trim's linearisation.
         if (inputs.trim != nullptr)
             m_trim = std::make_unique<TrimItems>(TrimItems::Inputs{
@@ -438,7 +442,7 @@ public:
         for (const std::unique_ptr<SensitivitySystem>& system : m_systems)
             m_report.factorisations += system->factorisationCount();
         collectCondensedStatistics(m_report);
-        m_report.solves = report.solves;
+        m_report.solves += report.solves;
         report.linearisation = std::move(m_report);
         return report;
     }
@@ -457,6 +461,8 @@ protected:
         lineariseElementJobs();
         m_report.itemSeconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - itemsStarted).count();
         lineariseEigenItems();
+        if (m_modal)
+            m_modal->prepare();
         lineariseTrimItems();
         const auto fieldsStarted = std::chrono::steady_clock::now();
         differenceFields();
@@ -464,6 +470,12 @@ protected:
             std::chrono::duration<double>(std::chrono::steady_clock::now() - fieldsStarted).count();
         addExternalUnitLoads();
         finishEigenItems();
+        if (m_modal)
+        {
+            m_modal->addExplicitParts(m_quantities, m_linearised);
+            m_report.solves += m_modal->solveCount();
+            m_report.factorisations += static_cast<std::int32_t>(m_modal->factorisationCount());
+        }
         finishTrimItems();
         compressExplicitParts();
         foldSelfAdjoint();
@@ -570,6 +582,8 @@ protected:
             {
                 ItemLinearisation& item = m_linearised.items[p][i];
                 item.subcase = values[p].items[i].subcase;
+                if (values[p].items[i].mode != 0)
+                    item.subcase = 0; // the modal adjoint supplies the complete explicit row
                 // A LAMA item reads the displacements of its preload subcase (EigenItems: the weights of K_d(u)).
                 if (const DesignResp1Response* response = m_in.responses->findDesignResp1(values[p].id);
                     m_eigen && response != nullptr && response->definition().type == ResponseType::BucklingFactor)
@@ -1196,6 +1210,13 @@ protected:
                 ItemLinearisation& item = m_linearised.at(key);
                 if (!item.isWanted)
                     continue;
+                if (response->definition().mode)
+                {
+                    if (!m_modal)
+                        throw base::OptimisationError("modal field sensitivities require a vibration analysis");
+                    m_modal->add(key, *response, label, values.values[i]);
+                    continue;
+                }
                 if (m_trim && m_trim->isTrimSubcase(label.subcase) && !isAeroelasticType(type) &&
                     type != ResponseType::Displacement && !isElementType(type))
                     throw base::OptimisationError(base::concatenate(
@@ -2801,7 +2822,9 @@ protected:
                         {
                             const ElementMatrices matrices{family, batch.view, element.row, designed, differences};
                             DerivativeCounts ignored;
-                            return massDerivativeOf(matrices, options, ignored);
+                            ElementMatrixDerivative mass = massDerivativeOf(matrices, options, ignored);
+                            m_report.analyticDerivatives += ignored.analytic;
+                            return mass;
                         },
                         [&](const elements::NodalDisplacements& preload)
                         {
@@ -2809,8 +2832,27 @@ protected:
                                                             preload);
                         });
                 if (m_trim)
-                    m_trim->addElement(q, family, element.row, batch.view.elementId(element.row), differences(), use,
-                                       terms.stiffness);
+                    m_trim->addElement(q, family, batch.view.elementId(element.row), use, terms.stiffness,
+                        [&](const elements::MassOptions& options)
+                        {
+                            const ElementMatrices matrices{family, batch.view, element.row, designed, differences};
+                            DerivativeCounts counts;
+                            auto mass = massDerivativeOf(matrices, options, counts);
+                            m_report.analyticDerivatives += counts.analytic;
+                            m_report.elementDerivatives += counts.differenced;
+                            return mass;
+                        });
+                if (m_modal && !m_modal->isEmpty())
+                    m_modal->addElement(q, element, use, terms.stiffness,
+                        [&](const elements::MassOptions& options)
+                        {
+                            const ElementMatrices matrices{family, batch.view, element.row, designed, differences};
+                            DerivativeCounts counts;
+                            auto mass = massDerivativeOf(matrices, options, counts);
+                            m_report.analyticDerivatives += counts.analytic;
+                            m_report.elementDerivatives += counts.differenced;
+                            return mass;
+                        }, designed, perturbation);
             }
         }
         if (m_trim)
@@ -3972,7 +4014,7 @@ protected:
             m_report.subcases.push_back(choice);
         }
         solveGathered();
-        m_report.factorisations = 0;
+        m_report.factorisations = m_modal ? static_cast<std::int32_t>(m_modal->factorisationCount()) : 0;
         for (const std::unique_ptr<SensitivitySystem>& system : m_systems)
             m_report.factorisations += system->factorisationCount();
         collectCondensedStatistics(m_report);
@@ -4090,6 +4132,7 @@ protected:
         m_gmTermIndex;
     std::unique_ptr<LinearityIndicator> m_linearity; // of the design point's snapshot, built on first use
     std::unique_ptr<EigenItems> m_eigen;             // the EIGN, FREQ, LAMA items, with eigenvalue solves
+    std::unique_ptr<ModalItems> m_modal;             // displacement and recovered fields of vibration modes
     std::unique_ptr<TrimItems> m_trim;               // the items of the SAERO subcases
     bool m_keepsLoadParts = false;                   // a self-adjoint response is linearised
     bool m_preparesEverySubcase = false;             // set by the aids that read every analysed subcase

@@ -1,4 +1,5 @@
 #include "ShellQuad4Kinematics.hpp"
+#include "oos/elements/shells/SecondOrderScalar.hpp"
 #include "oos/elements/shells/shellQuad4/ShellQuad4.hpp"
 
 namespace oos::elements
@@ -210,5 +211,9 @@ template CentreRecoveryOperator<Complex, ShellQuad4::DOFS> ShellQuad4::recovery(
                                                                                 const std::array<Complex, NODES>&,
                                                                                 const std::array<Complex, 2>&,
                                                                                 const PlateThermalStrain&);
+
+template CentreRecoveryOperator<SecondOrderScalar, ShellQuad4::DOFS> ShellQuad4::recovery(
+    const Geometry&, const PlateConstitutive<SecondOrderScalar>&, const std::array<SecondOrderScalar, NODES>&,
+    const std::array<SecondOrderScalar, 2>&, const PlateThermalStrain&);
 
 } // namespace oos::elements

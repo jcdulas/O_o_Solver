@@ -34,11 +34,14 @@ trim variables, stability derivatives, hinge moments and monitoring loads.
 | Solution | Native design derivatives | Study responses and derivatives |
 | --- | --- | --- |
 | 101 static | Supported sizing and shape responses; selected second order products | Any stable numeric table/query result, full analysis differences |
-| 103 modes | Eigenvalue and frequency gradients; Hessian-vector products from native gradients | Eigenvalues, eigenvectors and modal stresses; mode references and full analysis differences |
-| 105 buckling | Load factor gradients including the static preload; Hessian-vector products from native gradients | Load factors and result fields, full analysis differences |
-| 144 static aeroelastic | Native sizing gradients including applied inertial load mass changes on the full path; shape columns from complete trim differences; Hessian-vector products from those gradients | Trim and structural outputs, including driven load changes, full analysis differences |
+| 103 modes | Eigenvalue, frequency and mode-selected field gradients; analytic Hessian-vector products where element second derivatives are closed | Eigenvalues, eigenvectors and modal stresses; mode references and full analysis differences |
+| 105 buckling | Load factor gradients including the static preload; analytic Hessian products for closed mechanical-preload sizing formulations | Load factors and result fields, full analysis differences |
+| 144 static aeroelastic | Native sizing gradients and analytic Hessian products for closed trim/state/coefficient formulations; shape columns from complete trim differences | Trim and structural outputs, including driven load changes, full analysis differences |
 
 The [native design module](../src/design/README.md) details the exact response formulations and restrictions.
+The [modal derivative guide](modal-derivatives.md) describes field selection, normalisation and the bordered systems
+used by the C++ first- and second-order calculations.
+The [coupled derivative guide](coupled-derivatives.md) describes analytic buckling and trim products and their limits.
 When an explicit condensation plan places a driven unit inside a condensed part, native SOL 144 gradients run that
 trim on the full structural path. This can increase memory use. Applied trim loads also require the full path.
 `derivatives: "numerical"` enables full analysis gradients for a native design point when its native linearization is

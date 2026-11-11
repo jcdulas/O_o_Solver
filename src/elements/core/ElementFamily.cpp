@@ -430,6 +430,16 @@ bool ElementFamily::differentialStiffnessFieldDerivative(const ElementBatchView&
     return false;
 }
 
+bool ElementFamily::differentialStiffnessFieldMixedDerivative(
+    const ElementBatchView& /*view*/, std::int64_t /*row*/, const DesignedField& first, const DesignedField& second,
+    const NodalDisplacements& /*preload*/, ElementMatrixBlock& /*block*/) const
+{
+    const auto a = designFieldUse(first);
+    const auto b = designFieldUse(second);
+    return isDifferentiallyInert() || !(a.changesStiffness || a.changesLoads) ||
+           !(b.changesStiffness || b.changesLoads);
+}
+
 bool ElementFamily::recoveryFieldRates(const ElementBatchView& /*view*/, std::int64_t /*row*/,
                                        const DesignedField& /*field*/, ElementOutput /*output*/,
                                        const NodalDisplacements& /*displacements*/, ElementResultBlock& /*rates*/) const
@@ -491,6 +501,43 @@ bool ElementFamily::recoveryFieldSecondRates(const ElementBatchView& /*view*/, s
                                              ElementResultBlock& /*rates*/) const
 {
     return false;
+}
+
+namespace
+{
+
+bool sameField(const DesignedField& first, const DesignedField& second)
+{
+    return first.card == second.card && first.column == second.column && first.id == second.id &&
+           first.item == second.item;
+}
+
+} // namespace
+
+bool ElementFamily::stiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                                  const DesignedField& first, const DesignedField& second,
+                                                  ElementMatrixBlock& block) const
+{
+    if (sameField(first, second))
+        return stiffnessFieldSecondDerivative(view, row, first, block);
+    return !designFieldUse(first).changesStiffness || !designFieldUse(second).changesStiffness;
+}
+
+bool ElementFamily::massFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                             const DesignedField& first, const DesignedField& second,
+                                             const MassOptions& options, ElementMatrixBlock& block) const
+{
+    if (sameField(first, second))
+        return massFieldSecondDerivative(view, row, first, options, block);
+    return !designFieldUse(first).changesMass || !designFieldUse(second).changesMass;
+}
+
+bool ElementFamily::recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row,
+                                            const DesignedField& first, const DesignedField& second,
+                                            ElementOutput output, const NodalDisplacements& displacements,
+                                            ElementResultBlock& rates) const
+{
+    return sameField(first, second) && recoveryFieldSecondRates(view, row, first, output, displacements, rates);
 }
 
 } // namespace oos::elements

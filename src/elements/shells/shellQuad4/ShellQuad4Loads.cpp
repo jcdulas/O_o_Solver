@@ -1,4 +1,5 @@
 #include "ShellQuad4Kinematics.hpp"
+#include "oos/elements/shells/SecondOrderScalar.hpp"
 #include "oos/elements/shells/ShellDifferential.hpp"
 #include "oos/elements/shells/shellQuad4/ShellQuad4.hpp"
 
@@ -215,5 +216,9 @@ base::MatN<ShellQuad4::DOFS> ShellQuad4::differentialStiffness(const Geometry& g
         }
     return k;
 }
+
+template ScalarMatrix<SecondOrderScalar, ShellQuad4::DOFS> ShellQuad4::mass(
+    const Geometry&, const SecondOrderScalar&, const SecondOrderScalar&,
+    const std::array<SecondOrderScalar, NODES>&, MassFormulation);
 
 } // namespace oos::elements

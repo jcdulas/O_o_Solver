@@ -128,9 +128,9 @@ void TrimItems::prepare()
     }
 }
 
-void TrimItems::addElement(std::size_t /*quantity*/, const elements::ElementFamily& family, std::int64_t row,
-                           base::EntityId elementId, const ElementDerivatives& derivatives,
-                           const elements::FieldUse& use, const ElementMatrixDerivative& stiffness)
+void TrimItems::addElement(std::size_t /*quantity*/, const elements::ElementFamily& family,
+                           base::EntityId elementId, const elements::FieldUse& use,
+                           const ElementMatrixDerivative& stiffness, const MassOf& massOf)
 {
     if (isEmpty())
         return;
@@ -175,7 +175,7 @@ void TrimItems::addElement(std::size_t /*quantity*/, const elements::ElementFami
         {
             const auto key = std::make_pair(static_cast<int>(m_massOptions[s].formulation), m_weightToMass[s]);
             if (byOptions.count(key) == 0)
-                byOptions.emplace(key, derivatives.mass(row, m_massOptions[s]));
+                byOptions.emplace(key, massOf(m_massOptions[s]));
         }
         for (Direction& direction : m_directions)
         {

@@ -56,6 +56,7 @@ Resolution<PointMassInertiaElement::Mass> PointMassInertiaElement::resolve(const
                                                     {-terms[3], -terms[4], terms[5]});
     const base::Vec3 gridPosition = view.positionInBasic(*gridRow.value);
     base::Vec3 offset;
+    base::Mat3 inputToBasic = base::Mat3::identity();
     base::Mat3 inertiaInBasic = inertia;
     if (columns.frameId[r] == BASIC_FRAME_ID)
         offset = base::Vec3{x[0], x[1], x[2]} - gridPosition;
@@ -65,12 +66,14 @@ Resolution<PointMassInertiaElement::Mass> PointMassInertiaElement::resolve(const
         if (!frame)
             return Result::failure(std::move(frame.problem));
         const base::Mat3& axes = frame.value->axes;
+        inputToBasic = axes;
         offset = axes * base::Vec3{x[0], x[1], x[2]};
         inertiaInBasic = axes * inertia * axes.transposed();
     }
     const base::Mat3 frameOfGrid = view.displacementFrame(*gridRow.value);
     const base::MatN<6> massInBasic = rigidBodyMass(columns.m[r], offset, inertiaInBasic);
-    return Result::success({*gridRow.value, toDisplacementFrames<6>(massInBasic, {frameOfGrid, frameOfGrid})});
+    return Result::success(
+        {*gridRow.value, toDisplacementFrames<6>(massInBasic, {frameOfGrid, frameOfGrid}), offset, inputToBasic});
 }
 
 void PointMassInertiaElement::check(const ElementBatchView& view, base::DiagnosticSink& sink) const

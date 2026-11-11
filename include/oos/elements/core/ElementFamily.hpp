@@ -447,6 +447,11 @@ public:
     virtual bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
                                                       const DesignedField& field, const NodalDisplacements& preload,
                                                       ElementMatrixBlock& block) const;
+    // Mixed field curvature of K_d at a fixed mechanical preload. Its displacement dependence remains linear;
+    // the buckling Hessian adds both preload tangents separately. False means the formula is unavailable.
+    virtual bool differentialStiffnessFieldMixedDerivative(
+        const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
+        const NodalDisplacements& preload, ElementMatrixBlock& block) const;
     // The derivatives of the rows recover() gives the element of batch row `row` under `displacements` with respect to
     // the designed field `field` at fixed displacements (the explicit parts of its items), in closed form: `rates` in
     // the layout of recover()'s block (the same rows, places and columns), each column's ∂value/∂v, NaN where the
@@ -490,6 +495,14 @@ public:
                                                 const DesignedField& field, ElementMatrixBlock& block) const;
     virtual bool massFieldSecondDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                                            const MassOptions& options, ElementMatrixBlock& block) const;
+    // Mixed derivatives in two fields at fixed geometry. The defaults use the same-field methods when the
+    // fields match, or return a known zero when FieldUse says either field cannot change the matrix.
+    virtual bool stiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                               const DesignedField& first, const DesignedField& second,
+                                               ElementMatrixBlock& block) const;
+    virtual bool massFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                          const DesignedField& first, const DesignedField& second,
+                                          const MassOptions& options, ElementMatrixBlock& block) const;
     // The slopes of the rows of recoveryFieldRates (their derivatives at fixed displacements) with respect to the
     // element's DOFs, ∂S/∂v: the mixed second derivatives of its Linear columns, in the layout of recoverySlopes (zero
     // in the other columns); false when the family gives no closed form (the caller then takes them from
@@ -501,6 +514,11 @@ public:
     virtual bool recoveryFieldSecondRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                                           ElementOutput output, const NodalDisplacements& displacements,
                                           ElementResultBlock& rates) const;
+    // Mixed recovered rates at fixed displacement, in recover()'s row layout. False when no closed form is given.
+    virtual bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row,
+                                         const DesignedField& first, const DesignedField& second,
+                                         ElementOutput output, const NodalDisplacements& displacements,
+                                         ElementResultBlock& rates) const;
 
 protected:
     // Throws std::invalid_argument: the facet is not offered by this element type.

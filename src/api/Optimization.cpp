@@ -3,6 +3,9 @@
 #include "OptimizationProducts.hpp"
 
 #include "oos/api/Threading.hpp"
+#include "oos/design/aids/BucklingHessian.hpp"
+#include "oos/design/aids/ModalHessian.hpp"
+#include "oos/design/aids/TrimHessian.hpp"
 #include "oos/base/arrow/TablePackage.hpp"
 #include "oos/base/errors/OptimisationError.hpp"
 #include "oos/base/platform/MemoryInfo.hpp"
@@ -318,6 +321,20 @@ design::ProductReport OptimizationEvaluation::hessianVector(const design::Produc
     requireOutput(m_x.size(), count);
     requireFinite(directions, "directions");
     const auto& analyses = m_owner->settings().analyses;
+    if (m_evaluation.analysis.buckling)
+        if (auto report = design::bucklingHessianVector(m_owner->problem(), m_evaluation, weights, directions, count,
+                                                        values, m_budget, m_owner->settings().analysisOptions.kernel,
+                                                        m_owner->settings().analysisOptions.pool))
+            return *report;
+    if (analyses.hasAeroelastic())
+        if (auto report = design::trimHessianVector(m_owner->problem(), m_evaluation, weights, directions, count,
+                                                    values, m_budget, m_owner->settings().analysisOptions.pool))
+            return *report;
+    if (analyses.hasEigenvalues())
+        if (auto report = design::modalHessianVector(m_owner->problem(), m_evaluation, weights, directions, count,
+                                                     values, m_budget, m_owner->settings().analysisOptions.kernel,
+                                                     m_owner->settings().analysisOptions.pool))
+            return *report;
     if (analyses.hasEigenvalues() || analyses.hasAeroelastic() ||
         !m_evaluation.analysis.point.values().shapes.empty())
         return detail::nativeGradientHessian(*this, weights, directions, count, values);

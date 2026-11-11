@@ -99,6 +99,20 @@ TrimLinearisation::Directions TrimLinearisation::trimmedState(std::size_t subcas
     return {state.displacements, state.supportMotion};
 }
 
+std::vector<double> TrimLinearisation::supportMotion(std::size_t subcase,
+                                                     std::span<const double> accelerations) const
+{
+    const auto& state = m_state->subcases.at(subcase);
+    const auto& modes = m_state->groups[state.group]->structure->supportModes();
+    if (accelerations.size() != modes.columns())
+        throw std::invalid_argument("trim support acceleration count does not match the support modes");
+    std::vector<double> motion(gSetSize(), 0.0);
+    for (std::size_t k = 0; k < accelerations.size(); ++k)
+        for (std::size_t dof = 0; dof < motion.size(); ++dof)
+            motion[dof] += modes(dof, k) * accelerations[k];
+    return motion;
+}
+
 namespace
 {
 
@@ -261,6 +275,14 @@ std::array<double, 6> TrimLinearisation::coefficientDerivative(std::size_t subca
                                                                std::span<const double> inertialLoad,
                                                                base::MemoryBudget& budget)
 {
+    return coefficientStateDerivative(subcase, variable, isUnrestrained, stiffnessLoad, inertialLoad,
+                                      false, budget).coefficients;
+}
+
+TrimLinearisation::CoefficientDerivative TrimLinearisation::coefficientStateDerivative(
+    std::size_t subcase, std::size_t variable, bool isUnrestrained, std::span<const double> stiffnessLoad,
+    std::span<const double> inertialLoad, bool withDisplacements, base::MemoryBudget& budget)
+{
     TrimSubcaseState& state = m_state->subcases.at(subcase);
     TrimGroup& group = *m_state->groups[state.group];
     const std::size_t gSize = gSetSize();
@@ -290,8 +312,41 @@ std::array<double, 6> TrimLinearisation::coefficientDerivative(std::size_t subca
         load[dof] = inertialLoad[dof] + stiffnessLoad[dof];
     const std::vector<double> pressures =
         particularPressures(*m_state, group, state, load, relief, isUnrestrained, budget);
-    return aero::ReferenceCoefficients::of(m_state->reference,
-                                           combine(group.flexibility.structuralResultant, pressures));
+    CoefficientDerivative derivative;
+    derivative.coefficients = aero::ReferenceCoefficients::of(
+        m_state->reference, combine(group.flexibility.structuralResultant, pressures));
+    if (!withDisplacements)
+        return derivative;
+
+    // m_rr * a_x' = D_r^T (q T cp_x' - M' w_x). The second term is inertialLoad, whose projected
+    // contribution was already used in relief above. Restrained coefficient accelerations are prescribed.
+    const auto boxLoads = boxLoadsOf(*m_state, pressures, state.dynamicPressure);
+    linalg::DenseMatrix accelerations(budget, r, r > 0 ? 1 : 0, "coefficient tangent accelerations");
+    if (isUnrestrained)
+    {
+        const auto& modes = group.structure->supportModes();
+        for (std::size_t k = 0; k < r; ++k)
+        {
+            double work = 0.0;
+            for (std::size_t dof = 0; dof < gSize; ++dof)
+                work += modes(dof, k) * (boxLoads[dof] + inertialLoad[dof]);
+            accelerations(k, 0) = work;
+        }
+        group.supportMass->solve(accelerations.view());
+    }
+    else
+        for (std::size_t k = 0; k < r; ++k)
+            accelerations(k, 0) = 0.0;
+    linalg::DenseMatrix loads(budget, gSize, 1, "coefficient tangent loads");
+    for (std::size_t dof = 0; dof < gSize; ++dof)
+        loads(dof, 0) = boxLoads[dof] + load[dof];
+    linalg::DenseMatrix displacements(budget, gSize, 1, "coefficient tangent displacements");
+    group.structure->solve(loads.view(), accelerations.view(), displacements.view(), false, budget);
+    derivative.displacements.assign(&displacements(0, 0), &displacements(0, 0) + gSize);
+    const std::span<const double> supportValues = r > 0 ? std::span<const double>(&accelerations(0, 0), r)
+                                                       : std::span<const double>{};
+    derivative.motions = supportMotion(subcase, supportValues);
+    return derivative;
 }
 
 } // namespace oos::solutions

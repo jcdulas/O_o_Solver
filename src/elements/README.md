@@ -231,8 +231,10 @@ tapered tube, refused), as for the analysis of a design point.
 **Analytic derivatives**: a family may give what it knows in closed form, and the sensitivities difference the rest;
 each is optional, the choice explicit per family and field. The `ShellQuad4` and `ShellTria3` (`EdgeShearShellDerivatives.ipp`)
 take theirs by the complex step through their kernels (templates on the scalar: Im f(x + i·h ẋ)/h, h = 1e-30, exact
-first derivatives), their second derivatives in T by the 4-point central rule on complex-step first derivatives
-(δ = 1e-3 T); the rows below name the fields.
+first derivatives). Their thickness curvature propagates the exact chain rule through the same kernels with
+`SecondOrderScalar`: value, first derivative and second derivative at the same thickness, with no subtraction or
+step size. This covers stiffness, mass, recovered rows and fixed-preload geometric stiffness. The rows below name
+the fields.
 
 | What | Facet | Families |
 |---|---|---|
@@ -243,10 +245,37 @@ first derivatives), their second derivatives in T by the 4-point central rule on
 | The columns that are not Linear completed from the Linear ones (the vectorised recovery), and from how many cases a block pays for the slopes | `completeRecoveredRows`, `vectorisedRecoveryMinCases`; the ply tables `completeRecoveredLayerRows`, `vectorisedLayerRecoveryMinCases`, `vectorisedLayerSource` | the shells above (`completeShellRows`, 8 cases; their ply tables `completeLaminateRows`, the failure indices from the ply states, `completeLaminateFailureRows`, 4), `Bar2` (its extremes and margins, 8), `Beam2` (its extremes and the margins at one station, 8), `ShearPanel4` (its largest shear and margin from its mean flow, 8), the solids (`completeSolidRows`, 4: their principal values by Jacobi sweeps of four rows side by side, `principalStatesOf`, the bits of one row's), `Rod2`, `Rod2InlineSection`, `Tube2` (their margins, `completeRodRows`, 4), the springs (nothing to complete, `SPRING_VECTORISED_RECOVERY_MIN_CASES`, 4) and fasteners (`FASTENER_VECTORISED_RECOVERY_MIN_CASES`, 2; the `Weld`'s stresses made from its forces, `vectorisedSource`, `completeRecoveredRowsFromSource`) |
 | dK/dv, dM/dv of a designed field | `stiffnessFieldDerivative`, `massFieldDerivative`; several fields of one element at once `stiffnessFieldDerivatives` (by default one by one) | the `ShellProp` T of `ShellQuad4`, `ShellQuad4Drilling`, `ShellTria3`, `ShellTria3Drilling` whose corners follow T; the A and J of `Rod2` (`RodProp`) and `Rod2InlineSection`; the AnisoMat2D stiffness terms (`stiffness`, named by their MID: `DesignedField::id`, `item`) of the `ShellProp`'s MID1 to MID4 for `ShellQuad4`, `ShellQuad4Drilling`, `ShellTria3`, `ShellTria3Drilling`, `ShellQuad8`, `ShellTria6` (`ShellSectionRate`; no mass: the terms change none), a MID4 at a coupling zero at the point too but on the drilling membranes; the ply thicknesses of a CompProp or CompPropGlobal (`ply_thickness`, the item the card's ply) for the six shells (`LaminateRate`, `laminateSectionRate`; the mass of the ShellQuad4, ShellTria3 and their drilling variants) |
 | The ply rows' rates in a designed field | `layerRecoveryFieldRates`, several fields `layerRecoveryFieldRatesOfFields` | a ply thickness of the shells' laminates: the ply stresses, strains, failure and bond indices, ply states (`appendLaminateRowRates`) |
-| dK_d/dv at a fixed preload (the buckling factors' explicit parts) | `differentialStiffnessFieldDerivative` | the shells above in their AnisoMat2D terms, and the T of `ShellQuad4`, `ShellQuad4Drilling`, `ShellTria3`, `ShellTria3Drilling`; none under a temperature change of the preload |
+| dK_d/dv at a fixed preload (the buckling factors' explicit parts) | `differentialStiffnessFieldDerivative` | the shells above in their AnisoMat2D terms, and the T of `ShellQuad4`, `ShellQuad4Drilling`, `ShellTria3`, `ShellTria3Drilling`; none under a temperature change of the preload; `Rod2` area and torsion rates, including fixed initial strains |
+| Mixed d2K_d/dp dq at fixed preload | `differentialStiffnessFieldMixedDerivative` | thickness of the quadrilateral and triangular shells above; `Rod2` area/torsion zero curvature; an inert or unaffected field gives a known zero |
 | The rows' rates with respect to a designed field at fixed u (the explicit parts) | `recoveryFieldRates`; several fields at once `recoveryFieldRatesOfFields` | the same fields and families (the AnisoMat2D terms not under a temperature change) |
 | d²K/dv², d²M/dv² (the Hessian blocks) | `stiffnessFieldSecondDerivative`, `massFieldSecondDerivative` (true with nothing appended: zero) | the same fields and families (the rods' all zero) |
 | The slopes of the rows' rates, ∂S/∂v (the mixed second derivatives), and the rows' second rates at fixed u | `recoverySlopeRates`, `recoveryFieldSecondRates` | the same fields and families, not under temperatures (the columns that are not Linear NaN: not formed; a von Mises from its components) |
+
+The four scalar spring families give exact field derivatives for their spring rate: `dK/dk = s s^T` and
+`d(force)/dk = s^T u`. The three families with a stress coefficient also give
+`d(stress)/dk = S s^T u` and `d(stress)/dS = k s^T u`. Their same-field second derivatives vanish.
+These rates feed static, modal and buckling sensitivities through the common element facets.
+`Bushing1D` also supplies exact rates for its axial stiffness, lumped mass, stress factor and strain factor.
+Its seven stress and strain table components are available to optimization responses as item codes 2 through 8.
+The four scalar mass families supply `dM/dm = s s^T` and a zero same-field second derivative.
+
+`Bushing` supplies exact stiffness-component, mass and recovery-coefficient rates. `Fastener` differentiates its
+six spring rates and mass before carrying the matrices through its piercing interpolation. `Gap2` differentiates
+its closed, open and transverse spring rates within the initial branch; changing the opening through zero is a
+branch change, outside those formulas. Optimization force items are mapped for `Fastener` (2 to 7) and `Gap2`
+(2 to 9); `Fastener` stress items (2 to 7) hold the same forces and moments.
+
+`PointMassMatrix` differentiates each of its 21 symmetric matrix terms before rotation to the displacement frame.
+`PointMassInertia` differentiates the rigid-body matrix in mass, all three offsets and all six inertia terms,
+including the parallel-axis terms and translation/rotation coupling. Its offset second derivatives and mixed
+mass/offset and offset/offset derivatives retain those terms. Rectangular input and displacement frames, and the
+absolute centre-of-gravity convention, follow the same transformations as the element's mass calculation.
+
+The optional `stiffnessFieldMixedDerivative`, `massFieldMixedDerivative` and `recoveryFieldMixedRates` facets give
+second derivatives in two fields. A known zero is returned explicitly; an unavailable formula returns `false`.
+Scalar springs and axial bushings include the stiffness/stress-coefficient product. The six-component bushing
+includes the corresponding stiffness/recovery-coefficient products; fastener and gap spring rates have zero mixed
+field rates at fixed displacement. These formulas are implemented in C++ and are shared by native and WebAssembly builds.
 
 **Checks by ranges**: a family whose check is row by row says so (`isCheckedByRow`) and checks a range of rows
 (`checkRows`), so that `assembly::ElementSet::check` checks a long batch by ranges on the pool: the `ShellQuad4` and

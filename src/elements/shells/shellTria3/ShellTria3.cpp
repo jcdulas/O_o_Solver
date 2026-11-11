@@ -1,4 +1,5 @@
 #include "oos/elements/shells/shellTria3/ShellTria3.hpp"
+#include "oos/elements/shells/SecondOrderScalar.hpp"
 
 #include "oos/elements/shells/ShellDifferential.hpp"
 
@@ -509,5 +510,14 @@ base::MatN<ShellTria3::DOFS> ShellTria3::differentialStiffness(const Geometry& g
     addMembraneDifferentialStiffness<NODES, 6>(k, geometry.dX, geometry.dY, 0.5 * geometry.determinant, membraneForce);
     return k;
 }
+
+template ScalarMatrix<SecondOrderScalar, ShellTria3::DOFS> ShellTria3::stiffness(
+    const Geometry&, const PlateConstitutive<SecondOrderScalar>&, const std::array<SecondOrderScalar, NODES>&);
+template ScalarMatrix<SecondOrderScalar, ShellTria3::DOFS> ShellTria3::mass(
+    const Geometry&, const SecondOrderScalar&, const SecondOrderScalar&,
+    const std::array<SecondOrderScalar, NODES>&, MassFormulation);
+template CentreRecoveryOperator<SecondOrderScalar, ShellTria3::DOFS> ShellTria3::recovery(
+    const Geometry&, const PlateConstitutive<SecondOrderScalar>&, const std::array<SecondOrderScalar, NODES>&,
+    const std::array<SecondOrderScalar, 2>&, const PlateThermalStrain&);
 
 } // namespace oos::elements

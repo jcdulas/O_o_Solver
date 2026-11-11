@@ -10,7 +10,7 @@
 //
 // Facets: stiffness, recovery (forces, stresses). No mass (a scalar spring has none). GE, the structural damping
 // coefficient, is read by dynamic solutions only and plays no part in SOL 101, 103, 105. The
-// differential stiffness (zero for a scalar spring), loads (none apply) and design derivatives are not written yet.
+// differential stiffness and loads are zero. The derivatives of K and S are closed form.
 //
 // Not supported: nothing on this card. Problems reported by check(): an unknown point, a component outside 1-6 on a
 // grid point or other than 0 on a scalar point, both ends blank, both ends on the same DOF.
@@ -39,6 +39,22 @@ public:
         return {Facet::Stiffness, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row,
+                                 const DesignedField& first, const DesignedField& second,
+                                 ElementOutput output, const NodalDisplacements& displacements,
+                                 ElementResultBlock& rates) const override;
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementMatrixBlock& block) const override;
+    bool recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, const NodalDisplacements& displacements,
+                            ElementResultBlock& rates) const override;
+    bool stiffnessFieldSecondDerivative(const ElementBatchView& view, std::int64_t row,
+                                        const DesignedField& field, ElementMatrixBlock& block) const override;
+    bool recoverySlopeRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, RecoverySlopes& rates) const override;
+    bool recoveryFieldSecondRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementOutput output, const NodalDisplacements& displacements,
+                                  ElementResultBlock& rates) const override;
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
     void computeStiffness(const ElementBatchView& view, ElementRange range, ElementMatrixBlock& block) const override;

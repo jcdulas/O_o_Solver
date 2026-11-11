@@ -152,6 +152,10 @@ the folders in that order, which is the order in which the pieces depend on one 
   purification), `eigen/MassOrthogonalizer` (block Gram-Schmidt in the M-inner product, its inner products by fixed
   pieces of rows on the threads), `eigen/EigenvectorStore` (the pairs found, locked out of every later basis).
 - Sparse additions: `SymmetricCsc::combine`, `hasSameStructure` and the block product `multiply(X, Y, pool)`.
+- `eigen/BorderedEigenSystem`: the sparse linearisation `[K-lambda M, M phi; (M phi)^T, 0]` of a simple
+  eigenpair, with a balanced border eliminated last. One indefinite factor serves modal response adjoints,
+  eigenvector tangents and differentiated adjoints. The original pencil order is retained before its postorder;
+  no dense model matrix or modal projector is formed.
 
 ## Buckling eigenproblem
 

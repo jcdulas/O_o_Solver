@@ -390,6 +390,8 @@ std::shared_ptr<api::OptimizationProblem> createOptimization(const std::shared_p
                      response.plies = numbers<std::int32_t>(get(value, "plies"));
                      response.subcases = numbers<std::int32_t>(get(value, "subcases"));
                      response.tracksMode = option<bool>(value, "tracksMode", false);
+                     if (present(get(value, "mode")))
+                         response.mode = idOf(value["mode"]);
                      readSections(value, response);
                      input.responses.designResp1.push_back(std::move(response));
                  });
@@ -605,6 +607,8 @@ val itemObject(const design::ResponseItem& item)
     result.set("entity", item.entity);
     result.set("component", item.component);
     result.set("layer", item.layer);
+    if (item.mode != 0)
+        result.set("mode", item.mode);
     return result;
 }
 val evaluationValues(api::OptimizationEvaluation& point)
@@ -752,6 +756,9 @@ val reportObject(const design::ProductReport& report)
     result.set("isAdjointReused", report.isAdjointReused);
       result.set("perturbedLinearisations", report.perturbedLinearisations);
     result.set("hasHessianBlocks", report.hasHessianBlocks);
+    result.set("usesModalTangents", report.usesModalTangents);
+    result.set("usesTrimTangents", report.usesTrimTangents);
+    result.set("usesBucklingTangents", report.usesBucklingTangents);
     result.set("areHessianBlocksReused", report.areHessianBlocksReused);
     result.set("hessianBlocksReason", report.hessianBlocksReason);
     return result;

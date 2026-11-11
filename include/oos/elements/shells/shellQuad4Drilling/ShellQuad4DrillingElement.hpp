@@ -129,6 +129,9 @@ public:
     bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
                                               const DesignedField& field, const NodalDisplacements& preload,
                                               ElementMatrixBlock& block) const override;
+    bool differentialStiffnessFieldMixedDerivative(
+        const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
+        const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
     bool recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                             ElementOutput output, const NodalDisplacements& displacements,
                             ElementResultBlock& rates) const override;

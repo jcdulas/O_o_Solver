@@ -15,18 +15,19 @@ constexpr double END_B_POSITION = 1.0;
 ResultLookup::ResultLookup(const output::ResultArrays& arrays) : m_arrays(&arrays)
 {
     for (std::size_t t = 0; t < arrays.nodalTables.size(); ++t)
-        m_nodalTables.emplace(std::make_pair(arrays.nodalTables[t].kind, arrays.nodalTables[t].subcase), t);
+        m_nodalTables.emplace(std::make_tuple(arrays.nodalTables[t].kind, arrays.nodalTables[t].subcase,
+                                             arrays.nodalTables[t].step), t);
     for (std::size_t t = 0; t < arrays.elementTables.size(); ++t)
     {
         const output::ElementResultTable& table = arrays.elementTables[t];
-        m_elementTables.emplace(std::make_tuple(table.kind, table.elementType, table.subcase), t);
+        m_elementTables.emplace(std::make_tuple(table.kind, table.elementType, table.subcase, table.step), t);
     }
 }
 
 std::optional<double> ResultLookup::nodalValue(std::string_view kind, std::int32_t subcase, std::int32_t id,
-                                               std::int32_t component)
+                                               std::int32_t component, std::int32_t mode)
 {
-    const auto found = m_nodalTables.find({std::string(kind), subcase});
+    const auto found = m_nodalTables.find({std::string(kind), subcase, mode});
     if (found == m_nodalTables.end() || component < 1 || component > output::NodalResultTable::COMPONENT_COUNT)
         return std::nullopt;
     const output::NodalResultTable& table = m_arrays->nodalTables[found->second];
@@ -43,17 +44,17 @@ std::optional<double> ResultLookup::nodalValue(std::string_view kind, std::int32
 }
 
 const output::ElementResultTable* ResultLookup::elementTable(std::string_view tableKind, std::string_view elementType,
-                                                             std::int32_t subcase) const
+                                                             std::int32_t subcase, std::int32_t mode) const
 {
-    const auto found = m_elementTables.find({std::string(tableKind), std::string(elementType), subcase});
+    const auto found = m_elementTables.find({std::string(tableKind), std::string(elementType), subcase, mode});
     return found == m_elementTables.end() ? nullptr : &m_arrays->elementTables[found->second];
 }
 
 std::span<const double> ResultLookup::elementRow(std::string_view tableKind, std::string_view elementType,
                                                  std::int32_t subcase, std::int32_t elementId, ItemPlace place,
-                                                 std::int32_t layer)
+                                                 std::int32_t layer, std::int32_t mode)
 {
-    const auto found = m_elementTables.find({std::string(tableKind), std::string(elementType), subcase});
+    const auto found = m_elementTables.find({std::string(tableKind), std::string(elementType), subcase, mode});
     if (found == m_elementTables.end())
         return {};
     const output::ElementResultTable& table = m_arrays->elementTables[found->second];
@@ -85,14 +86,15 @@ std::span<const double> ResultLookup::elementRow(std::string_view tableKind, std
 }
 
 std::optional<double> ResultLookup::elementValue(const ItemLocation& location, std::string_view elementType,
-                                                 std::int32_t subcase, std::int32_t elementId, std::int32_t layer)
+                                                 std::int32_t subcase, std::int32_t elementId, std::int32_t layer,
+                                                 std::int32_t mode)
 {
-    const output::ElementResultTable* table = elementTable(location.tableKind, elementType, subcase);
+    const output::ElementResultTable* table = elementTable(location.tableKind, elementType, subcase, mode);
     if (table == nullptr)
         return std::nullopt;
     const std::optional<std::size_t> column = location.columnIn(table->components);
     const std::span<const double> row =
-        elementRow(location.tableKind, elementType, subcase, elementId, location.place, layer);
+        elementRow(location.tableKind, elementType, subcase, elementId, location.place, layer, mode);
     if (!column || *column >= row.size())
         return std::nullopt;
     return row[*column];

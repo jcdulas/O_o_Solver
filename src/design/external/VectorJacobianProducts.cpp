@@ -1023,31 +1023,41 @@ public:
     void designHessian(const detail::HessianBlocks& hessian, DesignBlocks& result) const
     {
         const std::vector<FieldValue>& fields = m_in.design->fields;
-        std::vector<double> fieldTerms(fields.size(), 0.0); // bounded by the relations
+        std::map<std::pair<std::size_t, std::size_t>, double> fieldTerms;
         for (const detail::HessianBlocks::Block& block : hessian.blocks())
             if (block.field != detail::HessianBlocks::NO_FIELD)
-                fieldTerms[block.field] += block.fieldTerm;
+            {
+                const std::size_t other = block.otherField == detail::HessianBlocks::NO_FIELD ? block.field
+                                                                                           : block.otherField;
+                fieldTerms[{block.field, other}] += block.fieldTerm;
+                if (other != block.field)
+                    fieldTerms[{other, block.field}] += block.fieldTerm;
+            }
         std::vector<std::pair<std::int64_t, std::int64_t>> pairs; // bounded by the relations' terms squared
         for (const FieldValue& field : fields)
             for (const auto& [first, a] : field.gradient)
                 for (const auto& [second, b] : field.gradient)
+                    pairs.emplace_back(static_cast<std::int64_t>(first), static_cast<std::int64_t>(second));
+        for (const auto& [key, value] : fieldTerms)
+            for (const auto& [first, a] : fields[key.first].gradient)
+                for (const auto& [second, b] : fields[key.second].gradient)
                     pairs.emplace_back(static_cast<std::int64_t>(first), static_cast<std::int64_t>(second));
         sortUnique(pairs);
         result.designSupport.rows = result.designSupport.columns = m_variableCount;
         for (const auto& [first, second] : pairs)
             result.designSupport.add(first, second);
         result.hessianDesign.assign(pairs.size(), 0.0);
-        for (std::size_t r = 0; r < fields.size(); ++r)
+        for (const auto& [key, value] : fieldTerms)
         {
-            if (fieldTerms[r] == 0.0)
+            if (value == 0.0)
                 continue;
-            for (const auto& [first, a] : fields[r].gradient)
-                for (const auto& [second, b] : fields[r].gradient)
+            for (const auto& [first, a] : fields[key.first].gradient)
+                for (const auto& [second, b] : fields[key.second].gradient)
                 {
                     const auto place = std::lower_bound(
                         pairs.begin(), pairs.end(),
                         std::make_pair(static_cast<std::int64_t>(first), static_cast<std::int64_t>(second)));
-                    result.hessianDesign[static_cast<std::size_t>(place - pairs.begin())] += fieldTerms[r] * a * b;
+                    result.hessianDesign[static_cast<std::size_t>(place - pairs.begin())] += value * a * b;
                 }
         }
     }
@@ -1079,7 +1089,7 @@ public:
     // label) in closed form (HessianBlocks), or the reason the closed forms do not cover them: the caller
     // then differences the linearisation at the moved states. Covered: the element items of a Linear or plane
     // von Mises column, the displacements, the SPC forces (their weights w join the adjoint, λ̃ = λ − Σ y·w), the
-    // relations linear in x (DVxREL1, through linear links) of one cell, one per element, whose family gives the closed
+    // relations linear in x (DVxREL1, through linear links) of one cell, whose family gives the closed
     // second derivatives (ElementFamily::stiffnessFieldSecondDerivative ...; the mass's under inertial loads), no
     // thermal load or pressure the field moves. The elements are formed on the pool, each block its own: the same
     // blocks whatever the threads.
@@ -1093,6 +1103,11 @@ public:
                                              base::MemoryBudget& budget)
     {
         ClosedBlocks result;
+        if (m_modal && !m_modal->isEmpty())
+        {
+            result.reason = "modal field Hessians require the modal adjoint derivative, outside static element blocks";
+            return result;
+        }
         if (m_options.elementDerivatives != ElementDerivativeMethod::Analytic)
         {
             result.reason = "the element derivatives are differenced (GradientOptions::elementDerivatives)";
@@ -1168,10 +1183,10 @@ public:
                      " has inertia relief, whose relief at the moved points the closed forms do not hold"});
                 return result;
             }
-        // The designed fields of each element (at most one in closed form).
+        // The fields reaching each element. Diagonal blocks keep one field, while pair blocks keep cross terms.
         const std::vector<FieldValue>& fields = m_in.design->fields;
         const AffectedElements affected(*m_in.model, m_set);
-        std::map<ElementRef, std::size_t> fieldOf;
+        std::map<ElementRef, std::vector<std::size_t>> fieldsOf;
         for (std::size_t r = 0; r < fields.size(); ++r)
         {
             if (fields[r].gradient.empty() || affected.of(r).empty())
@@ -1181,18 +1196,15 @@ public:
             const bool isDerived = m_in.targets->derivedProperties().groupOf(r).has_value() ||
                                    m_in.targets->hasDerivedMaterial(r);
             const bool isPlainCell =
-                cells.size() == 1 && cells.front().item < 0 && cells.front().scale == 1.0 && !isDerived;
+                cells.size() == 1 && cells.front().scale == 1.0 && !isDerived;
             if (relation.form != RelationForm::Linear)
             {
                 result.reason = base::concatenate({"the relation ", relation.label(),
                                                    " is not linear in x (its second derivatives in x are not formed)"});
                 return result;
             }
-            // A linear relation of an item of a list column (a AnisoMat2D stiffness term) or of a derived card (a ply
-            // thickness, a section dimension): linear in x, but the elements are not linear in such a field (the
-            // shells' condensation, inverses and saturation) and their second derivatives in it are not formed
-            // in closed form: the products difference the linearisation (its first derivatives in
-            // closed form, two linearisations a product).
+            // A derived card or a scaled multi-cell target needs its own second-order chain rule. A scalar cell or
+            // one fixed-list item is passed to the family, which decides whether it gives closed second derivatives.
             if (!isPlainCell)
             {
                 const elements::DesignedField designed{relation.targetCard, relation.field, relation.targetId,
@@ -1210,14 +1222,7 @@ public:
                 return result;
             }
             for (const ElementRef& element : affected.of(r))
-                if (!fieldOf.emplace(element, r).second)
-                {
-                    const elements::ElementBatchView& view = m_set.batches()[element.batch].view;
-                    result.reason = base::concatenate({view.card(), " ", std::to_string(view.elementId(element.row)),
-                                                       " is reached by two designed fields, whose mixed second "
-                                                       "derivatives are not formed"});
-                    return result;
-                }
+                fieldsOf[element].push_back(r);
         }
         // The elements and subcases with a block: the weighted items of a job, a designed field with a stiffness
         // term (a non-zero adjoint).
@@ -1226,6 +1231,16 @@ public:
             ElementRef element;
             std::size_t subcase = 0;
             std::vector<std::size_t> jobs; // with weighted items
+            std::size_t field = detail::HessianBlocks::NO_FIELD;
+            bool keepsDisplacement = true;
+        };
+        struct PairEntry
+        {
+            ElementRef element;
+            std::size_t subcase;
+            std::vector<std::size_t> jobs;
+            std::size_t first;
+            std::size_t second;
         };
         std::map<std::pair<ElementRef, std::size_t>, std::vector<std::size_t>> jobsOf;
         for (std::size_t j = 0; j < m_jobs.size(); ++j)
@@ -1242,24 +1257,45 @@ public:
             needed.insert(key);
         for (const auto& [key, members] : sectionWeights)
             needed.insert(key);
-        for (const auto& [element, r] : fieldOf)
+        for (const auto& [element, elementFields] : fieldsOf)
             for (std::size_t s = 0; s < m_subcases.size(); ++s)
                 if (isNonZero(effective[s]))
                     needed.insert({element, s});
         std::vector<Entry> entries;
+        std::vector<PairEntry> pairEntries;
         entries.reserve(needed.size());
         for (const auto& [element, s] : needed)
         {
             const auto found = jobsOf.find({element, s});
-            entries.push_back({element, s, found == jobsOf.end() ? std::vector<std::size_t>{} : found->second});
+            const auto jobs = found == jobsOf.end() ? std::vector<std::size_t>{} : found->second;
+            const auto fieldFound = fieldsOf.find(element);
+            if (fieldFound == fieldsOf.end())
+                entries.push_back({element, s, jobs});
+            else
+            {
+                const auto& elementFields = fieldFound->second;
+                for (std::size_t a = 0; a < elementFields.size(); ++a)
+                {
+                    entries.push_back({element, s, jobs, elementFields[a], a == 0});
+                    for (std::size_t b = a + 1; b < elementFields.size(); ++b)
+                        pairEntries.push_back({element, s, jobs, elementFields[a], elementFields[b]});
+                }
+            }
         }
+        // Keep one field's subcases together so their displacement-independent slopes are built once.
+        std::stable_sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b)
+                         {
+                             if (a.element != b.element)
+                                 return a.element < b.element;
+                             return a.field != b.field ? a.field < b.field : a.subcase < b.subcase;
+                         });
         // The accelerations of the inertial subcases, made before the parallel loop (inertialRateOf is lazy).
         for (std::size_t s = 0; s < m_subcases.size(); ++s)
             if (m_subcases[s].hasInertialLoads && m_subcases[s].subcase.load)
                 static_cast<void>(inertialRateOf(s));
 
-        std::vector<detail::HessianBlocks::Block> blocks(entries.size());
-        std::vector<std::string> reasons(entries.size());
+        std::vector<detail::HessianBlocks::Block> blocks(entries.size() + pairEntries.size());
+        std::vector<std::string> reasons(blocks.size());
         // PERFORMANCE: the entries of an element (its subcases, consecutive) share what does not depend on the subcase
         // (ElementParts: the slopes of its items' recoveries and of their rates, its stiffness rates in the field),
         // formed once instead of once per subcase; the same values, so the same blocks.
@@ -1271,17 +1307,34 @@ public:
                               ElementParts parts;
                               for (std::size_t k = begin; k < end; ++k)
                               {
-                                  if (k == begin || entries[k].element != entries[k - 1].element)
+                                  if (k == begin || entries[k].element != entries[k - 1].element ||
+                                      entries[k].field != entries[k - 1].field)
                                       parts = ElementParts{};
                                   const auto members = sectionWeights.find({entries[k].element, entries[k].subcase});
                                   reasons[k] =
-                                      hessianBlockOf(entries[k].element, entries[k].subcase, entries[k].jobs, fieldOf,
-                                                     weightOf, effective[entries[k].subcase],
+                                      hessianBlockOf(entries[k].element, entries[k].subcase, entries[k].jobs,
+                                                     entries[k].field, weightOf, effective[entries[k].subcase],
                                                      members == sectionWeights.end() ? nullptr : &members->second, copy,
                                                      parts, blocks[k]);
+                                  if (!entries[k].keepsDisplacement)
+                                      blocks[k].displacement.clear();
                               }
                           });
-        for (std::size_t k = 0; k < entries.size(); ++k)
+        base::parallelFor(m_in.pool, pairEntries.size(), detail::ELEMENT_JOBS_PER_PIECE,
+                          [&](std::size_t begin, std::size_t end)
+                          {
+                              for (std::size_t k = begin; k < end; ++k)
+                              {
+                                  const auto& entry = pairEntries[k];
+                                  const auto members = sectionWeights.find({entry.element, entry.subcase});
+                                  reasons[entries.size() + k] = hessianFieldCouplingOf(
+                                      entry.element, entry.subcase, entry.jobs, entry.first, entry.second, weightOf,
+                                      effective[entry.subcase],
+                                      members == sectionWeights.end() ? nullptr : &members->second,
+                                      blocks[entries.size() + k]);
+                              }
+                          });
+        for (std::size_t k = 0; k < reasons.size(); ++k)
             if (!reasons[k].empty())
             {
                 result.reason = reasons[k];
@@ -1616,7 +1669,7 @@ public:
     // `parts` what the element's blocks of its other subcases formed already.
     [[nodiscard]] std::string hessianBlockOf(const ElementRef& element, std::size_t subcase,
                                              const std::vector<std::size_t>& jobs,
-                                             const std::map<ElementRef, std::size_t>& fieldOf,
+                                             std::size_t field,
                                              const std::map<ItemKey, double>& weightOf,
                                              const std::vector<double>& adjoint, const SectionMember* section,
                                              std::optional<base::BudgetedBuffer<double>>& copy, ElementParts& parts,
@@ -1629,11 +1682,10 @@ public:
         const auto name = [&]
         { return base::concatenate({view.card(), " ", std::to_string(view.elementId(element.row))}); };
         block.subcase = subcase;
-        const auto fieldFound = fieldOf.find(element);
         std::vector<elements::DesignedField> designed; // at most one
-        if (fieldFound != fieldOf.end())
+        if (field != detail::HessianBlocks::NO_FIELD)
         {
-            block.field = fieldFound->second;
+            block.field = field;
             const DesignRelation& relation = m_in.model->relations()[block.field];
             designed.push_back({relation.targetCard, relation.field, relation.targetId, relation.fieldItem});
         }
@@ -1829,6 +1881,106 @@ public:
         block.dofs.resize(dofs.size());
         for (std::size_t d = 0; d < dofs.size(); ++d)
             block.dofs[d] = m_dofMap.dofOf(dofs[d]);
+        return {};
+    }
+
+    // The off-diagonal field term of one element's Lagrangian. The displacement and field/displacement terms
+    // are already in its diagonal blocks; this block stores only A_pq = A_qp.
+    [[nodiscard]] std::string hessianFieldCouplingOf(const ElementRef& element, std::size_t subcase,
+                                                     const std::vector<std::size_t>& jobs,
+                                                     std::size_t first, std::size_t second,
+                                                     const std::map<ItemKey, double>& weightOf,
+                                                     const std::vector<double>& adjoint, const SectionMember* section,
+                                                     detail::HessianBlocks::Block& block) const
+    {
+        const auto& batch = m_set.batches()[element.batch];
+        const auto& family = *batch.family;
+        const auto& view = batch.view;
+        const auto& state = m_subcases[subcase];
+        const auto fieldAt = [&](std::size_t index)
+        {
+            const DesignRelation& relation = m_in.model->relations()[index];
+            return elements::DesignedField{relation.targetCard, relation.field, relation.targetId, relation.fieldItem};
+        };
+        const auto a = fieldAt(first), b = fieldAt(second);
+        const auto unavailable = [&]
+        {
+            return base::concatenate({view.card(), " ", std::to_string(view.elementId(element.row)),
+                                       " has no closed mixed derivative in ", a.card, " ", a.column, " and ",
+                                       b.card, " ", b.column});
+        };
+        block.subcase = subcase;
+        block.field = first;
+        block.otherField = second;
+        for (const std::size_t j : jobs)
+        {
+            const auto& job = m_jobs[j];
+            std::vector<double> weights(job.keys.size(), 0.0);
+            for (std::size_t k = 0; k < job.keys.size(); ++k)
+                if (const auto found = weightOf.find(job.keys[k]); found != weightOf.end())
+                    weights[k] = found->second;
+            const auto rate = job.function->mixedFieldRate(view, state.nodal(m_dofMap), weights, a, b);
+            if (!rate)
+                return unavailable();
+            block.fieldTerm += *rate;
+        }
+        if (section != nullptr)
+        {
+            std::vector<ElementItemSpec> specs;
+            std::vector<double> weights;
+            for (std::size_t component = 0; component < section->weights.size(); ++component)
+            {
+                if (section->weights[component] == 0.0)
+                    continue;
+                const std::int32_t code = sectionForceItemCode(section->family, view.card(), component);
+                const auto location = locateItem(ResponseType::Force, view.card(), code);
+                const auto* item = std::get_if<ItemLocation>(&location);
+                if (item == nullptr)
+                    return unavailable();
+                specs.push_back({ResponseType::Force, code, *item, 0});
+                weights.push_back(section->weights[component]);
+            }
+            const ElementItemFunction function(family, element.row, std::move(specs));
+            const auto rate = function.mixedFieldRate(view, state.nodal(m_dofMap), weights, a, b);
+            if (!rate)
+                return unavailable();
+            block.fieldTerm += *rate;
+        }
+        if (adjoint.empty())
+            return {};
+        const auto product = [&](const elements::ElementMatrixBlock& matrices, std::span<const double> right)
+        {
+            double value = 0.0;
+            for (std::size_t k = 0; k < matrices.size(); ++k)
+            {
+                const auto dofs = matrices.dofs(k);
+                const auto matrix = matrices.matrix(k);
+                for (std::size_t i = 0; i < dofs.size(); ++i)
+                    for (std::size_t j = 0; j < dofs.size(); ++j)
+                        value += adjoint[static_cast<std::size_t>(m_dofMap.dofOf(dofs[i]))] *
+                                 matrix[i * dofs.size() + j] * right[static_cast<std::size_t>(m_dofMap.dofOf(dofs[j]))];
+            }
+            return value;
+        };
+        const auto useA = family.designFieldUse(a), useB = family.designFieldUse(b);
+        if (family.facets().has(elements::Facet::Stiffness) && useA.changesStiffness && useB.changesStiffness)
+        {
+            elements::ElementMatrixBlock rate;
+            if (!family.stiffnessFieldMixedDerivative(view, element.row, a, b, rate))
+                return unavailable();
+            block.fieldTerm -= product(rate, state.displacements.span());
+        }
+        if (family.facets().has(elements::Facet::Mass) && useA.changesMass && useB.changesMass &&
+            state.hasInertialLoads && state.subcase.load)
+        {
+            const InertialRate& inertial = *m_inertialRates[subcase];
+            elements::MassOptions options;
+            options.formulation = inertial.options.formulation;
+            elements::ElementMatrixBlock rate;
+            if (!family.massFieldMixedDerivative(view, element.row, a, b, options, rate))
+                return unavailable();
+            block.fieldTerm += inertial.options.weightToMass * product(rate, inertial.accelerations.span());
+        }
         return {};
     }
 

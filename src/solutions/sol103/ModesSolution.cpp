@@ -392,6 +392,7 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
         ModalSubcase modal;
         modal.subcase = subcase;
         modal.plan = output::OutputPlan::forSubcase(snapshot, subcase.tableId, sink);
+        modal.plan.addRequired(m_options.requiredOutputs);
         if (m_options.method)
             modal.method = *m_options.method;
         else

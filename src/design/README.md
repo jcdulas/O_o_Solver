@@ -681,6 +681,11 @@ Plugins coupled by data through the zones of the model: the contour data of `out
   linearisation for the next products at the same weights; where the closed forms stop, the differences of the
   linearisation at the moved states, the reason in `ProductReport::hessianBlocksReason`
   (`ProductContext::usesHessianBlocks` false forces them).
+  Several fields may reach the same element: each gives a diagonal field block, and each pair gives a symmetric
+  field coupling from `stiffnessFieldMixedDerivative`, `massFieldMixedDerivative` and
+  `ElementItemFunction::mixedFieldRate`. The displacement block is counted once. A single fixed-list item is
+  accepted when its family gives the second derivatives. `HessianBlocks::apply` and `DesignBlocks` include the
+  off-diagonal field terms; an unavailable mixed formula keeps the numerical path with its reason in the report.
   The products also cover the section and cut loads (differenced); inertia relief (the linearisation at a moved state
   takes the relief of the moved point, `SensitivityComputation::movedReliefOf` and `movedAccelerationsOf`, from a
   `detail::ReliefPoint`; a relative step of 1e-3 there); the condensed path (δu read where the weighted items are too:
@@ -862,9 +867,14 @@ memory reaching their analytic least-weight thickness, the replay loop on the pu
 the bit; the condensed path equal to the full path to round-off with every mode of every unit and within 1e-3 with two
 modes per unit, design histories included.
 
-The external optimization API also forms Hessian-vector products for supported modal and buckling responses by
-centrally differencing native first-order gradients. It uses the current mode shapes as references at both perturbed
-points, switches to a one-sided difference at a design bound, and refuses uncertain tracking.
+The external optimization API forms analytic vibration Hessian-vector products through `ModalHessian` when linear
+sizing relations and closed matrix/recovery second derivatives cover the weighted responses. It differentiates the
+bordered tangent and adjoint systems, including mass, output normalisation and mixed field terms. The report sets
+`usesModalTangents`; no perturbed eigensolution or first-order linearisation is needed. Closed mechanical-preload
+buckling products use `BucklingHessian` and its mixed preload/shape tangents (`usesBucklingTangents`); the inverse
+root formulation keeps a positive elastic metric for either sign of the load factor. Other modal and buckling
+second-order products centrally difference native first-order gradients, use the current mode shapes as references
+at both perturbed points, switch to a one-sided difference at a design bound, and refuse uncertain tracking.
 The same API uses this bounded difference of native gradients for static shape designs and first-order response
 types without the faster element Hessian blocks; the sparse block export retains its narrower contract.
 When a shape moves an inertia-relief support or trim geometry, the WebAssembly optimization API obtains that shape
@@ -873,9 +883,11 @@ column from bounded differences of complete analyses. Sizing columns still use t
 ### Decisions
 
 - **A DesignConstr without bounds takes the defaults of the format** (LALLOW −1e20, UALLOW 1e20).
-- **The eigenvector responses of a mode are not supported** (a displacement or stress "of a mode": a DesignResp1 of a
-  MODES subcase on eigenvector results): mode selection and tracking belong to EIGN, FreqList and LAMA only; the others
-  are refused naming it.
+- **A modal field selects its vibration mode explicitly** (`DesignResp1Definition::mode`, or a non-composite field
+  card's ATTB). `ModalItems` supplies complete field gradient rows from bordered adjoints on the original pencil;
+  response equations and products read those rows. Mass, Maximum and Point normalisations are differentiated.
+  Individual modal fields and Hessians at repeated roots, and tied Maximum field normalisation, are refused because
+  their derivative is not unique. See [the modal derivative guide](../../docs/modal-derivatives.md).
 - **The references of the tracking are the shapes of the last recorded design cycle**, else of the first evaluation:
   a design cycle is the natural "previous" point, and an exploration between cycles (line searches, finite
   differences) does not move them.
@@ -929,9 +941,12 @@ condensed, the driven wing full) equal to the full path to round-off, gradients 
 SOL 200 deck with ANALYSIS = SAERO run to its bound, and its replay on the public API equal to the bit. Decks with
 DirectMatrix aerodynamic correction matrices or a flutter analysis (FLUT) are out of scope.
 
-For supported structural sizing responses, the external optimization API forms trim Hessian-vector products by
-centrally differencing the native trim gradients. It uses a one-sided difference at a design bound. The product
-requires a native gradient at each perturbed point.
+For closed structural sizing formulations, `TrimHessian` differentiates the coupled trimmed state and the restrained
+or unrestrained stability coefficient state, including the free-body mass projection. The recovered fields use
+`RecoveredFieldCurvature`, shared with the modal path. Its report sets `usesTrimTangents` and no perturbed
+linearisation is evaluated. Element matrix actions and field tangents are streamed, reusing the accepted trim factors.
+Other supported responses difference native trim gradients with bounded steps. See
+[the coupled derivative guide](../../docs/coupled-derivatives.md) for the exact formulas and restrictions.
 
 The external optimization API also completes shape columns with central differences of the entire trim analysis,
 while retaining the native structural gradients for the other columns. This accounts for splines and rigid-body

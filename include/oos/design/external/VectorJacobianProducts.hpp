@@ -133,6 +133,9 @@ struct ProductReport
     // time (0 when kept), or why the closed forms do not cover the weights (the products then difference the
     // linearisation).
     bool hasHessianBlocks = false;
+    bool usesModalTangents = false; // analytic vibration root/field curvature from bordered tangent and adjoint solves
+    bool usesTrimTangents = false; // analytic trim curvature from mixed state and coefficient tangents
+    bool usesBucklingTangents = false; // analytic load-factor curvature including the mechanical preload
     bool areHessianBlocksReused = false;
     std::int64_t hessianBlockCount = 0;
     std::uint64_t hessianBlockBytes = 0;

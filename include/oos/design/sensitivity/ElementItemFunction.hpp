@@ -113,6 +113,13 @@ struct ItemSlopeCache
 class ElementItemFunction
 {
 public:
+    // The weighted mixed field derivative at fixed displacement. Nonlinear columns are chained through their
+    // linear components; an unavailable field or column returns no value, so the caller keeps its numerical path.
+    [[nodiscard]] std::optional<double> mixedFieldRate(const elements::ElementBatchView& view,
+                                                       const elements::NodalDisplacements& displacements,
+                                                       std::span<const double> weights,
+                                                       const elements::DesignedField& first,
+                                                       const elements::DesignedField& second) const;
     ElementItemFunction(const elements::ElementFamily& family, std::int64_t row, std::vector<ElementItemSpec> items)
         : m_family(&family), m_row(row), m_items(std::move(items)), m_columns(columnsOf(family, m_items))
     {

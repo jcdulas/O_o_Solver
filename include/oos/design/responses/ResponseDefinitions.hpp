@@ -77,7 +77,8 @@ enum class ResponseType : std::uint8_t
 // Whether the type reads element results (STRESS ... CSTRAT): its ATTi are elements or properties (PTYPE).
 [[nodiscard]] bool isElementType(ResponseType type) noexcept;
 // Whether the type is a response of a MODES analysis (EIGN, FREQ), or of an eigenvalue analysis (EIGN, FREQ, LAMA):
-// one item per subcase of its analysis, the root of the mode its ATTA names.
+// one item per subcase of its analysis, the root of the mode its ATTA names. Field responses instead select MODES
+// with DesignResp1Definition::mode.
 [[nodiscard]] bool isModalType(ResponseType type) noexcept;
 [[nodiscard]] bool isEigenType(ResponseType type) noexcept;
 // Whether the type is a response of the SAERO analysis only (TRIM, STABDER): one item per subcase of that analysis.
@@ -133,6 +134,9 @@ struct DesignResp1Definition
     // from one design point to the next by its shape (ModeTracking: the modal assurance criterion against the shape the
     // reference point gave), instead of taking the ATTA-th root of each point.
     bool tracksMode = false;
+    // A field of one vibration mode (Displacement, Stress, Strain, Force, CompositeStress or CompositeStrain), from 1.
+    // With tracksMode, this mode is matched against the caller's reference shape.
+    std::optional<std::int32_t> mode;
 };
 
 // What an argument of an equation response refers to (the flags of DesignResp2 and DesignResp3, in the order the

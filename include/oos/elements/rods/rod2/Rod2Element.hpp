@@ -80,6 +80,12 @@ public:
     [[nodiscard]] bool isThermallyInert() const noexcept override { return false; }
     void computeDifferentialStiffness(const ElementBatchView& view, ElementRange range,
                                       const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
+    bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                              const DesignedField& field, const NodalDisplacements& preload,
+                                              ElementMatrixBlock& block) const override;
+    bool differentialStiffnessFieldMixedDerivative(
+        const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
+        const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
 
 private:
     // The batch's columns and those of the RodProp table (empty when the model has no RodProp), read once per facet

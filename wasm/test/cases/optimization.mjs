@@ -44,6 +44,424 @@ function makeDeck(name = "optimization") {
   return oor.readModel(`/work/${name}.oos`, { strict: true });
 }
 
+for (const family of ["SpringDofProperty", "SpringDofInline", "SpringScalarProperty", "SpringScalarInline"])
+  test(`${family} uses exact spring field derivatives`, () => {
+    const scalar = family.includes("Scalar");
+    const property = family.includes("Property");
+    const spring = {
+      SpringDofProperty: "SpringDofProperty;1;1;1;1;2;1\nSpringProp;1;1000.;;2.",
+      SpringDofInline: "SpringDofInline;1;1000.;1;1;2;1;;2.",
+      SpringScalarProperty: "SpringScalarProperty;1;1;101;0\nSpringProp;1;1000.;;2.",
+      SpringScalarInline: "SpringScalarInline;1;1000.;101;0",
+    }[family];
+    const model = `[executive]\nSolutionSequence;101\n[case]\nSubcaseStart;1\n${scalar ? "" : "SinglePointConstrSelection;1\n"}StaticLoadSelection;2\n[model]\n${scalar
+      ? "ScalarPoint;101\nScalarPointLoad;2;101;10."
+      : "Node;1;;0.;0.;0.\nNode;2;;1.;0.;0.\nSinglePointConstrList;1;123456;1\nSinglePointConstrList;1;23456;2\nPointForceLoad;2;2;;10.;1.;0.;0."}\n${spring}\n`;
+    oor.writeFile(`/work/${family}-derivatives.oos`, model);
+    const deck = oor.readModel(`/work/${family}-derivatives.oos`, { strict: true });
+    const nativeModel = solver.modelFromReader(oor, deck);
+    const relations = [{ id: 1, targetKind: property ? "property" : "element",
+      targetCard: property ? "SpringProp" : family, targetId: 1, field: "stiffness",
+      terms: [{ variableId: 1, coefficient: 1 }] }];
+    const responses = [{ id: 10, type: "Force", propertyType: "Elements", attributeA: 2, targets: [1] }];
+    const variables = [{ id: 1, initialValue: 1000, lower: 500, upper: 1500 }];
+    if (!scalar) responses.push({ id: 11, type: "Displacement", attributeA: 1, targets: [2] });
+    if (family !== "SpringScalarInline") {
+      variables.push({ id: 2, initialValue: 2, lower: 1, upper: 3 });
+      relations.push({ id: 2, targetKind: property ? "property" : "element",
+        targetCard: property ? "SpringProp" : family, targetId: 1, field: "stressCoefficient",
+        terms: [{ variableId: 2, coefficient: 1 }] });
+      responses.push({ id: 12, type: "Stress", propertyType: "Elements", attributeA: 2, targets: [1] });
+    }
+    const problem = solver.createOptimization(nativeModel, { variables, relations, responses });
+    const point = problem.evaluate();
+    try {
+      const gradients = point.gradients();
+      assert.ok(gradients.report.analyticDerivatives >= 1);
+      assert.equal(gradients.report.fieldPerturbations, 0);
+      near(point.values().responses.find(r => r.id === 10).values[0], scalar ? 10 : -10);
+      near(gradients.responses.find(r => r.id === 10).values[0], 0, 1e-4);
+      if (!scalar) {
+        near(gradients.responses.find(r => r.id === 11).values[0], -1e-5, 1e-5);
+        const direction = variables.length === 2 ? [1, 0] : [1];
+        const curvature = point.hessianVector({ responses: { 11: [1] } }, direction);
+        near(curvature.values[0], 2e-8, 2e-3);
+      }
+      if (variables.length === 2) {
+        const stress = gradients.responses.find(r => r.id === 12).values;
+        near(stress[0], 0, 1e-4);
+        near(stress[1], scalar ? 10 : -10, 1e-5);
+      }
+    } finally { point.delete(); problem.delete(); nativeModel.delete(); deck.delete(); }
+  });
+
+for (const family of ["SpringScalarProperty", "SpringScalarInline"])
+  test(`${family} supplies an exact modal eigenvalue gradient`, () => {
+    const property = family === "SpringScalarProperty";
+    const spring = property ? "SpringScalarProperty;1;1;101;0\nSpringProp;1;1000."
+      : "SpringScalarInline;1;1000.;101;0";
+    const model = `[executive]\nSolutionSequence;103\n[case]\nSubcaseStart;1\nEigenMethodSelection;3\n[model]\nScalarPoint;101\n${spring}\nMassScalarInline;2;2.;101;0\nLanczosEigenMethod;3;;;1\n`;
+    oor.writeFile(`/work/${family}-modal-derivative.oos`, model);
+    const deck = oor.readModel(`/work/${family}-modal-derivative.oos`, { strict: true });
+    const nativeModel = solver.modelFromReader(oor, deck);
+    const problem = solver.createOptimization(nativeModel, {
+      variables: [{ id: 1, initialValue: 1000, lower: 500, upper: 1500 }],
+      relations: [{ id: 1, targetKind: property ? "property" : "element",
+        targetCard: property ? "SpringProp" : family, targetId: 1, field: "stiffness",
+        terms: [{ variableId: 1, coefficient: 1 }] }],
+      responses: [{ id: 10, type: "Eigenvalue", attributeA: 1 }],
+    }, { analyses: { modes: [1] } });
+    const point = problem.evaluate();
+    try {
+      near(point.values().responses[0].values[0], 500, 1e-5);
+      const gradients = point.gradients();
+      near(gradients.responses[0].values[0], 0.5, 1e-5);
+      assert.ok(gradients.report.analyticDerivatives >= 1);
+    } finally { point.delete(); problem.delete(); nativeModel.delete(); deck.delete(); }
+  });
+
+test("axial bushing property rates cover stiffness, stress and strain", () => {
+  const model = `[executive]\nSolutionSequence;101\n[case]\nSubcaseStart;1\nSinglePointConstrSelection;1\nStaticLoadSelection;2\n[model]\nNode;1;;0.;0.;0.\nNode;2;;1.;0.;0.\nSinglePointConstrList;1;123456;1\nSinglePointConstrList;1;23456;2\nPointForceLoad;2;2;;10.;1.;0.;0.\nBushing1D;1;1;1;2;0\nBushProp1D;1;1000.;;2.;3.;4.\n`;
+  oor.writeFile("/work/axial-bushing-derivatives.oos", model);
+  const deck = oor.readModel("/work/axial-bushing-derivatives.oos", { strict: true });
+  const nativeModel = solver.modelFromReader(oor, deck);
+  const fields = ["stiffness", "stressFactor", "strainFactor"];
+  const initial = [1000, 3, 4];
+  const problem = solver.createOptimization(nativeModel, {
+    variables: initial.map((value, index) => ({ id: index + 1, initialValue: value,
+      lower: value * 0.5, upper: value * 1.5 })),
+    relations: fields.map((field, index) => ({ id: index + 1, targetKind: "property",
+      targetCard: "BushProp1D", targetId: 1, field,
+      terms: [{ variableId: index + 1, coefficient: 1 }] })),
+    responses: [
+      { id: 10, type: "Displacement", attributeA: 1, targets: [2] },
+      { id: 11, type: "Stress", propertyType: "Elements", attributeA: 5, targets: [1] },
+      { id: 12, type: "Strain", propertyType: "Elements", attributeA: 6, targets: [1] },
+    ],
+  });
+  const point = problem.evaluate();
+  try {
+    const gradients = point.gradients();
+    assert.ok(gradients.report.analyticDerivatives >= 1);
+    assert.equal(gradients.report.fieldPerturbations, 0);
+    vectorNear(gradients.responses.find(r => r.id === 10).values, [-1e-5, 0, 0], 1e-5);
+    vectorNear(gradients.responses.find(r => r.id === 11).values, [0, 10, 0], 1e-5);
+    vectorNear(gradients.responses.find(r => r.id === 12).values, [-4e-5, 0, 0.01], 1e-5);
+  } finally { point.delete(); problem.delete(); nativeModel.delete(); deck.delete(); }
+});
+
+test("axial bushing mass and stiffness have exact modal rates", () => {
+  const model = `[executive]\nSolutionSequence;103\n[case]\nSubcaseStart;1\nSinglePointConstrSelection;1\nEigenMethodSelection;3\n[model]\nNode;1;;0.;0.;0.\nNode;2;;1.;0.;0.\nSinglePointConstrList;1;123456;1\nSinglePointConstrList;1;23456;2\nBushing1D;1;1;1;2;0\nBushProp1D;1;1000.;;2.;3.;4.\nLanczosEigenMethod;3;;;1\n`;
+  oor.writeFile("/work/axial-bushing-modal.oos", model);
+  const deck = oor.readModel("/work/axial-bushing-modal.oos", { strict: true });
+  const nativeModel = solver.modelFromReader(oor, deck);
+  const problem = solver.createOptimization(nativeModel, {
+    variables: [{ id: 1, initialValue: 1000, lower: 500, upper: 1500 },
+      { id: 2, initialValue: 2, lower: 1, upper: 3 }],
+    relations: ["stiffness", "mass"].map((field, index) => ({ id: index + 1,
+      targetKind: "property", targetCard: "BushProp1D", targetId: 1, field,
+      terms: [{ variableId: index + 1, coefficient: 1 }] })),
+    responses: [{ id: 10, type: "Eigenvalue", attributeA: 1 }],
+  }, { analyses: { modes: [1] } });
+  const point = problem.evaluate();
+  try {
+    near(point.values().responses[0].values[0], 1000, 1e-5);
+    const gradients = point.gradients();
+    vectorNear(gradients.responses[0].values, [1, -500], 1e-5);
+    assert.ok(gradients.report.analyticDerivatives >= 2);
+    assert.equal(gradients.report.fieldPerturbations, 0);
+  } finally { point.delete(); problem.delete(); nativeModel.delete(); deck.delete(); }
+});
+
+for (const family of ["MassScalarInline", "MassScalarProperty", "MassDofInline", "MassDofProperty"])
+  test(`${family} supplies an exact modal mass rate`, () => {
+    const scalar = family.includes("Scalar");
+    const property = family.includes("Property");
+    const points = scalar ? "ScalarPoint;101" : "Node;1;;0.;0.;0.\nNode;2;;1.;0.;0.";
+    const constraints = scalar ? "" : "SinglePointConstrSelection;1\n";
+    const support = scalar ? "" : "SinglePointConstrList;1;123456;1\nSinglePointConstrList;1;23456;2\n";
+    const spring = scalar ? "SpringScalarInline;1;1000.;101;0"
+      : "SpringDofInline;1;1000.;1;1;2;1";
+    const connection = scalar ? "101;0" : "2;1;0;0";
+    const mass = property ? `${family};2;2;${connection}\nMassProp;2;2.`
+      : `${family};2;2.;${connection}`;
+    const model = `[executive]\nSolutionSequence;103\n[case]\nSubcaseStart;1\n${constraints}EigenMethodSelection;3\n[model]\n${points}\n${support}${spring}\n${mass}\nLanczosEigenMethod;3;;;1\n`;
+    oor.writeFile(`/work/${family}-modal-mass-rate.oos`, model);
+    const deck = oor.readModel(`/work/${family}-modal-mass-rate.oos`, { strict: true });
+    const nativeModel = solver.modelFromReader(oor, deck);
+    const problem = solver.createOptimization(nativeModel, {
+      variables: [{ id: 1, initialValue: 2, lower: 1, upper: 3 }],
+      relations: [{ id: 1, targetKind: property ? "property" : "element",
+        targetCard: property ? "MassProp" : family, targetId: 2, field: "mass",
+        terms: [{ variableId: 1, coefficient: 1 }] }],
+      responses: [{ id: 10, type: "Eigenvalue", attributeA: 1 }],
+    }, { analyses: { modes: [1] } });
+    const point = problem.evaluate();
+    try {
+      near(point.values().responses[0].values[0], 500, 1e-5);
+      const gradients = point.gradients();
+      near(gradients.responses[0].values[0], -250, 1e-5);
+      assert.ok(gradients.report.analyticDerivatives >= 1);
+      assert.equal(gradients.report.fieldPerturbations, 0);
+    } finally { point.delete(); problem.delete(); nativeModel.delete(); deck.delete(); }
+  });
+
+const RIGID_MASS_FIELDS = [
+  { field: "mass", value: 2 },
+  ...[0.2, -0.3, 0.4].map((value, fieldItem) => ({ field: "offset", fieldItem, value })),
+  ...[1, 0.07, 1.4, -0.03, 0.05, 1.8].map((value, fieldItem) => ({ field: "inertia", fieldItem, value })),
+];
+const MATRIX_MASS_FIELDS = Array.from({ length: 21 }, (_, fieldItem) => {
+  let row = 0;
+  while ((row + 1) * (row + 2) / 2 <= fieldItem) ++row;
+  const column = fieldItem - row * (row + 1) / 2;
+  return { field: "massMatrix", fieldItem, value: row === column ? 2 + row : 0.03 * (1 + column) };
+});
+
+function pointMassOptimization(card, fields) {
+  const text = `[executive]\nSolutionSequence;103\n[case]\nSubcaseStart;1\nSinglePointConstrSelection;1\nEigenMethodSelection;3\n[model]\nRectFrame2;5;;0.;0.;0.;0.;0.;1.;0.;1.;0.\nRectFrame2;6;;0.;0.;0.;1.;0.;0.;0.;1.;0.\nNode;1;;0.;0.;0.\nNode;2;;0.;0.;0.;6\nSinglePointConstrList;1;123456;1\nBushing;1;1;1;2;;;;;0\nBushProp;1;Stiffness;1000.;1300.;1700.;800.;1100.;1500.\n${card};2;2;5;2.\nLanczosEigenMethod;3;;;6\n`;
+  oor.writeFile(`/work/${card}-analytic-rates.oos`, text);
+  const deck = oor.readModel(`/work/${card}-analytic-rates.oos`, { strict: true });
+  const model = solver.modelFromReader(oor, deck);
+  const problem = solver.createOptimization(model, {
+    variables: fields.map(({ value }, index) => ({ id: index + 1, initialValue: value,
+      lower: value - 1, upper: value + 1 })),
+    relations: fields.map(({ field, fieldItem }, index) => ({ id: index + 1, targetKind: "element",
+      targetCard: card, targetId: 2, field, fieldItem,
+      terms: [{ variableId: index + 1, coefficient: 1 }] })),
+    responses: [1, 2, 3].map(mode => ({ id: mode, type: "Eigenvalue", attributeA: mode })),
+  }, { analyses: { modes: [1] } });
+  return { problem, dispose() { problem.delete(); model.delete(); deck.delete(); } };
+}
+
+for (const [card, fields] of [["PointMassInertia", RIGID_MASS_FIELDS], ["PointMassMatrix", MATRIX_MASS_FIELDS]])
+  for (const [column, field] of fields.entries())
+    test(`${card} exact mass rate ${field.field}[${field.fieldItem ?? "scalar"}]`, () => {
+      const fixture = pointMassOptimization(card, fields);
+      const x = fields.map(entry => entry.value);
+      const point = fixture.problem.evaluate();
+      try {
+        const gradients = point.gradients();
+        assert.ok(gradients.report.analyticDerivatives >= 1);
+        assert.equal(gradients.report.fieldPerturbations, 0);
+        const step = 1e-4;
+        const plus = [...x], minus = [...x];
+        plus[column] += step;
+        minus[column] -= step;
+        const positive = fixture.problem.evaluate(plus), negative = fixture.problem.evaluate(minus);
+        try {
+          const a = positive.values().responses, b = negative.values().responses;
+          for (let mode = 0; mode < a.length; ++mode)
+            near(gradients.responses[mode].values[column], (a[mode].values[0] - b[mode].values[0]) / (2 * step), 2e-4);
+        } finally { positive.delete(); negative.delete(); }
+      } finally { point.delete(); fixture.dispose(); }
+    });
+
+test("six-component bushing gives exact stiffness and recovery rates", () => {
+  const text = `[executive]\nSolutionSequence;101\n[case]\nSubcaseStart;1\nSinglePointConstrSelection;1\nStaticLoadSelection;2\n[model]\nNode;1;;0.;0.;0.\nNode;2;;0.;0.;0.\nSinglePointConstrList;1;123456;1\nBushing;1;1;1;2;;;;;0\nBushProp;1;Stiffness;1000.;1300.;1700.;800.;1100.;1500.\nPointForceLoad;2;2;;10.;1.;2.;3.\nPointMomentLoad;2;2;;5.;1.;2.;3.\n`;
+  oor.writeFile("/work/bushing-analytic-rates.oos", text);
+  const deck = oor.readModel("/work/bushing-analytic-rates.oos", { strict: true });
+  const model = solver.modelFromReader(oor, deck);
+  const x = [1000, 1300, 1700, 800, 1100, 1500, 2, 3, 4, 5];
+  const problem = solver.createOptimization(model, {
+    variables: x.map((value, index) => ({ id: index + 1, initialValue: value, lower: value / 2, upper: value * 2 })),
+    relations: x.map((value, index) => ({ id: index + 1, targetKind: "property", targetCard: "BushProp",
+      targetId: 1, field: index < 6 ? "stiffness" : "recovery", fieldItem: index < 6 ? index : index - 6,
+      terms: [{ variableId: index + 1, coefficient: 1 }] })),
+    responses: ["Force", "Stress", "Strain"].flatMap((type, group) => Array.from({ length: 6 }, (_, component) => ({
+      id: 10 + 6 * group + component, type, propertyType: "Elements", attributeA: 2 + component, targets: [1],
+    }))),
+  });
+  const point = problem.evaluate();
+  try {
+    const gradients = point.gradients();
+    assert.equal(gradients.report.fieldPerturbations, 0);
+    assert.ok(gradients.report.analyticDerivatives >= 6);
+    for (let column = 0; column < x.length; ++column) {
+      const step = 1e-4 * x[column];
+      const plus = [...x], minus = [...x];
+      plus[column] += step;
+      minus[column] -= step;
+      const positive = problem.evaluate(plus), negative = problem.evaluate(minus);
+      try {
+        const a = positive.values().responses, b = negative.values().responses;
+        for (let response = 0; response < a.length; ++response) {
+          const expected = (a[response].values[0] - b[response].values[0]) / (2 * step);
+          const actual = gradients.responses[response].values[column];
+          assert.ok(Math.abs(actual - expected) <= 1e-8 * Math.max(1, Math.abs(expected)), `${actual} differs from ${expected}`);
+        }
+      } finally { positive.delete(); negative.delete(); }
+    }
+  } finally { point.delete(); problem.delete(); model.delete(); deck.delete(); }
+});
+
+for (const grounded of [false, true]) test(`six-component bushing exact modal mass rate grounded=${grounded}`, () => {
+  const text = `[executive]\nSolutionSequence;103\n[case]\nSubcaseStart;1\nSinglePointConstrSelection;1\nEigenMethodSelection;3\n[model]\nNode;1;;0.;0.;0.\nNode;2;;0.;0.;0.\nSinglePointConstrList;1;123456;1\nSinglePointConstrList;1;23456;2\nBushing;1;1;${grounded ? "2;0" : "1;2"};;;;;0\nBushProp;1;Stiffness;1000.;1300.;1700.;800.;1100.;1500.\nLanczosEigenMethod;3;;;1\n`;
+  oor.writeFile(`/work/bushing-mass-${grounded}.oos`, text);
+  const deck = oor.readModel(`/work/bushing-mass-${grounded}.oos`, { strict: true });
+  const model = solver.modelFromReader(oor, deck);
+  const problem = solver.createOptimization(model, {
+    variables: [{ id: 1, initialValue: 2, lower: 1, upper: 3 }],
+    relations: [{ id: 1, targetKind: "property", targetCard: "BushProp", targetId: 1, field: "mass",
+      terms: [{ variableId: 1, coefficient: 1 }] }],
+    responses: [{ id: 10, type: "Eigenvalue", attributeA: 1 }],
+  }, { analyses: { modes: [1] } });
+  const point = problem.evaluate();
+  try {
+    const gradients = point.gradients();
+    near(point.values().responses[0].values[0], grounded ? 500 : 1000, 1e-6);
+    near(gradients.responses[0].values[0], grounded ? -250 : -500, 1e-6);
+    assert.equal(gradients.report.fieldPerturbations, 0);
+    assert.ok(gradients.report.analyticDerivatives >= 1);
+  } finally { point.delete(); problem.delete(); model.delete(); deck.delete(); }
+});
+
+for (const family of ["SpringDofInline", "SpringDofProperty", "SpringScalarProperty", "Bushing1D", "Bushing"])
+  test(`${family} uses analytic mixed stiffness and stress Hessian blocks`, () => {
+    const scalar = family === "SpringScalarProperty";
+    const property = family !== "SpringDofInline";
+    const card = family.startsWith("Spring") ? (property ? "SpringProp" : family)
+      : family === "Bushing1D" ? "BushProp1D" : "BushProp";
+    const coefficient = family.startsWith("Spring") ? "stressCoefficient"
+      : family === "Bushing1D" ? "stressFactor" : "recovery";
+    const records = {
+      SpringDofInline: "SpringDofInline;1;1000.;1;1;2;1;;2.",
+      SpringDofProperty: "SpringDofProperty;1;1;1;1;2;1\nSpringProp;1;1000.;;2.",
+      SpringScalarProperty: "SpringScalarProperty;1;1;101;0\nSpringProp;1;1000.;;2.",
+      Bushing1D: "Bushing1D;1;1;1;2;0\nBushProp1D;1;1000.;;;2.;1.",
+      Bushing: "Bushing;1;1;1;2;;;;;0\nBushProp;1;Stiffness;1000.;1000.;1000.;1000.;1000.;1000.",
+    }[family];
+    const setup = scalar ? "ScalarPoint;101\nScalarPointLoad;2;101;10.\nSpringScalarInline;3;500.;101;0"
+      : "Node;1;;0.;0.;0.\nNode;2;;1.;0.;0.\nSinglePointConstrList;1;123456;1\nSinglePointConstrList;1;23456;2\nPointForceLoad;2;2;;10.;1.;0.;0.\nSpringDofInline;3;500.;1;1;2;1";
+    const text = `[executive]\nSolutionSequence;101\n[case]\nSubcaseStart;1\n${scalar ? "" : "SinglePointConstrSelection;1\n"}StaticLoadSelection;2\n[model]\n${setup}\n${records}\n`;
+    oor.writeFile(`/work/${family}-mixed-hessian.oos`, text);
+    const deck = oor.readModel(`/work/${family}-mixed-hessian.oos`, { strict: true });
+    const model = solver.modelFromReader(oor, deck);
+    const problem = solver.createOptimization(model, {
+      variables: [{ id: 1, initialValue: 1000, lower: 500, upper: 1500 },
+        { id: 2, initialValue: 2, lower: 1, upper: 3 }],
+      relations: ["stiffness", coefficient].map((field, index) => ({ id: index + 1,
+        targetKind: property ? "property" : "element", targetCard: card, targetId: 1, field,
+        fieldItem: family === "Bushing" ? 0 : -1, terms: [{ variableId: index + 1, coefficient: 1 }] })),
+      responses: [{ id: 10, type: "Stress", propertyType: "Elements",
+        attributeA: family === "Bushing1D" ? 5 : 2, targets: [1] }],
+    });
+    const point = problem.evaluate();
+    try {
+      const result = point.hessianVector({ responses: { 10: [1] } }, [1, 0, 0, 1], 2);
+      assert.equal(result.report.hasHessianBlocks, true, result.report.hessianBlocksReason);
+      assert.equal(result.report.perturbedLinearisations, 0);
+      const sign = family === "SpringDofInline" || family === "SpringDofProperty" ? -1 : 1;
+      vectorNear(result.values, [sign * -2 * 2 * 10 * 500 / 1500 ** 3,
+        sign * 10 * 500 / 1500 ** 2, sign * 10 * 500 / 1500 ** 2, 0], 1e-5);
+      const blocks = point.blocks({ responses: { 10: [1] } });
+      for (let entry = 0; entry < blocks.hessianDesign.length; ++entry) {
+        const isMixed = blocks.designSupport.row[entry] !== blocks.designSupport.column[entry];
+        near(blocks.hessianDesign[entry], isMixed ? sign * 10 / 1500 : 0, 1e-5);
+      }
+    } finally { point.delete(); problem.delete(); model.delete(); deck.delete(); }
+  });
+
+test("rigid mass and offset use analytic mixed inertial Hessian blocks", () => {
+  const text = `[executive]\nSolutionSequence;101\n[case]\nSubcaseStart;1\nSinglePointConstrSelection;1\nStaticLoadSelection;2\n[model]\nNode;1;;0.;0.;0.\nNode;2;;0.;0.;0.\nSinglePointConstrList;1;123456;1\nBushing;1;1;1;2;;;;;0\nBushProp;1;Stiffness;1000.;1300.;1700.;800.;1100.;1500.\nPointMassInertia;2;2;;2.\nGravityLoad;2;;10.;1.;0.;0.\n`;
+  oor.writeFile("/work/rigid-mass-mixed-hessian.oos", text);
+  const deck = oor.readModel("/work/rigid-mass-mixed-hessian.oos", { strict: true });
+  const model = solver.modelFromReader(oor, deck);
+  const problem = solver.createOptimization(model, {
+    variables: [{ id: 1, initialValue: 2, lower: 1, upper: 3 },
+      { id: 2, initialValue: 0.3, lower: 0.1, upper: 0.5 }],
+    relations: ["mass", "offset"].map((field, index) => ({ id: index + 1, targetKind: "element",
+      targetCard: "PointMassInertia", targetId: 2, field, fieldItem: index === 0 ? -1 : 1,
+      terms: [{ variableId: index + 1, coefficient: 1 }] })),
+    responses: [{ id: 10, type: "Displacement", attributeA: 6, targets: [2] }],
+  });
+  const point = problem.evaluate();
+  try {
+    const result = point.hessianVector({ responses: { 10: [1] } }, [1, 0, 0, 1], 2);
+    assert.equal(result.report.hasHessianBlocks, true, result.report.hessianBlocksReason);
+    assert.equal(result.report.perturbedLinearisations, 0);
+    vectorNear(result.values, [0, -10 / 1500, -10 / 1500, 0], 1e-5);
+  } finally { point.delete(); problem.delete(); model.delete(); deck.delete(); }
+});
+
+for (const opening of [-1, 1]) test(`gap spring rates are analytic in the initial branch opening=${opening}`, () => {
+  const closed = opening < 0;
+  const text = `[executive]\nSolutionSequence;101\n[case]\nSubcaseStart;1\nSinglePointConstrSelection;1\nStaticLoadSelection;2\n[model]\nNode;1;;0.;0.;0.\nNode;2;;1.;0.;0.\nSinglePointConstrList;1;123456;1\nSinglePointConstrList;1;${closed ? "456" : "23456"};2\nPointForceLoad;2;2;;10.;1.;0.;0.\n${closed ? "PointForceLoad;2;2;;20.;0.;1.;0.\nPointForceLoad;2;2;;30.;0.;0.;1.\n" : ""}Gap2;1;1;1;2;;0.;1.;0.\nGapProp;1;${opening}.;0.;1000.;50.;300.\n`;
+  oor.writeFile(`/work/gap-analytic-${opening}.oos`, text);
+  const deck = oor.readModel(`/work/gap-analytic-${opening}.oos`, { strict: true });
+  const model = solver.modelFromReader(oor, deck);
+  const x = [1000, 50, 300];
+  const problem = solver.createOptimization(model, {
+    variables: x.map((value, index) => ({ id: index + 1, initialValue: value, lower: value / 2, upper: value * 2 })),
+    relations: ["closedStiffness", "openStiffness", "transverseStiffness"].map((field, index) => ({ id: index + 1,
+      targetKind: "property", targetCard: "GapProp", targetId: 1, field,
+      terms: [{ variableId: index + 1, coefficient: 1 }] })),
+    responses: [{ id: 10, type: "Displacement", attributeA: 1, targets: [2] },
+      ...Array.from({ length: 8 }, (_, component) => ({ id: 20 + component, type: "Force",
+        propertyType: "Elements", attributeA: 2 + component, targets: [1] }))],
+  });
+  const point = problem.evaluate();
+  try {
+    const gradients = point.gradients();
+    assert.equal(gradients.report.fieldPerturbations, 0);
+    vectorNear(gradients.responses[0].values, closed ? [-1e-5, 0, 0] : [0, -0.004, 0], 1e-6);
+    vectorNear(gradients.responses.find(r => r.id === 20).values, [0, 0, 0], 1e-4);
+    if (closed) vectorNear(gradients.responses.find(r => r.id === 24).values, [0, 0, -20 / 300 ** 2], 1e-6);
+    const result = point.hessianVector({ responses: { 10: [1] } }, [1, 1, 1]);
+    assert.equal(result.report.hasHessianBlocks, true, result.report.hessianBlocksReason);
+    assert.equal(result.report.perturbedLinearisations, 0);
+    vectorNear(result.values, closed ? [2e-8, 0, 0] : [0, 20 / 50 ** 3, 0], 1e-6);
+  } finally { point.delete(); problem.delete(); model.delete(); deck.delete(); }
+});
+
+test("fastener condensation preserves analytic stiffness and mass rates", () => {
+  const points = [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,0.1],[1,0,0.1],[1,1,0.1],[0,1,0.1],
+    [0.5,0.5,0.05],[0.5,0.5,0],[0.5,0.5,0.1]];
+  const real = value => Number.isInteger(value) ? `${value}.` : String(value);
+  const bulk = points.map(([x,y,z], index) => `Node;${index+1};;${real(x)};${real(y)};${real(z)}`);
+  bulk.push("ShellQuad4;1;1;1;2;3;4", "ShellQuad4;2;2;5;6;7;8", "ShellProp;1;1;0.1;1;;1",
+    "ShellProp;2;1;0.1;1;;1", "IsoMat;1;1000.;;0.3;1.", "Fastener;101;3;Elements;1;2;9;10;11",
+    "FastenerProp;3;0.1;0;1;1000.;1100.;1200.;400.;500.;600.", "SinglePointConstrList;1;123456;1;2;3;4",
+    "SinglePointConstrList;1;12456;5;6;7;8;9", "PointForceLoad;2;11;;10.;0.;0.;1.", "GravityLoad;2;;10.;0.;0.;1.");
+  const text = ["[case]", "SubcaseStart;1", "SinglePointConstrSelection;1", "StaticLoadSelection;2", "[model]", ...bulk, ""].join("\n");
+  oor.writeFile("/work/fastener-analytic-rates.oos", text);
+  const deck = oor.readModel("/work/fastener-analytic-rates.oos", { strict: true });
+  const model = solver.modelFromReader(oor, deck);
+  const x = [1000, 1100, 1200, 400, 500, 600, 2];
+  const problem = solver.createOptimization(model, {
+    variables: x.map((value, index) => ({ id: index + 1, initialValue: value, lower: value / 2, upper: value * 2 })),
+    relations: x.map((value, index) => ({ id: index + 1, targetKind: "property", targetCard: "FastenerProp", targetId: 3,
+      field: index < 3 ? "translationalStiffness" : index < 6 ? "rotationalStiffness" : "mass",
+      fieldItem: index < 6 ? index % 3 : -1, terms: [{ variableId: index + 1, coefficient: 1 }] })),
+    responses: [{ id: 10, type: "Displacement", attributeA: 3, targets: [11] },
+      { id: 11, type: "Force", propertyType: "Elements", attributeA: 2, targets: [101] },
+      { id: 12, type: "Stress", propertyType: "Elements", attributeA: 2, targets: [101] }],
+  });
+  const point = problem.evaluate();
+  try {
+    const gradients = point.gradients();
+    assert.equal(gradients.report.fieldPerturbations, 0);
+    assert.ok(gradients.report.analyticDerivatives >= 6);
+    for (let column = 0; column < x.length; ++column) {
+      const step = 1e-4 * x[column], plus = [...x], minus = [...x];
+      plus[column] += step;
+      minus[column] -= step;
+      const positive = problem.evaluate(plus), negative = problem.evaluate(minus);
+      try {
+        const a = positive.values().responses, b = negative.values().responses;
+        for (let response = 0; response < a.length; ++response) {
+          const expected = (a[response].values[0] - b[response].values[0]) / (2 * step);
+          const actual = gradients.responses[response].values[column];
+          assert.ok(Math.abs(actual - expected) <= 1e-8 * Math.max(1, Math.abs(expected)));
+        }
+      } finally { positive.delete(); negative.delete(); }
+    }
+    const result = point.hessianVector({ responses: { 10: [1] } }, [1, 0, 0, 0, 0, 0, 0]);
+    assert.equal(result.report.hasHessianBlocks, true, result.report.hessianBlocksReason);
+    assert.equal(result.report.perturbedLinearisations, 0);
+  } finally { point.delete(); problem.delete(); model.delete(); deck.delete(); }
+});
+
 test("JavaScript drives first and second derivatives through independent WebAssembly memories", () => {
   const deck = makeDeck();
   const problem = solver.optimizationFromReader(oor, deck, declarations);

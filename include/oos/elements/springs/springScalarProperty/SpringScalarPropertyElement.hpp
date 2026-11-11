@@ -9,7 +9,7 @@
 // grounds that end), K, GE and S from the SpringProp. Element force f = K (u1 − u2), element stress S · f.
 //
 // Facets: stiffness, recovery (forces, stresses). No mass. GE plays no part in SOL 101, 103, 105. Differential
-// stiffness, loads and design derivatives are not written yet.
+// stiffness and loads are zero. The derivatives of K and S are closed form.
 //
 // Not supported: nothing on these cards. Problems reported by check(): an S that is not a scalar point, both ends
 // blank or equal, a PID that is not a SpringProp.
@@ -35,6 +35,22 @@ public:
         return {Facet::Stiffness, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row,
+                                 const DesignedField& first, const DesignedField& second,
+                                 ElementOutput output, const NodalDisplacements& displacements,
+                                 ElementResultBlock& rates) const override;
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementMatrixBlock& block) const override;
+    bool recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, const NodalDisplacements& displacements,
+                            ElementResultBlock& rates) const override;
+    bool stiffnessFieldSecondDerivative(const ElementBatchView& view, std::int64_t row,
+                                        const DesignedField& field, ElementMatrixBlock& block) const override;
+    bool recoverySlopeRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, RecoverySlopes& rates) const override;
+    bool recoveryFieldSecondRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementOutput output, const NodalDisplacements& displacements,
+                                  ElementResultBlock& rates) const override;
     [[nodiscard]] std::vector<std::string> propertyCards() const override { return {"SpringProp"}; }
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;

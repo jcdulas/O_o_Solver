@@ -147,10 +147,20 @@ An imposed axial deformation (`DeformationLoadSelection`) contributes to native 
 equivalent element load and the element recovery.
 
 Gradients use closed forms where element families provide them and numerical element derivatives elsewhere.
+The C++ element layer supplies exact sizing rates for scalar springs and masses, bushings, fasteners and the
+gap spring rates within their initial branch, as well as concentrated mass matrices and rigid-body mass/inertia.
+Supported mixed field derivatives also feed the static Hessian blocks when several fields reach one element.
+`fieldPerturbations`, `hasHessianBlocks` and `perturbedLinearisations` identify which formulas a particular
+calculation actually used; a native C++ derivative can still use numerical differences where no closed form exists.
 Second-order products for static responses reuse element Hessian blocks where available and otherwise difference the
-response linearisation along the direction. Static shapes and responses without supported second-order blocks, as well
-as modal, buckling and aeroelastic responses, difference native first-order gradients at nearby design points.
-Their additional analyses respect variable bounds and reuse the current mode shapes
+response linearisation along the direction. Static shapes, responses without supported second-order formulas,
+and unsupported coupled responses difference native first-order gradients at nearby design points. Modal eigenvalues,
+frequencies and selected fields use bordered tangent and adjoint derivatives when the element matrix and recovery
+second derivatives are closed; their report sets `usesModalTangents: true` and `perturbedLinearisations: 0`.
+Closed buckling and trim sizing products differentiate the coupled state directly, including the preload or support
+motion, and set `usesBucklingTangents` or `usesTrimTangents`. See [coupled derivatives](coupled-derivatives.md) for
+the formulas, supported loads and remaining numerical paths.
+Products that difference native gradients respect variable bounds and reuse the current mode shapes
 as tracking references. An ambiguous mode match stops the product. Reports expose the method through
 `hessianBlocksReason`. These are numerical engineering derivatives, not a guarantee of exact arithmetic or
 differentiability at a response's branch changes.
@@ -160,8 +170,9 @@ when trim or static inertia relief moves splines or rigid-body support modes.
 `report.analysisPerturbations` counts the added analyses.
 `jvp`, `vjp` and `streamGradients` use these completed columns too. Streaming keeps structural columns in blocks and
 releases each completed shape column after emitting its block, so it can exceed the dense Jacobian output limit.
-Second-order products require a supported first-order response. Modal eigenvector and modal stress fields and trim
-configurations without native gradients remain outside that set. Sparse second-order
+Second-order products require a supported first-order response. The [modal derivative guide](modal-derivatives.md)
+describes mode-selected fields and their normalisation. Trim configurations without native gradients remain outside
+that set. Sparse second-order
 block export is narrower:
 it requires the native closed-form blocks and refuses the condensed path, inertia relief and other cases documented
 in `VectorJacobianProducts`. Unsupported operations throw a JavaScript error with the native reason; no zero Hessian

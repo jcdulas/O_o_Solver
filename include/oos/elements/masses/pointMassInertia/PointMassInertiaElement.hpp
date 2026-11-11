@@ -21,8 +21,8 @@
 // (−[d]×[d]× = |d|²I − d·dᵀ: the parallel-axis terms). M is then carried to the displacement system of G. The same
 // matrix for the lumped and the coupled formulations.
 //
-// Facets: mass. Loads (gravity, rotation: the assembler applies them through the mass matrix) and design
-// derivatives are not written yet.
+// Facets: mass and its exact first and same-field second derivatives in mass, offset and inertia.
+// The assembler applies gravity and rotation loads through the mass matrix.
 //
 // Not supported: a cylindrical or spherical CID (refused by check()). Problems reported by check(): G not a grid
 // point, an unknown CID.
@@ -47,6 +47,13 @@ public:
     [[nodiscard]] std::string_view card() const noexcept override { return "PointMassInertia"; }
     [[nodiscard]] FacetSet facets() const noexcept override { return {Facet::Mass, Facet::Derivatives}; }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool massFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                  const DesignedField& first, const DesignedField& second,
+                                  const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                             const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool massFieldSecondDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                   const MassOptions& options, ElementMatrixBlock& block) const override;
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
@@ -68,6 +75,8 @@ private:
     {
         std::int32_t gridRow = 0;
         base::MatN<6> massInDisplacementFrame;
+        base::Vec3 offsetInBasic;
+        base::Mat3 inputToBasic;
     };
 
     [[nodiscard]] static Resolution<Mass> resolve(const ElementBatchView& view, const Columns& columns,

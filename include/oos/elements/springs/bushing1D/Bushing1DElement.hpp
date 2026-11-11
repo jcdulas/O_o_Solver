@@ -17,6 +17,7 @@
 // SA·f, axial strain SE·e, plastic strain 0, failed 0; BushProp1D: SA, SE the stress and strain recovery coefficients).
 // C, the viscous damping, plays no part in SOL 101, 103, 105. The data contract has no force table of Bushing1D (the
 // stress table holds the force).
+// The stiffness, mass and recovery rates of K, M, SA and SE are closed form.
 //
 // Not supported, refused by check(): the nonlinear groups of BushProp1D (SHOCKA, SPRING, DAMPER, GENER: field groups
 // not 0); a cylindrical or spherical CID. Problems: an unknown grid point, a PID that is not a BushProp1D, CID missing
@@ -43,6 +44,26 @@ public:
         return {Facet::Stiffness, Facet::Mass, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row,
+                                 const DesignedField& first, const DesignedField& second,
+                                 ElementOutput output, const NodalDisplacements& displacements,
+                                 ElementResultBlock& rates) const override;
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementMatrixBlock& block) const override;
+    bool massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                             const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, const NodalDisplacements& displacements,
+                            ElementResultBlock& rates) const override;
+    bool stiffnessFieldSecondDerivative(const ElementBatchView& view, std::int64_t row,
+                                        const DesignedField& field, ElementMatrixBlock& block) const override;
+    bool massFieldSecondDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                   const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool recoverySlopeRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, RecoverySlopes& rates) const override;
+    bool recoveryFieldSecondRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementOutput output, const NodalDisplacements& displacements,
+                                  ElementResultBlock& rates) const override;
     [[nodiscard]] std::vector<std::string> propertyCards() const override { return {"BushProp1D"}; }
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;

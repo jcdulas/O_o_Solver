@@ -994,4 +994,83 @@ std::optional<ItemSecondOrder> ElementItemFunction::secondOrder(const elements::
     return result;
 }
 
+std::optional<double> ElementItemFunction::mixedFieldRate(const elements::ElementBatchView& view,
+                                                          const elements::NodalDisplacements& displacements,
+                                                          std::span<const double> weights,
+                                                          const elements::DesignedField& first,
+                                                          const elements::DesignedField& second) const
+{
+    if (weights.size() != m_items.size())
+        return std::nullopt;
+    struct Output
+    {
+        elements::ElementOutput output;
+        std::vector<elements::ColumnForm> forms;
+        elements::ElementResultBlock mixed;
+        elements::ElementResultBlock values;
+        elements::ElementResultBlock firstRates;
+        elements::ElementResultBlock secondRates;
+        bool hasComponents = false;
+    };
+    std::map<std::string, Output> outputs;
+    double total = 0.0;
+    for (std::size_t k = 0; k < m_items.size(); ++k)
+    {
+        if (weights[k] == 0.0)
+            continue;
+        const ElementItemSpec& item = m_items[k];
+        const bool isRecovered =
+            item.type == ResponseType::Stress || item.type == ResponseType::Strain || item.type == ResponseType::Force;
+        if (!isRecovered ||
+            item.location.isComposite || item.location.isStrengthRatio)
+            return std::nullopt;
+        auto [found, isNew] = outputs.try_emplace(item.location.tableKind);
+        Output& part = found->second;
+        if (isNew)
+        {
+            part.output = outputOf(*m_family, item.location.tableKind);
+            part.forms = m_family->outputColumnForms(part.output);
+            if (!m_family->recoveryFieldMixedRates(view, m_row, first, second, part.output, displacements, part.mixed))
+                return std::nullopt;
+        }
+        const std::size_t column = m_columns[k];
+        const std::size_t index = findRow(part.mixed, item.location.place, item.location.layer + item.lamina);
+        if (index == NO_ROW || column >= part.forms.size() || column >= part.mixed.columns().size())
+            return std::nullopt;
+        const elements::ColumnForm& form = part.forms[column];
+        double rate = part.mixed.values(index)[column];
+        if (form.kind == elements::ColumnForm::Kind::PlaneVonMises)
+        {
+            if (!part.hasComponents)
+            {
+                m_family->recover(view, {m_row, m_row + 1}, part.output, displacements, part.values);
+                if (!m_family->recoveryFieldRates(view, m_row, first, part.output, displacements, part.firstRates) ||
+                    !m_family->recoveryFieldRates(view, m_row, second, part.output, displacements, part.secondRates))
+                    return std::nullopt;
+                part.hasComponents = true;
+            }
+            std::array<double, 3> values{}, a{}, b{}, mixed{};
+            for (std::size_t component = 0; component < 3; ++component)
+            {
+                const std::size_t source = form.components[component];
+                if (source >= part.forms.size() || part.forms[source].kind != elements::ColumnForm::Kind::Linear ||
+                    part.values.size() != part.mixed.size() || part.firstRates.size() != part.mixed.size() ||
+                    part.secondRates.size() != part.mixed.size())
+                    return std::nullopt;
+                values[component] = part.values.values(index)[source];
+                a[component] = part.firstRates.values(index)[source];
+                b[component] = part.secondRates.values(index)[source];
+                mixed[component] = part.mixed.values(index)[source];
+            }
+            rate = elements::planeVonMisesSecondRate(form, values, a, b, mixed);
+        }
+        else if (form.kind != elements::ColumnForm::Kind::Linear)
+            return std::nullopt;
+        if (!std::isfinite(rate))
+            return std::nullopt;
+        total += weights[k] * rate;
+    }
+    return total;
+}
+
 } // namespace oos::design

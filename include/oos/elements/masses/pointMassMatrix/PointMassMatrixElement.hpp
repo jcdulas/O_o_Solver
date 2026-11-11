@@ -12,7 +12,7 @@
 // M_CD = Fᵀ·M·F block by block, F = Aᵀ·R (A the CID-to-basic rotation, R the CD-to-basic rotation of G). The same
 // matrix for the lumped and the coupled formulations.
 //
-// Facets: mass. Design derivatives are not written yet.
+// Facets: mass and its exact first and same-field second derivatives in the 21 matrix terms.
 //
 // Not supported: a cylindrical or spherical CID (refused by check()). Problems reported by check(): G not a grid
 // point, an unknown CID.
@@ -33,6 +33,13 @@ public:
     [[nodiscard]] std::string_view card() const noexcept override { return "PointMassMatrix"; }
     [[nodiscard]] FacetSet facets() const noexcept override { return {Facet::Mass, Facet::Derivatives}; }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool massFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                  const DesignedField& first, const DesignedField& second,
+                                  const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                             const MassOptions& options, ElementMatrixBlock& block) const override;
+    bool massFieldSecondDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                   const MassOptions& options, ElementMatrixBlock& block) const override;
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,

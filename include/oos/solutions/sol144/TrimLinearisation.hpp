@@ -70,6 +70,13 @@ public:
         std::vector<double> displacements;
     };
 
+    struct CoefficientDerivative
+    {
+        std::array<double, 6> coefficients{};
+        std::vector<double> displacements;
+        std::vector<double> motions;
+    };
+
     // The subcases, in the order of TrimResults::subcases.
     [[nodiscard]] std::vector<base::EntityId> subcases() const;
     [[nodiscard]] std::size_t gSetSize() const noexcept;
@@ -87,6 +94,9 @@ public:
 
     // The trimmed state of a subcase: u and D_r·ü_r.
     [[nodiscard]] Directions trimmedState(std::size_t subcase) const;
+    // Expand support accelerations to D_r * accelerations on the g set, at fixed support geometry.
+    [[nodiscard]] std::vector<double> supportMotion(std::size_t subcase,
+                                                    std::span<const double> accelerations) const;
     // The derivative of the trimmed state for −∂K·u (`stiffnessLoad`) and −∂M·D_r·ü_r (`inertialLoad`), g-set vectors
     // of trimmedState(subcase). Throws std::invalid_argument for vectors not of the g set.
     [[nodiscard]] StateDerivative stateDerivative(std::size_t subcase, std::span<const double> stiffnessLoad,
@@ -104,6 +114,11 @@ public:
                                                               std::span<const double> stiffnessLoad,
                                                               std::span<const double> inertialLoad,
                                                               base::MemoryBudget& budget);
+    // Also returns du_x and dw_x for differentiating the coefficient equations a second time. The free-body
+    // motion includes the derivative of its mass projection; restrained unit accelerations remain fixed.
+    [[nodiscard]] CoefficientDerivative coefficientStateDerivative(
+        std::size_t subcase, std::size_t variable, bool isUnrestrained, std::span<const double> stiffnessLoad,
+        std::span<const double> inertialLoad, bool withDisplacements, base::MemoryBudget& budget);
 
 private:
     std::unique_ptr<State> m_state;

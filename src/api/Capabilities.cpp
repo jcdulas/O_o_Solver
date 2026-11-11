@@ -19,9 +19,15 @@ OptimizationCapabilities optimizationCapabilities(const input::ModelSnapshot* sn
                         true,
                         true,
                         true,
-                        {"Native responses differentiate eigenvalues and frequencies, not eigenvector result fields.",
-                         "Second-order products difference native first-order gradients at tracked modal points.",
+                        {"Native responses differentiate eigenvalues, frequencies and mode-selected displacement, "
+                         "stress, strain and force fields.",
+                         "Closed sizing formulations use bordered modal tangents and adjoint derivatives for "
+                         "second-order products.",
+                         "Other second-order products difference native gradients; usesModalTangents identifies "
+                         "the analytic path.",
+                         "Modal fields use the full vibration path and the extraction method's normalisation.",
                          "Repeated roots return one-sided coordinate derivatives; they are not a smooth Jacobian.",
+                         "Individual modal field derivatives and Hessians are refused at repeated roots.",
                          "Use mode references and inspect tracking uncertainty across design points."}},
                        {"buckling",
                         105,
@@ -29,7 +35,9 @@ OptimizationCapabilities optimizationCapabilities(const input::ModelSnapshot* sn
                         true,
                         true,
                         {"Native responses differentiate load factors including the static preload.",
-                         "Second-order products difference native first-order gradients at tracked buckling points.",
+                         "Closed mechanical-preload sizing products use shape and preload tangents; "
+                         "usesBucklingTangents identifies this path.",
+                         "Other second-order products difference native gradients at tracked buckling points.",
                          "Repeated roots return one-sided coordinate derivatives; they are not a smooth Jacobian.",
                          "Use mode references and inspect tracking uncertainty across design points."}},
                        {"aeroelastic",
@@ -38,7 +46,9 @@ OptimizationCapabilities optimizationCapabilities(const input::ModelSnapshot* sn
                         true,
                         true,
                         {"Native gradients differentiate structural sizing at fixed aerodynamic geometry.",
-                         "Second-order products difference the supported native first-order trim gradients.",
+                         "Closed sizing products differentiate the coupled trim state and stability coefficients; "
+                         "usesTrimTangents identifies this path.",
+                         "Other second-order products difference supported native trim gradients.",
                          "Shape columns use complete trim differences to include moved splines and rigid-body modes.",
                          "Native trim linearisation includes applied inertial load mass derivatives on the full path.",
                          "A plan that condenses a driven unit uses the full trim path when gradients are retained; "

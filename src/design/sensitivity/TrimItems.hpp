@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <span>
 #include <utility>
@@ -77,13 +78,13 @@ public:
 
     // The vectors of the directions; call once every item is added.
     void prepare();
-    // The contribution of element `elementId` (row `row` of `family`) a designed quantity reaches (`stiffness` its
-    // dK/dv as the caller differenced it, empty when the quantity does not change the stiffness). Throws
+    // The contribution of element `elementId` a designed quantity reaches: `stiffness` is dK/dv (empty when none),
+    // `massOf` its closed mass rate or its lazy numerical fallback. Throws
     // OptimisationError for an element of a condensed unit: the derivatives of the trim need the units the design
     // drives kept full.
-    void addElement(std::size_t quantity, const elements::ElementFamily& family, std::int64_t row,
-                    base::EntityId elementId, const ElementDerivatives& derivatives, const elements::FieldUse& use,
-                    const ElementMatrixDerivative& stiffness);
+    using MassOf = std::function<ElementMatrixDerivative(const elements::MassOptions&)>;
+    void addElement(std::size_t quantity, const elements::ElementFamily& family, base::EntityId elementId,
+                    const elements::FieldUse& use, const ElementMatrixDerivative& stiffness, const MassOf& massOf);
     // Once every element of the quantity is added: the derivatives of every item along it.
     void finishQuantity(std::size_t quantity, const LinearisedItems& linearised);
     // The derivatives into the explicit parts of the items, the static items' weights cleared.

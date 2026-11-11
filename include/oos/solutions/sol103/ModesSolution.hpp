@@ -45,6 +45,8 @@ struct ModesOptions
     ProgressMonitor* monitor = nullptr;                    // not owned, may be null
     // The memory the result tables may take; nothing: half of the memory budget left when the recovery starts.
     std::optional<std::uint64_t> outputLimitBytes;
+    // Fields read by design responses, added to the Case Control outputs.
+    std::array<output::OutputRequestPlan, output::OUTPUT_KIND_COUNT> requiredOutputs{};
     // The elements of one task of the element recovery (RANGE_ELEMENTS but in the tests of the threaded recovery).
     std::int64_t recoveryRangeElements = output::ElementResultBuilder::RANGE_ELEMENTS;
     // Whether the element tables of every mode are recovered one mode at a time (ModeRecovery::recover), the reference

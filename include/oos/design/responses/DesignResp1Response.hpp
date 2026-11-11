@@ -37,7 +37,8 @@ namespace oos::design
 // - CSTRESS, CSTRAIN, CFAILURE, CSTRAT: as above, on CompProp or CompPropGlobal elements, ATTB the lamina (default 1;
 // several
 //   with the caller's plies= selector); one item per element and lamina.
-// ATTB on a static response other than WEIGHT and the composite ones names a mode (an eigenvector response): refused.
+// A positive integer ATTB on DISP, STRESS, STRAIN or FORCE selects a vibration mode. Caller declarations can use
+// DesignResp1Definition::mode directly, including for CSTRESS and CSTRAIN while keeping ATTB as their ply selector.
 //
 // The kinds of the optimisation aids (no ATTA, PTYPE nor ATTB):
 // - COMPLIANCE, MEANDISP: no ATTi; one item per subcase (SelfAdjointResponses: twice the external work of the
@@ -147,7 +148,8 @@ private:
     [[nodiscard]] double selfAdjointValue(std::int32_t subcase, ResponseContext& context) const;
     [[nodiscard]] double pointValue(std::int32_t grid, std::int32_t subcase, ResponseContext& context) const;
     [[nodiscard]] double elementItem(const ElementTarget& target, std::int32_t code, const ItemLocation& location,
-                                     std::int32_t lamina, std::int32_t subcase, ResponseContext& context) const;
+                                     std::int32_t lamina, std::int32_t subcase, ResponseContext& context,
+                                     std::int32_t mode = 0) const;
 
     DesignResp1Definition m_definition;
     std::vector<std::int32_t> m_components;                         // DISP, SPCFORCE: the digits of ATTA

@@ -47,6 +47,25 @@ public:
         return {Facet::Stiffness, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row,
+                                 const DesignedField& first, const DesignedField& second,
+                                 ElementOutput output, const NodalDisplacements& displacements,
+                                 ElementResultBlock& rates) const override;
+    bool stiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                       const DesignedField& first, const DesignedField& second,
+                                       ElementMatrixBlock& block) const override;
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementMatrixBlock& block) const override;
+    bool recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, const NodalDisplacements& displacements,
+                            ElementResultBlock& rates) const override;
+    bool stiffnessFieldSecondDerivative(const ElementBatchView& view, std::int64_t row,
+                                        const DesignedField& field, ElementMatrixBlock& block) const override;
+    bool recoverySlopeRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, RecoverySlopes& rates) const override;
+    bool recoveryFieldSecondRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementOutput output, const NodalDisplacements& displacements,
+                                  ElementResultBlock& rates) const override;
     [[nodiscard]] std::vector<std::string> propertyCards() const override { return {"GapProp"}; }
     [[nodiscard]] std::vector<input::FieldRule> fieldRules() const override;
 

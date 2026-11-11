@@ -8,8 +8,8 @@
 // grounds that end). Element force f = K (u1 − u2). The card has no stress coefficient and no damping field, so the
 // element gives forces only.
 //
-// Facets: stiffness, recovery (forces). No mass. Differential stiffness, loads and design derivatives are not written
-// yet.
+// Facets: stiffness, recovery (forces). No mass; differential stiffness and loads are zero. The derivative of K is
+// closed form.
 //
 // Not supported: nothing on this card. Problems reported by check(): an S that is not a scalar point, both ends blank
 // or equal.
@@ -34,6 +34,22 @@ public:
         return {Facet::Stiffness, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row,
+                                 const DesignedField& first, const DesignedField& second,
+                                 ElementOutput output, const NodalDisplacements& displacements,
+                                 ElementResultBlock& rates) const override;
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementMatrixBlock& block) const override;
+    bool recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, const NodalDisplacements& displacements,
+                            ElementResultBlock& rates) const override;
+    bool stiffnessFieldSecondDerivative(const ElementBatchView& view, std::int64_t row,
+                                        const DesignedField& field, ElementMatrixBlock& block) const override;
+    bool recoverySlopeRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                            ElementOutput output, RecoverySlopes& rates) const override;
+    bool recoveryFieldSecondRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementOutput output, const NodalDisplacements& displacements,
+                                  ElementResultBlock& rates) const override;
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
     void computeStiffness(const ElementBatchView& view, ElementRange range, ElementMatrixBlock& block) const override;

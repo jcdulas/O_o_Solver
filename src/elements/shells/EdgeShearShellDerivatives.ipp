@@ -1,12 +1,12 @@
 // The design derivatives of EdgeShearShellFamily (EdgeShearShellFamily.hpp): the closed forms by the complex step
 // through the kernels, along the rates of the element's inputs (Direction). Included after EdgeShearShellRecovery.ipp.
 //
-// First derivatives: the kernel evaluated in complex numbers at inputs x + i h ẋ gives Im f / h = f′·ẋ, exact to
-// round-off (ShellScalar.hpp). Second derivatives in the ShellProp T: the 4-point central rule on complex-step first
-// derivatives, f″ ≈ [−f′(T + 2δ) + 8 f′(T + δ) − 8 f′(T − δ) + f′(T − 2δ)] / (12 δ), δ = 1e-3 T (truncation error
-// of order δ⁴ f⁽⁵⁾/30, about 1e-12 relative for these polynomial-like functions of T; round-off about 1e-13).
+// First derivatives use the complex-step chain rule (ShellScalar.hpp). Second derivatives in ShellProp T
+// propagate the chain rule with SecondOrderScalar: no perturbed thickness or numerical step is needed.
 
 #pragma once
+
+#include "oos/elements/shells/SecondOrderScalar.hpp"
 
 #include <limits>
 
@@ -16,11 +16,55 @@ namespace oos::elements
 namespace edge_shear_detail
 {
 
-// δ / T of the second derivatives in T.
-inline constexpr double SECOND_DERIVATIVE_STEP = 1.0e-3;
-// The 4-point rule: the shifts in δ and their weights (over 12 δ).
-inline constexpr std::array<double, 4> SECOND_DERIVATIVE_SHIFTS{-2.0, -1.0, 1.0, 2.0};
-inline constexpr std::array<double, 4> SECOND_DERIVATIVE_WEIGHTS{1.0, -8.0, 8.0, -1.0};
+template <std::size_t R, std::size_t C>
+ScalarMatrix<SecondOrderScalar, R, C> constantMatrix(const ScalarMatrix<double, R, C>& source)
+{
+    ScalarMatrix<SecondOrderScalar, R, C> result;
+    for (std::size_t k = 0; k < source.values.size(); ++k)
+        result.values[k] = source.values[k];
+    return result;
+}
+
+// ShellProp thickness changes the geometric thicknesses; the constitutive values per unit thickness stay fixed.
+inline PlateConstitutive<SecondOrderScalar> constantConstitutive(const PlateConstitutive<double>& source)
+{
+    PlateConstitutive<SecondOrderScalar> result;
+    result.hasMembrane = source.hasMembrane;
+    result.hasBending = source.hasBending;
+    result.hasCoupling = source.hasCoupling;
+    result.hasShearFlexibility = source.hasShearFlexibility;
+    result.membrane = constantMatrix(source.membrane);
+    result.bending = constantMatrix(source.bending);
+    result.coupling = constantMatrix(source.coupling);
+    result.transverseShear = constantMatrix(source.transverseShear);
+    result.transverseShearCompliance = constantMatrix(source.transverseShearCompliance);
+    result.bendingRatio = source.bendingRatio;
+    result.shearRatio = source.shearRatio;
+    result.youngX = source.youngX;
+    result.youngY = source.youngY;
+    result.shearModulusX = source.shearModulusX;
+    result.shearModulusY = source.shearModulusY;
+    return result;
+}
+
+template <std::size_t N>
+std::array<SecondOrderScalar, N> secondOrderThickness(const std::array<double, N>& values,
+                                                     const std::array<double, N>& rates)
+{
+    std::array<SecondOrderScalar, N> result;
+    for (std::size_t k = 0; k < N; ++k)
+        result[k] = {values[k], rates[k]};
+    return result;
+}
+
+template <std::size_t N>
+base::MatN<N> secondDerivativeOf(const ScalarMatrix<SecondOrderScalar, N>& matrix)
+{
+    base::MatN<N> result;
+    for (std::size_t k = 0; k < matrix.values.size(); ++k)
+        result.values[k] = matrix.values[k].second;
+    return result;
+}
 
 template <typename Data, typename Direction>
 [[nodiscard]] PlateConstitutive<Complex> steppedConstitutive(const Data& data, const Direction& direction)
@@ -36,49 +80,6 @@ template <std::size_t N>
     for (std::size_t a = 0; a < N; ++a)
         result[a] = complexStepped(thickness[a], rates[a]);
     return result;
-}
-
-// The element with every corner thickness moved by `shift` (in units of the ShellProp T): the corners follow T.
-template <typename Data>
-[[nodiscard]] Data withThicknessShift(Data data, double shift)
-{
-    for (double& t : data.thickness)
-        t *= 1.0 + shift / data.section.thickness;
-    return data;
-}
-
-// The second derivative in T of the values `firstRate(data)` gives (the first rates of an element as a vector), by the
-// 4-point rule.
-template <typename Data, typename FirstRate>
-[[nodiscard]] std::vector<double> secondRateInThickness(const Data& data, FirstRate&& firstRate)
-{
-    const double delta = SECOND_DERIVATIVE_STEP * data.section.thickness;
-    std::vector<double> result;
-    for (std::size_t s = 0; s < SECOND_DERIVATIVE_SHIFTS.size(); ++s)
-    {
-        const std::vector<double> rates = firstRate(withThicknessShift(data, SECOND_DERIVATIVE_SHIFTS[s] * delta));
-        if (result.empty())
-            result.assign(rates.size(), 0.0);
-        for (std::size_t k = 0; k < rates.size(); ++k)
-            result[k] += SECOND_DERIVATIVE_WEIGHTS[s] * rates[k];
-    }
-    for (double& value : result)
-        value /= 12.0 * delta;
-    return result;
-}
-
-template <std::size_t N>
-[[nodiscard]] std::vector<double> flattened(const ScalarMatrix<double, N>& m)
-{
-    return std::vector<double>(m.values.begin(), m.values.end());
-}
-
-template <std::size_t N>
-[[nodiscard]] base::MatN<N> matrixFrom(const std::vector<double>& values)
-{
-    base::MatN<N> m;
-    std::copy(values.begin(), values.end(), m.values.begin());
-    return m;
 }
 
 // The rows' rates from complex-stepped rows: the Linear columns' rates; a stress or strain row's von Mises along its
@@ -230,6 +231,31 @@ bool EdgeShearShellFamily<Shell>::differentialStiffnessFieldDerivative(const Ele
     return true;
 }
 
+template <typename Shell>
+bool EdgeShearShellFamily<Shell>::differentialStiffnessFieldMixedDerivative(
+    const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
+    const NodalDisplacements& preload, ElementMatrixBlock& block) const
+{
+    using namespace edge_shear_detail;
+    if (!isShellThickness(first) || !isShellThickness(second) || first.id != second.id ||
+        preload.temperatures != nullptr)
+        return ElementFamily::differentialStiffnessFieldMixedDerivative(view, row, first, second, preload, block);
+    const Data data = resolved(view, row);
+    const auto direction = directionOf(data, first);
+    if (!direction)
+        return false;
+    const auto thickness = secondOrderThickness(data.thickness, direction->thickness);
+    const auto recovery = Shell::recovery(data.geometry, constantConstitutive(data.constitutive), thickness,
+                                          fibresOf(data.section, thickness), PlateThermalStrain{});
+    const auto values = centreValuesOf(recovery, data.frames.localDisplacements(preload));
+    std::array<double, 3> forceRate{};
+    for (std::size_t k = 0; k < forceRate.size(); ++k)
+        forceRate[k] = values[centre_row::MEMBRANE_FORCE + k].second;
+    appendMatrix(block, row, data.frames.dofs(),
+                 data.frames.toDisplacementSystems(Shell::differentialStiffness(data.geometry, forceRate)));
+    return true;
+}
+
 // The rows' rates at fixed displacements (no temperature). A ply thickness gives the forces only (the homogeneous
 // stresses and strains of a laminate under NOCOMPS read fibres the plies move: differenced).
 template <typename Shell>
@@ -297,15 +323,9 @@ bool EdgeShearShellFamily<Shell>::stiffnessFieldSecondDerivative(const ElementBa
     const std::optional<Direction> direction = directionOf(data, field);
     if (!direction)
         return false;
-    const std::vector<double> second = secondRateInThickness(
-        data,
-        [&](const Data& shifted)
-        {
-            return flattened(
-                complexStepDerivativeOf(Shell::stiffness(shifted.geometry, steppedConstitutive(shifted, *direction),
-                                                         steppedThickness(shifted.thickness, direction->thickness))));
-        });
-    appendMatrix(block, row, data.frames.dofs(), data.frames.toDisplacementSystems(matrixFrom<DOFS>(second)));
+    const auto second = secondDerivativeOf(Shell::stiffness(data.geometry, constantConstitutive(data.constitutive),
+        secondOrderThickness(data.thickness, direction->thickness)));
+    appendMatrix(block, row, data.frames.dofs(), data.frames.toDisplacementSystems(second));
     return true;
 }
 
@@ -323,17 +343,11 @@ bool EdgeShearShellFamily<Shell>::massFieldSecondDerivative(const ElementBatchVi
         return false;
     const double added =
         options.addedNonStructuralMass.empty() ? 0.0 : options.addedNonStructuralMass[static_cast<std::size_t>(row)];
-    const std::vector<double> second =
-        secondRateInThickness(data,
-                              [&](const Data& shifted)
-                              {
-                                  return flattened(complexStepDerivativeOf(Shell::mass(
-                                      shifted.geometry, Complex(shifted.values.density, 0.0),
-                                      Complex(shifted.values.nonStructuralMass + added, 0.0),
-                                      steppedThickness(shifted.thickness, direction->thickness), options.formulation)));
-                              });
+    const auto second = secondDerivativeOf(Shell::mass(data.geometry, SecondOrderScalar(data.values.density),
+        SecondOrderScalar(data.values.nonStructuralMass + added),
+        secondOrderThickness(data.thickness, direction->thickness), options.formulation));
     appendMatrix(block, row, data.frames.dofs(),
-                 data.frames.massToDisplacementSystems(matrixFrom<DOFS>(second), view.isMassOnOffsets()));
+                 data.frames.massToDisplacementSystems(second, view.isMassOnOffsets()));
     return true;
 }
 
@@ -370,8 +384,7 @@ bool EdgeShearShellFamily<Shell>::recoverySlopeRates(const ElementBatchView& vie
     return true;
 }
 
-// The rows' second rates in T at fixed displacements (no temperature): the Linear columns by the 4-point rule on
-// their complex-step rates; the fibre distance's is zero (a blank Z is ∓t̄/2, linear in T); the other columns NaN.
+// Exact second thickness rates at fixed displacement. Nonlinear columns are chained by the design layer.
 template <typename Shell>
 bool EdgeShearShellFamily<Shell>::recoveryFieldSecondRates(const ElementBatchView& view, std::int64_t row,
                                                            const DesignedField& field, ElementOutput output,
@@ -389,35 +402,24 @@ bool EdgeShearShellFamily<Shell>::recoveryFieldSecondRates(const ElementBatchVie
         return false;
     const CompositeOutput composite = compositeOutputOf(view.snapshot());
     const std::array<double, DOFS> q = data.frames.localDisplacements(displacements);
-    std::vector<ResultPlace> places; // the rows' places, bounded by two rows
-    const std::vector<double> second = secondRateInThickness(
-        data,
-        [&](const Data& shifted)
-        {
-            const auto [values, fibres] = steppedCentre<Shell>(shifted, *direction, q);
-            std::vector<double> flat;
-            places.clear();
-            for (const LinearRow<Complex>& linear : linearRowsOf(values, fibres, shifted.section, output, composite))
-            {
-                places.push_back(linear.place);
-                for (const Complex& value : linear.values)
-                    flat.push_back(complexStepDerivative(value));
-            }
-            return flat;
-        });
+    const auto thickness = secondOrderThickness(data.thickness, direction->thickness);
+    const auto fibres = fibresOf(data.section, thickness);
+    const auto recovery = inOutputFrame(Shell::recovery(data.geometry, constantConstitutive(data.constitutive),
+        thickness, fibres, PlateThermalStrain{}), data.geometry.userAngle);
+    const auto centre = centreValuesOf(recovery, q);
     rates.reset(outputColumns(output));
-    for (std::size_t r = 0; r < places.size(); ++r)
+    for (const auto& linear : linearRowsOf(centre, fibres, data.section, output, composite))
     {
         std::array<double, 8> values{};
         for (std::size_t k = 0; k < 8; ++k)
-            values[k] = second[8 * r + k];
+            values[k] = linear.values[k].second;
         if (output != ElementOutput::Forces)
         {
             values[0] = 0.0;
             for (std::size_t k = 4; k < 8; ++k)
                 values[k] = NONE;
         }
-        rates.append(row, view.elementId(row), places[r], values);
+        rates.append(row, view.elementId(row), linear.place, values);
     }
     return true;
 }

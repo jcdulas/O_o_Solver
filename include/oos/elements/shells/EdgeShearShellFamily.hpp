@@ -40,8 +40,7 @@
 //
 // Design derivatives: the kernels are templates on the scalar and are evaluated in complex numbers along the rates of
 // their inputs (the section values and the corner thicknesses), which gives the exact first derivatives (complex step,
-// h = 1e-30); the second derivatives with respect to the ShellProp T are central differences of complex-step first
-// derivatives (a 4-point rule in T with step 1e-3·T: truncation about 1e-12 relative, round-off about 1e-13). Fields
+// h = 1e-30). The second thickness rates use SecondOrderScalar to propagate the chain rule exactly. Fields
 // with closed forms: the ShellProp T when every corner follows it, a AnisoMat2D stiffness term of the ShellProp's
 // materials, a ply thickness of a CompProp or CompPropGlobal (forces and ply rows only); none under a temperature
 // change. The others are differenced by the sensitivity analysis on the facets.
@@ -144,6 +143,9 @@ public:
     bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
                                               const DesignedField& field, const NodalDisplacements& preload,
                                               ElementMatrixBlock& block) const override;
+    bool differentialStiffnessFieldMixedDerivative(
+        const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
+        const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
     bool recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                             ElementOutput output, const NodalDisplacements& displacements,
                             ElementResultBlock& rates) const override;

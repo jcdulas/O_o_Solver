@@ -17,7 +17,7 @@ namespace oos::design::detail
 //   ℒ(u, p) = Σᵢ yᵢ·rᵢ(u, p) + Σ_s λ̃_sᵀ·(P_s(p) − K(p)·u_s),
 // λ̃_s the adjoint of Σ yᵢ·∂rᵢ/∂u of subcase s less the weighted SPC force rows (an SPC force item r = wᵀ·(K·u − P)
 // enters ℒ as −y·w beside λ), each element e and subcase s give, over the element's DOFs and its designed field p
-// (at most one),
+// (one field per diagonal block, plus separate symmetric blocks for pairs of fields),
 //   A_uu = Σᵢ yᵢ·∂²rᵢ/∂u²,                         (its items not affine in u; empty otherwise)
 //   A_up = Σᵢ yᵢ·∂²rᵢ/∂u∂p − (∂K_e/∂p)·λ̃_e,
 //   A_pp = Σᵢ yᵢ·∂²rᵢ/∂p² + λ̃_eᵀ·(∂²P_e/∂p² − (∂²K_e/∂p²)·u_e),
@@ -48,6 +48,8 @@ public:
         std::vector<double> displacement; // A_uu, dofs × dofs row-major, or empty (zero)
         std::vector<double> mixed;        // A_up, one per DOF, or empty (no field)
         double fieldTerm = 0.0;           // A_pp
+        // A pair block has no displacement or mixed terms; fieldTerm is A_pq = A_qp.
+        std::size_t otherField = NO_FIELD;
     };
 
     // Throws MemoryBudgetError when the blocks do not fit the budget.
