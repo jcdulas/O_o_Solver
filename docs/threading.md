@@ -22,7 +22,7 @@ available in `build/wasm/dist/`.
 Run the existing analysis and optimization tests together with the threading tests. For a shell:
 
 ```sh
-OOS_SOLVER_DIST=build/wasm-threads/dist node --test wasm/test/*.test.mjs
+OOS_SOLVER_DIST=build/wasm-threads/dist node --test --test-concurrency=1 wasm/test/*.test.mjs
 ```
 
 For a command prompt that sets environment variables separately, set `OOS_SOLVER_DIST` to the threaded distribution

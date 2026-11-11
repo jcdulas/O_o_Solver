@@ -1,15 +1,18 @@
+import { numericalOptimizationGradients } from "./numerical-derivatives.js";
+
 export class OptimizationProblem {
   constructor(handle) { this.handle = handle; this.info = handle.metadata(); }
   metadata() { return this.handle.metadata(); }
   designPoint(x) { return this.handle.designPoint(x); }
   evaluate(x = this.info.initialValues, modeReferences = []) {
-    return new OptimizationEvaluation(this.handle.evaluate(x, modeReferences), this.info);
+    if (!this.handle) throw new Error("this optimization problem has been deleted");
+    return new OptimizationEvaluation(this.handle.evaluate(x, modeReferences), this.info, this);
   }
   delete() { if (this.handle) { this.handle.delete(); this.handle = null; } }
 }
 
 export class OptimizationEvaluation {
-  constructor(handle, info) { this.handle = handle; this.info = info; this.busy = false; }
+  constructor(handle, info, owner) { this.handle = handle; this.info = info; this.owner = owner; this.busy = false; }
   operation(work) {
     if (!this.handle) throw new Error("this optimization evaluation has been deleted");
     if (this.busy) throw new Error("an optimization evaluation cannot be re-entered from a callback");
@@ -18,7 +21,12 @@ export class OptimizationEvaluation {
   }
   values() { return this.operation(() => this.handle.values()); }
   analysisResults() { return this.operation(() => this.handle.analysisResults()); }
-  gradients(settings = {}) { return this.operation(() => this.handle.gradients(settings)); }
+  gradients(settings = {}) {
+    return this.operation(() => settings.method === "finiteDifference"
+      ? numericalOptimizationGradients({ info: this.info, evaluate: (x, refs) =>
+          new OptimizationEvaluation(this.handle.evaluateAt(x, refs), this.info) }, this.handle.values(), settings)
+      : this.handle.gradients(settings));
+  }
   streamGradients(onBlock, block = 256) {
     return this.operation(() => this.handle.streamGradients(onBlock, block));
   }

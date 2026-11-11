@@ -125,6 +125,7 @@ public:
     [[nodiscard]] const std::string& tableName() const noexcept { return m_contract.table; }
     [[nodiscard]] const TableContract& contract() const noexcept { return m_contract; }
     [[nodiscard]] std::int64_t rowCount() const noexcept { return m_table.rowCount(); }
+    [[nodiscard]] std::vector<std::string> columnNames() const { return m_table.columnNames(); }
     [[nodiscard]] bool hasColumn(const std::string& name) const { return m_table.findColumn(name) >= 0; }
     // The data contract type of a column (contractTypeOf); ContractError when there is no such column.
     [[nodiscard]] std::string columnType(const std::string& name) const;

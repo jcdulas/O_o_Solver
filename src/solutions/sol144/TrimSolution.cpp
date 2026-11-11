@@ -84,12 +84,6 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
                                    "applied loads (StaticLoadSelection) in a trim subcase are taken on the full path "
                                    "only in this version; solve without a condensation plan, or remove "
                                    "the selection"));
-            if (subcase.load && m_options.keepsLinearisation)
-                caseSink.report(subcaseProblem(subcase.label, base::Severity::Error, "trim-applied-loads",
-                                               "the design derivatives of a trim subcase with applied loads "
-                                               "(StaticLoadSelection) are not given by this version; remove "
-                                               "the StaticLoadSelection selection of the "
-                                               "SAERO subcase"));
             trimCases.back() =
                 aero::TrimCase::forSubcase(snapshot, subcase.label, subcase.tableId, m_options.links, caseSink);
             if (!trimCases.back())

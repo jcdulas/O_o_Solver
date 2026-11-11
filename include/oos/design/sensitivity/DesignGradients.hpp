@@ -104,6 +104,7 @@ struct SensitivityReport
     std::int64_t solves = 0;                  // the right-hand sides solved for the sensitivities
     std::int64_t fieldPerturbations = 0;      // the designed fields differenced
     std::int64_t shapePerturbations = 0;      // the shape variables differenced (their bases moved)
+    std::int64_t analysisPerturbations = 0;   // complete analyses used for geometry-dependent trim derivatives
     std::int64_t elementDerivatives = 0;      // the element computations differenced (an element and a quantity)
     std::int64_t displacementDifferences = 0; // the element recoveries differenced with respect to the displacements
     // The element outputs whose slopes a family gave (one call each), the recoveries at unit

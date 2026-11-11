@@ -11,6 +11,7 @@ Solve finite element models through typed tables and return numerical results.
 - [API reference](docs/api.rst): the current JavaScript types and C++ entry points, included directly from source.
 - [WebAssembly threads](docs/threading.md): shared-memory builds, runtime settings and browser Workers.
 - [JavaScript optimization](docs/optimization.md): design points, derivatives and model updates.
+- [External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, workers and archives.
 - [Architecture with diagrams](docs/architecture.md): module dependencies, data ownership and execution flow.
 - [Module guide](docs/modules.md): implementation structure and detailed technical guides.
 - [Download or build the documentation](docs/documentation.md): published site, HTML archives and local builds.
@@ -38,6 +39,7 @@ The reader and solver have public documentation sites and exchange model data th
 
 docs/getting-started
 docs/optimization
+docs/external-optimization
 docs/threading
 docs/static-inputs
 docs/testing

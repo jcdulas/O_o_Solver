@@ -1,4 +1,5 @@
 #pragma once
+#include "oos/design/model/DerivedMaterials.hpp"
 
 #include "oos/base/diagnostics/Diagnostic.hpp"
 #include "oos/design/model/DerivedGeometry.hpp"
@@ -135,6 +136,7 @@ public:
                                                  std::span<const double> reference = {}) const;
     // The derived tables of the designed laminates and sections.
     [[nodiscard]] const DerivedProperties& derivedProperties() const noexcept { return m_derivedProperties; }
+    [[nodiscard]] bool hasDerivedMaterial(std::size_t relation) const noexcept { return m_derivedMaterials.reaches(relation); }
     // The section library of the designed sections (null without one).
     [[nodiscard]] const SectionLibrary* sectionLibrary() const noexcept { return m_sections.get(); }
     // Adds to `overlay` the derived cells of relation `relation`'s card (its ply stack or its section properties) at
@@ -160,6 +162,7 @@ private:
     std::vector<double> m_basePositions;
     DerivedGeometry m_derived;
     DerivedProperties m_derivedProperties;
+    DerivedMaterials m_derivedMaterials;
     std::shared_ptr<const SectionLibrary> m_sections;
 };
 

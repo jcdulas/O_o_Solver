@@ -677,6 +677,7 @@ FieldTargets::FieldTargets(const DesignModel& model, const input::ModelSnapshot&
     binder.bind(m_targets, m_unitIds, m_derivedProperties);
     binder.bindShapes(m_shapeTargets, m_movedRows, m_basePositions, m_unitIds.size(), m_derived);
     throwDesignDiagnostics("the design model does not fit the model", binder.diagnostics());
+    m_derivedMaterials.bind(model, snapshot);
 }
 
 std::vector<double> FieldTargets::movedPositions(const ShapeRelations& relations, std::span<const double> shapes) const
@@ -703,6 +704,7 @@ input::ColumnOverlay FieldTargets::overlayOf(const ShapeRelations& relations, st
     // The ply stacks and section properties of the designed laminates and library sections.
     if (!m_derivedProperties.isEmpty())
         m_derivedProperties.addCells(overlay, fields, std::nullopt, m_sections.get(), nullptr, reference);
+    m_derivedMaterials.addCells(overlay, fields);
     if (m_movedRows.empty())
         return overlay;
     const std::vector<double> positions = movedPositions(relations, shapes);
@@ -721,6 +723,7 @@ input::ColumnOverlay FieldTargets::overlayOf(const ShapeRelations& relations, st
 void FieldTargets::addDerivedCells(input::ColumnOverlay& overlay, std::span<const double> fields, std::size_t relation,
                                    const SectionLinearisation* linear) const
 {
+    m_derivedMaterials.addCells(overlay, fields, relation);
     if (const std::optional<std::size_t> group = m_derivedProperties.groupOf(relation))
         m_derivedProperties.addCells(overlay, fields, group, m_sections.get(), linear);
 }

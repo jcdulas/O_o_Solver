@@ -3,7 +3,7 @@
 #   oos_solver_core.js / .wasm   the module made by Emscripten
 #   index.js, index.d.ts         the wrapper a web application imports
 #   package.json
-add_executable(oos_solver_core src/Bindings.cpp src/OptimizationBindings.cpp)
+add_executable(oos_solver_core src/Bindings.cpp src/OptimizationBindings.cpp src/TrimResults.cpp)
 target_link_libraries(oos_solver_core PRIVATE oos::api)
 set_target_properties(oos_solver_core PROPERTIES
     SUFFIX ".js"
@@ -56,13 +56,18 @@ if(OOS_BUILD_WASM_TESTS)
     oos_wasm_workers(oos_threading_test)
 endif()
 
-# The wrapper, its types and the package description, next to the module.
-foreach(file index.js index.d.ts optimization.js optimization.d.ts)
-    set_property(TARGET oos_solver_core APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/js/${file}")
-    add_custom_command(TARGET oos_solver_core POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/js/${file}"
-                "${CMAKE_BINARY_DIR}/dist/${file}")
-endforeach()
-add_custom_command(TARGET oos_solver_core POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/package.json"
-            "${CMAKE_BINARY_DIR}/dist/package.json")
+# Refresh JavaScript-only edits without relinking the numerical module.
+function(oos_copy_wasm_package target)
+    foreach(file index.js index.d.ts optimization.js optimization.d.ts numerical-derivatives.js shape-basis.js
+                 study.js study.d.ts study-responses.js study-archive.js study-worker.js study-workers.js study-workers.d.ts)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/js/${file}"
+                    "${CMAKE_BINARY_DIR}/dist/${file}")
+    endforeach()
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/package.json"
+                "${CMAKE_BINARY_DIR}/dist/package.json")
+endfunction()
+oos_copy_wasm_package(oos_solver_core)
+add_custom_target(oos_solver_package ALL DEPENDS oos_solver_core)
+oos_copy_wasm_package(oos_solver_package)

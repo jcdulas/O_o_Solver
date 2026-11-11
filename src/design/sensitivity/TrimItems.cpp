@@ -28,6 +28,8 @@ TrimItems::TrimItems(const Inputs& inputs) : m_in(inputs)
         massOptions.formulation = options.formulation;
         m_massOptions.push_back(massOptions);
         m_weightToMass.push_back(options.weightToMass);
+        m_appliedAccelerations.push_back(m_linearisation->appliedAcceleration(m_appliedAccelerations.size(),
+                                                                              *m_in.budget));
     }
 }
 
@@ -190,7 +192,13 @@ void TrimItems::addElement(std::size_t /*quantity*/, const elements::ElementFami
             {
                 double product = 0.0;
                 for (std::size_t j = 0; j < n; ++j)
-                    product += mass.values[i * n + j] * direction.motions[static_cast<std::size_t>(dofs[j])];
+                {
+                    const auto dof = static_cast<std::size_t>(dofs[j]);
+                    double motion = direction.motions[dof];
+                    if (direction.isState && !m_appliedAccelerations[s].empty())
+                        motion -= m_appliedAccelerations[s][dof];
+                    product += mass.values[i * n + j] * motion;
+                }
                 direction.inertialLoad[static_cast<std::size_t>(dofs[i])] -= m_weightToMass[s] * product;
             }
             direction.isTouched = true;

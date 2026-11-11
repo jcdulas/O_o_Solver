@@ -120,6 +120,90 @@ std::optional<T> optional(const val& object, const char* key)
     return value.as<T>();
 }
 
+base::Vec3 vector3(const val& value)
+{
+    const auto values = numbers<double>(value);
+    if (values.size() != 3 || !std::all_of(values.begin(), values.end(), [](double v) { return std::isfinite(v); }))
+        throw std::invalid_argument("expected three finite vector components");
+    return {values[0], values[1], values[2]};
+}
+
+void readZones(const val& declarations, design::ResponseParts& parts)
+{
+    each(get(declarations, "zones"), [&](const val& value)
+    {
+        output::ZoneDefinition zone;
+        zone.id = idOf(value["id"]);
+        zone.name = option<std::string>(value, "name", "");
+        zone.group = option<std::int32_t>(value, "group", 0);
+        zone.frameId = option<std::int32_t>(value, "frameId", 0);
+        zone.elements = numbers<std::int32_t>(get(value, "elements"));
+        const auto policy = option<std::string>(value, "enclosedPolicy", "warn");
+        if (policy == "include") zone.enclosedPolicy = output::EnclosedPolicy::Include;
+        else if (policy == "exclude") zone.enclosedPolicy = output::EnclosedPolicy::Exclude;
+        else if (policy != "warn") throw std::invalid_argument("unknown enclosedPolicy");
+        each(get(value, "boundary"), [&](const val& point)
+        {
+            output::ZoneBoundaryPoint entry;
+            entry.grid = idOf(point["grid"]);
+            entry.components = output::componentMaskOf(option<std::string>(point, "components", "123456"));
+            entry.isPiercedPoint = option<bool>(point, "isPiercedPoint", false);
+            each(get(point, "causes"), [&](const val& cause)
+            {
+                entry.causes.push_back({cause["kind"].as<std::string>(), cause["card"].as<std::string>(),
+                    idOf(cause["id"]), output::componentMaskOf(option<std::string>(cause, "components", ""))});
+            });
+            zone.boundary.push_back(std::move(entry));
+        });
+        each(get(value, "enclosed"), [&](const val& element)
+        {
+            zone.enclosed.push_back({idOf(element["elementId"]), element["card"].as<std::string>(),
+                                    option<bool>(element, "isPointElement", false)});
+        });
+        parts.zones.push_back(std::move(zone));
+    });
+    each(get(declarations, "zoneSubcases"), [&](const val& value)
+    {
+        parts.zoneSubcases.push_back({idOf(value["subcase"]), optional<std::int32_t>(value, "spcSet"),
+                                     optional<std::int32_t>(value, "loadSet")});
+    });
+}
+
+void readSections(const val& value, design::DesignResp1Definition& response)
+{
+    response.zones = numbers<std::int32_t>(get(value, "zones"));
+    each(get(value, "sections"), [&](const val& source)
+    {
+        output::SectionDefinition section;
+        section.id = idOf(source["id"]);
+        section.name = option<std::string>(source, "name", "");
+        section.group = response.id;
+        section.frameId = optional<std::int32_t>(source, "frameId");
+        if (present(get(source, "axis"))) section.axis = vector3(source["axis"]);
+        const auto reduce = option<std::string>(source, "reduce", "average");
+        if (reduce == "sum") section.reduce = output::SectionReduce::Sum;
+        else if (reduce != "average") throw std::invalid_argument("unknown section reduction");
+        each(get(source, "members"), [&](const val& member)
+        {
+            section.members.push_back({idOf(member["elementId"]), optional<double>(member, "weight")});
+        });
+        response.sections.push_back(std::move(section));
+    });
+    each(get(value, "cuts"), [&](const val& source)
+    {
+        output::CutDefinition cut;
+        cut.id = idOf(source["id"]);
+        cut.name = option<std::string>(source, "name", "");
+        cut.group = response.id;
+        cut.grids = numbers<std::int32_t>(get(source, "grids"));
+        cut.elements = numbers<std::int32_t>(get(source, "elements"));
+        if (present(get(source, "point"))) cut.point = vector3(source["point"]);
+        cut.positionFrameId = option<std::int32_t>(source, "positionFrameId", 0);
+        cut.displacementFrameId = option<std::int32_t>(source, "displacementFrameId", 0);
+        response.cuts.push_back(std::move(cut));
+    });
+}
+
 val argumentsObject(std::span<const design::BatchArgument> arguments)
 {
     auto result = val::array();
@@ -192,6 +276,7 @@ std::shared_ptr<api::OptimizationProblem> createOptimization(const std::shared_p
         [&]
         {
             api::OptimizationInput input;
+            readZones(declarations, input.responses);
             entries(get(declarations, "tables"), [&](const auto& name, const val& bytes)
                     { input.tables.emplace(name, numbers<std::uint8_t>(bytes)); });
             each(get(declarations, "variables"),
@@ -271,6 +356,21 @@ std::shared_ptr<api::OptimizationProblem> createOptimization(const std::shared_p
                      std::copy(direction.begin(), direction.end(), shape.direction.begin());
                      input.model.shapes.push_back(shape);
                  });
+            each(get(declarations, "shapeBatches"), [&](const val& value)
+            {
+                const auto variable = idOf(value["variableId"]);
+                const auto grids = numbers<std::int32_t>(value["gridIds"]);
+                const auto directions = numbers<double>(value["directions"]);
+                if (directions.size() != grids.size() * 3)
+                    throw std::invalid_argument("shape batch directions must have shape grids by 3");
+                for (std::size_t row = 0; row < grids.size(); ++row)
+                {
+                    design::ShapeTerm shape;
+                    shape.variableId = variable; shape.gridId = grids[row]; shape.coefficient = 1.0;
+                    std::copy_n(directions.begin() + row * 3, 3, shape.direction.begin());
+                    input.model.shapes.push_back(shape);
+                }
+            });
             each(get(declarations, "responses"),
                  [&](const val& value)
                  {
@@ -290,6 +390,7 @@ std::shared_ptr<api::OptimizationProblem> createOptimization(const std::shared_p
                      response.plies = numbers<std::int32_t>(get(value, "plies"));
                      response.subcases = numbers<std::int32_t>(get(value, "subcases"));
                      response.tracksMode = option<bool>(value, "tracksMode", false);
+                     readSections(value, response);
                      input.responses.designResp1.push_back(std::move(response));
                  });
             each(get(declarations, "equationResponses"),
@@ -359,6 +460,10 @@ std::shared_ptr<api::OptimizationProblem> createOptimization(const std::shared_p
             chosen.maximumOutputBytes = countOf(get(settings, "maximumOutputBytes"), chosen.maximumOutputBytes);
             chosen.blockItems = countOf(get(settings, "blockItems"), chosen.blockItems);
             chosen.deckOutputs = option<bool>(settings, "deckOutputs", false);
+            const auto derivatives = option<std::string>(settings, "derivatives", "native");
+            if (derivatives != "native" && derivatives != "numerical")
+                throw std::invalid_argument("derivatives must be native or numerical");
+            chosen.analyses.keepsTrimLinearisation = derivatives == "native";
             if (const auto analyses = get(settings, "analyses"); present(analyses))
             {
                 auto selected = [&](const char* name) -> std::optional<std::vector<std::int32_t>>
@@ -475,6 +580,22 @@ std::shared_ptr<api::OptimizationEvaluation> evaluate(api::OptimizationProblem& 
                  });
             return problem.evaluate(numbers<double>(x), selected);
         });
+}
+
+std::shared_ptr<api::OptimizationEvaluation> evaluateAt(api::OptimizationEvaluation& point, const val& x,
+                                                       const val& references)
+{
+    return guarded([&]
+    {
+        design::ModeReferences selected;
+        each(references, [&](const val& reference)
+        {
+            const auto key = std::make_pair(idOf(reference["responseId"]), idOf(reference["subcase"]));
+            if (!selected.emplace(key, numbers<double>(reference["shape"])).second)
+                throw std::invalid_argument("duplicate mode reference");
+        });
+        return point.evaluateAt(numbers<double>(x), selected);
+    });
 }
 
 val itemObject(const design::ResponseItem& item)
@@ -595,6 +716,7 @@ val gradients(api::OptimizationEvaluation& point, const val& settings)
             report.set("analyticDerivatives", double(output.report.analyticDerivatives));
             report.set("fieldPerturbations", double(output.report.fieldPerturbations));
             report.set("shapePerturbations", double(output.report.shapePerturbations));
+            report.set("analysisPerturbations", double(output.report.analysisPerturbations));
             result.set("report", report);
             return result;
         });
@@ -628,6 +750,7 @@ val reportObject(const design::ProductReport& report)
     result.set("linearisationBytes", double(report.linearisationBytes));
     result.set("adjointSolves", double(report.adjointSolves));
     result.set("isAdjointReused", report.isAdjointReused);
+      result.set("perturbedLinearisations", report.perturbedLinearisations);
     result.set("hasHessianBlocks", report.hasHessianBlocks);
     result.set("areHessianBlocksReused", report.areHessianBlocksReused);
     result.set("hessianBlocksReason", report.hessianBlocksReason);
@@ -806,6 +929,7 @@ EMSCRIPTEN_BINDINGS(oos_optimization)
     class_<api::OptimizationEvaluation>("OptimizationEvaluation")
         .smart_ptr<std::shared_ptr<api::OptimizationEvaluation>>("OptimizationEvaluationPointer")
         .function("values", &evaluationValues)
+        .function("evaluateAt", &evaluateAt)
         .function("analysisResults", &wasm::optimizationResults)
         .function("gradients", &gradients)
         .function("streamGradients", &streamGradients)

@@ -81,15 +81,6 @@ DesignProblem::DesignProblem(std::shared_ptr<const input::ModelSnapshot> snapsho
       m_responses(std::move(responses), m_model, *m_snapshot),
       m_constraints(std::move(constraints), m_responses)
 {
-    if (m_snapshot->hasTable(input::TableRole::Subcases))
-    {
-        const auto& subcases = m_snapshot->subcases();
-        for (std::int64_t row = 0; row < subcases.rowCount(); ++row)
-            if (subcases.selectedSetAtRow(row, "nonStructMass"))
-                throw base::OptimisationError(
-                    "selected non-structural mass sets are supported in static runs, but their design derivatives "
-                    "are not implemented; optimization with NonStructMassSelection is refused");
-    }
 }
 
 std::vector<std::int64_t> DesignProblem::drivenUnits() const
@@ -354,8 +345,19 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         trimOptions.cancellation = options.cancellation;
         trimOptions.monitor = options.monitor;
         trimOptions.requiredOutputs = statics.options.requiredOutputs;
-        trimOptions.keepsLinearisation = needsDisplacements;
-        if (isCondensed)
+        trimOptions.keepsLinearisation = needsDisplacements && analyses.keepsTrimLinearisation;
+        // The trim sensitivity solves on its kept structural factor. A condensed unit does not expose
+        // the interior factor needed for a design pseudo-load, so use the full trim path when one is driven.
+        bool drivenUnitIsCondensed = false;
+        if (isCondensed && trimOptions.keepsLinearisation)
+        {
+            const std::vector<std::int64_t> driven = drivenUnits();
+            for (const reduction::UnitPlan& unit : options.condensation->units())
+                if (unit.decision == reduction::UnitDecision::Condensed &&
+                    std::find(driven.begin(), driven.end(), unit.unitId) != driven.end())
+                    drivenUnitIsCondensed = true;
+        }
+        if (isCondensed && !drivenUnitIsCondensed)
         {
             trimOptions.condensation = options.condensation;
             trimOptions.cache = options.cache;

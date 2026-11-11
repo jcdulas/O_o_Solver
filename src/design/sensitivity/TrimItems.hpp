@@ -42,6 +42,7 @@ namespace oos::design::detail
 // the factor of the analysis. The derivatives are added to the explicit parts of the items through d(v)/dx (the
 // static items' weights are then cleared: their derivative is complete), so that the solves of the static subcases
 // and the equations that read the items see complete rows.
+// For an applied inertial load P = M*a, the trimmed state's pseudo-load also includes dM*a.
 //
 // Determinism: the directions, the quantities and the elements in a fixed order, every sum serial.
 //
@@ -131,6 +132,7 @@ private:
     std::vector<StaticItem> m_staticItems;
     std::vector<elements::MassOptions> m_massOptions; // per subcase
     std::vector<double> m_weightToMass;               // per subcase
+    std::vector<std::vector<double>> m_appliedAccelerations; // a in the applied inertial load M*a; empty without one
     // Per item (m_items, then m_staticItems at m_items.size() + k) and quantity: d(item)/dv.
     std::map<std::pair<std::size_t, std::size_t>, double> m_byQuantity;
     std::int64_t m_solves = 0;

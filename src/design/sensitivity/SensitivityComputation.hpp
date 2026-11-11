@@ -609,18 +609,6 @@ protected:
         }
         const input::ModelSnapshot& snapshot = *m_in.overlaid;
         const std::vector<solutions::StaticSubcase> subcases = solutions::staticSubcasesOf(snapshot, asked, sink);
-        // The derivatives of element deformation loads (E·A·D/L moves with the section and with the length,
-        // its recovery with them) are not made by this version: a subcase with a DEFORM is refused, never
-        // differentiated without its deformations.
-        for (const solutions::StaticSubcase& subcase : subcases)
-            if (subcase.deformation)
-                throw base::OptimisationError(base::concatenate(
-                    {"the sensitivities of subcase ", std::to_string(subcase.label),
-                     ": expected no element deformation load, found DeformationLoadSelection = ",
-                     std::to_string(*subcase.deformation),
-                     " (its design derivatives are not made by this version); constrain the responses of subcases "
-                     "without DeformationLoadSelection, or remove the DeformationLoadSelection "
-                     "selection"}));
         // The terms of the SUBCOMs read: their load parts make the SUBCOMs' pseudo-loads, so they are
         // linearised even when no item reads them (then never solved).
         std::set<std::int32_t> termsOnly;
@@ -652,10 +640,8 @@ protected:
                 // A SUBCOM: no load and no constraint set of its own; its displacements, its terms and its group
                 // once every subcase is read (prepareCombinations). Its own temperatures recover its items.
                 state.subcase.load.reset();
-                if (subcase.temperatureLoad)
-                    state.temperatures = std::make_unique<assembly::TemperatureField>(
-                        snapshot, m_index.points(), *subcase.temperatureLoad, subcase.temperatureInitial, m_budget,
-                        sink);
+                state.temperatures =
+                    solutions::initialStrainsOf(snapshot, m_index.points(), subcase, m_budget, sink);
                 state.group = NO_GROUP;
                 m_subcaseIndex[subcase.label] = m_subcases.size();
                 m_subcases.push_back(std::move(state));
@@ -677,9 +663,7 @@ protected:
             if (const auto shift = m_displacementShifts.find(subcase.label); shift != m_displacementShifts.end())
                 for (std::size_t g = 0; g < gSize(); ++g)
                     state.displacements[g] += shift->second[g];
-            if (subcase.temperatureLoad)
-                state.temperatures = std::make_unique<assembly::TemperatureField>(
-                    snapshot, m_index.points(), *subcase.temperatureLoad, subcase.temperatureInitial, m_budget, sink);
+            state.temperatures = solutions::initialStrainsOf(snapshot, m_index.points(), subcase, m_budget, sink);
             if (subcase.load)
             {
                 state.hasInertialLoads = m_loads->hasFamilyLoads(*subcase.load, assembly::LoadFamily::Inertial);
@@ -2551,6 +2535,7 @@ protected:
                 const std::optional<std::size_t> derivedGroup = m_in.targets->derivedProperties().groupOf(r);
                 const bool isPlainCell = cells.size() == 1 && cells.front().item == relation.fieldItem &&
                                          cells.front().scale == 1.0 &&
+                                         !m_in.targets->hasDerivedMaterial(r) &&
                                          (!derivedGroup || m_in.targets->derivedProperties().isLaminate(*derivedGroup));
                 if (isWaved)
                 {
@@ -2570,8 +2555,8 @@ protected:
             differenceShapes();
     }
 
-    // Whether a designed field is differenced: every one, or with GradientOptions::isVariableWanted those whose
-    // gradient reaches a wanted variable.
+    // Whether a designed field or shape is differenced: every one, or with
+    // GradientOptions::isVariableWanted those whose gradient reaches a wanted variable.
     [[nodiscard]] bool isFieldWanted(const FieldValue& field) const
     {
         const std::vector<std::uint8_t>& wanted = m_options.isVariableWanted;
@@ -2646,7 +2631,7 @@ protected:
             const std::vector<ElementRef>& reached = affected.of(r);
             if (fields[r].gradient.empty() || reached.empty())
                 continue;
-            if (m_in.targets->derivedProperties().groupOf(r).has_value())
+            if (m_in.targets->derivedProperties().groupOf(r).has_value() || m_in.targets->hasDerivedMaterial(r))
             {
                 close();
                 continue;
@@ -2681,7 +2666,7 @@ protected:
         for (std::size_t b = 0; b < shapes.size(); ++b)
         {
             const FieldValue& shape = shapes[b];
-            if (shape.gradient.empty() || reached.step(b) == 0.0)
+            if (shape.gradient.empty() || !isFieldWanted(shape) || reached.step(b) == 0.0)
                 continue;
             const ShapeBasis& basis = m_in.model->shapes().bases()[b];
             const std::string label =
@@ -3628,8 +3613,8 @@ protected:
     // loads are P = Mgg·a (InertialLoads), linear in the mass, and a field moves no grid point, so the acceleration
     // field a is that of the design point and ∂P/∂v = WTMASS·(∂M_e/∂v)·a_e on the element's DOFs (∂M_e/∂v the
     // extrapolated differences of ElementDerivatives::mass, the formulation of the subcase's PARAM COUPMASS), an
-    // applied load of the pseudo-load. The non-structural mass of the NSM cards is constant (the static analysis takes
-    // none: MassAssembler with no shares).
+    // applied load of the pseudo-load. A selected non-structural mass share is constant with respect to a material or
+    // section field; a shape can change its geometry, so shape directions difference the complete selected mass.
     // PERFORMANCE: the derivative was formed on the whole load vectors of the four perturbed snapshots, each with the
     // mass matrix of every element assembled on the pattern of the model: four mass assemblies of the model per
     // variable and subcase; here the mass of the elements the field reaches and one acceleration field per subcase.
@@ -3759,8 +3744,9 @@ protected:
                 const assembly::MassAssemblyOptions options =
                     assembly::MassAssemblyOptions::fromParams(params, m_subcases[subcase].subcase.label, sink);
                 linalg::BlockSparseMatrix mass(systemOf(m_subcases[subcase]).pattern(), m_budget, "sensitivity mass");
-                const assembly::NonStructuralMassShares shares(set);
-                assembly::MassAssembler(set, m_dofMap, shares, options).assemble(mass, m_in.pool);
+                const assembly::NonStructuralMassShares shares(
+                    set, m_subcases[subcase].subcase.nonStructuralMass, m_budget, sink);
+                assembly::MassAssembler(set, sideMap, shares, options).assemble(mass, m_in.pool);
                 builder.addFamilyLoads(loadSet, family, &mass, loads.span(), m_budget, sink);
             }
             else

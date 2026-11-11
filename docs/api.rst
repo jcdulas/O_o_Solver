@@ -22,6 +22,17 @@ Optimization declarations
    :language: typescript
    :linenos:
 
+External studies and workers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. literalinclude:: ../wasm/js/study.d.ts
+   :language: typescript
+   :linenos:
+
+.. literalinclude:: ../wasm/js/study-workers.d.ts
+   :language: typescript
+   :linenos:
+
 C++ entry points
 ----------------
 
@@ -43,6 +54,13 @@ Optimization.hpp
 ~~~~~~~~~~~~~~~~
 
 .. literalinclude:: ../include/oos/api/Optimization.hpp
+   :language: cpp
+   :linenos:
+
+Capabilities.hpp
+~~~~~~~~~~~~~~~~
+
+.. literalinclude:: ../include/oos/api/Capabilities.hpp
    :language: cpp
    :linenos:
 

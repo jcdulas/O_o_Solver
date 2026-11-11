@@ -124,9 +124,11 @@ key); the tables O_o_Reader derives from cards, but for the ply stacks of a desi
 (laminatePliesTable, laminateSummary) and the section properties of a designed BarShapeProp or BeamShapeProp (sectionsTable),
 which the design point overlays too (model/DerivedProperties: the ply stack by O_o_Reader's arithmetic, the sections by
 its own section library, so that the point gives the same bits as the model with the design written into it); the
-defaults O_o_Reader fills in when a card is read (G of a IsoMat from E and NU, Z1 and Z2 of a ShellProp from T): like a card
-edit, the overlay keeps them as they were. Deriving a blank G or Z1 again from the designed E or T would need
-O_o_Reader to keep the blank fields known.
+defaults O_o_Reader fills in when a card is read. The optional `sourceBlankFields` column records which one of
+`IsoMat` E, G or NU was blank in the source. `model/DerivedMaterials` recomputes that value from the other two at
+every designed point and field perturbation, and updates the material summary as well. Coupled material fields use
+the full sensitivity path rather than a closed form that assumes independent columns. Other card defaults, including
+the Z1 and Z2 fibre positions of `ShellProp`, remain as they were when the source card was read.
 
 ### The design tables contract (as O_o_Solver reads it)
 
@@ -277,7 +279,10 @@ normalised constraints and the objective, by `StaticSensitivity`:
    its jobs' rates (`FieldWave::computeGroup`)); the inertial loads of a field that changes the mass (GravityLoad, AccelFieldLoad,
    RotationalForceLoad) are WeightToMass·(∂M_e/∂v)·a element by element, a the subcase's acceleration field (P = Mgg·a is linear in the
    mass and a field moves no grid point); the distributed loads of an element whose field changes them, and every load
-   a shape moves, are differenced on the whole load vector. q_rs = ∂P_s/∂v_r − ∂K/∂v_r·u_s, and
+   a shape moves, are differenced on the whole load vector. Selected non-structural mass stays fixed under sizing;
+   its changing length or area enters a shape's inertial load difference. Element deformation loads use the same
+   initial-strain derivative as thermal loads, including their change with section and length.
+   q_rs = ∂P_s/∂v_r − ∂K/∂v_r·u_s, and
    b_js = Σ_r ∂v_r/∂x_j·q_rs. The element terms of the fields are computed on the pool, a wave of fields and their
    (field, element) tasks a chunk at a time (`FieldWave`, `elementTermsOf`), and added to the pseudo-loads in field and
    element order (`PseudoLoads::stiffnessTerms`, `addStiffnessTerms`): the serial loop's chains, the same bits; the
@@ -857,6 +862,14 @@ memory reaching their analytic least-weight thickness, the replay loop on the pu
 the bit; the condensed path equal to the full path to round-off with every mode of every unit and within 1e-3 with two
 modes per unit, design histories included.
 
+The external optimization API also forms Hessian-vector products for supported modal and buckling responses by
+centrally differencing native first-order gradients. It uses the current mode shapes as references at both perturbed
+points, switches to a one-sided difference at a design bound, and refuses uncertain tracking.
+The same API uses this bounded difference of native gradients for static shape designs and first-order response
+types without the faster element Hessian blocks; the sparse block export retains its narrower contract.
+When a shape moves an inertia-relief support or trim geometry, the WebAssembly optimization API obtains that shape
+column from bounded differences of complete analyses. Sizing columns still use the structural linearisation.
+
 ### Decisions
 
 - **A DesignConstr without bounds takes the defaults of the format** (LALLOW −1e20, UALLOW 1e20).
@@ -916,17 +929,28 @@ condensed, the driven wing full) equal to the full path to round-off, gradients 
 SOL 200 deck with ANALYSIS = SAERO run to its bound, and its replay on the public API equal to the bit. Decks with
 DirectMatrix aerodynamic correction matrices or a flutter analysis (FLUT) are out of scope.
 
+For supported structural sizing responses, the external optimization API forms trim Hessian-vector products by
+centrally differencing the native trim gradients. It uses a one-sided difference at a design bound. The product
+requires a native gradient at each perturbed point.
+
+The external optimization API also completes shape columns with central differences of the entire trim analysis,
+while retaining the native structural gradients for the other columns. This accounts for splines and rigid-body
+modes moving with the grid points. Its gradient report counts those complete analyses separately.
+The native trim linearisation accepts applied loads on the full path. For inertial loads, `TrimItems` adds the
+mass-dependent load rate `dM*a` to each trimmed state's pseudo-load; its coefficient states do not include the
+applied load.
+
 ### Decisions
 
 - **The static responses of a SAERO subcase are those of its trimmed state** (the displacements and element results
   of the trim), differentiated through the trim system.
 - **A fixed trim variable keeps its value along a design direction** (its derivative is zero): the AeroTrim card fixes it.
-- **The SAERO gradients refuse a condensed unit the design drives** (the trim keeps no interior factor to condense
-  the pseudo-loads; the static sensitivities' `BoundaryReducedSensitivity` is above `solutions`): keep the driven
-  units full (the rule of "auto" condensation); the evaluation alone accepts them.
-- **The SAERO gradients refuse a shape variable**: a shape moves the splines, the rigid-body modes and the support
-  modes of the trim with its grid points, which TrimItems' ∂K and ∂M at fixed geometry do not hold; the evaluation of
-  a shape design point with SAERO subcases is exact (the trim at the moved positions).
+- **A trim with a driven condensed unit uses the full path when gradients are retained**. Its condensed factor has no
+  interior solve for the design pseudo-load. The automatic plan still keeps driven units full and remains condensed.
+  A caller's explicit plan that condenses one uses more memory for the trim analysis.
+- **`TrimItems` refuses a shape variable**: a shape moves the splines, the rigid-body modes and the support modes of
+  the trim with its grid points, which its ∂K and ∂M at fixed geometry do not hold. The public optimization API
+  completes those columns by differencing the whole trim.
 
 ## Shape basis vectors from auxiliary models, and the directions and frames a shape moves
 

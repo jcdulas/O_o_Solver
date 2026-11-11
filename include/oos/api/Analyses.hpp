@@ -5,6 +5,7 @@
 #include "oos/input/snapshot/ModelSnapshot.hpp"
 #include "oos/output/arrays/EigenvalueTable.hpp"
 #include "oos/output/arrays/ResultArrays.hpp"
+#include "oos/solutions/sol144/TrimSolution.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -21,6 +22,7 @@ enum class Analysis : std::uint8_t
     Statics,  // linear statics (SOL 101)
     Modes,    // real eigenvalues, normal modes (SOL 103)
     Buckling, // linear buckling (SOL 105): a static preload, then the load factors
+    Aeroelastic, // static aeroelastic trim (SOL 144)
 };
 
 // What an analysis is asked to do. Every field has a default that runs the deck as it is written.
@@ -31,6 +33,8 @@ struct AnalysisSettings
     std::size_t threads = 1;
     // The memory the analysis may use, in bytes; 0: what is left in the module's memory.
     std::uint64_t memoryBytes = 0;
+    // Additional links; links exported in the snapshot are read automatically.
+    std::vector<aero::AeroLink> links;
 };
 
 // The outcome of an analysis: the result tables, the eigenvalues and the warnings.
@@ -43,6 +47,8 @@ struct AnalysisOutput
     output::ResultArrays tables;
     // The eigenvalue table of each modal or buckling subcase (empty for statics).
     std::vector<output::EigenvalueTable> eigenvalues;
+    // Aerodynamic and trim results for SOL 144; its structural tables are in tables.
+    std::shared_ptr<solutions::TrimResults> aeroelastic;
     // The warnings and information of the run (an error stops the run with an exception instead).
     std::vector<base::Diagnostic> diagnostics;
 };

@@ -1,5 +1,9 @@
 # Optimization driven by JavaScript
 
+For model edits and result fields beyond native design declarations, see
+[external optimization](external-optimization.md). It covers all four solution sequences, generic Reader card and
+case-control parameters, numerical derivatives, parallel workers and accepted-point archives.
+
 The application owns the optimization algorithm. WebAssembly evaluates design points, responses and derivatives;
 JavaScript chooses the next point, convergence rules, multipliers and line search. No optimizer is started implicitly.
 
@@ -136,16 +140,29 @@ modal assurance values and uncertainty flags let JavaScript preserve and inspect
 `analysisResults()` includes tracking warnings. With `deckOutputs: true`, it also contains the outputs requested by
 the deck, beyond those required by responses.
 
-Selected bulk non-structural mass sets currently require a [direct static run](static-inputs.md). Optimization
-refuses `NonStructMassSelection` because its mass derivatives are not implemented.
+Selected bulk non-structural mass sets are supported in static optimization. Sizing derivatives keep their selected
+mass share fixed; shape derivatives include the change of its length or area in the differentiated inertial load.
+The selected set must use the per-length or per-area forms supported by [static runs](static-inputs.md).
+An imposed axial deformation (`DeformationLoadSelection`) contributes to native static gradients through its
+equivalent element load and the element recovery.
 
 Gradients use closed forms where element families provide them and numerical element derivatives elsewhere.
-Second-order products reuse element Hessian blocks where available and otherwise difference the response linearisation
-along the direction. Reports expose reuse and `hessianBlocksReason`. These are numerical engineering derivatives,
-not a guarantee of exact arithmetic or differentiability at a response's branch changes.
+Second-order products for static responses reuse element Hessian blocks where available and otherwise difference the
+response linearisation along the direction. Static shapes and responses without supported second-order blocks, as well
+as modal, buckling and aeroelastic responses, difference native first-order gradients at nearby design points.
+Their additional analyses respect variable bounds and reuse the current mode shapes
+as tracking references. An ambiguous mode match stops the product. Reports expose the method through
+`hessianBlocksReason`. These are numerical engineering derivatives, not a guarantee of exact arithmetic or
+differentiability at a response's branch changes.
 
-Second-order products currently refuse modal/buckling and aeroelastic responses, shape variables, external response
-extensions, and equations without a supported second-order callable. Sparse second-order block export is narrower:
+The native optimization API combines structural gradients with complete-analysis differences for shape columns
+when trim or static inertia relief moves splines or rigid-body support modes.
+`report.analysisPerturbations` counts the added analyses.
+`jvp`, `vjp` and `streamGradients` use these completed columns too. Streaming keeps structural columns in blocks and
+releases each completed shape column after emitting its block, so it can exceed the dense Jacobian output limit.
+Second-order products require a supported first-order response. Modal eigenvector and modal stress fields and trim
+configurations without native gradients remain outside that set. Sparse second-order
+block export is narrower:
 it requires the native closed-form blocks and refuses the condensed path, inertia relief and other cases documented
 in `VectorJacobianProducts`. Unsupported operations throw a JavaScript error with the native reason; no zero Hessian
 is substituted. Check derivatives at representative points before relying on a response in an optimization.
@@ -170,7 +187,7 @@ card-editing API, or their declarations must first be added to the model. Rebuil
 
 ## Verification
 
-Build both modules and run `node --test wasm/test/*.test.mjs` with a Memory64-capable runtime. The optimization tests
+Build both modules and run `node --test --test-concurrency=1 wasm/test/*.test.mjs` with a Memory64-capable runtime. The optimization tests
 check an original axial bar against `u = P L / (E A)`, direct and adjoint gradients, mixed Hessian entries, dense and
 sparse products, streamed Jacobians, a nonlinear JavaScript callback, modal gradients, memory limits and atomic Reader
 updates. A JavaScript iteration also reaches the active displacement bound and saves the accepted design.

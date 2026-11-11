@@ -73,6 +73,9 @@ public:
     // The subcases, in the order of TrimResults::subcases.
     [[nodiscard]] std::vector<base::EntityId> subcases() const;
     [[nodiscard]] std::size_t gSetSize() const noexcept;
+    // The applied inertial load P = M*a of a subcase, expressed as its acceleration a on the g set.
+    // Empty when the selected load set has no inertial load.
+    [[nodiscard]] std::vector<double> appliedAcceleration(std::size_t subcase, base::MemoryBudget& budget) const;
     // The labels of the trim case of a subcase (index into subcases()), in the order of TrimSubcaseResult::variables.
     [[nodiscard]] std::vector<std::string> variableLabels(std::size_t subcase) const;
     // Whether the subcase has FreeBodySupport DOFs (without, its unrestrained coefficients are zero).

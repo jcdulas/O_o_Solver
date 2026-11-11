@@ -238,8 +238,8 @@ struct TrimResults
 // (TrimSubcaseResult::reference); on both paths. Without them nothing of it is computed.
 //
 // Not supported by this version (each refused naming it): the design derivatives of a model with DownwashMatrix or
-// AeroPressureMatrix, thermal loads in a trim subcase (TEMPERATURE(LOAD)), applied loads on the condensed path and with
-// keepsLinearisation (the SOL 200 derivatives), the trim variables of AeroController or of other AeroRigidTrimVariable
+// AeroPressureMatrix, thermal loads in a trim subcase (TEMPERATURE(LOAD)), applied loads on the condensed path,
+// the trim variables of AeroController or of other AeroRigidTrimVariable
 // labels when free (they act only through user matrices), AeroControlSchedule, the redundant-surface trim, panels other
 // than AeroLiftingPanel1, the splines aero::SplineMatrix refuses.
 //

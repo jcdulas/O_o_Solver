@@ -67,6 +67,11 @@ public:
     [[nodiscard]] const design::DesignEvaluation& evaluation() const noexcept { return m_evaluation; }
     [[nodiscard]] const std::vector<double>& x() const noexcept { return m_x; }
     [[nodiscard]] const OptimizationProblem& owner() const noexcept { return *m_owner; }
+    [[nodiscard]] std::shared_ptr<OptimizationEvaluation> evaluateAt(
+        std::vector<double> x, const design::ModeReferences& references = {}) const
+    {
+        return m_owner->evaluate(std::move(x), references);
+    }
     [[nodiscard]] design::DesignGradients gradients(const design::GradientOptions& options = {});
     [[nodiscard]] design::GradientStreamReport streamGradients(design::GradientSink& sink, std::size_t block);
     [[nodiscard]] design::ProductReport jvp(std::span<const double> directions, std::size_t count, std::size_t block,

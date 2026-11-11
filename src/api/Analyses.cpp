@@ -28,6 +28,8 @@ solutions::AnalysisKind kindOf(Analysis analysis)
         return solutions::AnalysisKind::Modes;
     case Analysis::Buckling:
         return solutions::AnalysisKind::Buckling;
+    case Analysis::Aeroelastic:
+        return solutions::AnalysisKind::StaticAeroelastic;
     }
     return solutions::AnalysisKind::Statics;
 }
@@ -139,6 +141,20 @@ AnalysisOutput runAnalysis(const input::ModelSnapshot& snapshot, Analysis analys
     case Analysis::Buckling:
         output = runBuckling(snapshot, settings, *budget, pool.get());
         break;
+    case Analysis::Aeroelastic:
+    {
+        solutions::TrimOptions options;
+        options.subcases = settings.subcases;
+        options.links = aero::trimLinks(snapshot);
+        options.links.insert(options.links.end(), settings.links.begin(), settings.links.end());
+        options.pool = pool.get();
+        options.kernel = linalg::KernelSelection::selectForThisProcess().kind();
+        output.aeroelastic = std::make_shared<solutions::TrimResults>(
+            solutions::TrimSolution(snapshot, options).run(*budget));
+        output.diagnostics = output.aeroelastic->diagnostics;
+        output.tables = std::move(output.aeroelastic->arrays);
+        break;
+    }
     }
     output.budget = std::move(budget);
     return output;

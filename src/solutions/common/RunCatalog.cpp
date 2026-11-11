@@ -163,6 +163,17 @@ base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const ele
                                  AnalysisKind analysis)
 {
     input::SupportCatalog catalog = staticSupportCatalog(registry);
+    if (analysis == AnalysisKind::StaticAeroelastic)
+    {
+        // These source cards are consumed by the aerodynamic tables. Their geometric and field restrictions are
+        // checked by the aero module before factorisation, just as structural element fields are checked there.
+        constexpr const char* AERO_CARDS[]{
+            "AeroStaticParams", "AeroLiftingPanel1", "AeroLiftingPanelProp1", "AeroFactorList", "AeroBoxList",
+            "AeroSurfaceSpline1", "AeroBeamSpline2", "AeroSurfaceSpline4", "AeroBeamSpline5", "AeroFiniteBeamSpline7",
+            "AeroControlSurface", "AeroRigidTrimVariable", "AeroController", "AeroTrim", "AeroTrim2", "AeroTrimLink"};
+        for (const auto* card : AERO_CARDS)
+            catalog.addCard(card);
+    }
     // The method cards the analysis reads (EIGRL, RealEigenMethod, BucklingEigenMethod: METHOD selects RealEigenMethod
     // or LanczosEigenMethod in SOL 103, BucklingEigenMethod or LanczosEigenMethod in SOL 105).
     if (analysis == AnalysisKind::Modes)

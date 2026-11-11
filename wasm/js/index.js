@@ -14,7 +14,11 @@
 import createOosSolverCore from "./oos_solver_core.js";
 import { THREADED_BUILD, MAXIMUM_THREADS } from "./build-info.js";
 import { OptimizationProblem } from "./optimization.js";
+import { OptimizationStudy, restoreStudy } from "./study.js";
+import { shapeBasisFromReader } from "./shape-basis.js";
 export { OptimizationProblem, OptimizationEvaluation } from "./optimization.js";
+export { OptimizationStudy, StudyEvaluation, restoreStudy, STUDY_DOCUMENT } from "./study.js";
+export { createOptimizationWorkerPool, OptimizationWorkerPool } from "./study-workers.js";
 
 // True when the JavaScript runtime runs 64-bit WebAssembly (Memory64), which the module needs.
 export function supportsMemory64() {
@@ -97,7 +101,7 @@ const LOAD_PRECISION_COLUMNS = ["id", "significantDigits"];
 const AERO_TABLES = ["aeroReferenceTable", "aeroPanelsTable", "aeroBoxesTable", "controlSurfacesTable",
   "aeroTrimCasesTable", "splinesTable", "splineNodes"];
 const AERO_CARDS = { AeroBeamSpline2: "id", AeroBeamSpline5: "id", AeroBoxList: "id",
-  AeroRigidTrimVariable: "id" };
+  AeroRigidTrimVariable: "id", AeroTrimLink: "id" };
 const AERO_PANEL_CARDS = ["AeroLiftingPanel1", "AeroBody2", "AeroMachBoxPanel3", "AeroStripPanel4",
   "AeroPistonPanel5"];
 // The element deformations: the axial deformation cards, one row per card.
@@ -130,6 +134,31 @@ export class OosSolver {
     return this.core.elementFormulations();
   }
 
+  capabilities(model = null) {
+    return model ? this.core.modelCapabilities(model) : this.core.optimizationCatalogue();
+  }
+
+  createStudy(reader, deck, definition, settings = {}, hooks = {}) {
+    return new OptimizationStudy(this, reader, deck, definition, { threads: this.defaultThreads, ...settings }, hooks);
+  }
+
+  restoreStudy(reader, deck, hooks = {}) { return restoreStudy(this, reader, deck, hooks); }
+  shapeBasisFromReader(reader, auxiliary, options) { return shapeBasisFromReader(this, reader, auxiliary, options); }
+
+  // Preparation validates declarations and analysis support without solving or evaluating callbacks. Restrictions
+  // that require the actual state remain explicit in the catalogue; a successful preparation is not a gradient check.
+  checkOptimization(model, declarations = {}, settings = {}) {
+    const catalogue = this.capabilities(model);
+    const kinds = Object.entries(settings.analyses ?? { statics: [] }).filter(([, cases]) => cases != null).map(([kind]) => kind);
+    const analyses = kinds.map(analysis => ({ analysis, ...this.checkSupport(model, analysis) }));
+    let problem, metadata = null, error = null;
+    try { problem = this.createOptimization(model, declarations, settings); metadata = problem.metadata(); }
+    catch (failure) { error = failure.message; }
+    finally { problem?.delete(); }
+    return { stage: "preparation", canPrepare: !error && analyses.every(analysis => analysis.isComplete), error, metadata,
+      analyses, capabilities: catalogue.analyses.filter(entry => kinds.includes(entry.analysis)) };
+  }
+
   // The model read by O_o_Reader (`oor` the loaded reader, `deck` its Deck), ready for the analyses.
   // `options.elementFormulations` chooses the formulation of the elements of some card types
   // ({ ShellQuad4: "ClassicFormulation" }), before the model's ShellQuad4Formulation parameter. The keys are the neutral
@@ -139,6 +168,7 @@ export class OosSolver {
   modelFromReader(oor, deck, options = {}) {
     const reader = oor.core;
     const input = new this.core.ModelInput();
+    const putTable = (name, bytes, added = null) => input.setTable(name, bytes, added);
     try {
       for (const [card, formulation] of Object.entries(options.elementFormulations ?? {})) {
         input.setElementFormulation(card, formulation);
@@ -161,7 +191,7 @@ export class OosSolver {
       const cardTypes = (category) => reader.cardTypesOf(deck, category);
 
       // The grid points, their displacement systems, and the scalar points.
-      input.setTable("nodes", packageOf(reader.cardTable(deck, "nodes", NODE_COLUMNS)));
+      putTable("nodes", packageOf(reader.cardTable(deck, "nodes", NODE_COLUMNS)));
       input.setDisplacementRotations(reader.displacementRotations(deck));
       const points = cardTypes("points");
       const scalarPoints = points.filter((card) => SCALAR_POINT_CARDS.includes(card));
@@ -170,7 +200,7 @@ export class OosSolver {
           throw new Error("the model mixes SPOINT or EPOINT with other point cards: give the scalar points one type");
         }
         const source = scalarPoints.length === points.length ? "points" : scalarPoints[0];
-        input.setTable("scalarPoints", packageOf(reader.cardTable(deck, source, ["id"])));
+        putTable("scalarPoints", packageOf(reader.cardTable(deck, source, ["id"])));
       }
 
       // The cards the solver reads field by field.
@@ -200,20 +230,20 @@ export class OosSolver {
       for (const name of QUERY_TABLES) {
         const args = unexpanded && UNEXPANDED_LOAD_TABLES.includes(name) ? { expandCombinations: false } : {};
         if (name === "pressureTable" && unexpanded && takesParameter("pressureTable", "detail")) {
-          input.setTable("pressureFields", packageOf(query("pressureTable", { ...args, detail: "fields" })));
+          putTable("pressureFields", packageOf(query("pressureTable", { ...args, detail: "fields" })));
           continue;
         }
-        input.setTable(name, packageOf(query(name, args)));
+        putTable(name, packageOf(query(name, args)));
       }
       if (unexpanded) {
-        input.setTable("loadCombinationsTable",
+        putTable("loadCombinationsTable",
           packageOf(query("loadCombinationsTable", { columns: LOAD_COMBINATION_COLUMNS })));
       }
       for (const [name, [queryName, args]] of Object.entries(PREREQUISITE_QUERIES)) {
         if (!hasQuery(queryName)) continue;
         const queryArgs = unexpanded && UNEXPANDED_LOAD_TABLES.includes(name)
           ? { ...args, expandCombinations: false } : args;
-        input.setTable(name, packageOf(query(queryName, queryArgs)));
+        putTable(name, packageOf(query(queryName, queryArgs)));
       }
 
       // The field formats of the load cards (the deck tolerance of the load basis).
@@ -228,7 +258,7 @@ export class OosSolver {
         }
       }
       if (loads.includes(DEFORMATION_CARD)) {
-        input.setTable("deformations", packageOf(reader.cardTable(deck, DEFORMATION_CARD, DEFORMATION_COLUMNS)));
+        putTable("deformations", packageOf(reader.cardTable(deck, DEFORMATION_CARD, DEFORMATION_COLUMNS)));
       }
 
       // The glued contact, when the Bulk Data has a contact table.
@@ -237,23 +267,22 @@ export class OosSolver {
       if (hasContactTable && CONTACT_PAIR_QUERIES.every(hasQuery)) {
         for (const name of CONTACT_PAIR_QUERIES) {
           const args = takesParameter(name, "rule") ? { rule: CONTACT_RULE } : {};
-          input.setTable(name, packageOf(query(name, args)));
+          putTable(name, packageOf(query(name, args)));
         }
         if (hasQuery("contactTablesTable")) {
-          input.setTable("contactTablesTable", packageOf(query("contactTablesTable")));
+          putTable("contactTablesTable", packageOf(query("contactTablesTable")));
         }
       }
 
       // The aeroelastic model, when the model has aerodynamic panels.
-      const elements = cardTypes("elements");
-      const hasAeroPanels = AERO_PANEL_CARDS.some((card) => elements.includes(card));
+      const hasAeroPanels = AERO_PANEL_CARDS.some((card) => (cardCounts[card] ?? 0) > 0);
       if (hasAeroPanels) {
         for (const name of AERO_TABLES) {
-          if (hasQuery(name)) input.setTable(name, packageOf(query(name)));
+          if (hasQuery(name)) putTable(name, packageOf(query(name)));
         }
-        const all = [...cardTypes("elements"), ...cardTypes("loads"), ...cardTypes("constraints")];
         for (const [card, idColumn] of Object.entries(AERO_CARDS)) {
-          if (all.includes(card)) input.addAeroCardTable(card, idColumn, packageOf(reader.cardTable(deck, card, null)));
+          if ((cardCounts[card] ?? 0) > 0)
+            input.addAeroCardTable(card, idColumn, packageOf(reader.cardTable(deck, card, null)));
         }
       }
       return input.build();

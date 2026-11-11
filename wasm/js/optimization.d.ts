@@ -15,6 +15,22 @@ export interface DesignResponse {
   id: number; label?: string; type: string; propertyType?: string; region?: number;
   attributeA?: number; attributeB?: number; componentName?: string;
   targets?: number[]; plies?: number[]; subcases?: number[]; tracksMode?: boolean;
+  sections?: SectionDefinition[]; cuts?: CutDefinition[]; zones?: number[];
+}
+export interface SectionDefinition {
+  id: number; name?: string; members: { elementId: number; weight?: number }[];
+  axis?: [number, number, number]; frameId?: number; reduce?: "average" | "sum";
+}
+export interface CutDefinition {
+  id: number; name?: string; grids: number[]; elements: number[];
+  point?: [number, number, number]; positionFrameId?: number; displacementFrameId?: number;
+}
+export interface ZoneDefinition {
+  id: number; name?: string; group?: number; frameId?: number; elements: number[];
+  enclosedPolicy?: "warn" | "include" | "exclude";
+  boundary?: { grid: number; components?: string; isPiercedPoint?: boolean;
+    causes?: { kind: string; card: string; id: number; components?: string }[] }[];
+  enclosed?: { elementId: number; card: string; isPointElement?: boolean }[];
 }
 export interface EquationArgument { kind: string; id?: number; component?: number; label?: string; name?: string }
 export interface BatchArgument { name: string; components: number; values: Float64Array; isResponse: boolean }
@@ -34,7 +50,10 @@ export interface OptimizationDeclarations {
   relations?: DesignRelation[];
   constants?: Record<string, number>;
   shapes?: { variableId: number; gridId: number; coefficient?: number; direction: [number, number, number] }[];
+  shapeBatches?: { variableId: number; gridIds: ArrayLike<number>; directions: Numbers }[];
   responses?: DesignResponse[];
+  zones?: ZoneDefinition[];
+  zoneSubcases?: { subcase: number; spcSet?: number; loadSet?: number }[];
   equationResponses?: { id: number; label?: string; callable?: string; equationId?: number;
     byLabel?: boolean; subcases?: number[]; arguments: EquationArgument[] }[];
   constraints?: { responseId: number; lower?: number; upper?: number; subcases?: number[] }[];
@@ -43,6 +62,7 @@ export interface OptimizationDeclarations {
   suppliedAt?(x: Float64Array): SuppliedField[];
 }
 export interface OptimizationSettings {
+  derivatives?: "native" | "numerical";
   threads?: number; memoryBytes?: number; maximumOutputBytes?: number; blockItems?: number; deckOutputs?: boolean;
   // Missing kind: disabled. Empty array: all subcases of that kind. Default: statics only.
   analyses?: { statics?: number[]; modes?: number[]; buckling?: number[]; aeroelastic?: number[] };
@@ -75,14 +95,16 @@ export interface OptimizationValues {
     shape: Float64Array }[];
 }
 export interface GradientSettings {
-  method?: "automatic" | "direct" | "adjoint" | "chained";
+  method?: "automatic" | "direct" | "adjoint" | "chained" | "finiteDifference";
+  relativeStep?: number; absoluteStep?: number;
   responseIds?: number[]; itemMasks?: { responseId: number; isRetained: number[] | Uint8Array }[];
 }
 export interface DesignGradients {
   variableCount: number; responses: { id: number; itemCount: number; values: Float64Array }[];
   objective: Float64Array | null; constraints: Float64Array[];
   report: { solves: number; factorisations: number; analyticDerivatives: number;
-    fieldPerturbations: number; shapePerturbations: number };
+    fieldPerturbations: number; shapePerturbations: number; analysisPerturbations: number;
+    method?: "finiteDifference"; evaluations?: number; order?: number };
 }
 export interface SparseWeights { rowStart: number[] | Float64Array; items: number[] | Float64Array; values: Numbers }
 export interface ProductWeights { rows?: number; responses: Record<number, Numbers | SparseWeights> }
@@ -90,6 +112,7 @@ export interface ProductBlock { first: number; count: number; rows: number; colu
 export interface ProductReport {
   solves: number; blocks: number; factorisations: number; lineariseSeconds: number; productSeconds: number;
   isLinearisationReused: boolean; linearisationBytes: number; adjointSolves: number; isAdjointReused: boolean;
+  perturbedLinearisations: number;
   hasHessianBlocks: boolean; areHessianBlocksReused: boolean; hessianBlocksReason: string;
 }
 export interface ProductResult { rows: number; columns: number; values?: Float64Array; report: ProductReport }

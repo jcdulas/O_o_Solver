@@ -101,6 +101,102 @@ test("JavaScript drives first and second derivatives through independent WebAsse
   } finally { point.delete(); problem.delete(); deck.delete(); }
 });
 
+test("inertia-relief shape gradients include moved support geometry", () => {
+  const model = `[executive]
+SolutionSequence;101
+[case]
+SubcaseStart;1
+StaticLoadSelection;2
+[model]
+Node;1;;0.;0.;0.
+Node;2;;1.;0.;0.
+Node;3;;0.;1.;0.
+ShellTria3;1;1;1;2;3
+ShellProp;1;1;0.1;1;;1
+IsoMat;1;1000.;;0.3;1.
+FreeBodySupport;1;123;2;23;3;3
+Parameter;InertiaRelief;-1
+PointForceLoad;2;3;;1.;1.;0.;0.
+DesignVar;1;MOVE;0.;-0.2;0.2
+DesignNodeMove;1;3;0;1.;1.;0.;0.
+`;
+  oor.writeFile("/work/optimization-relief-shape.oos", model);
+  const deck = oor.readModel("/work/optimization-relief-shape.oos", { strict: true });
+  const problem = solver.optimizationFromReader(oor, deck, {
+    responses: [{ id: 10, label: "tip", type: "Displacement", attributeA: 1, targets: [3] }],
+  });
+  const point = problem.evaluate();
+  try {
+    const native = point.gradients();
+    assert.equal(native.report.analysisPerturbations, 2);
+    const gradient = native.responses[0].values[0];
+    const positive = problem.evaluate([0.0001]);
+    const negative = problem.evaluate([-0.0001]);
+    try {
+      const numerical = (positive.values().responses[0].values[0] - negative.values().responses[0].values[0]) / 0.0002;
+      near(gradient, numerical, 2e-3);
+      near(point.jvp([1]).values[0], gradient, 1e-6);
+      near(point.vjp({ rows: 1, responses: { 10: [1] } }).values[0], gradient, 1e-6);
+      const streamed = [];
+      point.streamGradients(block => streamed.push(...block.values), 1);
+      near(streamed[0], gradient, 1e-6);
+    } finally { positive.delete(); negative.delete(); }
+  } finally { point.delete(); problem.delete(); deck.delete(); }
+});
+
+test("an imposed axial deformation has a complete native load derivative", () => {
+  const model = MODEL.replace("StaticLoadSelection;2", "StaticLoadSelection;2\nDeformationLoadSelection;7")
+    .replace("DesignVar;1;AREA", "AxialDeformationLoad;7;1;0.03\nDesignVar;1;AREA")
+    .replace("DesignVar;2;MODULUS;1000.;500.;2000.",
+      "DesignVar;2;MODULUS;1000.;500.;2000.\nDesignVar;3;LENGTH;0.;-0.5;0.5\nDesignNodeMove;3;2;0;1.;1.;0.;0.");
+  oor.writeFile("/work/optimization-deformation.oos", model);
+  const deck = oor.readModel("/work/optimization-deformation.oos", { strict: true });
+  const problem = solver.optimizationFromReader(oor, deck, declarations);
+  const point = problem.evaluate();
+  try {
+    const displacement = point.values().responses.find(response => response.id === 10).values[0];
+    near(displacement, 0.045);
+    for (const method of ["direct", "adjoint"]) {
+      const gradient = point.gradients({ method }).responses.find(response => response.id === 10).values;
+      vectorNear(gradient, [-0.0075, -0.000015, 0.005], 2e-5);
+    }
+  } finally { point.delete(); problem.delete(); deck.delete(); }
+});
+
+test("selected non-structural mass contributes to sizing and shape gradients", () => {
+  const model = MODEL.replace("StaticLoadSelection;2", "StaticLoadSelection;2\nNonStructMassSelection;20")
+    .replace("PointForceLoad;2;2;;10.;1.;0.;0.", "GravityLoad;2;;10.;1.;0.;0.")
+    .replace("DesignVar;1;AREA", "NonStructMass;20;RodProp;1;2.\nDesignVar;1;AREA")
+    .replace("DesignVar;2;MODULUS;1000.;500.;2000.",
+      "DesignVar;2;MODULUS;1000.;500.;2000.\nDesignVar;3;LENGTH;0.;-0.5;0.5\nDesignNodeMove;3;2;0;1.;1.;0.;0.");
+  oor.writeFile("/work/optimization-selected-mass.oos", model);
+  const deck = oor.readModel("/work/optimization-selected-mass.oos", { strict: true });
+  const problem = solver.optimizationFromReader(oor, deck, declarations);
+  const point = problem.evaluate();
+  try {
+    const displacement = point.values().responses.find(response => response.id === 10).values[0];
+    near(displacement, 0.09);
+    const gradient = point.gradients().responses.find(response => response.id === 10).values;
+    vectorNear(gradient, [-0.0225, -0.00009, 0.06], 3e-5);
+    const curvature = point.hessianVector({ responses: { 10: [1] } }, [0, 0, 1]).values;
+    vectorNear(curvature, [-0.015, -0.00006, 0.02], 5e-4);
+  } finally { point.delete(); problem.delete(); deck.delete(); }
+});
+
+test("a global response Hessian uses native first-order gradients", () => {
+  const deck = makeDeck("global-response-hessian");
+  const problem = solver.optimizationFromReader(oor, deck, {
+    responses: [{ id: 12, label: "mass fraction", type: "FractionalMass" }],
+    objective: { responseId: 12 },
+  });
+  const point = problem.evaluate();
+  try {
+    near(point.values().objective, 1);
+    const product = point.hessianVector({ responses: { 12: [1] } }, [1, 0]).values;
+    assert.ok(product.every(value => Math.abs(value) < 1e-7), `expected zero curvature, found ${product}`);
+  } finally { point.delete(); problem.delete(); deck.delete(); }
+});
+
 test("Reader applies a final design atomically and accepts explicit solver variable order", () => {
   const deck = makeDeck("apply-design");
   try {
@@ -192,7 +288,7 @@ test("JavaScript declares a design independently of deck design cards and bounds
   } finally { point.delete(); problem.delete(); model.delete(); deck.delete(); }
 });
 
-test("a modal design exposes frequency derivatives and refuses unsupported second order", () => {
+test("a modal design exposes frequency gradients and native-gradient curvature", () => {
   const deck = (() => {
     const text = MODEL.replace("StaticLoadSelection;2", "EigenMethodSelection;3") + "LanczosEigenMethod;3;;;1\n";
     oor.writeFile("/work/modal-design.oos", text);
@@ -213,6 +309,11 @@ test("a modal design exposes frequency derivatives and refuses unsupported secon
       near(next.values().trackedModes[0].mac, 1);
       assert.equal(next.analysisResults().eigenvalues.length, 1);
     } finally { next.delete(); }
-    assert.throws(() => point.hessianVector({ responses: { 30: [1] } }, [1, 0]), /static|eigen|Frequency|MODES|modal/i);
+    const curvature = point.hessianVector({ rows: 1, responses: { 30: [1] } }, [0, 1]);
+    near(curvature.values[1], -frequency / (4 * 1000 ** 2), 5e-3);
+    near(curvature.values[0], 0, 1e-3);
+    assert.equal(curvature.report.perturbedLinearisations, 2);
+    assert.throws(() => point.hessianVector({ responses: { 30: { rowStart: [0, 2], items: [0], values: [1] } } },
+      [0, 1]), /sparse weights/);
   } finally { point.delete(); problem.delete(); deck.delete(); }
 });

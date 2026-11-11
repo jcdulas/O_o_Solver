@@ -13,7 +13,9 @@
 // was found, and what to do).
 
 #include "Model.hpp"
+#include "TrimResults.hpp"
 #include "oos/api/Analyses.hpp"
+#include "oos/api/Capabilities.hpp"
 #include "oos/api/ModelInput.hpp"
 #include "oos/api/Optimization.hpp"
 #include "oos/api/Threading.hpp"
@@ -88,6 +90,49 @@ std::vector<double> numbersOf(const val& array)
 
 // A built model: the snapshot the analyses read (immutable, shared).
 using oos::wasm::Model;
+
+val capabilitiesObject(const api::OptimizationCapabilities& source)
+{
+    auto result = val::object();
+    result.set("version", source.version);
+    result.set("responses", textArray(source.responses));
+    auto analyses = val::array();
+    for (const auto& entry : source.analyses)
+    {
+        auto item = val::object();
+        item.set("analysis", entry.analysis);
+        item.set("solution", entry.solution);
+        item.set("sizingFirstOrder", entry.sizingFirstOrder);
+        item.set("shapeFirstOrder", entry.shapeFirstOrder);
+        item.set("secondOrder", entry.secondOrder);
+        item.set("restrictions", textArray(entry.restrictions));
+        analyses.call<void>("push", item);
+    }
+    result.set("analyses", analyses);
+    auto fields = val::array();
+    for (const auto& entry : source.fields)
+    {
+        auto item = val::object();
+        item.set("targetKind", entry.targetKind);
+        item.set("targetCard", entry.targetCard);
+        item.set("field", entry.field);
+        item.set("type", entry.type);
+        item.set("requiresItem", entry.requiresItem);
+        fields.call<void>("push", item);
+    }
+    result.set("fields", fields);
+    return result;
+}
+
+val optimizationCatalogue()
+{
+    return guarded([] { return capabilitiesObject(api::optimizationCapabilities()); });
+}
+
+val modelCapabilities(const Model& model)
+{
+    return guarded([&] { return capabilitiesObject(api::optimizationCapabilities(model.snapshot.get())); });
+}
 
 void setVersions(api::ModelInput& input, double structure, double content)
 {
@@ -210,7 +255,10 @@ api::Analysis analysisNamed(const std::string& name)
         return api::Analysis::Modes;
     if (name == "buckling")
         return api::Analysis::Buckling;
-    throw std::invalid_argument("unknown analysis '" + name + "': expected \"statics\", \"modes\" or \"buckling\"");
+    if (name == "aeroelastic")
+        return api::Analysis::Aeroelastic;
+    throw std::invalid_argument("unknown analysis '" + name +
+                                "': expected statics, modes, buckling or aeroelastic");
 }
 
 val diagnosticObject(const base::Diagnostic& diagnostic)
@@ -368,6 +416,7 @@ val runAnalysis(Model& model, const std::string& analysis, const val& settings)
             result.set("elementTables", elements);
             result.set("gridPointForces", forces);
             result.set("eigenvalues", eigenvalues);
+            result.set("aeroelastic", output.aeroelastic ? wasm::trimResultsObject(*output.aeroelastic) : val::null());
             result.set("diagnostics", diagnosticArray(output.diagnostics));
             return result;
         });
@@ -423,15 +472,11 @@ val optimizationResults(api::OptimizationEvaluation& point)
                 appendArrays(analysis.modes->arrays);
                 for (const auto& subcase : analysis.modes->subcases)
                     eigenvalues.call<void>("push", eigenvalueTableObject(subcase.eigenvalues));
-                diagnostics.insert(diagnostics.end(), analysis.modes->diagnostics.begin(),
-                                   analysis.modes->diagnostics.end());
             }
             if (analysis.buckling)
             {
                 for (const auto& solve : analysis.buckling->solves)
                     eigenvalues.call<void>("push", eigenvalueTableObject(solve.eigenvalues));
-                diagnostics.insert(diagnostics.end(), analysis.buckling->diagnostics.begin(),
-                                   analysis.buckling->diagnostics.end());
             }
             diagnostics.insert(diagnostics.end(), point.evaluation().trackingWarnings.begin(),
                                point.evaluation().trackingWarnings.end());
@@ -439,6 +484,7 @@ val optimizationResults(api::OptimizationEvaluation& point)
             result.set("elementTables", elements);
             result.set("gridPointForces", forces);
             result.set("eigenvalues", eigenvalues);
+            result.set("aeroelastic", analysis.trim ? trimResultsObject(*analysis.trim) : val::null());
             result.set("diagnostics", diagnosticArray(diagnostics));
             return result;
         });
@@ -450,6 +496,8 @@ EMSCRIPTEN_BINDINGS(oos_solver)
     using namespace emscripten;
 
     function("version", &version);
+    function("optimizationCatalogue", &optimizationCatalogue);
+    function("modelCapabilities", &modelCapabilities);
     function("threadingInfo", &threadingInfo);
     function("elementFormulations", &elementFormulations);
 
@@ -458,6 +506,8 @@ EMSCRIPTEN_BINDINGS(oos_solver)
         .function("setVersions", &setVersions)
         .function("setSourceCards", &setSourceCards)
         .function("setTable", &setTable)
+        .function("setTable", optional_override([](api::ModelInput& input, const std::string& name, const val& bytes)
+                  { setTable(input, name, bytes, val::null()); }))
         .function("addElementTable", &addElementTable)
         .function("addPropertyTable", &addPropertyTable)
         .function("addMethodTable", &addMethodTable)

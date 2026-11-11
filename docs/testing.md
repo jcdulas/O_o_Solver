@@ -8,14 +8,15 @@ OOS_SOLVER_DIST=build/wasm-threads/dist node wasm/test/run.mjs
 ```
 
 On PowerShell, set `$env:OOS_SOLVER_DIST` before the second command. `OOR_READER_DIST` selects a different Reader
-package; its default is `../O_o_Reader/build/wasm/dist`. The ordinary `node --test wasm/test/*.test.mjs` entry point
+package; its default is `../O_o_Reader/build/wasm/dist`. The ordinary `node --test --test-concurrency=1 wasm/test/*.test.mjs` entry point
 also runs the complete suite.
 
 ## One second per case
 
 Reader, Solver and the optional threading probe initialize once in a reusable worker, before tests start. Each
-individual test has a **900 ms watchdog in its parent process**, plus the test runner's **1,000 ms timeout**.
-The watchdog terminates the worker even when synchronous WASM blocks its event loop. Separate regression tests
+input combination has a **900 ms watchdog in its parent process**, plus the test runner's **1,000 ms timeout**.
+The watchdog terminates the worker even when synchronous WASM blocks its event loop. Focused tests have a 1,000 ms
+timeout, and the full-suite command runs test files sequentially to avoid resource contention. Separate regression tests
 deliberately block workers in JavaScript and in an infinite WASM loop, and check that both are interrupted.
 
 The budget includes parsing the tiny model, exporting its tables, support checks, calculation, assertions,
@@ -26,6 +27,7 @@ has been terminated. A slow case is never silently skipped or accepted as a nume
 The command writes `build/test-results/wasm.json` or `build/test-results/wasm-threads.json`: every test name, status
 and duration, the ten slowest tests, maximum duration, failures and any duration reaching one second. It exits with
 a nonzero status for a numerical failure or an exceeded limit. `OOS_TEST_RESULTS` changes the report directory.
+The separate worker-pool tests create their pools during module setup and give each test a 1,000 ms timeout.
 
 To investigate one input without running the entire matrix:
 
@@ -39,6 +41,13 @@ Numerical values and model sizes are unbounded, so no finite suite can enumerate
 exhaustively enumerates the declared finite Cartesian domains below, and preserves the existing focused tests of
 optimization, modes, formulations and worker lifetime. Inputs are generated deterministically from original small
 models; no random sample replaces a declared combination.
+
+The [external study cases](../wasm/test/cases/studies.mjs) additionally exercise SOL 101/103/105/144, full-analysis
+and native gradients, auxiliary shape directions, coupled material constants, named Reader result queries and
+accepted-point archives. [Numerical derivative tests](../wasm/test/numerical-derivatives.test.mjs) cover bounds,
+discrete variables, output layout changes and memory limits. [Worker pool tests](../wasm/test/worker-pool.test.mjs)
+cover independent package memories, parallel points and termination/replacement of a worker blocked in synchronous
+JavaScript. Run these standalone tests with `node --test --test-concurrency=1 wasm/test/*.test.mjs` in addition to `node wasm/test/run.mjs`.
 
 | Matrix | Domains | Cases |
 | --- | --- | ---: |

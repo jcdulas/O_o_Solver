@@ -4,6 +4,8 @@
 #include "oos/input/contract/TableRole.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <stdexcept>
 
 namespace oos::aero
 {
@@ -50,6 +52,34 @@ bool containsSubcase(std::span<const std::int32_t> subcases, base::EntityId labe
 }
 
 } // namespace
+
+std::vector<AeroLink> trimLinks(const input::ModelSnapshot& snapshot)
+{
+    const auto* table = snapshot.findAeroCardTable("AeroTrimLink");
+    if (table == nullptr)
+        return {};
+    const auto& reader = table->reader();
+    const auto ids = table->ids();
+    const auto dependent = reader.texts("dependentLabel");
+    const auto labels = reader.textLists("termLabels");
+    const auto coefficients = reader.lists<double>("termCoefficients");
+    std::vector<AeroLink> links;
+    for (std::int64_t row = 0; row < table->rowCount(); ++row)
+    {
+        const auto values = coefficients[row];
+        if (labels.count(row) != static_cast<std::int64_t>(values.size()))
+            throw std::invalid_argument("AeroTrimLink termLabels and termCoefficients must have the same length");
+        AeroLink link{ids[row], std::string(dependent[row]), {}};
+        for (std::size_t i = 0; i < values.size(); ++i)
+        {
+            if (!std::isfinite(values[i]))
+                throw std::invalid_argument("AeroTrimLink coefficients must be finite");
+            link.terms.push_back({std::string(labels.at(row, static_cast<std::int64_t>(i))), values[i]});
+        }
+        links.push_back(std::move(link));
+    }
+    return links;
+}
 
 std::optional<std::size_t> TrimCase::find(std::string_view label) const
 {

@@ -148,7 +148,8 @@ FieldPerturbation::FieldPerturbation(const std::shared_ptr<const input::ModelSna
                                                      value - step / 2.0};
     m_width = sides[0] - sides[1];
     m_halfWidth = sides[2] - sides[3];
-    const bool isDerived = targets != nullptr && targets->derivedProperties().groupOf(relation).has_value();
+    const bool isDerived = targets != nullptr && (targets->derivedProperties().groupOf(relation).has_value() ||
+                                                 targets->hasDerivedMaterial(relation));
     if (isDerived && pointFields.size() <= relation)
         throw std::invalid_argument(
             "FieldPerturbation: a field of a designed laminate or section needs the field "
@@ -162,7 +163,7 @@ FieldPerturbation::FieldPerturbation(const std::shared_ptr<const input::ModelSna
         if (isDerived)
         {
             fields[relation] = sides[k];
-            if (sections != nullptr)
+            if (sections != nullptr || targets->hasDerivedMaterial(relation))
                 targets->addDerivedCells(overlay, fields, relation, sections);
             else
             {

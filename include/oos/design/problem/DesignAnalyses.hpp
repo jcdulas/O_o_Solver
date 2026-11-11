@@ -31,6 +31,9 @@ struct DesignAnalyses
     std::optional<std::vector<std::int32_t>> buckling;
     std::optional<std::vector<std::int32_t>> aeroelastic;
     std::vector<aero::AeroLink> links;
+    // Value-only studies can difference the complete trim, including applied loads, without retaining its restricted
+    // native sizing linearisation. Structural outputs needed by the responses are still recovered.
+    bool keepsTrimLinearisation = true;
 
     [[nodiscard]] bool hasEigenvalues() const noexcept { return modes.has_value() || buckling.has_value(); }
     [[nodiscard]] bool hasAeroelastic() const noexcept { return aeroelastic.has_value(); }

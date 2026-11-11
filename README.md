@@ -1,8 +1,8 @@
 # O_o_Solver
 
 A linear finite element solver written in C++20 and compiled to WebAssembly for the web. It solves models supplied
-as typed table packages by O_o_Reader: linear statics, normal modes, linear buckling and design evaluations with
-derivatives for a JavaScript-driven optimization. The C++ library also provides static aeroelastic trim and
+as typed table packages by O_o_Reader: linear statics (SOL 101), normal modes (SOL 103), linear buckling (SOL 105),
+static aeroelastic trim (SOL 144) and design evaluations driven by JavaScript. The C++ library also provides
 condensation of components.
 
 O_o_Reader loads native `.oos` models or `.ooh5` model archives, and the solver takes the reader's tables:
@@ -35,7 +35,9 @@ solver's: [docs/table-package.md](docs/table-package.md).
 
 ## Documentation
 
-[JavaScript optimization](docs/optimization.md): design interfaces, derivatives and accepted model updates.
+[JavaScript optimization](docs/optimization.md): native design interfaces and derivatives.
+[External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, full-analysis derivatives,
+workers and accepted-point archives.
 
 **[Read online](https://jcdulas.github.io/O_o_Solver/)** · [Architecture with diagrams](docs/architecture.md) · [Documentation index](index.md)
 
@@ -89,7 +91,7 @@ WebAssembly (64-bit WebAssembly, Memory64: Node.js 24 or a browser that supports
 ```bash
 emcmake cmake -S . -B build/wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOS_BUILD_WASM=ON -DOOS_WARNINGS_AS_ERRORS=OFF
 cmake --build build/wasm -j
-node --test wasm/test/*.test.mjs      # needs the O_o_Reader package built in ../O_o_Reader/build/wasm/dist
+node --test --test-concurrency=1 wasm/test/*.test.mjs      # needs the O_o_Reader package built in ../O_o_Reader/build/wasm/dist
 ```
 
 The [fast input combination tests](docs/testing.md) enforce a one-second ceiling per case. Use

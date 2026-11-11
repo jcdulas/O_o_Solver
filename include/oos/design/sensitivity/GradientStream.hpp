@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <span>
 #include <string_view>
+#include <vector>
 
 namespace oos::design
 {
@@ -67,6 +68,8 @@ struct GradientStreamOptions
 {
     std::size_t block = GRADIENT_STREAM_BLOCK;
     SensitivityMethod method = SensitivityMethod::Automatic;
+    // Empty: every variable. A zero skips its field and shape linearisation but retains its zero output column.
+    std::vector<std::uint8_t> isVariableWanted;
 };
 
 // The size of G and what its destination must hold, known from the counts alone (before any linearisation or solve).

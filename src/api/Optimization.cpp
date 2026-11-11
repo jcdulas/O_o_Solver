@@ -1,7 +1,10 @@
 #include "oos/api/Optimization.hpp"
+#include "OptimizationDerivatives.hpp"
+#include "OptimizationProducts.hpp"
 
 #include "oos/api/Threading.hpp"
 #include "oos/base/arrow/TablePackage.hpp"
+#include "oos/base/errors/OptimisationError.hpp"
 #include "oos/base/platform/MemoryInfo.hpp"
 #include "oos/design/constraints/ConstraintTables.hpp"
 #include "oos/design/expressions/ProgramTables.hpp"
@@ -11,8 +14,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <stdexcept>
+#include <string_view>
 
 namespace oos::api
 {
@@ -129,6 +132,24 @@ std::uint64_t budgetBytes(std::uint64_t requested)
     const auto available = base::MemoryInfo::query().availableBytes;
     return requested ? requested : (available ? available : base::MemoryBudget::UNLIMITED);
 }
+
+bool needsFullShapeColumns(const design::DesignEvaluation& evaluation,
+                           const OptimizationSettings& settings)
+{
+    if (evaluation.analysis.point.values().shapes.empty())
+        return false;
+    if (settings.analyses.hasAeroelastic())
+        return true;
+    const auto& results = evaluation.analysis.results;
+    if (!results.reliefs.empty())
+        return true;
+    for (const auto& system : results.condensedSystems)
+        if (system != nullptr && system->relief() != nullptr)
+            return true;
+    return std::any_of(results.streamed.begin(), results.streamed.end(),
+                       [](const auto& set) { return set.isRelieved; });
+}
+
 } // namespace
 
 OptimizationProblem::OptimizationProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, OptimizationInput input,
@@ -142,6 +163,8 @@ OptimizationProblem::OptimizationProblem(std::shared_ptr<const input::ModelSnaps
         throw std::invalid_argument("blockItems and maximumOutputBytes must be positive");
     m_settings.analysisOptions.kernel = linalg::KernelSelection::selectForThisProcess().kind();
     m_settings.analysisOptions.pool = m_pool.get();
+    const auto links = aero::trimLinks(m_problem.snapshot());
+    m_settings.analyses.links.insert(m_settings.analyses.links.begin(), links.begin(), links.end());
     m_problem.setDeckOutputs(m_settings.deckOutputs);
     m_input.tables.clear(); // the checked design parts own their data
 }
@@ -194,6 +217,8 @@ void OptimizationEvaluation::requireOutput(std::size_t rows, std::size_t columns
 
 design::ProductContext OptimizationEvaluation::context(const design::CallableRegistry& callables) const
 {
+    if (!m_owner->settings().analyses.keepsTrimLinearisation && m_owner->settings().analyses.hasAeroelastic())
+        throw std::invalid_argument("native derivatives were disabled; use full-analysis numerical derivatives");
     design::ProductContext result;
     result.callables = &callables;
     result.analysisOptions = m_owner->settings().analysisOptions;
@@ -205,18 +230,60 @@ design::ProductContext OptimizationEvaluation::context(const design::CallableReg
 
 design::DesignGradients OptimizationEvaluation::gradients(const design::GradientOptions& options)
 {
-    std::size_t rows = m_evaluation.constraints.size() + (m_evaluation.objective ? 1 : 0);
+    if (!m_owner->settings().analyses.keepsTrimLinearisation && m_owner->settings().analyses.hasAeroelastic())
+        throw std::invalid_argument("native derivatives were disabled; use method finiteDifference");
+    const auto isRequested = [&](std::int32_t id)
+    {
+        return options.responseIds.empty() ||
+               std::find(options.responseIds.begin(), options.responseIds.end(), id) != options.responseIds.end();
+    };
+    std::size_t rows = 0;
     for (const auto& response : m_evaluation.responses)
-        rows += response.itemCount();
+        if (isRequested(response.id))
+            rows += response.itemCount();
+    for (const auto& constraint : m_evaluation.constraints)
+        rows += isRequested(constraint.responseId) ? 1 : 0;
+    if (const auto objective = m_owner->problem().constraints().objective(); objective && isRequested(*objective))
+        ++rows;
     requireOutput(rows, m_x.size());
-    return m_owner->problem().gradients(m_evaluation, m_owner->callables(), m_budget, options,
-                                        m_owner->settings().analysisOptions, m_owner->settings().blockItems);
+    design::GradientOptions nativeOptions = options;
+    std::vector<std::size_t> shapeColumns;
+    if (!options.isVariableWanted.empty() && options.isVariableWanted.size() != m_x.size())
+        throw std::invalid_argument("isVariableWanted must have one entry per independent variable");
+    if (needsFullShapeColumns(m_evaluation, m_owner->settings()))
+    {
+        for (const auto& shape : m_evaluation.analysis.point.values().shapes)
+            for (const auto& [column, rate] : shape.gradient)
+                if (rate != 0.0 && column < m_x.size() &&
+                    (options.isVariableWanted.empty() || options.isVariableWanted[column] != 0))
+                    shapeColumns.push_back(column);
+        std::sort(shapeColumns.begin(), shapeColumns.end());
+        shapeColumns.erase(std::unique(shapeColumns.begin(), shapeColumns.end()), shapeColumns.end());
+        if (!shapeColumns.empty())
+        {
+            if (nativeOptions.isVariableWanted.empty())
+                nativeOptions.isVariableWanted.assign(m_x.size(), 1);
+            for (const auto column : shapeColumns)
+                nativeOptions.isVariableWanted[column] = 0;
+        }
+    }
+    auto result = m_owner->problem().gradients(m_evaluation, m_owner->callables(), m_budget, nativeOptions,
+                                                m_owner->settings().analysisOptions, m_owner->settings().blockItems);
+    if (!shapeColumns.empty())
+        detail::completeShapeGradients(*this, options, result, shapeColumns);
+    return result;
 }
 
 design::GradientStreamReport OptimizationEvaluation::streamGradients(design::GradientSink& sink, std::size_t block)
 {
+    if (!m_owner->settings().analyses.keepsTrimLinearisation && m_owner->settings().analyses.hasAeroelastic())
+        throw std::invalid_argument("native derivatives were disabled; use full-analysis numerical derivatives");
+    if (needsFullShapeColumns(m_evaluation, m_owner->settings()))
+        return detail::fullShapeStream(*this, m_budget, sink, block);
+    design::GradientStreamOptions options;
+    options.block = block;
     return m_owner->problem().streamGradients(m_evaluation, m_owner->callables(), m_budget,
-                                              design::GradientStreamOptions{block}, sink,
+                                              options, sink,
                                               m_owner->settings().analysisOptions, m_owner->settings().blockItems);
 }
 
@@ -225,6 +292,8 @@ design::ProductReport OptimizationEvaluation::jvp(std::span<const double> direct
                                                   const design::ProductSelection& selection)
 {
     requireFinite(directions, "directions");
+    if (needsFullShapeColumns(m_evaluation, m_owner->settings()))
+        return detail::fullShapeJvp(*this, directions, count, block, sink, selection);
     const auto callables = m_owner->callables();
     return design::VectorJacobianProducts::jvp(m_owner->problem(), m_evaluation, directions, count, block, sink,
                                                m_budget, context(callables), &m_linearisation, selection);
@@ -234,6 +303,8 @@ design::ProductReport OptimizationEvaluation::vjp(const design::ProductWeights& 
                                                   design::ProductSink& sink)
 {
     requireFiniteWeights(weights);
+    if (needsFullShapeColumns(m_evaluation, m_owner->settings()))
+        return detail::fullShapeVjp(*this, weights, block, sink);
     const auto callables = m_owner->callables();
     return design::VectorJacobianProducts::vjp(m_owner->problem(), m_evaluation, weights, block, sink, m_budget,
                                                context(callables), &m_linearisation);
@@ -246,9 +317,24 @@ design::ProductReport OptimizationEvaluation::hessianVector(const design::Produc
     requireFiniteWeights(weights);
     requireOutput(m_x.size(), count);
     requireFinite(directions, "directions");
+    const auto& analyses = m_owner->settings().analyses;
+    if (analyses.hasEigenvalues() || analyses.hasAeroelastic() ||
+        !m_evaluation.analysis.point.values().shapes.empty())
+        return detail::nativeGradientHessian(*this, weights, directions, count, values);
     const auto callables = m_owner->callables();
-    return design::VectorJacobianProducts::hessianVector(m_owner->problem(), m_evaluation, weights, directions, values,
-                                                         m_budget, context(callables), &m_linearisation, count);
+    try
+    {
+        return design::VectorJacobianProducts::hessianVector(m_owner->problem(), m_evaluation, weights, directions,
+                                                             values, m_budget, context(callables), &m_linearisation,
+                                                             count);
+    }
+    catch (const base::OptimisationError& error)
+    {
+        // The fast path names its unsupported second-order item with this prefix. Other failures remain errors.
+        if (!std::string_view(error.what()).starts_with("hessian_vector:"))
+            throw;
+        return detail::nativeGradientHessian(*this, weights, directions, count, values);
+    }
 }
 
 std::vector<double> OptimizationEvaluation::hessian(const design::ProductWeights& weights)

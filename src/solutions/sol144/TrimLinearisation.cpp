@@ -56,6 +56,19 @@ std::size_t TrimLinearisation::gSetSize() const noexcept
     return static_cast<std::size_t>(m_state->model->dofMap().gSetSize());
 }
 
+std::vector<double> TrimLinearisation::appliedAcceleration(std::size_t subcase,
+                                                            base::MemoryBudget& budget) const
+{
+    const auto& selected = m_state->staticSubcases.at(subcase).load;
+    if (!selected || !m_state->loadBuilder ||
+        !m_state->loadBuilder->hasFamilyLoads(*selected, assembly::LoadFamily::Inertial))
+        return {};
+    std::vector<double> acceleration(gSetSize(), 0.0);
+    base::DiagnosticSink sink;
+    m_state->loadBuilder->addInertialAccelerations(*selected, acceleration, budget, sink);
+    return acceleration;
+}
+
 std::vector<std::string> TrimLinearisation::variableLabels(std::size_t subcase) const
 {
     std::vector<std::string> labels;

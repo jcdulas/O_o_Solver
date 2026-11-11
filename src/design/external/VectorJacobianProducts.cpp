@@ -1178,7 +1178,8 @@ public:
                 continue;
             const DesignRelation& relation = m_in.model->relations()[r];
             const std::vector<TargetCell>& cells = (*m_in.targets)[r].cells;
-            const bool isDerived = m_in.targets->derivedProperties().groupOf(r).has_value();
+            const bool isDerived = m_in.targets->derivedProperties().groupOf(r).has_value() ||
+                                   m_in.targets->hasDerivedMaterial(r);
             const bool isPlainCell =
                 cells.size() == 1 && cells.front().item < 0 && cells.front().scale == 1.0 && !isDerived;
             if (relation.form != RelationForm::Linear)

@@ -63,6 +63,9 @@ struct AeroLink
     std::vector<LinkTerm> terms; // bounded by the fields of the card
 };
 
+// Read the owned card columns exported by Reader. Empty when the model has no trim links.
+[[nodiscard]] std::vector<AeroLink> trimLinks(const input::ModelSnapshot& snapshot);
+
 // The trim case of a subcase of a static aeroelastic analysis (TRIM, AeroTrim2): the TRIM set its Case Control selects,
 // as O_o_Reader's aeroTrimCasesTable gives it: the Mach number, the dynamic pressure, AEQR, and every variable of the
 // model with its state; the AeroTrimLink cards of the set (and those of ID 0 or ALWAYS).

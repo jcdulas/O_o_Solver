@@ -12,7 +12,7 @@ if (workerData?.probe) {
   parentPort.on("message", block); // Deliberately block the event loop; only the parent can interrupt it.
   parentPort.postMessage({ type: "ready", cases: [] });
 } else {
-  for (const suite of ["smoke", "optimization", "static-inputs", "threading", "static-matrix", "connections", "controls"])
+  for (const suite of ["smoke", "optimization", "studies", "static-inputs", "threading", "static-matrix", "connections", "controls"])
     await import(`../cases/${suite}.mjs`);
   parentPort.on("message", async ({ index }) => {
     const started = performance.now();

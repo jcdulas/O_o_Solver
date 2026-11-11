@@ -158,14 +158,16 @@ test("an invalid selected set is checked even without an inertial load", () => {
   });
 });
 
-test("unsupported mass derivative and modal paths refuse the selection explicitly", () => {
+test("selected mass supports static optimization while the modal path refuses it", () => {
   withModel(CASE + "NonStructMassSelection;20\n", BULK + "NonStructMass;20;RodProp;1;2.\n", model => {
     assert.ok(model.checkSupport("modes").refusals.some(d => d.field === "nonStructMass"));
-    assert.throws(() => solver.createOptimization(model, {
+    const problem = solver.createOptimization(model, {
       variables: [{ id: 1, initialValue: 2, lower: 1, upper: 3 }],
       relations: [{ id: 1, targetKind: "property", targetCard: "RodProp", targetId: 1, field: "area",
         terms: [{ variableId: 1, coefficient: 1 }] }],
       responses: [{ id: 10, type: "Volume" }], objective: { responseId: 10 },
-    }), /NonStructMassSelection/);
+    });
+    try { assert.equal(problem.metadata().variables.length, 1); }
+    finally { problem.delete(); }
   });
 });
