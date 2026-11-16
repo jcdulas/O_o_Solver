@@ -36,7 +36,9 @@ have their full names in `paramsTable`, such as `WeightToMass` and `ShellQuad4Fo
   shared in place with the base snapshot, which it keeps alive; this is how a design point of SOL 200 is applied
   without editing the model), `OffsetDefinition` (the offset convention selected by the model), `ElementFormulationChoice`
   (the element formulations the program that built the snapshot chose, by card: `elements::ElementRegistry::forModel`
-  reads them before the model's formulation parameter).
+  reads them before the model's formulation parameter), the formulation of the whole model
+  (`ModelSnapshot::modelFormulation`, before the model's `ElementFormulation` parameter) and `FormulationGeometry` (the
+  geometry declarations of the mixed hybrid formulation: raw edges, raw elements, sharp edges).
 - `requests/`: `OutputRequests` (the case section output requests and sets of each subcase, from
   `outputRequestsTable` and `caseSetsTable`).
 

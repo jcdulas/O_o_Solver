@@ -50,6 +50,25 @@ struct ElementFormulationChoice
     friend bool operator==(const ElementFormulationChoice&, const ElementFormulationChoice&) = default;
 };
 
+// An edge of the mesh by its two grid point IDs, the lower first.
+using GridEdge = std::array<std::int32_t, 2>;
+
+// The geometry declarations of the formulation that reads the surface of its shells and the skin of its solids from
+// the mesh (MixedHybridFormulation, docs/mixed-hybrid-formulation-spec.md section 4.4): where the surface is not
+// smooth. The reading has no angle criterion, so the model says it. Given by the program that builds the snapshot;
+// every list sorted, without repetition, each edge with its lower grid point ID first.
+struct FormulationGeometry
+{
+    // Straight edges along which the surface of the shells may fold; the mesh lines that cross one end there.
+    std::vector<GridEdge> rawEdges;
+    // Shell elements whose edges are all raw: facets.
+    std::vector<std::int32_t> rawElements;
+    // Edges across which the skin of the solids is not smooth (the edges of a block, the rim of a bore).
+    std::vector<GridEdge> sharpEdges;
+
+    friend bool operator==(const FormulationGeometry&, const FormulationGeometry&) = default;
+};
+
 // The tables of the aeroelastic model and of its direct matrix input (the DownwashMatrix and AeroPressureMatrix of a
 // trim), in the order ModelSnapshot keeps them.
 inline constexpr std::size_t AERO_TABLE_COUNT = 9;
@@ -97,6 +116,16 @@ public:
     [[nodiscard]] const std::vector<ElementFormulationChoice>& elementFormulations() const noexcept
     {
         return m_elementFormulations;
+    }
+    // The formulation the program that built the snapshot chose for the whole model ("MixedHybridFormulation"; empty:
+    // the model's ElementFormulation parameter and the per-card choices decide). The element layer reads it
+    // (elements::ElementRegistry::forModel).
+    [[nodiscard]] const std::string& modelFormulation() const noexcept { return m_modelFormulation; }
+    // The geometry declarations of the program (FormulationGeometry); empty when the program gave none, which the
+    // formulation that needs them refuses.
+    [[nodiscard]] const std::optional<FormulationGeometry>& formulationGeometry() const noexcept
+    {
+        return m_formulationGeometry;
     }
     // The model's MDLPRM OFFDEF (ELMOFF, the default, when the model gives none): where the mass of an offset
     // element is (OffsetDefinition).
@@ -201,6 +230,8 @@ private:
         OffsetDefinition offsetDefinition = OffsetDefinition::ElementOffsets;
         std::string unsupportedOffsetDefinition;
         std::vector<ElementFormulationChoice> elementFormulations;
+        std::string modelFormulation;
+        std::optional<FormulationGeometry> formulationGeometry;
         std::optional<NodeTable> nodes;
         std::vector<ElementBatch> elementBatches;
         std::vector<CardTable> propertyTables;
@@ -240,6 +271,8 @@ private:
     OffsetDefinition m_offsetDefinition = OffsetDefinition::ElementOffsets;
     std::string m_unsupportedOffsetDefinition;
     std::vector<ElementFormulationChoice> m_elementFormulations;
+    std::string m_modelFormulation;
+    std::optional<FormulationGeometry> m_formulationGeometry;
     NodeTable m_nodes;
     std::vector<ElementBatch> m_elementBatches;
     std::vector<CardTable> m_propertyTables;

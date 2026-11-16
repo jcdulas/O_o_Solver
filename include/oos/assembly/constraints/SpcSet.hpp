@@ -1,5 +1,6 @@
 #pragma once
 
+#include "oos/assembly/constraints/MpcEquations.hpp"
 #include "oos/assembly/dofs/DofMap.hpp"
 #include "oos/base/diagnostics/DiagnosticSink.hpp"
 #include "oos/base/ids/EntityId.hpp"
@@ -24,6 +25,16 @@ struct EnforcedDisplacement
 {
     base::DofIndex dof = 0;
     double value = 0.0;
+};
+
+// A support the element formulation derives from the supports of the grid points (an entity DOF of an edge or a face
+// held because the grid points of the edge hold a direction: docs/mixed-hybrid-formulation-spec.md section 5.6), with
+// its value and the terms that carry its reaction back to the grid DOFs (the reaction r adds r·c to each term's DOF).
+struct DerivedSupportDof
+{
+    base::DofIndex dof = 0;
+    double value = 0.0;
+    std::vector<ConstraintTerm> carriedTo;
 };
 
 // The single-point constraints of one subcase, from the singlePointConstrTable of O_o_Reader
@@ -99,6 +110,16 @@ public:
     // same constraints share one factorisation (SOL 101).
     [[nodiscard]] bool hasSameConstrainedDofs(const SpcSet& other) const noexcept;
 
+    // This set with the supports the element formulation derives from it: their DOFs join sb, their nonzero values
+    // the enforced values (a derived DOF already in sb or sg keeps its own value). `derived` sorted by DOF, each once.
+    [[nodiscard]] SpcSet withDerivedSupports(std::vector<DerivedSupportDof> derived, base::MemoryBudget& budget) const;
+    // The derived supports (empty without a formulation that derives some).
+    [[nodiscard]] std::span<const DerivedSupportDof> derivedSupports() const noexcept;
+    // Adds to the support forces of the grid DOFs those of the derived supports (each carried by its terms), then sets
+    // the derived DOFs' own to 0: the support force tables name grid points only, and the carrying is exact for rigid
+    // motions, so the reported forces balance the loads.
+    void carryDerivedReactions(std::span<double> supportForcesG) const noexcept;
+
 private:
     SpcSet() = default;
 
@@ -110,6 +131,7 @@ private:
         base::BudgetedBuffer<base::DofIndex> sb;
         base::BudgetedBuffer<base::DofIndex> sg;
         base::BudgetedBuffer<EnforcedDisplacement> enforced;
+        std::vector<DerivedSupportDof> derived; // bounded by the entity DOFs of the held edges and faces
     };
     std::shared_ptr<const Arrays> m_arrays;
 };

@@ -219,6 +219,24 @@ void setElementFormulation(api::ModelInput& input, const std::string& card, cons
     guarded([&] { input.setElementFormulation(card, formulation); });
 }
 
+void setModelFormulation(api::ModelInput& input, const std::string& formulation)
+{
+    guarded([&] { input.setModelFormulation(formulation); });
+}
+
+// setFormulationGeometry(rawEdges, rawElements, sharpEdges): flat arrays of grid point IDs (two per edge) and of
+// element IDs.
+void setFormulationGeometry(api::ModelInput& input, const val& rawEdges, const val& rawElements, const val& sharpEdges)
+{
+    guarded(
+        [&]
+        {
+            input.setFormulationGeometry(emscripten::convertJSArrayToNumberVector<std::int32_t>(rawEdges),
+                                         emscripten::convertJSArrayToNumberVector<std::int32_t>(rawElements),
+                                         emscripten::convertJSArrayToNumberVector<std::int32_t>(sharpEdges));
+        });
+}
+
 val elementFormulations()
 {
     val array = val::array();
@@ -257,8 +275,7 @@ api::Analysis analysisNamed(const std::string& name)
         return api::Analysis::Buckling;
     if (name == "aeroelastic")
         return api::Analysis::Aeroelastic;
-    throw std::invalid_argument("unknown analysis '" + name +
-                                "': expected statics, modes, buckling or aeroelastic");
+    throw std::invalid_argument("unknown analysis '" + name + "': expected statics, modes, buckling or aeroelastic");
 }
 
 val diagnosticObject(const base::Diagnostic& diagnostic)
@@ -507,7 +524,7 @@ EMSCRIPTEN_BINDINGS(oos_solver)
         .function("setSourceCards", &setSourceCards)
         .function("setTable", &setTable)
         .function("setTable", optional_override([](api::ModelInput& input, const std::string& name, const val& bytes)
-                  { setTable(input, name, bytes, val::null()); }))
+                                                { setTable(input, name, bytes, val::null()); }))
         .function("addElementTable", &addElementTable)
         .function("addPropertyTable", &addPropertyTable)
         .function("addMethodTable", &addMethodTable)
@@ -517,6 +534,8 @@ EMSCRIPTEN_BINDINGS(oos_solver)
         .function("setDisplacementRotations", &setDisplacementRotations)
         .function("setOffsetDefinition", &setOffsetDefinition)
         .function("setElementFormulation", &setElementFormulation)
+        .function("setModelFormulation", &setModelFormulation)
+        .function("setFormulationGeometry", &setFormulationGeometry)
         .function("build", &buildModel);
 
     class_<Model>("Model")

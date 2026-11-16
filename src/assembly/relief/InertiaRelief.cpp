@@ -163,8 +163,11 @@ std::vector<base::DofIndex> chooseAutomaticSupports(const RigidBodyModes& modes,
     constexpr std::size_t N = RigidBodyModes::MODE_COUNT;
     std::vector<std::array<double, N>> basis; // the orthonormal directions of the rows taken: at most six
     std::vector<base::DofIndex> chosen;       // at most six
+    // The supports are grid components (the rows of the scalar points are zero; those of the entities of an element
+    // formulation are not grid points the user could hold).
+    const std::size_t candidates = modes.gridDofCount();
     double largestNorm = 0.0;
-    for (std::size_t dof = 0; dof < d.rows(); ++dof)
+    for (std::size_t dof = 0; dof < candidates; ++dof)
     {
         double norm = 0.0;
         for (std::size_t k = 0; k < N; ++k)
@@ -176,7 +179,7 @@ std::vector<base::DofIndex> chooseAutomaticSupports(const RigidBodyModes& modes,
         double best = DEPENDENT_SUPPORT_RATIO * largestNorm;
         std::size_t bestDof = d.rows();
         std::array<double, N> bestRow{};
-        for (std::size_t dof = 0; dof < d.rows(); ++dof)
+        for (std::size_t dof = 0; dof < candidates; ++dof)
         {
             if (sets.exclusiveSetOf(static_cast<base::DofIndex>(dof)) != ExclusiveSet::B)
                 continue;
@@ -460,7 +463,8 @@ InertiaRelief::InertiaRelief(linalg::DenseMatrix supportModes, const linalg::Blo
                 {"inertia relief: the rigid-body motion of support DOF ", std::to_string(j + 1), " of ",
                  std::to_string(r),
                  " moves no mass (Dᵀ·M·D is singular), so the acceleration of the supports is not defined; give the "
-                 "model mass in that motion (density, PointMassInertia) or support only the DOFs of the rigid-body motions "
+                 "model mass in that motion (density, PointMassInertia) or support only the DOFs of the rigid-body "
+                 "motions "
                  "that "
                  "carry mass"}));
         m_cholesky(j, j) = std::sqrt(pivot);

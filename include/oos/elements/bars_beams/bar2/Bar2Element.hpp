@@ -62,9 +62,9 @@ public:
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
     bool loadFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                              const ElementLoadContext& loads, ElementVectorBlock& block) const override;
-    bool loadFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
-                                  const DesignedField& first, const DesignedField& second,
-                                  const ElementLoadContext& loads, ElementVectorBlock& block) const override;
+    bool loadFieldMixedDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& first,
+                                  const DesignedField& second, const ElementLoadContext& loads,
+                                  ElementVectorBlock& block) const override;
     [[nodiscard]] std::vector<std::string> propertyCards() const override
     {
         return {"BarProp", "BarShapeProp", "IsoMat"};
@@ -139,11 +139,14 @@ public:
     bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
                                               const DesignedField& field, const NodalDisplacements& preload,
                                               ElementMatrixBlock& block) const override;
-    bool differentialStiffnessFieldMixedDerivative(
-        const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
-        const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
+    bool differentialStiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                                   const DesignedField& first, const DesignedField& second,
+                                                   const NodalDisplacements& preload,
+                                                   ElementMatrixBlock& block) const override;
 
-private:
+public:
+    // The reading of the card's fields (its columns read once per facet call, and the data of one element): public for
+    // the family of the card's other formulation (MixedHybridFormulation), which reads the same fields.
     // The batch's columns and those of the BarProp and BarShapeProp tables (empty when the model has none), and of the
     // sections table, read once per facet call.
     struct Columns

@@ -644,6 +644,8 @@ std::string_view cardNameOf(ConstraintSource source) noexcept
         return "ContactTable";
     case ConstraintSource::ContactPair:
         return "ContactPair";
+    case ConstraintSource::Formulation:
+        return "ElementFormulation";
     }
     return "?";
 }
@@ -754,6 +756,7 @@ bool RigidElementEquations::build(const input::RigidTable& table, std::int64_t b
     case ConstraintSource::Weld:
     case ConstraintSource::ContactTable:
     case ConstraintSource::ContactPair:
+    case ConstraintSource::Formulation:
         break; // not cards of rigidElementsTable (findSource never gives them)
     }
     if (!isBuilt)

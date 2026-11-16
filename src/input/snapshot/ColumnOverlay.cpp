@@ -586,6 +586,11 @@ ModelSnapshot ColumnOverlay::applyTo(const ModelSnapshot& base, const std::share
         builder.setOffsetDefinitionValue(base.unsupportedOffsetDefinition());
     for (const ElementFormulationChoice& choice : base.elementFormulations())
         builder.setElementFormulation(choice.card, choice.formulation);
+    // The overlaid snapshot is computed with the same formulation and the same reading of its geometry.
+    if (!base.modelFormulation().empty())
+        builder.setModelFormulation(base.modelFormulation());
+    if (base.formulationGeometry())
+        builder.setFormulationGeometry(*base.formulationGeometry());
     for (const TableRole role : ALL_TABLE_ROLES)
     {
         if (!base.hasTable(role))

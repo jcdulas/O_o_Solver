@@ -82,7 +82,9 @@ public:
     void computeDifferentialStiffness(const ElementBatchView& view, ElementRange range,
                                       const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
 
-private:
+public:
+    // The reading of the card's fields (its columns read once per facet call, and the data of one element): public for
+    // the family of the card's other formulation (MixedHybridFormulation), which reads the same fields.
     struct Columns
     {
         RodConnectivity connectivity;

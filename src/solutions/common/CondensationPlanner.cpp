@@ -147,6 +147,7 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
                                          base::ThreadPool* pool, base::DiagnosticSink& sink)
     : m_snapshot(&snapshot), m_budget(&budget), m_pool(pool)
 {
+    elements::refuseMixedHybridOn(snapshot, "the condensation of components");
     m_model = std::make_unique<AnalysisModel>(snapshot, AnalysisKind::Statics, budget, pool, nullptr, sink);
     const assembly::DofMap& dofMap = m_model->dofMap();
     const input::ConstraintTable* constraints =

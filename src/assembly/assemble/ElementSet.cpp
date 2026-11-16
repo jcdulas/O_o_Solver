@@ -7,13 +7,14 @@
 namespace oos::assembly
 {
 
-ElementSet::ElementSet(const elements::SnapshotIndex& index, const elements::ElementRegistry& registry)
+ElementSet::ElementSet(const elements::SnapshotIndex& index, const elements::ElementRegistry& registry,
+                       const elements::EntityLayout* entities)
     : m_index(&index)
 {
     for (const input::ElementBatch& batch : index.snapshot().elementBatches())
     {
         if (const elements::ElementFamily* family = registry.find(batch.card()))
-            m_batches.push_back({family, elements::ElementBatchView(batch, index)});
+            m_batches.push_back({family, elements::ElementBatchView(batch, index, entities)});
     }
 }
 

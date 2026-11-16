@@ -2,6 +2,7 @@
 
 #include "oos/assembly/assemble/ElementMatrixStore.hpp"
 #include "oos/assembly/constraints/FastenerConstraints.hpp"
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/constraints/GlueConstraints.hpp"
 #include "oos/assembly/constraints/MpcEquations.hpp"
 #include "oos/assembly/constraints/RigidElimination.hpp"
@@ -120,6 +121,19 @@ public:
     [[nodiscard]] const assembly::DofSets& solveSets() const noexcept { return *m_solveSets; }
     // The r set: the FreeBodySupport DOFs, or the supports chosen for PARAM INREL = −2.
     [[nodiscard]] const std::vector<base::DofIndex>& supportDofs() const noexcept { return m_supportDofs; }
+    // What the element formulation adds to the constraints (its ties, observer relations and excluded set x), or null
+    // for a formulation with unknowns at the grid points only.
+    [[nodiscard]] const assembly::FormulationConstraints* formulationConstraints() const noexcept
+    {
+        return m_formulation.get();
+    }
+    // Completes a g-set displacement vector expanded by Gm (RigidElimination::expandToG): the excluded DOFs of the
+    // formulation filled (nothing without a formulation).
+    void fillExcluded(std::span<double> displacementsG) const
+    {
+        if (m_formulation != nullptr)
+            m_formulation->fillExcluded(displacementsG);
+    }
     [[nodiscard]] const linalg::NodeGraph& graph() const noexcept { return *m_graph; }
     [[nodiscard]] const linalg::SparsePattern& pattern() const noexcept { return *m_pattern; }
     [[nodiscard]] const linalg::BlockSparseMatrix& kgg() const noexcept { return *m_kgg; }
@@ -149,10 +163,14 @@ private:
     std::unique_ptr<assembly::FastenerConstraints> m_fasteners;
     std::unique_ptr<assembly::GlueConstraints> m_glue;
     std::shared_ptr<assembly::RigidElimination> m_gm;
+    std::unique_ptr<assembly::FormulationConstraints> m_formulation;
     std::unique_ptr<assembly::SpcSet> m_ownSpc;
     const assembly::SpcSet* m_spc = nullptr;     // m_ownSpc, or the caller's
     std::vector<base::DofIndex> m_permanentDofs; // the sg DOFs with the external units' held DOFs (empty: sgDofs())
     std::vector<base::DofIndex> m_supportDofs;
+    // The x set: the DOFs the element formulation excludes (grid rotations of the mixed hybrid shells that nothing
+    // else uses), filled after the solution; empty for every other formulation.
+    std::vector<base::DofIndex> m_excludedDofs;
     std::unique_ptr<assembly::DofSets> m_sets;
     std::shared_ptr<assembly::DofSets> m_solveSets;
     std::unique_ptr<linalg::NodeGraph> m_graph;

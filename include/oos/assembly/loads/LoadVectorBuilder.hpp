@@ -189,6 +189,14 @@ public:
         std::int64_t row = 0;
     };
     [[nodiscard]] std::optional<ElementLocation> findElement(std::int32_t elementId) const;
+    // A PointsPressureLoad on a face of an element of the element formulation (FormulationModel::faceOf): the
+    // pressure of that element (uniform, of the sign the face gives), and its batch; empty otherwise.
+    struct FormulationPressure
+    {
+        std::size_t batchIndex = 0;
+        elements::ElementPressure pressure;
+    };
+    [[nodiscard]] std::optional<FormulationPressure> formulationPressureOf(const PressureRow& row) const;
 
     // The pressures (PLOAD2, FacePressureLoad) and line loads (PLOAD1) of a load set on elements, per batch of the set,
     // in the order of the table rows, as addLoads applies them (the PLOADs on the faces of grid points left out; the

@@ -12,7 +12,8 @@ namespace oos::assembly
 
 RigidBodyModes::RigidBodyModes(const DofMap& dofMap, base::Vec3 referencePoint, base::MemoryBudget& budget)
     : m_reference(referencePoint),
-      m_modes(budget, static_cast<std::size_t>(dofMap.gSetSize()), MODE_COUNT, "rigid-body modes")
+      m_modes(budget, static_cast<std::size_t>(dofMap.gSetSize()), MODE_COUNT, "rigid-body modes"),
+      m_gridDofCount(6 * static_cast<std::size_t>(dofMap.gridCount()))
 {
     for (std::int32_t grid = 0; grid < dofMap.gridCount(); ++grid)
     {
@@ -38,6 +39,28 @@ RigidBodyModes::RigidBodyModes(const DofMap& dofMap, base::Vec3 referencePoint, 
                     theta[static_cast<std::size_t>(k)];
             }
         }
+    }
+    // The entities of the element formulation (its edges, faces and interiors) take the same rigid motions:
+    // u(x) = e_i for a translation, u(x) = e_j × (x − r0) = [e_j]× x − e_j × r0 for a rotation (the formulation fills
+    // its rotation unknowns from the skew part of the gradient, docs/mixed-hybrid-formulation-spec.md section 5.7).
+    if (!dofMap.hasEntities())
+        return;
+    const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
+    for (std::size_t mode = 0; mode < MODE_COUNT; ++mode)
+    {
+        base::Mat3 gradient{};
+        base::Vec3 translation{};
+        if (mode < 3)
+            translation[mode] = 1.0;
+        else
+        {
+            base::Vec3 axis{};
+            axis[mode - 3] = 1.0;
+            gradient =
+                base::matrixFromRows({0.0, -axis[2], axis[1]}, {axis[2], 0.0, -axis[0]}, {-axis[1], axis[0], 0.0});
+            translation = -1.0 * base::cross(axis, referencePoint);
+        }
+        dofMap.addAffineEntityField(gradient, translation, std::span<double>(&m_modes(0, mode), gSize));
     }
 }
 

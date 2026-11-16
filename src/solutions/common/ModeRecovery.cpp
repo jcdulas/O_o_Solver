@@ -77,6 +77,7 @@ base::BudgetedBuffer<double> ModeRecovery::expand(const linalg::DenseMatrix& vec
     for (std::size_t e = 0; e < vectors.rows(); ++e)
         modeG[static_cast<std::size_t>(selection.dofOfEquation(static_cast<std::int32_t>(e)))] = vectors(e, column);
     m_system->gm().expandToG(modeG.span());
+    m_system->fillExcluded(modeG.span());
     return modeG;
 }
 
@@ -130,6 +131,15 @@ void ModeRecovery::recover(std::int32_t subcase, const output::OutputPlan& plan,
         const std::span<const std::uint8_t> isConstrained = m_system->isConstrained();
         for (std::size_t dof = 0; dof < gSize; ++dof)
             spcForces[dof] = isConstrained[dof] != 0 ? elementForces[dof] - loads[dof] - mpcForces[dof] : 0.0;
+        // The element formulation: its supports of edges and faces reported at their grid points, and its relations
+        // left out of the multipoint constraint forces (they are no card of the model).
+        if (m_system->formulationConstraints() != nullptr)
+        {
+            m_system->spc().carryDerivedReactions(spcForces.span());
+            if (hasMset && m_system->gm().hasFormulationRows())
+                m_system->gm().computeMpcForces(elementForces.span(), loads.span(), mpcForces.span(),
+                                                assembly::RigidElimination::Rows::OfCards);
+        }
         if (wantsSpc)
             addNodal(output::OutputKind::SpcForces, "singlePointConstrForces", spcForces.span());
         if (wantsMpc)

@@ -3,6 +3,7 @@
 #include "oos/api/Analyses.hpp"
 #include "oos/base/arrow/TablePackage.hpp"
 #include "oos/base/errors/ContractError.hpp"
+#include "oos/elements/core/ElementFormulation.hpp"
 #include "oos/input/contract/TableRole.hpp"
 #include "oos/input/snapshot/ColumnOverlay.hpp"
 
@@ -104,6 +105,44 @@ void ModelInput::setElementFormulation(const std::string& card, const std::strin
                                     "' is not an element card type of the solver; give its neutral name, as "
                                     "elementFormulations() lists them (for example ShellQuad4)");
     m_builder.setElementFormulation(card, formulation);
+}
+
+void ModelInput::setModelFormulation(const std::string& formulation)
+{
+    if (formulation != elements::CLASSIC_FORMULATION && formulation != elements::MIXED_HYBRID_FORMULATION)
+        throw std::invalid_argument(
+            "setModelFormulation: expected ClassicFormulation or MixedHybridFormulation, found '" + formulation + "'");
+    m_builder.setModelFormulation(formulation);
+}
+
+namespace
+{
+
+// The edges of a flat list of grid point IDs, two per edge.
+std::vector<input::GridEdge> edgesOf(const std::vector<std::int32_t>& values, const char* what)
+{
+    if (values.size() % 2 != 0)
+        throw std::invalid_argument(
+            std::string("setFormulationGeometry: expected two grid point IDs per edge in the ") + what + ", found " +
+            std::to_string(values.size()) + " values");
+    std::vector<input::GridEdge> edges;
+    edges.reserve(values.size() / 2);
+    for (std::size_t i = 0; i < values.size(); i += 2)
+        edges.push_back({values[i], values[i + 1]});
+    return edges;
+}
+
+} // namespace
+
+void ModelInput::setFormulationGeometry(const std::vector<std::int32_t>& rawEdges,
+                                        const std::vector<std::int32_t>& rawElements,
+                                        const std::vector<std::int32_t>& sharpEdges)
+{
+    input::FormulationGeometry geometry;
+    geometry.rawEdges = edgesOf(rawEdges, "raw edges");
+    geometry.rawElements = rawElements;
+    geometry.sharpEdges = edgesOf(sharpEdges, "sharp edges");
+    m_builder.setFormulationGeometry(std::move(geometry));
 }
 
 std::shared_ptr<const input::ModelSnapshot> ModelInput::build()

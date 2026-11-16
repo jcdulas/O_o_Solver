@@ -54,7 +54,7 @@ void ElementMatrixSource::writeContributions(std::size_t begin, std::size_t end,
                     const std::span<const elements::ElementDof> dofs = matrices.dofs(i);
                     nodeDofs.clear();
                     for (const elements::ElementDof& dof : dofs)
-                        nodeDofs.push_back(m_dofMap->nodeDofOf(m_dofMap->dofOf(dof)));
+                        nodeDofs.push_back(m_dofMap->nodeDofOf(dof));
                     contributions.append(nodeDofs, matrices.matrix(i));
                 }
             });

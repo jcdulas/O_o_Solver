@@ -218,6 +218,12 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
         const std::span<const std::uint8_t> isConstrained = structure.isConstrained();
         for (std::size_t dof = 0; dof < gSize; ++dof)
             spcForces[dof] = isConstrained[dof] != 0 ? elementForces[dof] - applied[dof] - mpcForces[dof] : 0.0;
+        // The element formulation: its supports of edges and faces reported at their grid points, and its relations
+        // left out of the multipoint constraint forces (they are no card of the model).
+        structure.carryDerivedReactions(spcForces.span());
+        if (structure.gm().hasFormulationRows())
+            structure.gm().computeMpcForces(elementForces.span(), applied, mpcForces.span(),
+                                            assembly::RigidElimination::Rows::OfCards);
         const bool hasMset = structure.gm().rowCount() > 0;
         // The MonitorNodeForceSum3 sum the rows appliedLoad, singlePointConstrForce and multiPointConstrForce of the
         // grid point forces with the element rows.
@@ -368,8 +374,11 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
         kept->groups.push_back(std::make_unique<TrimGroup>());
         TrimGroup& keptGroup = *kept->groups.back();
         std::optional<assembly::SpcSet>& groupSpc = keptGroup.spc;
+        // With the supports the element formulation derives from them (its edges and faces).
         if (!condensed)
-            groupSpc.emplace(constraints, snapshot.findLoads(), dofMap, first.spc, std::nullopt, budget, sink);
+            groupSpc.emplace(assembly::withFormulationSupports(
+                assembly::SpcSet(constraints, snapshot.findLoads(), dofMap, first.spc, std::nullopt, budget, sink),
+                dofMap, model.formulation(), model.layoutKind(), budget, sink));
         const assembly::SpcSet& spc = condensed ? spcSets[group.front()] : *groupSpc;
         if (!spc.enforcedDisplacements().empty())
             sink.report(subcaseProblem(

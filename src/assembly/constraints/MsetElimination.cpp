@@ -70,11 +70,9 @@ private:
 // The g DOFs of a node.
 void appendNodeDofs(const DofMap& dofMap, std::int32_t node, std::vector<base::DofIndex>& dofs)
 {
-    if (node < dofMap.gridCount())
-        for (int c = 1; c <= 6; ++c)
-            dofs.push_back(dofMap.gridDof(node, c));
-    else
-        dofs.push_back(dofMap.scalarDof(node - dofMap.gridCount()));
+    const DofMap::NodeDofs nodeDofs = dofMap.dofsOfNode(node);
+    for (int c = 0; c < nodeDofs.count; ++c)
+        dofs.push_back(nodeDofs.first + c);
 }
 
 } // namespace

@@ -69,6 +69,13 @@ A program can override that choice with
 Card names must match `solver.elementFormulations()` exactly. Unknown cards and unavailable formulations
 are reported before a calculation. Details: [src/elements/README.md](src/elements/README.md).
 
+`MixedHybridFormulation` is chosen for the whole model, never for one card: every shell, line and solid card takes it
+together, with `Parameter;ElementFormulation;MixedHybridFormulation` or
+`solver.modelFromReader(oor, model, { elementFormulation: "MixedHybridFormulation", formulationGeometry: {...} })`.
+Its shells and solids read their geometry from the mesh: the program declares where the surface is not smooth
+(`formulationGeometry`: raw edges, raw elements and sharp edges of the solids; an empty object says that every edge is
+smooth). See [docs/mixed-hybrid-formulation-spec.md](docs/mixed-hybrid-formulation-spec.md).
+
 ## Layout
 
 | Folder | What |

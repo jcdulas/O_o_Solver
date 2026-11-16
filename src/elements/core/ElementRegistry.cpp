@@ -1,27 +1,31 @@
 #include "oos/elements/core/ElementRegistry.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/base/errors/SolverError.hpp"
 #include "oos/elements/bars_beams/bar2/Bar2Element.hpp"
 #include "oos/elements/bars_beams/beam2/Beam2Element.hpp"
 #include "oos/elements/core/ElementFormulation.hpp"
 #include "oos/elements/fasteners/fastener/FastenerElement.hpp"
 #include "oos/elements/fasteners/weld/WeldElement.hpp"
-#include "oos/elements/masses/massDofProperty/MassDofPropertyElement.hpp"
 #include "oos/elements/masses/massDofInline/MassDofInlineElement.hpp"
-#include "oos/elements/masses/massScalarProperty/MassScalarPropertyElement.hpp"
+#include "oos/elements/masses/massDofProperty/MassDofPropertyElement.hpp"
 #include "oos/elements/masses/massScalarInline/MassScalarInlineElement.hpp"
-#include "oos/elements/masses/pointMassMatrix/PointMassMatrixElement.hpp"
+#include "oos/elements/masses/massScalarProperty/MassScalarPropertyElement.hpp"
 #include "oos/elements/masses/pointMassInertia/PointMassInertiaElement.hpp"
+#include "oos/elements/masses/pointMassMatrix/PointMassMatrixElement.hpp"
+#include "oos/elements/mixedHybrid/families/MixedHybridLineFamily.hpp"
+#include "oos/elements/mixedHybrid/families/MixedHybridShellFamily.hpp"
+#include "oos/elements/mixedHybrid/families/MixedHybridSolidFamily.hpp"
 #include "oos/elements/rods/rod2/Rod2Element.hpp"
 #include "oos/elements/rods/rod2InlineSection/Rod2InlineSectionElement.hpp"
 #include "oos/elements/rods/tube2/Tube2Element.hpp"
-#include "oos/elements/shells/shellQuad4/ShellQuad4Element.hpp"
-#include "oos/elements/shells/shellQuad8/ShellQuad8Element.hpp"
-#include "oos/elements/shells/shellQuad4Drilling/ShellQuad4DrillingElement.hpp"
 #include "oos/elements/shells/shearPanel4/ShearPanel4Element.hpp"
+#include "oos/elements/shells/shellQuad4/ShellQuad4Element.hpp"
+#include "oos/elements/shells/shellQuad4Drilling/ShellQuad4DrillingElement.hpp"
+#include "oos/elements/shells/shellQuad8/ShellQuad8Element.hpp"
 #include "oos/elements/shells/shellTria3/ShellTria3Element.hpp"
-#include "oos/elements/shells/shellTria6/ShellTria6Element.hpp"
 #include "oos/elements/shells/shellTria3Drilling/ShellTria3DrillingElement.hpp"
+#include "oos/elements/shells/shellTria6/ShellTria6Element.hpp"
 #include "oos/elements/solids/solidHexa/SolidHexaElement.hpp"
 #include "oos/elements/solids/solidPenta/SolidPentaElement.hpp"
 #include "oos/elements/solids/solidPyramid/SolidPyramidElement.hpp"
@@ -29,10 +33,10 @@
 #include "oos/elements/springs/bushing/BushingElement.hpp"
 #include "oos/elements/springs/bushing1D/Bushing1DElement.hpp"
 #include "oos/elements/springs/gap2/Gap2Element.hpp"
-#include "oos/elements/springs/springDofProperty/SpringDofPropertyElement.hpp"
 #include "oos/elements/springs/springDofInline/SpringDofInlineElement.hpp"
-#include "oos/elements/springs/springScalarProperty/SpringScalarPropertyElement.hpp"
+#include "oos/elements/springs/springDofProperty/SpringDofPropertyElement.hpp"
 #include "oos/elements/springs/springScalarInline/SpringScalarInlineElement.hpp"
+#include "oos/elements/springs/springScalarProperty/SpringScalarPropertyElement.hpp"
 
 #include <optional>
 #include <stdexcept>
@@ -112,6 +116,22 @@ ElementRegistry ElementRegistry::standard()
     registry.add(std::make_unique<SolidPentaElement>());
     registry.add(std::make_unique<SolidTetraElement>());
     registry.add(std::make_unique<SolidPyramidElement>());
+    // The mixed hybrid formulation (chosen for the whole model: ElementFormulation.hpp), after each card's default.
+    registry.add(std::make_unique<mixedHybrid::MixedHybridLineFamily>(std::make_unique<Rod2Element>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridLineFamily>(std::make_unique<Rod2InlineSectionElement>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridLineFamily>(std::make_unique<Tube2Element>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridLineFamily>(std::make_unique<Bar2Element>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridLineFamily>(std::make_unique<Beam2Element>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridShellFamily>(std::make_unique<ShellQuad4Element>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridShellFamily>(std::make_unique<ShellTria3Element>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridShellFamily>(std::make_unique<ShellQuad8Element>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridShellFamily>(std::make_unique<ShellTria6Element>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridShellFamily>(std::make_unique<ShellQuad4DrillingElement>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridShellFamily>(std::make_unique<ShellTria3DrillingElement>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridSolidFamily>(std::make_unique<SolidTetraElement>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridSolidFamily>(std::make_unique<SolidPyramidElement>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridSolidFamily>(std::make_unique<SolidPentaElement>()));
+    registry.add(std::make_unique<mixedHybrid::MixedHybridSolidFamily>(std::make_unique<SolidHexaElement>()));
     return registry;
 }
 
@@ -144,8 +164,31 @@ void ElementRegistry::add(std::unique_ptr<ElementFamily> family)
 ElementRegistry ElementRegistry::forModel(const input::ModelSnapshot& snapshot)
 {
     ElementRegistry registry = standard();
+    registry.readModelFormulation(snapshot);
     for (const CardFamilies& card : registry.m_cards)
         registry.selectFromModel(snapshot, card);
+    if (registry.isMixedHybrid())
+    {
+        for (const CardFamilies& card : registry.m_cards)
+        {
+            if (isMixedHybridCard(card.card))
+                registry.selectMixedHybrid(snapshot, card);
+        }
+        for (const std::string_view card : MIXED_HYBRID_REFUSED_CARDS)
+        {
+            const input::ElementBatch* batch = snapshot.findElementBatch(card);
+            if (batch == nullptr || batch->rowCount() == 0)
+                continue;
+            base::Diagnostic diagnostic = selectionError(
+                std::string(card), "",
+                base::concatenate({"expected the elements of a model in ", MIXED_HYBRID_FORMULATION,
+                                   " to have a counterpart in it, found ", std::to_string(batch->rowCount()), " ", card,
+                                   " elements, which have none; replace them, or compute the model in ",
+                                   CLASSIC_FORMULATION}));
+            diagnostic.code = "unsupported-card";
+            registry.m_problems.push_back(std::move(diagnostic));
+        }
+    }
     // A choice the snapshot gives for a card without a family is refused too: it would otherwise go unused unnoticed.
     for (const input::ElementFormulationChoice& choice : snapshot.elementFormulations())
     {
@@ -211,11 +254,104 @@ void ElementRegistry::selectFromModel(const input::ModelSnapshot& snapshot, cons
     }
     if (chosen.empty())
         return;
+    // The mixed hybrid formulation shares unknowns between the cards: it is chosen for the model, never for a card.
+    if (chosen == MIXED_HYBRID_FORMULATION)
+    {
+        base::Diagnostic diagnostic = selectionError(
+            field.empty() ? cardName : paramCard, field,
+            base::concatenate({"expected ", MIXED_HYBRID_FORMULATION, " to be chosen for the whole model, found it in ",
+                               source, "; give Parameter ", MODEL_FORMULATION_PARAMETER,
+                               " (or the program's model "
+                               "formulation) instead"}));
+        diagnostic.code = "formulation-per-card";
+        m_problems.push_back(std::move(diagnostic));
+        return;
+    }
+    // Under the mixed hybrid formulation, its cards cannot take another one: they would not share its unknowns.
+    if (isMixedHybrid() && isMixedHybridCard(card.card))
+    {
+        base::Diagnostic diagnostic = selectionError(
+            field.empty() ? cardName : paramCard, field,
+            base::concatenate({"expected the ", cardName, " of a model in ", MIXED_HYBRID_FORMULATION,
+                               " to take that formulation, found ", source, " giving ", chosen,
+                               "; remove the choice of the card, or compute the model in ", CLASSIC_FORMULATION}));
+        diagnostic.code = "formulation-mix";
+        m_problems.push_back(std::move(diagnostic));
+        return;
+    }
     if (!select(card.card, chosen))
         m_problems.push_back(selectionError(field.empty() ? cardName : paramCard, field,
                                             base::concatenate({"expected ", source, " to be one of its formulations (",
                                                                formulationList(formulationsOf(card.card)), "), found ",
                                                                chosen, "; give one of these names"})));
+}
+
+void ElementRegistry::readModelFormulation(const input::ModelSnapshot& snapshot)
+{
+    const std::string paramCard = base::concatenate({"Parameter ", MODEL_FORMULATION_PARAMETER});
+    const input::ParamTable* params = snapshot.hasTable(input::TableRole::Params) ? &snapshot.params() : nullptr;
+    // The formulation holds for the whole model: a subcase cannot change it.
+    if (params != nullptr)
+    {
+        if (const std::optional<std::int32_t> subcase = params->findSubcaseGiving(MODEL_FORMULATION_PARAMETER))
+            m_problems.push_back(selectionError(
+                paramCard, std::string(MODEL_FORMULATION_PARAMETER),
+                base::concatenate({"expected Parameter ", MODEL_FORMULATION_PARAMETER,
+                                   " in the model records or in the global control section (the formulation holds "
+                                   "for the whole model), found it in the control section of subcase ",
+                                   std::to_string(*subcase), "; move it above the first SubcaseStart"})));
+    }
+
+    // The program that built the snapshot first, then the model parameter.
+    std::string chosen = snapshot.modelFormulation();
+    std::string source = "the formulation chosen for the model";
+    std::string field;
+    if (chosen.empty() && params != nullptr)
+    {
+        if (const std::optional<input::ParamValue> value = params->find(MODEL_FORMULATION_PARAMETER))
+        {
+            if (value->kind != input::ParamValue::Kind::Text)
+            {
+                m_problems.push_back(selectionError(
+                    paramCard, std::string(MODEL_FORMULATION_PARAMETER),
+                    base::concatenate({"expected Parameter ", MODEL_FORMULATION_PARAMETER, " to name a formulation (",
+                                       CLASSIC_FORMULATION, ", ", MIXED_HYBRID_FORMULATION,
+                                       "), found a number; give one of these names"})));
+                return;
+            }
+            chosen = value->text;
+            source = paramCard;
+            field = std::string(MODEL_FORMULATION_PARAMETER);
+        }
+    }
+    if (chosen.empty() || chosen == CLASSIC_FORMULATION)
+        return;
+    if (chosen != MIXED_HYBRID_FORMULATION)
+    {
+        m_problems.push_back(selectionError(
+            field.empty() ? std::string("model") : paramCard, field,
+            base::concatenate({"expected ", source, " to be one of ", CLASSIC_FORMULATION, ", ",
+                               MIXED_HYBRID_FORMULATION, ", found ", chosen, "; give one of these names"})));
+        return;
+    }
+    m_modelFormulation = chosen;
+}
+
+void ElementRegistry::selectMixedHybrid(const input::ModelSnapshot& snapshot, const CardFamilies& card)
+{
+    if (select(card.card, MIXED_HYBRID_FORMULATION))
+        return;
+    // A card without elements in the model needs no family of the formulation.
+    const input::ElementBatch* batch = snapshot.findElementBatch(card.card);
+    if (batch == nullptr || batch->rowCount() == 0)
+        return;
+    base::Diagnostic diagnostic = selectionError(
+        card.card, "",
+        base::concatenate({"expected the ", card.card, " elements of a model in ", MIXED_HYBRID_FORMULATION,
+                           " to be computed in it, found that this build of O_o_Solver has no ", card.card,
+                           " in that formulation yet; compute the model in ", CLASSIC_FORMULATION}));
+    diagnostic.code = "unsupported-formulation";
+    m_problems.push_back(std::move(diagnostic));
 }
 
 bool ElementRegistry::select(std::string_view card, std::string_view formulation)
@@ -272,6 +408,22 @@ void ElementRegistry::rebuildChosen()
     m_chosen.clear();
     for (const CardFamilies& entry : m_cards)
         m_chosen.push_back(entry.formulations[entry.chosen].get());
+}
+
+void refuseMixedHybridOn(const ElementRegistry& registry, std::string_view path)
+{
+    if (!registry.isMixedHybrid())
+        return;
+    throw base::SolverError(base::concatenate(
+        {"expected a model in ", MIXED_HYBRID_FORMULATION, " to run on the full path, found it asked for ", path,
+         ", which does not carry that formulation's unknowns on edges, faces and interiors yet; run it on the full "
+         "path, or compute it in ",
+         CLASSIC_FORMULATION}));
+}
+
+void refuseMixedHybridOn(const input::ModelSnapshot& snapshot, std::string_view path)
+{
+    refuseMixedHybridOn(ElementRegistry::forModel(snapshot), path);
 }
 
 void ElementRegistry::addSupportTo(input::SupportCatalog& catalog) const

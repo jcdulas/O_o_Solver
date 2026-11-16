@@ -56,6 +56,8 @@ ModelSnapshot::ModelSnapshot(Parts parts)
       m_offsetDefinition(parts.offsetDefinition),
       m_unsupportedOffsetDefinition(std::move(parts.unsupportedOffsetDefinition)),
       m_elementFormulations(std::move(parts.elementFormulations)),
+      m_modelFormulation(std::move(parts.modelFormulation)),
+      m_formulationGeometry(std::move(parts.formulationGeometry)),
       m_nodes(std::move(*parts.nodes)),
       m_elementBatches(std::move(parts.elementBatches)),
       m_propertyTables(std::move(parts.propertyTables)),

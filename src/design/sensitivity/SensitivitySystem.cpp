@@ -276,7 +276,7 @@ SensitivitySystem::SensitivitySystem(const assembly::ElementSet& elementSet, con
     // "free-body-support-as-constraint").
     const std::vector<base::DofIndex> rSet = assembly::supportDofsOf(snapshot, dofMap, first.tableId, sink);
     const assembly::DofSets sets(
-        dofMap, assembly::DofSetInputs{m_gm->mDofs(), m_spc->sbDofs(), m_spc->sgDofs(), {}, rSet}, budget, sink);
+        dofMap, assembly::DofSetInputs{m_gm->mDofs(), m_spc->sbDofs(), m_spc->sgDofs(), {}, rSet, {}}, budget, sink);
     stopOnErrors(sink);
 
     m_connectivity = std::make_unique<assembly::ElementConnectivity>(elementSet, dofMap, budget, pool);

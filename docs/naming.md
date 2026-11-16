@@ -13,6 +13,8 @@ Other families follow the same convention: `SolidHexaElement`, `Bar2Element`, `S
 
 Formulations describe how an element is computed. Select a formulation with `ShellQuad4Formulation` in a model record
 or the `ShellQuad4` key of `elementFormulations`. Call `elementFormulations()` to discover the available choices.
+`MixedHybridFormulation` is chosen for the whole model with `ElementFormulation` (a model record) or the
+`elementFormulation` option, never for one card.
 The selected formulation does not change the element type or the result container name. Result layout suffixes such
 as `Composite` and `LoadStations` describe the rows in a result table.
 

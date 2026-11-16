@@ -43,8 +43,9 @@ ConstrainedSystem::ConstrainedSystem(const AnalysisModel& model, const Constrain
     }
     else
     {
-        m_ownSpc = std::make_unique<assembly::SpcSet>(constraints, snapshot.findLoads(), dofMap, selection.spc,
-                                                      selection.load, budget, sink);
+        m_ownSpc = std::make_unique<assembly::SpcSet>(assembly::withFormulationSupports(
+            assembly::SpcSet(constraints, snapshot.findLoads(), dofMap, selection.spc, selection.load, budget, sink),
+            dofMap, model.formulation(), model.layoutKind(), budget, sink));
         m_spc = m_ownSpc.get();
     }
     // The glue leaves out the grid points the other constraints hold or make dependent: built after them.
@@ -52,8 +53,29 @@ ConstrainedSystem::ConstrainedSystem(const AnalysisModel& model, const Constrain
                                             m_spc->sgDofs()};
     m_glue = std::make_unique<assembly::GlueConstraints>(snapshot, selection.contact, selection.subcase, dofMap,
                                                          glueContext, budget, sink);
-    m_gm = std::make_shared<assembly::RigidElimination>(rigidElements, m_mpc.get(), dofMap, budget, sink,
-                                                        m_fasteners.get(), m_glue.get());
+    // With an element formulation that has relations of its own, the model's relations are eliminated a first time
+    // to know which DOFs they make dependent or read (their diagnostics reported by the final elimination below).
+    const elements::FormulationModel* formulation = model.formulation();
+    base::DiagnosticSink firstPass;
+    m_gm = std::make_shared<assembly::RigidElimination>(rigidElements, m_mpc.get(), dofMap, budget,
+                                                        formulation != nullptr ? firstPass : sink, m_fasteners.get(),
+                                                        m_glue.get());
+    // The element formulation's relations (docs/mixed-hybrid-formulation-spec.md sections 3.4 and 5.4), then the
+    // elimination made again with them first.
+    if (formulation != nullptr)
+    {
+        assembly::UsedElsewhere usedElsewhere;
+        usedElsewhere.flags.assign(static_cast<std::size_t>(dofMap.gSetSize()), 0);
+        usedElsewhere.markConcentratedLoads(snapshot, dofMap);
+        usedElsewhere.markStiffened(model.connectivity().stiffenedComponents(), dofMap);
+        usedElsewhere.markIndependentTerms(*m_gm);
+        m_formulation = std::make_unique<assembly::FormulationConstraints>(*formulation, model.layoutKind(), dofMap,
+                                                                           *m_spc, usedElsewhere, *m_gm, sink);
+        m_excludedDofs.assign(m_formulation->excludedDofs().begin(), m_formulation->excludedDofs().end());
+        m_gm = std::make_shared<assembly::RigidElimination>(
+            rigidElements, m_mpc.get(), dofMap, budget, sink, m_fasteners.get(), m_glue.get(),
+            assembly::ConstraintRowFilter{}, &m_formulation->relations());
+    }
     // The interior DOFs of the external units join the permanent constraints (GRID PS): held in every subcase.
     if (!options.heldDofs.empty())
     {
@@ -65,8 +87,9 @@ ConstrainedSystem::ConstrainedSystem(const AnalysisModel& model, const Constrain
     const auto makeSets = [&]
     {
         return std::make_unique<assembly::DofSets>(
-            dofMap, assembly::DofSetInputs{m_gm->mDofs(), m_spc->sbDofs(), permanentDofs, {}, m_supportDofs}, budget,
-            sink);
+            dofMap,
+            assembly::DofSetInputs{m_gm->mDofs(), m_spc->sbDofs(), permanentDofs, {}, m_supportDofs, m_excludedDofs},
+            budget, sink);
     };
     m_sets = makeSets();
     stopOnErrors(sink, "the assembly");

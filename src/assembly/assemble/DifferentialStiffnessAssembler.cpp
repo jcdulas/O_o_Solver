@@ -1,7 +1,6 @@
 #include "oos/assembly/assemble/DifferentialStiffnessAssembler.hpp"
 
 #include "ElementMatrixSource.hpp"
-
 #include "oos/base/errors/ErrorMessage.hpp"
 
 #include <stdexcept>
@@ -31,10 +30,12 @@ void DifferentialStiffnessAssembler::assemble(std::span<const double> displaceme
                                " preload displacements (the g set), "
                                "found ",
                                std::to_string(displacementsG.size())}));
-    // The g-set order of DofMap is that of NodalDisplacements: six values per grid point row, then the scalar points.
-    const std::size_t gridValues = 6 * static_cast<std::size_t>(m_dofMap->gridCount());
-    const elements::NodalDisplacements preload{displacementsG.first(gridValues), displacementsG.subspan(gridValues),
-                                               temperatures};
+    // The g-set order of DofMap is that of NodalDisplacements: six values per grid point row, the scalar points, then
+    // the entities of the formulation.
+    elements::NodalDisplacements preload =
+        elements::NodalDisplacements::ofGSet(displacementsG, static_cast<std::size_t>(m_dofMap->gridCount()),
+                                             static_cast<std::size_t>(m_dofMap->scalarCount()), &m_dofMap->entities());
+    preload.temperatures = temperatures;
     const ElementMatrixSource source(
         *m_set, m_set->batchesWith(elements::Facet::Stiffness), *m_dofMap,
         [&preload](std::size_t, const AssemblyBatch& batch, elements::ElementRange range,

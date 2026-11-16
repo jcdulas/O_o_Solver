@@ -56,6 +56,7 @@ ExternalUnitPath::ExternalUnitPath(const Inputs& inputs, base::MemoryBudget& bud
 {
     if (inputs.snapshot == nullptr || inputs.elements == nullptr || inputs.dofMap == nullptr)
         throw std::invalid_argument("ExternalUnitPath: expected the snapshot, the element set and the DOF map");
+    elements::refuseMixedHybridOn(*inputs.snapshot, "external units");
     for (const ExternalUnitRequest& request : inputs.requests)
         if (!request.unit)
             throw std::invalid_argument(

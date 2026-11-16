@@ -448,7 +448,7 @@ void LoadVectorBuilder::forEachGridPressureValue(base::EntityId loadSetId, base:
             [&](std::int64_t, const PressureRow& pressureRow)
             {
                 const std::string_view card = pressureRow.card;
-                if (pressureRow.hasElement || card != GRID_PRESSURE_CARD)
+                if (pressureRow.hasElement || card != GRID_PRESSURE_CARD || formulationPressureOf(pressureRow))
                     return;
                 const std::span<const std::int32_t> ids =
                     pressureRow.hasFace ? pressureRow.faceNodes : std::span<const std::int32_t>{};
@@ -616,7 +616,17 @@ std::vector<std::vector<elements::ElementPressure>> LoadVectorBuilder::collectPr
                 const std::string_view card = row.card;
                 if (!row.hasElement)
                 {
-                    // PointsPressureLoad: a face of grid points, applied by forEachGridPressureValue.
+                    // PointsPressureLoad: a face of grid points, applied by forEachGridPressureValue, unless it is a
+                    // face of an element of the formulation, whose pressure facet takes it.
+                    if (card == GRID_PRESSURE_CARD)
+                        if (std::optional<FormulationPressure> face = formulationPressureOf(row))
+                        {
+                            for (std::size_t c = 0; c < 4; ++c)
+                                face->pressure.cornerPressures[c] *= term.factor;
+                            face->pressure.setId = setId;
+                            byBatch[face->batchIndex].push_back(face->pressure);
+                            return;
+                        }
                     if (card != GRID_PRESSURE_CARD)
                         sink.report(
                             loadProblem("load-unsupported", card, setId,
@@ -643,6 +653,41 @@ std::vector<std::vector<elements::ElementPressure>> LoadVectorBuilder::collectPr
             });
     }
     return byBatch;
+}
+
+std::optional<LoadVectorBuilder::FormulationPressure> LoadVectorBuilder::formulationPressureOf(
+    const PressureRow& row) const
+{
+    const elements::FormulationModel* formulation = m_dofMap->formulation();
+    if (formulation == nullptr || !row.hasFace || (row.faceNodes.size() != 3 && row.faceNodes.size() != 4))
+        return std::nullopt;
+    std::vector<std::int32_t> rows; // the 3 or 4 grid points of the face
+    for (const std::int32_t id : row.faceNodes)
+    {
+        const std::optional<input::PointRef> point = m_dofMap->points().find(id);
+        if (!point || point->kind != input::PointKind::Grid)
+            return std::nullopt;
+        rows.push_back(point->row);
+    }
+    const std::optional<elements::FormulationModel::FormulationFace> face = formulation->faceOf(rows);
+    if (!face)
+        return std::nullopt;
+    const std::span<const AssemblyBatch> batches = m_set->batches();
+    for (std::size_t b = 0; b < batches.size(); ++b)
+    {
+        if (batches[b].view.card() != face->card)
+            continue;
+        FormulationPressure out;
+        out.batchIndex = b;
+        out.pressure.elementRow = face->batchRow;
+        out.pressure.setId = row.setId;
+        out.pressure.card = row.card;
+        const double pressure = std::isfinite(row.corners[0]) ? row.corners[0] : 0.0;
+        out.pressure.cornerPressures.fill(face->sign * pressure);
+        out.pressure.faceNodes = row.faceNodes;
+        return out;
+    }
+    return std::nullopt;
 }
 
 elements::ElementPressure LoadVectorBuilder::elementPressureOf(const PressureRow& row,

@@ -62,6 +62,8 @@
 #include "oos/elements/core/PropertyLookup.hpp"
 #include "oos/input/tables/NestedListView.hpp"
 
+#include <functional>
+
 namespace oos::elements
 {
 
@@ -77,9 +79,9 @@ public:
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
     bool loadFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                              const ElementLoadContext& loads, ElementVectorBlock& block) const override;
-    bool loadFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
-                                  const DesignedField& first, const DesignedField& second,
-                                  const ElementLoadContext& loads, ElementVectorBlock& block) const override;
+    bool loadFieldMixedDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& first,
+                                  const DesignedField& second, const ElementLoadContext& loads,
+                                  ElementVectorBlock& block) const override;
     [[nodiscard]] std::vector<std::string> propertyCards() const override
     {
         return {"BeamProp", "BeamShapeProp", "IsoMat"};
@@ -152,11 +154,14 @@ public:
     bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
                                               const DesignedField& field, const NodalDisplacements& preload,
                                               ElementMatrixBlock& block) const override;
-    bool differentialStiffnessFieldMixedDerivative(
-        const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
-        const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
+    bool differentialStiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                                   const DesignedField& first, const DesignedField& second,
+                                                   const NodalDisplacements& preload,
+                                                   ElementMatrixBlock& block) const override;
 
-private:
+public:
+    // The reading of the card's fields (its columns read once per facet call, and the data of one element): public for
+    // the family of the card's other formulation (MixedHybridFormulation), which reads the same fields.
     // The batch's columns and those of the BeamProp table (empty when the model has no BeamProp), read once per facet
     // call.
     struct Columns
@@ -188,6 +193,17 @@ private:
 
     [[nodiscard]] static Resolution<BeamData> resolve(const ElementBatchView& view, const Columns& columns,
                                                       std::int64_t row);
+    // The station rows of one element under `response` (appendStationRows); public for the family of the other
+    // formulation, which makes its response from its own end forces.
+    static void appendResponseRows(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
+                                   const BeamResponse& response, ElementOutput output, ElementResultBlock& block);
+    // The same from the forces at a distance from end A (BeamForces convention): the family of the other formulation
+    // reads them from its own section forces where the element is loaded along its length by what it is attached to.
+    using ForcesAlong = std::function<BeamForces(double distance)>;
+    static void appendForcesRows(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
+                                 const ForcesAlong& forcesAt, ElementOutput output, ElementResultBlock& block);
+
+private:
     // The rest of resolve() for an element on a BeamShapeProp: `beam` holds its geometry.
     [[nodiscard]] static Resolution<BeamData> resolveBeaml(const ElementBatchView& view, const Columns& columns,
                                                            std::int64_t row, BeamData beam);
@@ -195,9 +211,6 @@ private:
     static void appendStationRows(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
                                   std::span<const BeamLineLoad> loads, ElementOutput output,
                                   const NodalDisplacements& displacements, ElementResultBlock& block);
-    // The station rows of one element under `response` (appendStationRows).
-    static void appendResponseRows(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
-                                   const BeamResponse& response, ElementOutput output, ElementResultBlock& block);
 };
 
 } // namespace oos::elements

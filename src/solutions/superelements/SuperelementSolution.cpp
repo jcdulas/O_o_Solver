@@ -1005,6 +1005,7 @@ SuperelementResults SuperelementSolution::run(base::MemoryBudget& budget) const
     const linalg::DenseKernels kernels(m_options.kernel, linalg::DenseKernelOptions{m_options.pool});
     results.kernel = std::string(linalg::kernelName(m_options.kernel));
 
+    elements::refuseMixedHybridOn(*m_residual, "superelements");
     Residual residual;
     residual.model = std::make_unique<AnalysisModel>(*m_residual, m_options.analysis, budget, m_options.pool,
                                                      m_options.cancellation, sink);

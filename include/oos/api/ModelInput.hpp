@@ -80,6 +80,19 @@ public:
     // solver.
     void setElementFormulation(const std::string& card, const std::string& formulation);
 
+    // The formulation of the whole model ("ClassicFormulation", "MixedHybridFormulation"), before the model's
+    // ElementFormulation parameter. Under MixedHybridFormulation every shell, line and solid card takes it together
+    // (docs/mixed-hybrid-formulation-spec.md section 4.5). Throws std::invalid_argument for a name the solver does not
+    // know.
+    void setModelFormulation(const std::string& formulation);
+
+    // The geometry declarations of the mixed hybrid formulation (section 4.4 of the specification): raw edges and
+    // sharp edges as pairs of grid point IDs (2 values per edge), raw elements by element ID. Mandatory for a model
+    // with shells or solids in that formulation; empty lists say that every edge is smooth. Throws
+    // std::invalid_argument for an odd count of edge values or an edge of one grid point.
+    void setFormulationGeometry(const std::vector<std::int32_t>& rawEdges, const std::vector<std::int32_t>& rawElements,
+                                const std::vector<std::int32_t>& sharpEdges);
+
     // Checks every table and makes the snapshot; the object is empty afterwards. Throws ContractError naming the
     // table, column, expected type and actual type when a table is not what the solver reads. Messages use the model's
     // neutral card and field names.

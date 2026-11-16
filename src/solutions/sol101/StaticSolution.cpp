@@ -1086,6 +1086,8 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         throw std::invalid_argument(
             "StaticSolution: the thermal units of a load basis are kept on the full path only, not streamed nor "
             "condensed (a bug of the caller that asked it: report it)");
+    if (m_options.isStreamed)
+        elements::refuseMixedHybridOn(*m_snapshot, "the streamed path");
     std::vector<base::EntityId> excludedCases; // with keepsLoadBasis: the subcases left out (a thermal load)
 
     // 1. What the model asks for is supported, every element can be computed, the subcases and their output plans are
@@ -1120,6 +1122,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
     modelOptions.checkCases = [&](base::DiagnosticSink& caseSink)
     {
         subcases = staticSubcasesOf(snapshot, m_options.subcases, caseSink);
+        const bool isMixedHybrid = elements::ElementRegistry::forModel(snapshot).isMixedHybrid();
         for (const StaticSubcase& subcase : subcases)
         {
             plans.push_back(output::OutputPlan::forSubcase(snapshot, subcase.tableId, caseSink));
@@ -1137,6 +1140,14 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                     subcaseProblem(subcase.label, base::Severity::Warning, "output-not-produced",
                                    "ModalEffectiveMassOutput is an output of a real eigenvalue analysis (SOL 103): a "
                                    "static subcase does not produce it"));
+            // The balance of the grid point forces sums each element's forces at its grid points: the mixed hybrid
+            // elements also act on the unknowns of their edges, faces and interiors (spec section 5.9).
+            if (plans.back().of(output::OutputKind::GridPointForces).isRequested && isMixedHybrid)
+                caseSink.report(subcaseProblem(
+                    subcase.label, base::Severity::Error, "unsupported-output",
+                    "expected the grid point force balance of a model in ClassicFormulation, found a model in "
+                    "MixedHybridFormulation, whose elements also act on the unknowns of their edges, faces and "
+                    "interiors; remove the request of grid point forces"));
         }
         if (m_options.keepsLoadBasis)
         {
@@ -1450,8 +1461,11 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             spcSets.push_back(spcSets[made->subcase].withLoadSet(subcases[s].load));
         else
         {
-            spcSets.emplace_back(constraints, snapshot.findLoads(), dofMap, subcases[s].spc, subcases[s].load, budget,
-                                 sink);
+            // With the supports the element formulation derives on its edges and faces (none for most).
+            spcSets.push_back(
+                assembly::withFormulationSupports(assembly::SpcSet(constraints, snapshot.findLoads(), dofMap,
+                                                                   subcases[s].spc, subcases[s].load, budget, sink),
+                                                  dofMap, model.formulation(), model.layoutKind(), budget, sink));
             madeSpcSets.push_back({subcases[s].spc, std::move(terms), s});
         }
         if (subcases[s].isCombination)
@@ -2759,6 +2773,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                             if (enforcedOfBasis(dof, b) != 0.0)
                                 ug[dof] = enforcedOfBasis(dof, b);
                     gm.expandToG(ug);
+                    system.fillExcluded(ug);
                     if (isRegauged)
                     {
                         if (isUsed[SolvedDisplacements])
@@ -2788,6 +2803,19 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                             basisResults[SpcForces](dof, b) = kug[dof] - loads[dof] - mpcForces[dof];
                         if (hasMset)
                             basisResults[MpcForces](dof, b) = mpcForces[dof];
+                    }
+                    // The element formulation: its supports of edges and faces reported at their grid points, and
+                    // its relations left out of the multipoint constraint forces (they are no card of the model).
+                    if (system.formulationConstraints() != nullptr)
+                    {
+                        system.spc().carryDerivedReactions(std::span<double>(&basisResults[SpcForces](0, b), gSize));
+                        if (hasMset && gm.hasFormulationRows())
+                        {
+                            gm.computeMpcForces(kug, loads, mpcForces.span(),
+                                                assembly::RigidElimination::Rows::OfCards);
+                            for (std::size_t dof = 0; dof < gSize; ++dof)
+                                basisResults[MpcForces](dof, b) = mpcForces[dof];
+                        }
                     }
                     if (loadCases.familyOf(b) == assembly::LoadFamily::Thermal)
                         for (std::size_t dof = 0; dof < gSize; ++dof)

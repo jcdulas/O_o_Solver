@@ -24,8 +24,8 @@ constexpr std::int64_t PIECE_ROWS = 1024;
 // of its points).
 constexpr std::uint64_t TERMS_PER_ELEMENT = 128;
 // A lumped mass is held on the equations while its terms off the diagonal are at most this many a DOF (the relations'
-// couplings: a PointMassInertia on an RigidInterpolation's reference point, the legs of an RigidBodyStar); a coupled mass
-// (COUPMASS) has tens.
+// couplings: a PointMassInertia on an RigidInterpolation's reference point, the legs of an RigidBodyStar); a coupled
+// mass (COUPMASS) has tens.
 constexpr std::size_t MASS_OFF_DIAGONAL_TERMS = 4;
 
 // The facets a combination needs.
@@ -121,12 +121,12 @@ ElementPencil::ElementPencil(const Inputs& inputs, base::MemoryBudget& budget)
                                    std::to_string(dofMap.gSetSize()), " values), found ",
                                    std::to_string(inputs.preloadDisplacements.size()),
                                    "; give the displacements of the static preload subcase"}));
-        // The g-set order of DofMap is that of NodalDisplacements: six values per grid point row, then the scalar
-        // points (DifferentialStiffnessAssembler's).
-        const std::size_t gridValues = 6 * static_cast<std::size_t>(dofMap.gridCount());
-        m_preload =
-            elements::NodalDisplacements{inputs.preloadDisplacements.first(gridValues),
-                                         inputs.preloadDisplacements.subspan(gridValues), inputs.preloadTemperatures};
+        // The g-set order of DofMap is that of NodalDisplacements: six values per grid point row, the scalar points,
+        // then the entities of the formulation (DifferentialStiffnessAssembler's).
+        m_preload = elements::NodalDisplacements::ofGSet(
+            inputs.preloadDisplacements, static_cast<std::size_t>(dofMap.gridCount()),
+            static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
+        m_preload.temperatures = inputs.preloadTemperatures;
         if (inputs.hasMassSource)
         {
             // A model without mass on the analysis set has no vibration basis (multilevel substructuring keeps its

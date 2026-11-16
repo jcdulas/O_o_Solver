@@ -255,6 +255,76 @@ SpcSet SpcSet::withLoadSet(std::optional<base::EntityId> loadSetId) const
     return result;
 }
 
+SpcSet SpcSet::withDerivedSupports(std::vector<DerivedSupportDof> derived, base::MemoryBudget& budget) const
+{
+    // The derived DOFs that no card holds already, merged into sb in increasing order.
+    const std::span<const base::DofIndex> sb = sbDofs();
+    const std::span<const base::DofIndex> sg = sgDofs();
+    const auto isHeld = [&](base::DofIndex dof)
+    { return std::binary_search(sb.begin(), sb.end(), dof) || std::binary_search(sg.begin(), sg.end(), dof); };
+    std::vector<DerivedSupportDof> added; // bounded by `derived`
+    for (DerivedSupportDof& support : derived)
+        if (!isHeld(support.dof))
+            added.push_back(std::move(support));
+
+    auto arrays = std::make_shared<Arrays>();
+    arrays->sb = base::BudgetedBuffer<base::DofIndex>(budget, sb.size() + added.size(), "sb DOFs");
+    std::size_t next = 0;
+    std::size_t a = 0;
+    for (const base::DofIndex dof : sb)
+    {
+        for (; a < added.size() && added[a].dof < dof; ++a)
+            arrays->sb[next++] = added[a].dof;
+        arrays->sb[next++] = dof;
+    }
+    for (; a < added.size(); ++a)
+        arrays->sb[next++] = added[a].dof;
+    arrays->sg = base::BudgetedBuffer<base::DofIndex>(budget, sg.size(), "sg DOFs");
+    for (std::size_t k = 0; k < sg.size(); ++k)
+        arrays->sg[k] = sg[k];
+
+    const std::span<const EnforcedDisplacement> enforced = enforcedDisplacements();
+    std::size_t valueCount = enforced.size();
+    for (const DerivedSupportDof& support : added)
+        valueCount += support.value != 0.0 ? 1 : 0;
+    arrays->enforced = base::BudgetedBuffer<EnforcedDisplacement>(budget, valueCount, "enforced displacements");
+    next = 0;
+    a = 0;
+    for (const EnforcedDisplacement& value : enforced)
+    {
+        for (; a < added.size() && added[a].dof < value.dof; ++a)
+            if (added[a].value != 0.0)
+                arrays->enforced[next++] = {added[a].dof, added[a].value};
+        arrays->enforced[next++] = value;
+    }
+    for (; a < added.size(); ++a)
+        if (added[a].value != 0.0)
+            arrays->enforced[next++] = {added[a].dof, added[a].value};
+    arrays->derived = std::move(added);
+
+    SpcSet result;
+    result.m_spcSetId = m_spcSetId;
+    result.m_loadSetId = m_loadSetId;
+    result.m_arrays = std::move(arrays);
+    return result;
+}
+
+std::span<const DerivedSupportDof> SpcSet::derivedSupports() const noexcept
+{
+    return m_arrays->derived;
+}
+
+void SpcSet::carryDerivedReactions(std::span<double> supportForcesG) const noexcept
+{
+    for (const DerivedSupportDof& support : m_arrays->derived)
+    {
+        double& reaction = supportForcesG[static_cast<std::size_t>(support.dof)];
+        for (const ConstraintTerm& term : support.carriedTo)
+            supportForcesG[static_cast<std::size_t>(term.dof)] += term.coefficient * reaction;
+        reaction = 0.0;
+    }
+}
+
 bool SpcSet::hasSameConstrainedDofs(const SpcSet& other) const noexcept
 {
     const auto equal = [](std::span<const base::DofIndex> a, std::span<const base::DofIndex> b)

@@ -413,6 +413,8 @@ void InertialLoads::writeField(const RowSpec& spec, std::span<double> field) con
     case RowSpec::Kind::Gravity:
         for (std::int32_t grid = 0; grid < m_dofMap->gridCount(); ++grid)
             writer.setTranslation(grid, spec.direction);
+        // The entities of the element formulation: the same uniform field (spec section 5.7).
+        m_dofMap->addAffineEntityField(base::Mat3{}, spec.direction, field);
         return;
     case RowSpec::Kind::Region:
         for (const std::int32_t grid : spec.grids)
@@ -440,6 +442,18 @@ void InertialLoads::writeField(const RowSpec& spec, std::span<double> field) con
             writer.setTranslation(grid, base::cross(omega, base::cross(omega, rho)) + base::cross(alpha, rho));
             writer.setRotation(grid, alpha);
         }
+        // The entities of the element formulation: the field is affine, a(x) = A·(x − c) with
+        // A = ω ωᵀ − |ω|² I + [α]× (ω × (ω × ρ) = (ω ωᵀ − |ω|² I) ρ), its rotation the skew part α (section 5.7).
+        if (m_dofMap->hasEntities())
+        {
+            const double omega2 = base::dot(omega, omega);
+            base::Mat3 gradient = base::matrixFromRows({0.0, -alpha[2], alpha[1]}, {alpha[2], 0.0, -alpha[0]},
+                                                       {-alpha[1], alpha[0], 0.0});
+            for (std::size_t i = 0; i < 3; ++i)
+                for (std::size_t j = 0; j < 3; ++j)
+                    gradient(i, j) += omega[i] * omega[j] - (i == j ? omega2 : 0.0);
+            m_dofMap->addAffineEntityField(gradient, -1.0 * (gradient * spec.centre), field);
+        }
         return;
     }
     }
@@ -450,6 +464,23 @@ void InertialLoads::addFromInertialTable(base::EntityId loadSetId, const FieldAp
 {
     for (const RowSpec& spec : inertialRowsOf(loadSetId, sink))
     {
+        // The unknowns of the element formulation's edges, faces and interiors take an affine field only (a uniform or
+        // a rigid rotation field, spec section 5.7): the field of AccelNodeLoad (some grid points) and of
+        // AccelFieldLoad (piecewise linear along an axis) is not carried to them.
+        if (m_dofMap->hasEntities() && (spec.kind == RowSpec::Kind::Region || spec.kind == RowSpec::Kind::Varying))
+        {
+            base::Diagnostic diagnostic;
+            diagnostic.code = "load-unsupported";
+            diagnostic.card = spec.kind == RowSpec::Kind::Region ? "AccelNodeLoad" : "AccelFieldLoad";
+            diagnostic.id = loadSetId;
+            diagnostic.message = base::concatenate(
+                {"the load set ", std::to_string(loadSetId), " has a ", diagnostic.card,
+                 " in a model in MixedHybridFormulation, whose unknowns on edges, faces and interiors take uniform "
+                 "and rotational accelerations only (GravityLoad, RotationalForceLoad); replace it, or compute the "
+                 "model in ClassicFormulation"});
+            sink.report(std::move(diagnostic));
+            continue;
+        }
         base::BudgetedBuffer<double> field(budget, gSize, "inertial acceleration field");
         writeField(spec, field.span());
         apply(field.span(), spec.factor);

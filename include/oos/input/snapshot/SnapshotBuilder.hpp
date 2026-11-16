@@ -59,6 +59,14 @@ public:
     // Model formulation parameters are read from the parameter table. The support report refuses a formulation
     // the card has no formulation for. Throws std::invalid_argument for an empty card or name.
     void setElementFormulation(std::string_view card, std::string_view formulation);
+    // The formulation of the whole model ("MixedHybridFormulation": ModelSnapshot::modelFormulation), before the
+    // model's ElementFormulation parameter; a second call replaces the first. The element registry refuses a name it
+    // does not know. Throws std::invalid_argument for an empty name.
+    void setModelFormulation(std::string_view formulation);
+    // The geometry declarations of the formulation (ModelSnapshot::formulationGeometry), kept sorted, without
+    // repetition, each edge with its lower grid point first. Throws std::invalid_argument for an edge of one grid
+    // point.
+    void setFormulationGeometry(FormulationGeometry geometry);
     // The card tables, each by the neutral card name ("ShellQuad4", "ShellProp"). Throws std::invalid_argument when the
     // card type was already given, ContractError as setTable(). An element batch is keyed by ELEMENT_ID_COLUMN, a
     // property table by PROPERTY_ID_COLUMN ("id" both).
@@ -105,6 +113,8 @@ private:
     OffsetDefinition m_offsetDefinition = OffsetDefinition::ElementOffsets;
     std::string m_unsupportedOffsetDefinition;
     std::vector<ElementFormulationChoice> m_elementFormulations; // sorted by card
+    std::string m_modelFormulation;
+    std::optional<FormulationGeometry> m_formulationGeometry;
     std::map<TableRole, base::ImportedTable> m_tables;
     BorrowedArray<double> m_cdRotations;
     std::vector<CardEntry> m_elementTables;

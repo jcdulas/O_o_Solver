@@ -58,8 +58,15 @@ public:
     [[nodiscard]] std::vector<std::string_view> formulationsOf(std::string_view card) const;
 
     // The choices of forModel() it could not follow, one error each: a formulation the card does not have, a PARAM
-    // F<card> whose value is not a name, a PARAM F<card> given in the Case Control of one subcase.
+    // F<card> whose value is not a name, a PARAM F<card> given in the Case Control of one subcase, a per-card choice
+    // that contradicts the formulation of the model, a card the formulation of the model refuses.
     [[nodiscard]] const std::vector<base::Diagnostic>& selectionProblems() const noexcept { return m_problems; }
+
+    // The formulation forModel() chose for the whole model (ClassicFormulation without a choice,
+    // MixedHybridFormulation: ElementFormulation.hpp).
+    [[nodiscard]] const std::string& modelFormulation() const noexcept { return m_modelFormulation; }
+    // True when the model is computed in the mixed hybrid formulation.
+    [[nodiscard]] bool isMixedHybrid() const noexcept { return m_modelFormulation == MIXED_HYBRID_FORMULATION; }
 
     // Adds every element card, the property and material cards they read, and their field rules to `catalog`, those
     // of the chosen formulation of each card.
@@ -79,11 +86,23 @@ private:
     // The choice of one card from the snapshot (its own choice, then its PARAM), reported in m_problems when it cannot
     // be followed.
     void selectFromModel(const input::ModelSnapshot& snapshot, const CardFamilies& card);
+    // The formulation of the whole model (the program's, then the ElementFormulation parameter), in
+    // m_modelFormulation; a value the registry cannot follow is reported in m_problems.
+    void readModelFormulation(const input::ModelSnapshot& snapshot);
+    // Puts a card that has elements in the snapshot into the mixed hybrid formulation, or reports why it cannot.
+    void selectMixedHybrid(const input::ModelSnapshot& snapshot, const CardFamilies& card);
     void rebuildChosen();
 
     std::vector<CardFamilies> m_cards;
     std::vector<const ElementFamily*> m_chosen; // the chosen family of each card of m_cards
     std::vector<base::Diagnostic> m_problems;
+    std::string m_modelFormulation{CLASSIC_FORMULATION};
 };
+
+// Throws base::SolverError when the model is computed in the mixed hybrid formulation, which `path` does not run yet
+// ("the condensed path", "superelements": docs/mixed-hybrid-formulation-spec.md section 5.9): the formulation's
+// unknowns on edges, faces and interiors are carried by the full path only.
+void refuseMixedHybridOn(const input::ModelSnapshot& snapshot, std::string_view path);
+void refuseMixedHybridOn(const ElementRegistry& registry, std::string_view path);
 
 } // namespace oos::elements

@@ -107,9 +107,8 @@ ElementConnectivity::ElementConnectivity(const ElementSet& set, const DofMap& do
                             if (isStiffness)
                                 groups.components.emplace_back(
                                     source.nodeOf(dof),
-                                    static_cast<std::uint8_t>(1U << (dof.kind == input::PointKind::Scalar
-                                                                         ? 0
-                                                                         : static_cast<unsigned>(dof.component - 1))));
+                                    static_cast<std::uint8_t>(
+                                        1U << static_cast<unsigned>(source.nodeDofOf(dof).component)));
                         if (firstKept >= 0)
                         {
                             nodeDofs.clear();

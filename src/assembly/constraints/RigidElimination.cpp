@@ -90,6 +90,8 @@ std::string ownerText(ConstraintSource source, base::EntityId id)
 std::string dofText(const DofMap& dofMap, base::DofIndex dof)
 {
     const DofLabel label = dofMap.labelOf(dof);
+    if (label.kind == input::PointKind::Entity)
+        return dofMap.describe(dof);
     return base::concatenate({"component ", std::to_string(static_cast<int>(label.component)), " of ",
                               label.kind == input::PointKind::Scalar ? "scalar point " : "grid point ",
                               std::to_string(dofMap.pointIdOf(dof))});
@@ -104,7 +106,7 @@ constexpr std::uint8_t DONE = 2;
 RigidElimination::RigidElimination(const input::RigidTable* rigidElements, const MpcEquations* mpc,
                                    const DofMap& dofMap, base::MemoryBudget& budget, base::DiagnosticSink& sink,
                                    const FastenerConstraints* fasteners, const GlueConstraints* glue,
-                                   const ConstraintRowFilter& filter)
+                                   const ConstraintRowFilter& filter, const FormulationRelations* formulation)
 {
     const auto isTaken = [&filter](ConstraintSource source, base::EntityId id, base::DofIndex dependent)
     { return !filter || filter(ConstraintRowOrigin{source, id, dependent}); };
@@ -115,6 +117,11 @@ RigidElimination::RigidElimination(const input::RigidTable* rigidElements, const
     // Pass 1: the sizes (the element diagnostics go to a scratch sink; pass 2 reports them).
     std::size_t rowCapacity = 0;
     std::int64_t termCapacity = 0;
+    if (formulation != nullptr)
+    {
+        rowCapacity += formulation->rowCount();
+        termCapacity += formulation->termCount();
+    }
     if (rigidElements != nullptr)
     {
         base::DiagnosticSink scratch;
@@ -145,8 +152,16 @@ RigidElimination::RigidElimination(const input::RigidTable* rigidElements, const
         termCapacity += glue->termCount();
     }
 
-    // Pass 2: the rows, rigid elements first (in table order), then the fasteners, the MPC equations and the glue.
+    // Pass 2: the rows, the formulation's first, then the rigid elements (in table order), the fasteners, the MPC
+    // equations and the glue.
     DirectRows direct(budget, rowCapacity, termCapacity);
+    if (formulation != nullptr)
+    {
+        for (std::size_t i = 0; i < formulation->rowCount(); ++i)
+            if (isTaken(formulation->sourceOf(i), formulation->sourceIdOf(i), formulation->dependentDof(i)))
+                direct.add(formulation->dependentDof(i), formulation->row(i), formulation->sourceOf(i),
+                           formulation->sourceIdOf(i), 0);
+    }
     if (rigidElements != nullptr)
     {
         const std::span<const std::int32_t> elementIds = rigidElements->ids();
@@ -392,6 +407,8 @@ RigidElimination::RigidElimination(const input::RigidTable* rigidElements, const
         m_mDofs[next] = static_cast<base::DofIndex>(dof);
         m_offsets[next] = termCount;
         m_sources[next] = direct.sources[source];
+        m_hasFormulationRows =
+            m_hasFormulationRows || direct.sources[source] == static_cast<std::uint8_t>(ConstraintSource::Formulation);
         m_sourceIds[next] = direct.sourceIds[source];
         m_relationIds[next] = direct.relationIds[source];
         for (std::int64_t e = 0; e < expandedLength[source]; ++e)
@@ -474,12 +491,14 @@ base::BudgetedBuffer<RelationForce> RigidElimination::relationForces(std::span<c
 }
 
 void RigidElimination::computeMpcForces(std::span<const double> elementForcesG, std::span<const double> loadsG,
-                                        std::span<double> mpcForcesG) const noexcept
+                                        std::span<double> mpcForcesG, Rows rows) const noexcept
 {
     for (double& value : mpcForcesG)
         value = 0.0;
     for (std::size_t i = 0; i < m_mDofs.size(); ++i)
     {
+        if (rows == Rows::OfCards && sourceOf(i) == ConstraintSource::Formulation)
+            continue;
         const auto dependent = static_cast<std::size_t>(m_mDofs[i]);
         const double force = elementForcesG[dependent] - loadsG[dependent];
         mpcForcesG[dependent] = force;

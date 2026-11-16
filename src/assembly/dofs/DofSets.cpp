@@ -29,12 +29,13 @@ base::Diagnostic overlapDiagnostic(const DofMap& dofMap, base::DofIndex dof, Exc
     const DofLabel label = dofMap.labelOf(dof);
     base::Diagnostic diagnostic;
     diagnostic.code = "dof-in-exclusive-sets";
-    diagnostic.card = label.kind == input::PointKind::Scalar ? "ScalarPoint" : "Node";
+    diagnostic.card = label.kind == input::PointKind::Scalar   ? "ScalarPoint"
+                      : label.kind == input::PointKind::Entity ? "Entity"
+                                                               : "Node";
     diagnostic.id = dofMap.pointIdOf(dof);
     diagnostic.field = componentText(label);
     diagnostic.message = base::concatenate(
-        {"component ", componentText(label), " of point ", std::to_string(diagnostic.id), " is in the set ",
-         nameOf(kept), " and in the set ", nameOf(refused),
+        {dofMap.describe(dof), " is in the set ", nameOf(kept), " and in the set ", nameOf(refused),
          ", which are mutually exclusive (degree-of-freedom sets); remove it from one of the cards that put it "
          "there (a dependent DOF of an MultiPointConstr or rigid element cannot be constrained, nor a FreeBodySupport "
          "DOF)"});
@@ -90,6 +91,8 @@ std::string_view nameOf(ExclusiveSet set) noexcept
         return "R";
     case ExclusiveSet::B:
         return "B";
+    case ExclusiveSet::X:
+        return "X";
     }
     return "?";
 }
@@ -167,6 +170,13 @@ DofSets::DofSets(const DofMap& dofMap, const DofSetInputs& inputs, base::MemoryB
              "supported by this version of O_o_Solver: remove these cards (the condensation of components replaces "
              "them)"});
         sink.report(std::move(diagnostic));
+    }
+    // The excluded DOFs of the formulation: those no card put in another set.
+    for (const base::DofIndex dof : inputs.x)
+    {
+        std::uint8_t& current = m_exclusive[static_cast<std::size_t>(dof)];
+        if (current == UNASSIGNED)
+            current = code(ExclusiveSet::X);
     }
     for (std::size_t dof = 0; dof < m_exclusive.size(); ++dof)
     {

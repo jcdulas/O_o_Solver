@@ -2,6 +2,8 @@
 
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/elements/core/ElementResultBlock.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
+#include "oos/elements/solids/SolidRecovery.hpp"
 
 #include <algorithm>
 #include <array>
@@ -239,6 +241,38 @@ void appendTable(const char* kind, std::string elementType, std::int32_t subcase
         }
     }
     tables.push_back(std::move(table));
+}
+
+// The element type of the table of the stresses at the grid points of the solids of the mixed hybrid formulation
+// (docs/mixed-hybrid-formulation-spec.md section 10.3): one row per grid point, its ID as the element ID and as the
+// grid point of the place, the columns of the stress rows of the solids, in the basic system.
+constexpr const char* SOLID_GRID_POINT_TYPE = "SolidGridPoints";
+
+// Appends the table of the stresses at the grid points of the solids of the formulation of `dofMap`, when the stresses
+// of a solid of it are asked (the means over the solids the selection takes).
+void appendGridPointStresses(const assembly::DofMap& dofMap, std::int32_t subcase,
+                             const elements::NodalDisplacements& displacements, const ElementOutputSelection& chosen,
+                             base::MemoryBudget& budget, std::vector<ElementResultTable>& tables)
+{
+    const elements::FormulationModel* model = dofMap.formulation();
+    if (model == nullptr || !chosen.stress.isRequested)
+        return;
+    std::vector<elements::FormulationModel::GridPointStress> stresses; // one per grid point of the solids taken
+    model->gridPointStresses(
+        dofMap.layoutKind(), displacements,
+        [&](std::string_view, std::int32_t elementId) { return chosen.stress.takes(elementId); }, stresses);
+    if (stresses.empty())
+        return;
+    elements::ElementResultBlock block;
+    block.reset(elements::solidOutputColumns(elements::ElementOutput::Stresses));
+    for (std::size_t i = 0; i < stresses.size(); ++i)
+    {
+        const std::int32_t id = dofMap.gridId(stresses[i].gridRow);
+        elements::ResultPlace place;
+        place.nodeId = id;
+        block.append(static_cast<std::int64_t>(i), id, place, elements::solidStressRow(stresses[i].stress));
+    }
+    appendTable("stress", SOLID_GRID_POINT_TYPE, subcase, {&block}, false, budget, tables);
 }
 
 } // namespace
@@ -1227,10 +1261,12 @@ void ElementResultBuilder::build(std::int32_t subcase, std::span<const double> d
              " batches of the element set (or none), found ", std::to_string(lineLoads.size()), " lists"}));
     const ElementOutputSelection everything;
     const ElementOutputSelection& chosen = selection != nullptr ? *selection : everything;
-    // The g-set order of DofMap is that of NodalDisplacements: six values per grid point row, then the scalar points.
-    const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(m_dofMap->gridCount());
-    const elements::NodalDisplacements displacements{displacementsG.first(gridValues),
-                                                     displacementsG.subspan(gridValues), temperatures};
+    // The g-set order of DofMap is that of NodalDisplacements: six values per grid point row, the scalar points, then
+    // the entities of the formulation.
+    elements::NodalDisplacements displacements =
+        elements::NodalDisplacements::ofGSet(displacementsG, static_cast<std::size_t>(m_dofMap->gridCount()),
+                                             static_cast<std::size_t>(m_dofMap->scalarCount()), &m_dofMap->entities());
+    displacements.temperatures = temperatures;
 
     for (std::size_t b = 0; b < batches.size(); ++b)
     {
@@ -1259,6 +1295,7 @@ void ElementResultBuilder::build(std::int32_t subcase, std::span<const double> d
         for (const KindOfLayerTable& kind : LAYER_KINDS)
             recoverLayerKind(batch, kind, chosen, subcase, displacements, rangeLength, budget, tables, pool);
     }
+    appendGridPointStresses(*m_dofMap, subcase, displacements, chosen, budget, tables);
 }
 
 void ElementResultBuilder::buildCases(std::span<const std::int32_t> subcases,
@@ -1324,7 +1361,17 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
         if (found == groups.temperatures.end())
             groups.temperatures.push_back(temperatures);
         const std::span<const double> column(displacementsG.pointer(0, c), gSize);
-        cases.push_back({column.first(gridValues), column.subspan(gridValues), temperatures, slots});
+        if (window == nullptr)
+        {
+            // The rows of the model: the entities of the formulation after the scalar points.
+            elements::NodalDisplacements displacements = elements::NodalDisplacements::ofGSet(
+                column, static_cast<std::size_t>(m_dofMap->gridCount()),
+                static_cast<std::size_t>(m_dofMap->scalarCount()), &m_dofMap->entities());
+            displacements.temperatures = temperatures;
+            cases.push_back(displacements);
+        }
+        else
+            cases.push_back({column.first(gridValues), column.subspan(gridValues), temperatures, slots});
     }
     const auto lineLoadsOf = [&](std::size_t c, std::size_t b) -> std::span<const elements::ElementLineLoad>
     {
@@ -1461,6 +1508,10 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
                     break;
             }
     }
+    // The stresses at the grid points of the solids of the formulation (the streamed path, a window, has none).
+    if (window == nullptr)
+        for (std::size_t c = 0; c < subcases.size(); ++c)
+            appendGridPointStresses(*m_dofMap, subcases[c], cases[c], chosen, budget, tables[c]);
 }
 
 } // namespace oos::output

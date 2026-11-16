@@ -43,8 +43,14 @@ FsetOrdering::FsetOrdering(const linalg::NodeGraph& graph, const assembly::DofMa
         keptNodes[kept] = static_cast<std::int32_t>(node);
         weights[kept] = free;
         // A scalar point has no position: it takes that of a grid point it is coupled to (the dissection only needs
-        // it near its neighbours), the origin when it has none.
+        // it near its neighbours), the origin when it has none. A node of an entity has its own.
         std::int32_t located = static_cast<std::int32_t>(node);
+        if (located >= dofMap.firstEntityNode())
+        {
+            coordinates[kept] = dofMap.nodePosition(located);
+            ++kept;
+            continue;
+        }
         if (located >= dofMap.gridCount())
         {
             located = -1;

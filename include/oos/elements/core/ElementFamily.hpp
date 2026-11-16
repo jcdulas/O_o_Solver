@@ -9,6 +9,7 @@
 #include "oos/elements/core/ElementResultBlock.hpp"
 #include "oos/elements/core/ElementTemperatures.hpp"
 #include "oos/elements/core/ElementVectorBlock.hpp"
+#include "oos/elements/core/EntityLayout.hpp"
 #include "oos/elements/core/RecoverySlopes.hpp"
 #include "oos/input/snapshot/SupportCatalog.hpp"
 
@@ -195,9 +196,28 @@ struct NodalDisplacements
     // Optional line loads for recovery, with batch row indices. Families select the loads of each recovered row.
     // They change the affine part of a linear output; its displacement slopes keep the ordinary output layout.
     std::span<const ElementLineLoad> lineLoads{};
+    // The values of the entities of the formulation (EntityLayout::totalDofCount() values, in the layout's order), and
+    // the layout; empty and null for a model without entities. The streamed path, which has none, never sets them.
+    std::span<const double> entity{};
+    const EntityLayout* entityLayout = nullptr; // not owned
+
+    // The displacements of a g-set vector in the DofMap's order: 6 values per grid point, 1 per scalar point, then
+    // the entity DOFs of `layout` (null: none).
+    [[nodiscard]] static NodalDisplacements ofGSet(std::span<const double> values, std::size_t gridCount,
+                                                   std::size_t scalarCount, const EntityLayout* layout)
+    {
+        NodalDisplacements displacements;
+        displacements.grid = values.first(6 * gridCount);
+        displacements.scalar = values.subspan(6 * gridCount, scalarCount);
+        displacements.entity = values.subspan(6 * gridCount + scalarCount);
+        displacements.entityLayout = layout;
+        return displacements;
+    }
 
     [[nodiscard]] double valueAt(const ElementDof& dof) const
     {
+        if (dof.kind == input::PointKind::Entity)
+            return entity[static_cast<std::size_t>(entityLayout->dofOffset(dof.row)) + dof.component];
         if (dof.kind == input::PointKind::Scalar)
             return scalar[slotOf(dof)];
         return grid[slotOf(dof) * 6 + static_cast<std::size_t>(dof.component) - 1];
@@ -455,10 +475,10 @@ public:
     // Derivatives of applied element loads, in grid displacement coordinates. True with an empty block means a
     // known zero. False retains numerical element differences. Equal fields request the same-field second rate.
     virtual bool loadFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
-                                    const ElementLoadContext& loads, ElementVectorBlock& block) const;
-    virtual bool loadFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
-                                         const DesignedField& first, const DesignedField& second,
-                                         const ElementLoadContext& loads, ElementVectorBlock& block) const;
+                                     const ElementLoadContext& loads, ElementVectorBlock& block) const;
+    virtual bool loadFieldMixedDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& first,
+                                          const DesignedField& second, const ElementLoadContext& loads,
+                                          ElementVectorBlock& block) const;
     // dK_d/dv of the element of batch row `row` at fixed preload displacements and temperatures (`preload`, as
     // computeDifferentialStiffness takes it), appended as computeDifferentialStiffness appends it; false when the
     // family has no closed form for that field, element and preload (the buckling load factors' explicit
@@ -468,9 +488,10 @@ public:
                                                       ElementMatrixBlock& block) const;
     // Mixed field curvature of K_d at a fixed mechanical preload. Its displacement dependence remains linear;
     // the buckling Hessian adds both preload tangents separately. False means the formula is unavailable.
-    virtual bool differentialStiffnessFieldMixedDerivative(
-        const ElementBatchView& view, std::int64_t row, const DesignedField& first, const DesignedField& second,
-        const NodalDisplacements& preload, ElementMatrixBlock& block) const;
+    virtual bool differentialStiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
+                                                           const DesignedField& first, const DesignedField& second,
+                                                           const NodalDisplacements& preload,
+                                                           ElementMatrixBlock& block) const;
     // The derivatives of the rows recover() gives the element of batch row `row` under `displacements` with respect to
     // the designed field `field` at fixed displacements (the explicit parts of its items), in closed form: `rates` in
     // the layout of recover()'s block (the same rows, places and columns), each column's ∂value/∂v, NaN where the
@@ -519,9 +540,9 @@ public:
     virtual bool stiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
                                                const DesignedField& first, const DesignedField& second,
                                                ElementMatrixBlock& block) const;
-    virtual bool massFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,
-                                          const DesignedField& first, const DesignedField& second,
-                                          const MassOptions& options, ElementMatrixBlock& block) const;
+    virtual bool massFieldMixedDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& first,
+                                          const DesignedField& second, const MassOptions& options,
+                                          ElementMatrixBlock& block) const;
     // The slopes of the rows of recoveryFieldRates (their derivatives at fixed displacements) with respect to the
     // element's DOFs, ∂S/∂v: the mixed second derivatives of its Linear columns, in the layout of recoverySlopes (zero
     // in the other columns); false when the family gives no closed form (the caller then takes them from
@@ -534,10 +555,9 @@ public:
                                           ElementOutput output, const NodalDisplacements& displacements,
                                           ElementResultBlock& rates) const;
     // Mixed recovered rates at fixed displacement, in recover()'s row layout. False when no closed form is given.
-    virtual bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row,
-                                         const DesignedField& first, const DesignedField& second,
-                                         ElementOutput output, const NodalDisplacements& displacements,
-                                         ElementResultBlock& rates) const;
+    virtual bool recoveryFieldMixedRates(const ElementBatchView& view, std::int64_t row, const DesignedField& first,
+                                         const DesignedField& second, ElementOutput output,
+                                         const NodalDisplacements& displacements, ElementResultBlock& rates) const;
 
 protected:
     // Throws std::invalid_argument: the facet is not offered by this element type.

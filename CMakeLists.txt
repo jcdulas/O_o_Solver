@@ -16,6 +16,7 @@ option(OOS_BUILD_WASM "Build the WebAssembly module (needs the Emscripten toolch
 option(OOS_WASM_THREADS "Enable shared-memory workers in the WebAssembly build" OFF)
 set(OOS_WASM_MAX_THREADS 8 CACHE STRING "Maximum threads per WebAssembly instance, including the calling thread")
 option(OOS_BUILD_WASM_TESTS "Build WebAssembly threading checks" OFF)
+option(OOS_BUILD_NATIVE_CHECKS "Build the native checks of the element kernels (checks/)" OFF)
 option(OOS_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" ON)
 # Keep the invariant checks (OOS_ASSERT) in optimised builds: a broken invariant stops the run with a message rather
 # than giving wrong numbers.
@@ -51,6 +52,10 @@ if(OOS_ASSERTIONS)
 endif()
 
 add_subdirectory(src)
+
+if(OOS_BUILD_NATIVE_CHECKS AND NOT EMSCRIPTEN)
+    add_subdirectory(checks)
+endif()
 
 if(OOS_BUILD_WASM)
     if(NOT EMSCRIPTEN)

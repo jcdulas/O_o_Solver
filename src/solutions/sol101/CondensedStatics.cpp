@@ -605,6 +605,7 @@ CondensedStatics::CondensedStatics(const Inputs& inputs, base::MemoryBudget& bud
         throw std::invalid_argument(
             "CondensedStatics: the inputs need the snapshot, the analysis model, the plan, the load builder, the "
             "kernels, and one SPC set and output plan per subcase");
+    elements::refuseMixedHybridOn(*inputs.snapshot, "the condensed path");
     if (inputs.cache != nullptr)
         m_cacheSession.emplace(inputs.cache->openSession(inputs.cacheModelTag));
     for (const StaticSubcase& subcase : inputs.subcases)
@@ -2530,7 +2531,7 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
     const std::span<const base::DofIndex> permanent =
         inputs.externalUnits != nullptr ? std::span<const base::DofIndex>(permanentDofs) : spc.sgDofs();
     const assembly::DofSets sets(
-        dofMap, assembly::DofSetInputs{fullGm.mDofs(), spc.sbDofs(), permanent, {}, group.supports}, budget, sink);
+        dofMap, assembly::DofSetInputs{fullGm.mDofs(), spc.sbDofs(), permanent, {}, group.supports, {}}, budget, sink);
     if (inputs.externalUnits != nullptr && group.relief == assembly::InertiaReliefMode::OnSupports)
         sink.report(problem("inertia-relief-external-unit", "PARAM InertiaRelief", group.selection.subcase,
                             "inertia relief with external units is not supported on the condensed path of this "
@@ -4651,7 +4652,8 @@ CondensedStatics::EigenGroup CondensedStatics::solveEigenGroup(const EigenGroupI
                                          glueContext, budget, sink);
     const assembly::RigidElimination fullGm(rigidElements, &mpc, dofMap, budget, sink, units.fasteners.get(), &glue);
     const assembly::DofSets sets(
-        dofMap, assembly::DofSetInputs{fullGm.mDofs(), spc.sbDofs(), spc.sgDofs(), {}, group.supports}, budget, sink);
+        dofMap, assembly::DofSetInputs{fullGm.mDofs(), spc.sbDofs(), spc.sgDofs(), {}, group.supports, {}}, budget,
+        sink);
     stopOnErrors(sink, "the constraints");
     base::DiagnosticSink interfaceSink; // the same rows as fullGm's: its diagnostics are reported once
     const assembly::RigidElimination interfaceGm(rigidElements, &mpc, dofMap, budget, interfaceSink,
@@ -4972,8 +4974,8 @@ CondensedStatics::LoadGroup CondensedStatics::prepareLoadGroup(const GroupInputs
     held->fullGm = std::make_unique<assembly::RigidElimination>(rigidElements, held->mpc.get(), dofMap, budget, sink,
                                                                 units.fasteners.get(), held->glue.get());
     held->sets = std::make_unique<assembly::DofSets>(
-        dofMap, assembly::DofSetInputs{held->fullGm->mDofs(), spc.sbDofs(), spc.sgDofs(), {}, held->supports}, budget,
-        sink);
+        dofMap, assembly::DofSetInputs{held->fullGm->mDofs(), spc.sbDofs(), spc.sgDofs(), {}, held->supports, {}},
+        budget, sink);
     stopOnErrors(sink, "the constraints");
     base::DiagnosticSink interfaceSink; // the same rows as fullGm's: its diagnostics are reported once
     held->interfaceGm = std::make_unique<assembly::RigidElimination>(

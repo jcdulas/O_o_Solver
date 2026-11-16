@@ -25,10 +25,11 @@ enum class ConstraintSource : std::uint8_t
     RigidBar,
     RigidRod,
     Mpc,
-    Fastener, // the internal constraints of a Fastener whose GA or GB is a grid point (FastenerConstraints)
-    Weld,     // the same for a Weld
+    Fastener,     // the internal constraints of a Fastener whose GA or GB is a grid point (FastenerConstraints)
+    Weld,         // the same for a Weld
     ContactTable, // the glue of a glued contact pair of a ContactTable (GlueConstraints; the source ID is the table's)
-    ContactPair   // the same for a ContactPair
+    ContactPair,  // the same for a ContactPair
+    Formulation   // a tie or an observer relation of the element formulation (FormulationRelations)
 };
 
 [[nodiscard]] std::string_view cardNameOf(ConstraintSource source) noexcept;

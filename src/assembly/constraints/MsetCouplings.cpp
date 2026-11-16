@@ -32,12 +32,10 @@ MsetCouplings::MsetCouplings(linalg::NodeGroupList elementGroups, const RigidEli
         {
             if (hasDependent[static_cast<std::size_t>(node)] == 0)
                 continue;
-            const int components = node < dofMap.gridCount() ? 6 : 1;
-            const base::DofIndex first =
-                node < dofMap.gridCount() ? dofMap.gridDof(node, 1) : dofMap.scalarDof(node - dofMap.gridCount());
-            for (int c = 0; c < components; ++c)
+            const DofMap::NodeDofs nodeDofs = dofMap.dofsOfNode(node);
+            for (int c = 0; c < nodeDofs.count; ++c)
             {
-                const std::optional<std::size_t> row = gm.findRow(first + c);
+                const std::optional<std::size_t> row = gm.findRow(nodeDofs.first + c);
                 if (!row)
                     continue;
                 for (const ConstraintTerm& term : gm.row(*row))

@@ -125,6 +125,47 @@ void SnapshotBuilder::setElementFormulation(std::string_view card, std::string_v
         m_elementFormulations.insert(place, std::move(choice));
 }
 
+void SnapshotBuilder::setModelFormulation(std::string_view formulation)
+{
+    if (formulation.empty())
+        throw std::invalid_argument(
+            "SnapshotBuilder: expected the name of a formulation for the model, found an empty name; give one "
+            "(\"MixedHybridFormulation\")");
+    m_modelFormulation = std::string(formulation);
+}
+
+namespace
+{
+
+// The edges of a declaration with the lower grid point first, sorted, each once (the snapshot's form, so that two
+// programs giving the same edges in another order build the same snapshot).
+void normaliseEdges(std::vector<GridEdge>& edges, std::string_view what)
+{
+    for (GridEdge& edge : edges)
+    {
+        if (edge[0] == edge[1])
+            throw std::invalid_argument(base::concatenate(
+                {"SnapshotBuilder: expected two different grid points for each of the ", what,
+                 ", found the grid point ", std::to_string(edge[0]), " twice; give the two ends of the edge"}));
+        if (edge[0] > edge[1])
+            std::swap(edge[0], edge[1]);
+    }
+    std::sort(edges.begin(), edges.end());
+    edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+}
+
+} // namespace
+
+void SnapshotBuilder::setFormulationGeometry(FormulationGeometry geometry)
+{
+    normaliseEdges(geometry.rawEdges, "raw edges");
+    normaliseEdges(geometry.sharpEdges, "sharp edges");
+    std::sort(geometry.rawElements.begin(), geometry.rawElements.end());
+    geometry.rawElements.erase(std::unique(geometry.rawElements.begin(), geometry.rawElements.end()),
+                               geometry.rawElements.end());
+    m_formulationGeometry = std::move(geometry);
+}
+
 void SnapshotBuilder::setCdRotations(BorrowedArray<double> rotations)
 {
     m_cdRotations = std::move(rotations);
@@ -269,6 +310,8 @@ ModelSnapshot SnapshotBuilder::takeAll()
     parts.offsetDefinition = m_offsetDefinition;
     parts.unsupportedOffsetDefinition = m_unsupportedOffsetDefinition;
     parts.elementFormulations = std::move(m_elementFormulations);
+    parts.modelFormulation = std::move(m_modelFormulation);
+    parts.formulationGeometry = std::move(m_formulationGeometry);
 
     std::optional<base::ImportedTable> nodes = take(TableRole::Nodes);
     parts.nodes.emplace(std::move(*nodes), take(TableRole::ScalarPoints), std::move(m_cdRotations));

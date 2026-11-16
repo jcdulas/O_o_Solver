@@ -1,6 +1,7 @@
 #pragma once
 
 #include "oos/assembly/constraints/FastenerConstraints.hpp"
+#include "oos/assembly/constraints/FormulationRelations.hpp"
 #include "oos/assembly/constraints/GlueConstraints.hpp"
 #include "oos/assembly/constraints/MpcEquations.hpp"
 #include "oos/assembly/constraints/RigidElementEquations.hpp"
@@ -66,15 +67,17 @@ class RigidElimination
 {
 public:
     // `rigidElements` may be null (no rigidElementsTable), `mpc` null (no MPC set selected), `fasteners` null (no
-    // fastener whose GA or GB is a grid point of the model), `glue` null (no glued contact). The rows come in this
-    // order: rigid elements, fasteners, MPC equations, glue (the first of two rows making one DOF dependent keeps it;
-    // GlueConstraints leaves out the points the others make dependent, so its rows never meet them).
+    // fastener whose GA or GB is a grid point of the model), `glue` null (no glued contact), `formulation` null (an
+    // element formulation without relations). The rows come in this order: the formulation's, rigid elements,
+    // fasteners, MPC equations, glue (the first of two rows making one DOF dependent keeps it, so a card that makes
+    // a DOF the formulation ties dependent again is the one refused; GlueConstraints leaves out the points the others
+    // make dependent, so its rows never meet them).
     // `filter`, when given, is asked for every row before the DOFs are checked and the chains resolved: a row it
     // refuses is not taken (the element diagnostics are reported whatever it says).
     RigidElimination(const input::RigidTable* rigidElements, const MpcEquations* mpc, const DofMap& dofMap,
                      base::MemoryBudget& budget, base::DiagnosticSink& sink,
                      const FastenerConstraints* fasteners = nullptr, const GlueConstraints* glue = nullptr,
-                     const ConstraintRowFilter& filter = {});
+                     const ConstraintRowFilter& filter = {}, const FormulationRelations* formulation = nullptr);
 
     // The m-set DOFs, increasing.
     [[nodiscard]] std::span<const base::DofIndex> mDofs() const noexcept { return m_mDofs.span(); }
@@ -109,8 +112,20 @@ public:
     // motion the constraints allow: δu_nᵀ·q_n + (Gm·δu_n)ᵀ·q_m = 0); zero elsewhere. `elementForcesG` is Kgg·ug with
     // the expanded displacements, `loadsG` the applied loads Pg before reduceToN. The SPC forces are then
     // q_s = (Kgg·ug − Pg − q_mpc)_s.
+    //
+    // The rows of the element formulation (ConstraintSource::Formulation) are not a card of the model: with
+    // `rows` = Rows::OfCards their forces are left out, for the table of the multipoint constraint forces; the forces
+    // of the supports take q_mpc with every row (Rows::All), so that what a tie carries to a held DOF is in its
+    // support force.
+    enum class Rows : std::uint8_t
+    {
+        All,
+        OfCards
+    };
     void computeMpcForces(std::span<const double> elementForcesG, std::span<const double> loadsG,
-                          std::span<double> mpcForcesG) const noexcept;
+                          std::span<double> mpcForcesG, Rows rows = Rows::All) const noexcept;
+    // Whether some row comes from the element formulation.
+    [[nodiscard]] bool hasFormulationRows() const noexcept { return m_hasFormulationRows; }
 
     // The relation of row i as the split multiPointConstrForce rows of a grid point force table name it (O_o_Reader's
     // data contract): the element ID of a rigid element (RBE1, RigidBodyStar, RigidInterpolation, RigidBar, RigidRod),
@@ -173,6 +188,7 @@ private:
     base::BudgetedBuffer<base::EntityId> m_sourceIds; // elementId, or the MPC set ID
     base::BudgetedBuffer<std::int32_t> m_rowOfDof;    // one per g-set DOF, -1 for the n set
     base::BudgetedBuffer<std::int32_t> m_relationIds; // relationOf() of each row
+    bool m_hasFormulationRows = false;
     // With chains only (empty otherwise): each row's own terms (relationTerms) and chainOrder().
     base::BudgetedBuffer<std::int64_t> m_directOffsets;
     base::BudgetedBuffer<ConstraintTerm> m_directTerms;

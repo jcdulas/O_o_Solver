@@ -68,6 +68,29 @@ card. A model chooses one formulation per card, for all the elements of that car
 `ElementRegistry::forModel` applies the choice. Unknown formulations and per-subcase choices are refused
 before computation (`unknown-formulation`). The chosen formulation enters the condensation cache key.
 
+`MixedHybridFormulation` (`mixedHybrid/`, [docs/mixed-hybrid-formulation-spec.md](../../docs/mixed-hybrid-formulation-spec.md))
+is chosen for the whole model (`ElementFormulation` parameter, `SnapshotBuilder::setModelFormulation`,
+`api::ModelInput::setModelFormulation`, the `elementFormulation` option): every card of `MIXED_HYBRID_CARDS` takes
+it together, a per-card choice of it is refused (`formulation-per-card`), and so is a per-card choice of another
+formulation for one of those cards (`formulation-mix`); `ShearPanel4` has no counterpart (`unsupported-card`). Its
+elements share unknowns on edges, faces and interiors: the entities of `core/EntityLayout`, numbered by the DofMap
+after the scalar points, which the model of the formulation (`core/FormulationModel`, `mixedHybrid/model/
+MixedHybridModel`) gives with its ties, the grid components it determines and the supports it derives.
+
+The folder `mixedHybrid/`:
+
+| Folder | Content |
+|---|---|
+| `core/` | dense matrices and decompositions, quadrature, polynomial bases and spaces, dual numbers |
+| `geometry/` | the reading of the mesh: topology, surfaces of the shells, skin of the solids |
+| `shell/`, `line/`, `solid/` | the kernels of one shell, one line, one solid (ports of the reference crate) |
+| `model/` | `ShellPart`, `SolidPart` (the elements of one kind in a model, their unknowns, supports, ties and loads), `MixedHybridModel` (the `FormulationModel` of a snapshot: reads the cards as their other families do, numbers the entities, answers the ties, the determined grid components, the derived supports, the affine fields, the grid point stresses of the solids and the pressures given by grid points) |
+| `families/` | the element families of the cards (`MixedHybridLineFamily`, `MixedHybridShellFamily`, `MixedHybridSolidFamily`), thin: they call the model and carry the element matrices to the displacement systems (`LocalMap`) |
+
+The shell and solid parts keep the element matrices and kernels they build, within a memory budget (each facet of
+an element then reuses them): a shell of degree 4 takes a few milliseconds to build, a hexahedron about 50 ms. The
+functions of a solid depend only on the relative order of its grid IDs and are kept per order.
+
 To add a formulation of a card: write its family (in the card's folder, `formulation()` returning its name), and
 register it in `ElementRegistry::standard()` after the card's default.
 

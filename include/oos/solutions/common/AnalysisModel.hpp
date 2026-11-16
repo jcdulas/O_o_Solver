@@ -10,6 +10,7 @@
 #include "oos/base/threading/CancellationToken.hpp"
 #include "oos/base/threading/ThreadPool.hpp"
 #include "oos/elements/core/ElementRegistry.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/input/snapshot/ModelSnapshot.hpp"
 #include "oos/reduction/external/ReplacedElements.hpp"
@@ -76,6 +77,12 @@ public:
     [[nodiscard]] const assembly::ElementConnectivity& connectivity() const noexcept { return *m_connectivity; }
     [[nodiscard]] std::span<const std::uint8_t> nodeDofCounts() const noexcept { return m_nodeDofCounts.span(); }
     [[nodiscard]] const input::ParamTable* params() const noexcept { return m_params; }
+    // The element families in the formulations the model chose.
+    [[nodiscard]] const elements::ElementRegistry& registry() const noexcept { return m_registry; }
+    // The model of a formulation whose unknowns are not all at grid points (the mixed hybrid formulation), or null;
+    // and the kind of entity layout this analysis numbers (the modal one for natural modes).
+    [[nodiscard]] const elements::FormulationModel* formulation() const noexcept { return m_formulation; }
+    [[nodiscard]] elements::EntityLayout::Kind layoutKind() const noexcept { return m_layoutKind; }
     // The index and the DOF map, for what keeps them beyond the model (the DOF map refers to the index's points).
     [[nodiscard]] std::shared_ptr<const elements::SnapshotIndex> sharedIndex() const noexcept { return m_index; }
     [[nodiscard]] std::shared_ptr<const assembly::DofMap> sharedDofMap() const noexcept { return m_dofMap; }
@@ -98,6 +105,8 @@ private:
     std::unique_ptr<assembly::ElementConnectivity> m_connectivity;
     base::BudgetedBuffer<std::uint8_t> m_nodeDofCounts;
     const input::ParamTable* m_params = nullptr;
+    const elements::FormulationModel* m_formulation = nullptr; // lives in m_index
+    elements::EntityLayout::Kind m_layoutKind = elements::EntityLayout::Kind::Static;
     AnalysisPartTimings m_timings;
 };
 

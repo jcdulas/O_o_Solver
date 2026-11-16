@@ -26,12 +26,15 @@ struct AssemblyBatch
 // in the order of the snapshot (the order of the sums of the assembly). A batch whose card has no family
 // is left out: the support catalog of the run refuses it before any assembly.
 //
-// Thread-safety: immutable; concurrent reads are safe. Ownership: borrows the index (and through it the snapshot) and
-// the registry, which must outlive it.
+// The views carry the entities of the analysis (EntityLayout, those its DofMap numbers; null: none).
+//
+// Thread-safety: immutable; concurrent reads are safe. Ownership: borrows the index (and through it the snapshot), the
+// registry and the layout, which must outlive it.
 class ElementSet
 {
 public:
-    ElementSet(const elements::SnapshotIndex& index, const elements::ElementRegistry& registry);
+    ElementSet(const elements::SnapshotIndex& index, const elements::ElementRegistry& registry,
+               const elements::EntityLayout* entities = nullptr);
 
     [[nodiscard]] std::span<const AssemblyBatch> batches() const noexcept { return m_batches; }
     [[nodiscard]] const elements::SnapshotIndex& index() const noexcept { return *m_index; }

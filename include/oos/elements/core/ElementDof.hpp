@@ -8,9 +8,10 @@ namespace oos::elements
 {
 
 // One degree of freedom of an element: a component of a grid point in that grid point's displacement system CD
-// (component 1, 2, 3 the translations, 4, 5, 6 the rotations, as the input format numbers them), or the single DOF of
-// a scalar point (component 0). Points are named by their row in the snapshot (NodeTable, or its scalar point table),
-// so that the assembler maps a DOF to its equation without looking an ID up.
+// (component 1, 2, 3 the translations, 4, 5, 6 the rotations, as the input format numbers them), the single DOF of
+// a scalar point (component 0), or a DOF of an entity of the formulation (its row in the EntityLayout of the model,
+// and the DOF's index within the entity from 0 in `component`). Points are named by their row in the snapshot
+// (NodeTable, or its scalar point table), so that the assembler maps a DOF to its equation without looking an ID up.
 struct ElementDof
 {
     input::PointKind kind = input::PointKind::Grid;
@@ -24,6 +25,11 @@ struct ElementDof
     }
     // The DOF of the scalar point of a row.
     [[nodiscard]] static constexpr ElementDof scalar(std::int32_t row) { return {input::PointKind::Scalar, 0, row}; }
+    // The DOF of index `index` (0 to EntityLayout::MAX_ENTITY_DOFS − 1) of the entity of a row.
+    [[nodiscard]] static constexpr ElementDof entity(std::int32_t row, int index)
+    {
+        return {input::PointKind::Entity, static_cast<std::uint8_t>(index), row};
+    }
 
     friend constexpr bool operator==(const ElementDof&, const ElementDof&) = default;
 };

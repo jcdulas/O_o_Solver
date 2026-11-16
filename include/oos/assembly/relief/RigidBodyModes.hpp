@@ -29,6 +29,8 @@ public:
     RigidBodyModes(const DofMap& dofMap, base::Vec3 referencePoint, base::MemoryBudget& budget);
 
     [[nodiscard]] const linalg::DenseMatrix& modes() const noexcept { return m_modes; }
+    // The rows of the grid points (6 per grid point, the first rows): the supports a free body may be held at.
+    [[nodiscard]] std::size_t gridDofCount() const noexcept { return m_gridDofCount; }
     [[nodiscard]] base::Vec3 referencePoint() const noexcept { return m_reference; }
 
     // Dᵀ·v: the resultant of the g-set load vector v about the reference point, in the basic system (forces F1-F3 and
@@ -42,6 +44,7 @@ public:
 private:
     base::Vec3 m_reference;
     linalg::DenseMatrix m_modes; // g × 6
+    std::size_t m_gridDofCount = 0;
 };
 
 } // namespace oos::assembly

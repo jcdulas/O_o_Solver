@@ -206,9 +206,11 @@ struct BoxFlexibility
 class LsetMap
 {
 public:
+    // `formulation`: what the element formulation adds to the constraints (its excluded DOFs filled after the
+    // expansion), null without.
     LsetMap(const assembly::RigidElimination& gm, const FsetSolver& solver, std::size_t gSize,
-            base::MemoryBudget& budget)
-        : m_gm(&gm), m_solver(&solver), m_scratch(budget, gSize, "trim g-set scratch")
+            base::MemoryBudget& budget, const assembly::FormulationConstraints* formulation = nullptr)
+        : m_gm(&gm), m_solver(&solver), m_formulation(formulation), m_scratch(budget, gSize, "trim g-set scratch")
     {
     }
 
@@ -229,11 +231,14 @@ public:
             displacementsG[static_cast<std::size_t>(m_solver->dofOfEquation(static_cast<std::int32_t>(e)))] =
                 solution(e, column);
         m_gm->expandToG(displacementsG);
+        if (m_formulation != nullptr)
+            m_formulation->fillExcluded(displacementsG);
     }
 
 private:
     const assembly::RigidElimination* m_gm;
     const FsetSolver* m_solver;
+    const assembly::FormulationConstraints* m_formulation;
     base::BudgetedBuffer<double> m_scratch;
 };
 
@@ -520,6 +525,9 @@ public:
                                base::MemoryBudget& budget) const = 0;
     [[nodiscard]] virtual const assembly::RigidElimination& gm() const = 0;
     [[nodiscard]] virtual std::span<const std::uint8_t> isConstrained() const = 0; // the s and r sets, per g-set DOF
+    // Carries the support forces of the element formulation's derived supports to their grid points
+    // (SpcSet::carryDerivedReactions); nothing without them.
+    virtual void carryDerivedReactions(std::span<double> /*supportForcesG*/) const {}
     // The grid point forces of the units not recovered with the rows of a case (nothing on the full path).
     [[nodiscard]] virtual std::optional<output::StiffnessRecovery::CondensedUnits> condensedUnits(
         std::span<const output::StiffnessRecovery::UnitRow> rows) const = 0;
@@ -567,7 +575,7 @@ public:
     {
         const std::size_t gSize = loads.rows;
         const std::size_t columns = loads.columns;
-        LsetMap lset(m_system->gm(), *m_solver, gSize, budget);
+        LsetMap lset(m_system->gm(), *m_solver, gSize, budget, m_system->formulationConstraints());
         linalg::DenseMatrix rhs(budget, static_cast<std::size_t>(m_solver->equationCount()), columns,
                                 "trim right-hand sides");
         base::BudgetedBuffer<double> column(budget, gSize, "trim loads");
@@ -593,7 +601,7 @@ public:
     {
         const std::size_t gSize = m_massModes.rows();
         const std::size_t r = m_massModes.columns();
-        LsetMap lset(m_system->gm(), *m_solver, gSize, budget);
+        LsetMap lset(m_system->gm(), *m_solver, gSize, budget, m_system->formulationConstraints());
         linalg::DenseMatrix rhs(budget, static_cast<std::size_t>(m_solver->equationCount()), r,
                                 "trim inertial right-hand sides");
         for (std::size_t k = 0; k < r; ++k)
@@ -617,6 +625,10 @@ public:
 
     [[nodiscard]] const assembly::RigidElimination& gm() const override { return m_system->gm(); }
     [[nodiscard]] std::span<const std::uint8_t> isConstrained() const override { return m_system->isConstrained(); }
+    void carryDerivedReactions(std::span<double> supportForcesG) const override
+    {
+        m_system->spc().carryDerivedReactions(supportForcesG);
+    }
     [[nodiscard]] std::optional<output::StiffnessRecovery::CondensedUnits> condensedUnits(
         std::span<const output::StiffnessRecovery::UnitRow> /*rows*/) const override
     {

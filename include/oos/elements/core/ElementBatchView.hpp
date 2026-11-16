@@ -3,6 +3,7 @@
 #include "oos/base/arrow/ContractReader.hpp"
 #include "oos/base/math/Mat3.hpp"
 #include "oos/base/math/Vec3.hpp"
+#include "oos/elements/core/EntityLayout.hpp"
 #include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/input/snapshot/ModelSnapshot.hpp"
 #include "oos/input/tables/CardTable.hpp"
@@ -23,18 +24,25 @@ namespace oos::elements
 // A view is cheap (references only) and is made once per batch; the facets of the family take it with a range of
 // rows.
 //
-// Thread-safety: immutable; concurrent reads are safe. Ownership: borrows the snapshot, the batch and the index, which
-// must outlive it.
+// A view of a formulation with entities (the mixed hybrid formulation: EntityLayout) carries the layout of the
+// analysis, the one its DofMap numbers, so that the family emits its matrices over those entities; null for every
+// other formulation. A family that needs it and finds none reports it in check().
+//
+// Thread-safety: immutable; concurrent reads are safe. Ownership: borrows the snapshot, the batch, the index and the
+// layout, which must outlive it.
 class ElementBatchView
 {
 public:
     // Precondition: `batch` belongs to the snapshot of `index`.
-    ElementBatchView(const input::ElementBatch& batch, const SnapshotIndex& index) noexcept
-        : m_batch(&batch), m_index(&index)
+    ElementBatchView(const input::ElementBatch& batch, const SnapshotIndex& index,
+                     const EntityLayout* entities = nullptr) noexcept
+        : m_batch(&batch), m_index(&index), m_entities(entities)
     {
     }
 
     [[nodiscard]] const input::ElementBatch& batch() const noexcept { return *m_batch; }
+    // The entities of the analysis (null without).
+    [[nodiscard]] const EntityLayout* entities() const noexcept { return m_entities; }
     [[nodiscard]] const SnapshotIndex& index() const noexcept { return *m_index; }
     [[nodiscard]] const input::ModelSnapshot& snapshot() const noexcept { return m_index->snapshot(); }
     [[nodiscard]] const std::string& card() const noexcept { return m_batch->card(); }
@@ -80,6 +88,7 @@ public:
 private:
     const input::ElementBatch* m_batch;
     const SnapshotIndex* m_index;
+    const EntityLayout* m_entities;
 };
 
 } // namespace oos::elements

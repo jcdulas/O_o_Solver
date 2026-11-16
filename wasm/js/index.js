@@ -164,6 +164,10 @@ export class OosSolver {
   // ({ ShellQuad4: "ClassicFormulation" }), before the model's ShellQuad4Formulation parameter. The keys are the neutral
   // card types that elementFormulations() lists, exactly: an unknown name throws an Error. A
   // formulation the card does not have is refused by checkSupport and run.
+  // `options.elementFormulation` chooses the formulation of the whole model ("MixedHybridFormulation"), before the
+  // model's ElementFormulation parameter. `options.formulationGeometry` gives the geometry declarations of that
+  // formulation: { rawEdges: [[g1, g2], ...], rawElements: [id, ...], sharpEdges: [[g1, g2], ...] } (grid point and
+  // element IDs; an empty object says that every edge is smooth).
   // Throws an Error naming the table and the column when a table of the reader is not what the solver reads.
   modelFromReader(oor, deck, options = {}) {
     const reader = oor.core;
@@ -172,6 +176,16 @@ export class OosSolver {
     try {
       for (const [card, formulation] of Object.entries(options.elementFormulations ?? {})) {
         input.setElementFormulation(card, formulation);
+      }
+      if (options.elementFormulation !== undefined) input.setModelFormulation(options.elementFormulation);
+      if (options.formulationGeometry !== undefined) {
+        const geometry = options.formulationGeometry ?? {};
+        const flatEdges = (edges) => (edges ?? []).flatMap((edge) => {
+          if (!Array.isArray(edge) || edge.length !== 2) throw new Error("formulationGeometry: each edge is [g1, g2]");
+          return edge;
+        });
+        input.setFormulationGeometry(flatEdges(geometry.rawEdges), geometry.rawElements ?? [],
+          flatEdges(geometry.sharpEdges));
       }
       const versions = reader.modelVersions(deck);
       input.setVersions(versions.structure, versions.content);

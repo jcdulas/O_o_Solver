@@ -81,6 +81,7 @@ DesignProblem::DesignProblem(std::shared_ptr<const input::ModelSnapshot> snapsho
       m_responses(std::move(responses), m_model, *m_snapshot),
       m_constraints(std::move(constraints), m_responses)
 {
+    elements::refuseMixedHybridOn(*m_snapshot, "the design interfaces (design points, sensitivities, optimization)");
 }
 
 std::vector<std::int64_t> DesignProblem::drivenUnits() const

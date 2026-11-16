@@ -82,8 +82,8 @@ std::vector<std::string> Beam2Element::outputColumns(ElementOutput output) const
 // larger stress, the larger of |SMAX| and |SMIN| (the first station on a tie), and are undefined at the others
 // (UNDEFINED_MARGIN, blank in a printed report), and at every station when the element carries no stress.
 void Beam2Element::appendStationRows(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
-                                        std::span<const BeamLineLoad> loads, ElementOutput output,
-                                        const NodalDisplacements& displacements, ElementResultBlock& block)
+                                     std::span<const BeamLineLoad> loads, ElementOutput output,
+                                     const NodalDisplacements& displacements, ElementResultBlock& block)
 {
     appendResponseRows(view, row, beam,
                        BeamResponse(beam, displacements, loads, beamThermalStrain(view, row, beam, displacements)),
@@ -91,7 +91,14 @@ void Beam2Element::appendStationRows(const ElementBatchView& view, std::int64_t 
 }
 
 void Beam2Element::appendResponseRows(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
-                                         const BeamResponse& response, ElementOutput output, ElementResultBlock& block)
+                                      const BeamResponse& response, ElementOutput output, ElementResultBlock& block)
+{
+    appendForcesRows(
+        view, row, beam, [&response](double distance) { return response.forcesAt(distance); }, output, block);
+}
+
+void Beam2Element::appendForcesRows(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
+                                    const ForcesAlong& forcesAt, ElementOutput output, ElementResultBlock& block)
 {
     const BeamSection& section = beam.section;
     const input::NodeTable& nodes = view.snapshot().nodes();
@@ -116,7 +123,7 @@ void Beam2Element::appendResponseRows(const ElementBatchView& view, std::int64_t
         else if (s + 1 == section.count)
             nodeId = nodes.ids()[static_cast<std::size_t>(beam.geometry.rowB)];
         const ResultPlace place{nodeId, layer, station.position};
-        const BeamForces forces = response.forcesAt(station.position * beam.geometry.length);
+        const BeamForces forces = forcesAt(station.position * beam.geometry.length);
         if (output == ElementOutput::Forces)
         {
             const std::array<double, 7> values{
@@ -162,8 +169,8 @@ void Beam2Element::appendResponseRows(const ElementBatchView& view, std::int64_t
 // and building its tapered stiffness again) from one resolution for all its outputs.
 // Measured: a Beam2 grillage of 45 300 elements.
 bool Beam2Element::recoverySlopesOfOutputs(const ElementBatchView& view, std::int64_t row,
-                                              std::span<const RecoveryOutput> outputs,
-                                              std::span<RecoverySlopes> slopes) const
+                                           std::span<const RecoveryOutput> outputs,
+                                           std::span<RecoverySlopes> slopes) const
 {
     for (const RecoveryOutput& output : outputs)
     {
@@ -219,8 +226,8 @@ bool Beam2Element::recoverySlopesOfOutputs(const ElementBatchView& view, std::in
 // once per DOF (12), each resolving it and building its stiffness; here one resolution and one map (measured on a
 // stiffened barrel panel).
 bool Beam2Element::recoverAtUnitDisplacements(const ElementBatchView& view, std::int64_t row, ElementOutput output,
-                                                 std::vector<ElementDof>& dofs,
-                                                 std::vector<ElementResultBlock>& blocks) const
+                                              std::vector<ElementDof>& dofs,
+                                              std::vector<ElementResultBlock>& blocks) const
 {
     requireOutput(output);
     const Columns columns(view);
@@ -243,7 +250,7 @@ bool Beam2Element::recoverAtUnitDisplacements(const ElementBatchView& view, std:
 }
 
 bool Beam2Element::recoverySlopes(const ElementBatchView& view, std::int64_t row, ElementOutput output,
-                                     RecoverySlopes& slopes) const
+                                  RecoverySlopes& slopes) const
 {
     const std::array<RecoveryOutput, 1> outputs{RecoveryOutput::of(output)};
     return recoverySlopesOfOutputs(view, row, outputs, std::span<RecoverySlopes>(&slopes, 1));
@@ -260,7 +267,7 @@ std::size_t Beam2Element::vectorisedRecoveryMinCases(ElementOutput output) const
 // strains' extremes from the strains (ε = σ/E, monotonic), their margins and station from the stresses σ = E·ε (to
 // round-off); the forces are all Linear.
 void Beam2Element::completeRecoveredRows(const ElementBatchView& view, ElementOutput output,
-                                            std::span<ElementResultBlock> blocks) const
+                                         std::span<ElementResultBlock> blocks) const
 {
     requireOutput(output);
     if (output == ElementOutput::Forces || blocks.empty())
@@ -301,7 +308,7 @@ void Beam2Element::completeRecoveredRows(const ElementBatchView& view, ElementOu
 }
 
 void Beam2Element::recover(const ElementBatchView& view, ElementRange range, ElementOutput output,
-                              const NodalDisplacements& displacements, ElementResultBlock& block) const
+                           const NodalDisplacements& displacements, ElementResultBlock& block) const
 {
     requireOutput(output);
     block.reset(outputColumns(output));
@@ -315,8 +322,8 @@ void Beam2Element::recover(const ElementBatchView& view, ElementRange range, Ele
 }
 
 void Beam2Element::recoverUnderLineLoads(const ElementBatchView& view, std::span<const ElementLineLoad> loads,
-                                            ElementOutput output, const NodalDisplacements& displacements,
-                                            ElementResultBlock& block) const
+                                         ElementOutput output, const NodalDisplacements& displacements,
+                                         ElementResultBlock& block) const
 {
     requireOutput(output);
     block.reset(outputColumns(output));

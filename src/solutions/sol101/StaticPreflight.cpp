@@ -114,7 +114,8 @@ void estimateFactor(const input::ModelSnapshot& snapshot, const assembly::Elemen
         weights[node] = isRelated[node] != 0 || components == 0 ? dofCounts[node] : components;
         // A scalar point has no position; the origin is enough for an estimate.
         const auto row = static_cast<std::int32_t>(node);
-        coordinates[node] = row < dofMap.gridCount() ? dofMap.positionInBasic(row) : base::Vec3{};
+        const bool isScalar = row >= dofMap.gridCount() && row < dofMap.firstEntityNode();
+        coordinates[node] = isScalar ? base::Vec3{} : dofMap.nodePosition(row);
     }
     const linalg::SparsePattern pattern(graph, dofCounts.span(), budget);
     report.stiffnessBytes = STIFFNESS_COPIES * VALUE_BYTES * static_cast<std::uint64_t>(pattern.valueCount());

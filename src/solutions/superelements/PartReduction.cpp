@@ -66,6 +66,7 @@ PartReduction::PartReduction(const Inputs& inputs, base::MemoryBudget& budget, b
     if (inputs.part == nullptr || !inputs.part->snapshot || inputs.kernels == nullptr)
         throw std::invalid_argument("PartReduction: expected a part with its snapshot, and the kernels");
     const SuperelementPart& part = *inputs.part;
+    elements::refuseMixedHybridOn(*part.snapshot, "superelements");
     m_superelementId = part.superelementId;
     m_kernels = inputs.kernels;
     m_cancellation = inputs.cancellation;

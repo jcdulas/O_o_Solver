@@ -48,7 +48,7 @@ export interface StudyHooks {
 export interface StudySettings {
   threads?: number; memoryBytes?: number; maximumOutputBytes?: number; maximumCachedPoints?: number;
   applyDefaults?: boolean; checkReferences?: boolean;
-  model?: { elementFormulations?: Record<string, string> };
+  model?: import("./index.js").ModelOptions;
 }
 export interface DifferenceSettings {
   relativeStep?: number; absoluteStep?: number; side?: "central" | "forward" | "backward";

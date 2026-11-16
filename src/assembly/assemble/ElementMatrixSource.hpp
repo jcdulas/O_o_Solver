@@ -47,13 +47,13 @@ public:
     // The node DOF of a DOF of an element.
     [[nodiscard]] linalg::NodeDof nodeDofOf(const elements::ElementDof& dof) const noexcept
     {
-        return m_dofMap->nodeDofOf(m_dofMap->dofOf(dof));
+        return m_dofMap->nodeDofOf(dof);
     }
 
     // The node of a DOF of an element.
     [[nodiscard]] std::int32_t nodeOf(const elements::ElementDof& dof) const noexcept
     {
-        return m_dofMap->nodeDofOf(m_dofMap->dofOf(dof)).node;
+        return m_dofMap->nodeDofOf(dof).node;
     }
 
 private:

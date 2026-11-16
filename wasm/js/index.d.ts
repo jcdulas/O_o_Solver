@@ -15,6 +15,24 @@ export declare function loadOosSolver(options?: Record<string, unknown> & { thre
 
 export type Analysis = "statics" | "modes" | "buckling" | "aeroelastic";
 
+// The geometry declarations of the mixed hybrid formulation: where the surface of the shells and the skin of the
+// solids are not smooth (grid point IDs for the edges, element IDs for the raw elements).
+export interface FormulationGeometry {
+  rawEdges?: [number, number][];
+  rawElements?: number[];
+  sharpEdges?: [number, number][];
+}
+
+// The options of modelFromReader.
+export interface ModelOptions {
+  // The formulation of the elements of some card types ({ ShellQuad4: "ClassicFormulation" }).
+  elementFormulations?: Record<string, string>;
+  // The formulation of the whole model ("ClassicFormulation", "MixedHybridFormulation").
+  elementFormulation?: string;
+  // Mandatory for a model with shells or solids in MixedHybridFormulation.
+  formulationGeometry?: FormulationGeometry;
+}
+
 export interface Diagnostic {
   severity: "error" | "warning" | "info";
   code: string;
@@ -166,8 +184,9 @@ export declare class OosSolver {
   // `options.elementFormulations` chooses the formulation of the elements of some card types
   // ({ ShellQuad4: "ClassicFormulation" }), before the model's ShellQuad4Formulation parameter. The keys are the neutral card types
   // of elementFormulations(), exactly: an unknown card type throws an Error.
-  modelFromReader(oor: unknown, deck: unknown,
-                  options?: { elementFormulations?: Record<string, string> }): Model;
+  // `options.elementFormulation` chooses the formulation of the whole model ("MixedHybridFormulation"), and
+  // `options.formulationGeometry` gives its geometry declarations (grid point and element IDs).
+  modelFromReader(oor: unknown, deck: unknown, options?: ModelOptions): Model;
   createOptimization(model: Model, declarations?: OptimizationDeclarations, settings?: OptimizationSettings): OptimizationProblem;
   optimizationFromReader(oor: unknown, deck: unknown, declarations?: OptimizationDeclarations,
     settings?: OptimizationSettings): OptimizationProblem;

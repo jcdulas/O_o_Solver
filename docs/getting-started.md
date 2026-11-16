@@ -83,4 +83,9 @@ An `elementFormulations` choice passed to `modelFromReader` applies to all eleme
 precedence over the model parameter. The [element guide](../src/elements/README.md) describes the formulations,
 geometric conventions and current limits.
 
+The `elementFormulation` option (or the `ElementFormulation` model parameter) chooses the formulation of the whole
+model. `MixedHybridFormulation` puts every shell, line and solid card in the mixed hybrid formulation together; it
+needs the `formulationGeometry` option, which declares the raw edges, raw elements and sharp edges of the mesh (see
+the [specification](mixed-hybrid-formulation-spec.md)).
+
 The [module guide](modules.md) covers assembly, linear algebra, reduction, output and design calculations.
