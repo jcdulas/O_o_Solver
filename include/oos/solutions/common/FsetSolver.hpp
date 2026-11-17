@@ -40,6 +40,10 @@ struct FsetSolverOptions
     // kept there; their bytes reserved in the solver's budget while it lives. Null: built for this solver alone. Not
     // owned.
     StructureCache* structures = nullptr;
+    // The stiffness before the relations of the model are eliminated (Kgg, on the DOF map of the solver), for the
+    // ratio test of the entity DOFs of an element formulation (the class comment says why); read by the constructor
+    // only. Null, or a model without entity DOFs: the test of every DOF against the diagonal of Knn. Not owned.
+    const linalg::BlockSparseMatrix* unreducedStiffness = nullptr;
 };
 
 // What a factorisation took from the structure cache (FsetSolverOptions::structures): whether its ordering and its
@@ -58,6 +62,19 @@ struct FsetReuse
 // A mechanism or a failed ratio test is a SingularityError naming the grid point (or scalar point) ID and component of
 // each DOF (the EquationNamer maps an equation to its g-set DOF and point). An f set without DOFs (every DOF
 // constrained) needs no factor: solve() then does nothing.
+//
+// The ratio test of an entity DOF (an unknown of an edge, a face or an interior of an element formulation,
+// docs/mixed-hybrid-formulation-spec.md section 5.1) compares its factor diagonal with the diagonal of the stiffness
+// of its own elements, that of Kgg (FsetSolverOptions::unreducedStiffness), where it is below that of Knn. The
+// relations of the formulation eliminated in Knn = Gmᵀ·Kgg·Gm (section 5.8: the rotation of a grid point of shells is
+// a combination Σ c_j·u_j of the unknowns of the shells around it) put k·c_j² on the diagonal of every unknown j of a
+// relation whose eliminated DOF carries a stiffness k (a stiff spring on that rotation), although k holds one
+// combination of them only; once the others are eliminated the pivot of j is back to the stiffness of its own
+// elements, and its ratio to the diagonal of Knn, about k·c_j² over that stiffness, would be read as a mechanism.
+// Against the diagonal of Kgg a mechanism at an entity DOF is still one (its pivot far below the stiffness of its
+// own elements; a pivot that kept fewer than four digits of the diagonal of Knn fails too, whatever that stiffness),
+// and the reference is never above the diagonal of Knn: the test only gets less strict there. The grid and scalar
+// points keep the diagonal of Knn, and so does every DOF of a model without entity DOFs.
 //
 // With a structure cache, the factorisation takes the panels' storage a freed factor of the same shape left in the
 // cache's slot, and the destructor leaves its own there for the next analysis: a design loop's points factorise in

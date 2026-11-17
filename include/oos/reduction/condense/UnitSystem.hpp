@@ -20,6 +20,7 @@
 #include "oos/linalg/sparse/SparseAssembler.hpp"
 #include "oos/linalg/sparse/SparsePattern.hpp"
 #include "oos/linalg/sparse/SymmetricCsc.hpp"
+#include "oos/linalg/supernodal/PivotDiagnostics.hpp"
 #include "oos/linalg/symbolic/SymbolicFactor.hpp"
 #include "oos/reduction/absorption/SpiderChangeOfBasis.hpp"
 #include "oos/reduction/condense/LocalRelations.hpp"
@@ -54,16 +55,18 @@ enum class UnitPointKind : std::uint8_t
 {
     Grid,
     Scalar,
-    FastenerPoint,  // the point generated on one side of a Fastener or Weld (no point of the model)
-    ModalCoordinate // the generalised coordinates of a Craig-Bampton unit's fixed-interface modes (the q set; the
-                    // interface problem of an eigenvalue analysis): its ID is the unit's
+    FastenerPoint,   // the point generated on one side of a Fastener or Weld (no point of the model)
+    ModalCoordinate, // the generalised coordinates of a Craig-Bampton unit's fixed-interface modes (the q set; the
+                     // interface problem of an eigenvalue analysis): its ID is the unit's
+    EntityNode       // a node of an entity of the element formulation (an edge, a face, an interior: up to six of its
+                     // DOFs), its ID assembly::DofMap::nodeIdOf's (negative), its DOFs components 1 to 6
 };
 
 // The name of a DOF of a unit (grid or reference point, component).
 struct UnitDofLabel
 {
     UnitPointKind kind = UnitPointKind::Grid;
-    base::EntityId id = 0; // the grid or scalar point ID; the Fastener or Weld ID of a fastener point
+    base::EntityId id = 0; // the grid or scalar point ID; the Fastener or Weld ID of a fastener point; an entity node's
     FastenerSide side = FastenerSide::None; // the side of a fastener point
     std::uint8_t component = 1;             // 1 to 6 (0 for a scalar point); a fastener point's in the basic system
 
@@ -88,6 +91,10 @@ struct UnitModel
     linalg::AssemblyOptions assembly;
     // The grid point singularity processor of the unit's interior points (PARAM AUTOSPC, EPZERO).
     assembly::SingularityOptions singularity;
+    // The six rigid-body motions of UnitSystem::makeRigidBodyModes on the DOFs of the entities of the element
+    // formulation (the entity DOFs of the g set × 6, column-major: assembly::DofMap::addAffineEntityField); empty
+    // without entities.
+    std::span<const double> entityRigidModes;
     // Craig-Bampton: keep the unit's mass on its equations (UnitSystem::mass()), its relations eliminated
     // and its spiders absorbed as the stiffness's, for its fixed-interface modes and its reduced mass.
     bool keepsMass = false;
@@ -371,6 +378,8 @@ private:
     };
 
     void numberPoints(const UnitModel& model, const UnitDescription& description, base::MemoryBudget& budget);
+    // Whether a point is a node of an entity of the element formulation.
+    [[nodiscard]] bool isEntityPoint(std::size_t point) const noexcept;
     void readRelations(const UnitModel& model, base::MemoryBudget& budget);
     void readSpiders(const UnitDescription& description, base::MemoryBudget& budget);
     void assignRoles(const UnitModel& model, base::MemoryBudget& budget);
@@ -417,6 +426,7 @@ private:
 
     std::int64_t m_unitId = 0;
     const assembly::DofMap* m_dofMap = nullptr;
+    std::span<const double> m_entityRigidModes; // UnitModel::entityRigidModes (borrowed)
     // Per local point: its node in the model (-1 for a generated fastener point), its DOF count, its position.
     base::BudgetedBuffer<std::int32_t> m_modelNodes;
     base::BudgetedBuffer<std::uint8_t> m_pointDofCounts;
@@ -482,5 +492,10 @@ private:
 [[nodiscard]] base::BudgetedBuffer<base::DofIndex> unitLocalModelDofs(const assembly::DofMap& dofMap,
                                                                       const UnitDescription& description,
                                                                       base::MemoryBudget& budget);
+
+// The names of a unit's equations for the diagnostics of its factorisations (linalg::FactorOptions::equationNamer): the
+// component of a grid point, a scalar point, and an unknown of the element formulation by what it is (`dofMap`'s
+// describe). `system` and `dofMap` must outlive the namer.
+[[nodiscard]] linalg::EquationNamer equationNamerOf(const UnitSystem* system, const assembly::DofMap* dofMap);
 
 } // namespace oos::reduction

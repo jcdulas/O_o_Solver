@@ -22,6 +22,11 @@ namespace oos::assembly
 // output, and the item 4 of a DesignResp1 ESE). Only the structural elements have one, those whose family has both a
 // stiffness and a mass: not the concentrated masses (CONM1, PointMassInertia, CMASSi) nor the springs, bushes and dampers.
 //
+// An element family that computes the volumes of its elements from its geometry gives them itself
+// (ElementFamily::computeVolumes) and the mass is not read for its batches: the elements of the mixed hybrid
+// formulation, whose unknowns on the edges, faces and interiors carry part of a rigid translation, so that the sum
+// below over the grid points alone is not their mass.
+//
 // The mass of an element is Σ_ij d_i·M_ij·d_j with d the x direction of the basic system at each translational DOF
 // (the (1, 1) term of its rigid-body mass Dᵀ·M·D, which the rotation of the displacement systems leaves the total
 // mass); computed range by range (bounded blocks), the ranges on the pool (each element's volume alone: the same bits

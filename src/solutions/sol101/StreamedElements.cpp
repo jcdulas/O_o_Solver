@@ -173,11 +173,9 @@ void StreamedElements::nodeDofs(std::int32_t node, std::vector<base::DofIndex>& 
 {
     const assembly::DofMap& dofMap = m_inputs.model->dofMap();
     dofs.clear();
-    if (node < dofMap.gridCount())
-        for (int c = 1; c <= 6; ++c)
-            dofs.push_back(dofMap.gridDof(node, c));
-    else
-        dofs.push_back(dofMap.scalarDof(node - dofMap.gridCount()));
+    const assembly::DofMap::NodeDofs nodeDofs = dofMap.dofsOfNode(node);
+    for (int c = 0; c < nodeDofs.count; ++c)
+        dofs.push_back(nodeDofs.first + c);
 }
 
 void StreamedElements::reduce(std::span<const base::DofIndex> dofs, StreamedReduction& out) const

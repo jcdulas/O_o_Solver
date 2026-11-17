@@ -280,7 +280,25 @@ void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
             input.sharpEdges.insert(EdgeKey::of(static_cast<std::size_t>(ia), static_cast<std::size_t>(ib)));
         }
 
+    const std::set<EdgeKey> declaredSharp = input.sharpEdges;
     m_solidPart = std::make_unique<SolidPart>(std::move(input));
+    // A sharp edge is an edge of the solids.
+    std::set<EdgeKey> solidEdges;
+    for (const SolidPartEdge& edge : m_solidPart->edges())
+        solidEdges.insert(edge.grids);
+    for (const EdgeKey& edge : declaredSharp)
+    {
+        if (solidEdges.count(edge) != 0)
+            continue;
+        base::Diagnostic diagnostic;
+        diagnostic.code = "geometry-declaration-unknown";
+        diagnostic.message = base::concatenate(
+            {"expected the sharp edges of the geometry declarations to be edges of the solids of ",
+             MIXED_HYBRID_FORMULATION, " (two grid points that one of them joins along an edge), found grid points ",
+             std::to_string(m_gridIds[edge.lower]), " and ", std::to_string(m_gridIds[edge.higher]),
+             ", which no edge of a solid joins; correct the declaration"});
+        m_problems.push_back(std::move(diagnostic));
+    }
     for (const SolidPartProblem& problem : m_solidPart->problems())
     {
         const MixedSolid& solid = m_solids[problem.solid];
@@ -501,17 +519,29 @@ void MixedHybridModel::fillSolidComponents(const NodalDisplacements& displacemen
 }
 
 void MixedHybridModel::solidSupports(const std::map<std::int32_t, BasicSupport>& perGrid,
-                                     std::vector<DerivedSupport>& supports) const
+                                     std::vector<DerivedSupport>* supports,
+                                     std::vector<std::vector<FormulationRelationTerm>>* rows,
+                                     base::DiagnosticSink& sink) const
 {
     if (m_solidPart == nullptr)
         return;
     std::vector<SolidHeldComponent> held;
+    std::vector<SolidSkewAxis> skew;
     for (const auto& [grid, support] : perGrid)
+    {
         for (std::size_t c = 0; c < 3; ++c)
             if (support.isHeld[c])
                 held.push_back({static_cast<std::size_t>(grid), c, support.values[c]});
-    for (const SolidDerivedSupport& support : m_solidPart->deriveSupports(held))
+        for (const ShellSkewAxis& axis : support.skew)
+            if (axis.component < 3)
+                skew.push_back({static_cast<std::size_t>(grid), axis.direction, axis.component});
+    }
+    SolidSupportRows skewRows;
+    const std::vector<SolidDerivedSupport> derived = m_solidPart->deriveSupports(held, skew, &skewRows);
+    for (const SolidDerivedSupport& support : derived)
     {
+        if (supports == nullptr)
+            break;
         DerivedSupport out;
         out.dof = ElementDof::entity(m_solidEntityRow[support.entity], static_cast<int>(support.dof));
         out.value = support.value;
@@ -524,8 +554,28 @@ void MixedHybridModel::solidSupports(const std::map<std::int32_t, BasicSupport>&
                     out.carriedTo.push_back({ElementDof::grid(m_gridRows[term.grid], 1 + static_cast<int>(s)),
                                              term.coefficient * frame(term.component, s)});
         }
-        supports.push_back(std::move(out));
+        supports->push_back(std::move(out));
     }
+    for (const SolidSupportRow& row : skewRows.rows)
+    {
+        if (rows == nullptr)
+            break;
+        std::vector<FormulationRelationTerm> terms;
+        for (const auto& [dof, coefficient] : row.dofs)
+            terms.push_back({ElementDof::entity(m_solidEntityRow[row.entity], static_cast<int>(dof)), coefficient});
+        rows->push_back(std::move(terms));
+    }
+    if (supports == nullptr || skewRows.uncarried == 0)
+        return;
+    base::Diagnostic diagnostic;
+    diagnostic.severity = base::Severity::Warning;
+    diagnostic.code = "support-not-carried-along-edge";
+    diagnostic.message = base::concatenate(
+        {std::to_string(skewRows.uncarried), " edges and faces of solids of ", MIXED_HYBRID_FORMULATION,
+         " have their grid points held along directions that differ (a displacement system that turns over the face: "
+         "a cylindrical system on a cylinder): the grid points hold their directions, the edge or the face between "
+         "them is free along them; refine the mesh there"});
+    sink.report(std::move(diagnostic));
 }
 
 std::vector<double> MixedHybridModel::solidCornerChanges(const MixedSolid& solid,
@@ -553,6 +603,43 @@ bool MixedHybridModel::takesThermalStrain(const MixedSolid& solid, std::span<con
     if (solid.part.material.thermalExpansion == 0.0)
         return false;
     return std::any_of(changes.begin(), changes.end(), [](double change) { return change != 0.0; });
+}
+
+VolumeKernel::PressureField MixedHybridModel::solidFacePressure(const MixedSolid& solid,
+                                                                std::span<const std::size_t> faceGrids,
+                                                                std::span<const double> cornerPressures) const
+{
+    std::vector<base::Vec3> corners;
+    const std::span<const SolidPoint> grids = m_solidPart->gridPositions();
+    // The pressure of each corner of the solid, and whether it is a corner of the face.
+    std::vector<double> pressures;
+    std::vector<bool> isOnFace;
+    for (const std::size_t grid : solid.part.corners)
+    {
+        corners.push_back({grids[grid][0], grids[grid][1], grids[grid][2]});
+        const auto found = std::find(faceGrids.begin(), faceGrids.end(), grid);
+        isOnFace.push_back(found != faceGrids.end());
+        pressures.push_back(found != faceGrids.end()
+                                ? cornerPressures[static_cast<std::size_t>(found - faceGrids.begin())]
+                                : 0.0);
+    }
+    const SolidShape shape = linearShapeOf(solid);
+    return [shape, corners, pressures, isOnFace](const SolidPoint& position)
+    {
+        const SolidShapeValues functions = cornerFunctionsAt(shape, corners, {position[0], position[1], position[2]});
+        // On the face the functions of its corners sum to 1; a point the skin reads off the straight face keeps their
+        // shares.
+        double pressure = 0.0;
+        double total = 0.0;
+        for (std::size_t i = 0; i < pressures.size(); ++i)
+        {
+            if (!isOnFace[i])
+                continue;
+            pressure += functions.n[i] * pressures[i];
+            total += functions.n[i];
+        }
+        return total != 0.0 ? pressure / total : 0.0;
+    };
 }
 
 VolumeKernel MixedHybridModel::solidThermalKernel(const MixedSolid& solid, EntityLayout::Kind kind,
@@ -687,7 +774,7 @@ void MixedHybridModel::solidTies(std::span<const HeldGridComponent> held, std::v
     for (const ElementDof& dof : m_unstiffenedEntityDofs)
         supports.push_back({dof, 0.0, {}});
     base::DiagnosticSink quiet; // the notes of the supports are reported by deriveSupports
-    shellSupports(basicSupportsOf(held, quiet), supports, quiet);
+    shellSupports(basicSupportsOf(held), &supports, nullptr, quiet);
     static_cast<void>(sink);
     std::set<std::pair<std::int32_t, int>> heldEntityDofs;
     for (const DerivedSupport& support : supports)

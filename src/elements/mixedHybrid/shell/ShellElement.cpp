@@ -17,9 +17,6 @@ using shelldetail::VOIGT_PAIRS;
 namespace
 {
 
-// A point of the map whose Jacobian is at most this fraction of the largest makes the map not invertible.
-constexpr double JACOBIAN_RATIO = 1e-10;
-
 // The column c of T(−φ): the constant strain c of the frame of the constant states in local Voigt components.
 Voigt3 constantStrain(double phi, std::size_t c)
 {
@@ -306,8 +303,8 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
     for (const PointGeometry& g : geometries)
         jmax = std::max(jmax, g.j);
     for (const PointGeometry& g : geometries)
-        if (!(g.j > JACOBIAN_RATIO * jmax))
-            return std::string("the map of the element is not invertible (its Jacobian vanishes inside)");
+        if (!(g.j > SHELL_JACOBIAN_RATIO * jmax))
+            return std::string(SHELL_MAP_NOT_INVERTIBLE);
     const std::vector<std::vector<EdgePointGeometry>> edges = shelldetail::edgeGeometries(re, def);
 
     // ---- the Regge interpolation: the functionals of the element's membrane basis and of e(u)
@@ -315,6 +312,10 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
     if (!reggeInverse)
         return std::string("membrane functionals not unisolvent on the element");
     const Matrix interpolation = *reggeInverse * membraneStrainFunctionals(re, def, geometries, edges, nx);
+
+    // A membrane-only section on the surface of the grid points has no moments and no transverse shear (spec section
+    // 4.1): K = K_membrane, the pairing and the compliance of the moments zero.
+    const bool moments = sectionCarriesMoments(def.section->section().parts, def.offset);
 
     // ---- the point loop: membrane, shear, moments, mass
     Matrix kr(nr, nr);
@@ -341,13 +342,16 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
         const Matrix sv =
             momentsLocal(re, [&](std::size_t jj) { return re.moments[q * ns + jj]; }, g, def.mapReferenceConstants);
         shelldetail::addCongruence(kr, rv, laws.abar, wj);
-        shelldetail::addCongruence(msig, sv, laws.dinv, wj);
-        if (coupled)
-            shelldetail::addTransposeProduct33(cr, sv, laws.dinvBt, rv, wj);
-        // the interior part of b_T: ∫ m : κ dA, κ in local Voigt components
-        shelldetail::addTransposeProduct(gmat, sv, curvatureOperator(re, def, q, g, nx), wj);
-        if (!def.kirchhoff)
-            shelldetail::addCongruence2(ks, shearOperator(re, q, g, nx), laws.h, wj);
+        if (moments)
+        {
+            shelldetail::addCongruence(msig, sv, laws.dinv, wj);
+            if (coupled)
+                shelldetail::addTransposeProduct33(cr, sv, laws.dinvBt, rv, wj);
+            // the interior part of b_T: ∫ m : κ dA, κ in local Voigt components
+            shelldetail::addTransposeProduct(gmat, sv, curvatureOperator(re, def, q, g, nx), wj);
+            if (!def.kirchhoff)
+                shelldetail::addCongruence2(ks, shearOperator(re, q, g, nx), laws.h, wj);
+        }
         if (mass)
         {
             const auto [uu, bb] = pointKinematics(re, def, q, g, nx);
@@ -356,6 +360,21 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
             shelldetail::addTransposeProduct(*mass, bb, uu, sp.mass[1] * wj);
             shelldetail::addTransposeProduct(*mass, bb, bb, sp.mass[2] * wj);
         }
+    }
+
+    if (!moments)
+    {
+        ShellElementMatrices out;
+        out.unknownCount = nx;
+        out.pairing = Matrix(ns, nx);
+        out.complianceInverse = Matrix(ns, ns);
+        Matrix stiffness = transposeTimes(interpolation, kr * interpolation);
+        shelldetail::symmetrise(stiffness);
+        out.stiffness = std::move(stiffness);
+        out.mass = std::move(mass);
+        out.reggeInterpolation = interpolation;
+        out.reggeFunctionalInverse = std::move(*reggeInverse);
+        return out;
     }
 
     // ---- the boundary part of b_T: −∫ m_μμ (β · μ − a_T) ds

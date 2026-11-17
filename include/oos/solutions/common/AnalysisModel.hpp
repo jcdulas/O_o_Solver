@@ -46,6 +46,11 @@ struct AnalysisModelOptions
     // so that every pass leaves their stiffness, mass and results out. The element set the callable gets is dropped
     // after it: nothing may keep it. Empty result: none.
     std::function<std::vector<base::EntityId>(const assembly::ElementSet&, const assembly::DofMap&)> replacedElements;
+    // The index of the same snapshot that an earlier model made (the condensation planner's:
+    // AnalysisModel::sharedIndex), taken in place of a new one with what it computed once (SnapshotIndex::computedOnce:
+    // the model of an element formulation and the kernels of its elements, the costliest part of a model in
+    // MixedHybridFormulation); null: a new index. Throws std::invalid_argument when it indexes another snapshot.
+    std::shared_ptr<const elements::SnapshotIndex> index;
 };
 
 // The model of an analysis, the part that does not depend on the subcase: the support check of the analysis
@@ -98,7 +103,7 @@ private:
     elements::ElementRegistry m_registry;
     // Declared before the element set, which borrows its families.
     std::unique_ptr<reduction::ReplacedElements> m_replaced;
-    std::shared_ptr<elements::SnapshotIndex> m_index;
+    std::shared_ptr<const elements::SnapshotIndex> m_index;
     std::unique_ptr<assembly::ElementSet> m_elementSet;
     std::shared_ptr<assembly::DofMap> m_dofMap;
     assembly::ElementMatrixStore m_keptStiffness;

@@ -89,10 +89,11 @@ OutputVolumeEstimate::RowShape OutputVolumeEstimate::shapeOf(std::size_t batch, 
     if (output == elements::ElementOutput::Strains && !isFiber &&
         !family.outputColumns(elements::ElementOutput::StrainCurvatures).empty())
         output = elements::ElementOutput::StrainCurvatures;
+    // Zero displacements on the whole g set, the entities of the formulation included (their element reads them).
     const std::vector<double> zeros(static_cast<std::size_t>(m_dofMap->gSetSize()), 0.0);
-    const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(m_dofMap->gridCount());
-    const elements::NodalDisplacements displacements{std::span<const double>(zeros).first(gridValues),
-                                                     std::span<const double>(zeros).subspan(gridValues), nullptr};
+    const elements::NodalDisplacements displacements =
+        elements::NodalDisplacements::ofGSet(zeros, static_cast<std::size_t>(m_dofMap->gridCount()),
+                                             static_cast<std::size_t>(m_dofMap->scalarCount()), &m_dofMap->entities());
     if (!family.outputColumns(output).empty())
     {
         elements::ElementResultBlock block;

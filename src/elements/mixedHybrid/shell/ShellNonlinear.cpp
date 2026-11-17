@@ -419,6 +419,8 @@ NonlinearPreparation prepareNonlinear(const ShellReferenceElement& re, const She
     pre.kr = Matrix(nr, nr);
     pre.cr = Matrix(ns, nr);
     pre.ks = Matrix(nx, nx);
+    // a membrane-only section without offset has no transverse shear (ShellElement.hpp)
+    const bool sheared = !def.kirchhoff && sectionCarriesMoments(def.section->section().parts, def.offset);
     for (std::size_t q = 0; q < nq; ++q)
     {
         const PointGeometry& g = pre.geometries[q];
@@ -431,7 +433,7 @@ NonlinearPreparation prepareNonlinear(const ShellReferenceElement& re, const She
             momentsLocal(re, [&](std::size_t jj) { return re.moments[q * ns + jj]; }, g, def.mapReferenceConstants);
         shelldetail::addCongruence(pre.kr, rv, laws.abar, w);
         shelldetail::addTransposeProduct33(pre.cr, sv, laws.dinvBt, rv, w);
-        if (!def.kirchhoff)
+        if (sheared)
         {
             const Matrix22 cv = g.cov();
             Matrix gl(2, nx);
@@ -640,6 +642,177 @@ NonlinearEvaluation evaluateNonlinear(const ShellReferenceElement& re, const She
     shelldetail::symmetrise(tangent);
     out.tangent = std::move(tangent);
     return out;
+}
+
+namespace
+{
+
+// The variation of the point variables (φ_,1, φ_,2, φ_,11, φ_,22, φ_,12) at surface point q along the unknowns `phi`.
+std::array<double, POINT_VARIABLES> pointVariation(const ShellReferenceElement& re, const ShellElementDefinition& def,
+                                                   std::size_t q, std::span<const double> phi)
+{
+    const std::size_t n1 = re.h1Count;
+    std::array<double, POINT_VARIABLES> v{};
+    for (std::size_t i = 0; i < n1; ++i)
+    {
+        const ReferenceJet& j = def.volumeJets[q * n1 + i];
+        for (std::size_t c = 0; c < 3; ++c)
+            for (std::size_t d = 0; d < 5; ++d)
+                v[3 * d + c] += phi[3 * i + c] * j[JET_OF_VARIABLE[d]];
+    }
+    return v;
+}
+
+// The variation of the edge variables (φ_,1, φ_,2) at point gi of edge k along the unknowns `phi`.
+std::array<double, EDGE_VARIABLES> edgeVariation(const ShellReferenceElement& re, const ShellElementDefinition& def,
+                                                 std::size_t k, std::size_t gi, std::span<const double> phi)
+{
+    const std::size_t n1 = re.h1Count;
+    std::array<double, EDGE_VARIABLES> v{};
+    for (std::size_t i = 0; i < n1; ++i)
+    {
+        const EdgeJet& j = def.edgeJets[k][gi * n1 + i];
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            v[c] += phi[3 * i + c] * j[1];
+            v[3 + c] += phi[3 * i + c] * j[2];
+        }
+    }
+    return v;
+}
+
+// vᵀ·H·v.
+template <std::size_t N>
+double quadraticForm(const std::array<std::array<double, N>, N>& h, const std::array<double, N>& v)
+{
+    double sum = 0.0;
+    for (std::size_t a = 0; a < N; ++a)
+        for (std::size_t b = 0; b < N; ++b)
+            sum += v[a] * h[a][b] * v[b];
+    return sum;
+}
+
+// a_f = φᵀ·(Q_f ⊗ I₃)·φ for each membrane functional f, Q_f the matrix membraneSecondVariation weighs by w_f: the
+// same sums, each product of two functions replaced by the product of the variations of φ along them.
+Vector membraneSecondVariationProducts(const ShellReferenceElement& re, const ShellElementDefinition& def,
+                                       const NonlinearPreparation& pre, std::span<const double> phi)
+{
+    const std::size_t n1 = re.h1Count;
+    const std::size_t nv = re.cornerCount;
+    const std::size_t p = re.shearDegree;
+    Vector products(re.reggeCount, 0.0);
+    std::size_t f = 0;
+    for (std::size_t k = 0; k < nv; ++k)
+    {
+        for (std::size_t l = 0; l <= p; ++l)
+        {
+            double sum = 0.0;
+            for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
+            {
+                const std::array<double, 2>& tv = pre.edges[k][gi].tv;
+                // Σ_i (∂_τ N_i) φ_i: the derivative of φ along the edge.
+                SpaceVector tangential{};
+                for (std::size_t i = 0; i < n1; ++i)
+                {
+                    const EdgeJet& hj = def.edgeJets[k][gi * n1 + i];
+                    const double dt = hj[1] * tv[0] + hj[2] * tv[1];
+                    for (std::size_t c = 0; c < 3; ++c)
+                        tangential[c] += dt * phi[3 * i + c];
+                }
+                sum += re.edgeWeights[gi] * shelldetail::edgeLegendre(l, re.edgeParameters[gi]) *
+                       dot3(tangential, tangential);
+            }
+            products[f++] = sum;
+        }
+    }
+    const std::size_t nri = re.reggeInteriorMoments.size();
+    for (std::size_t q = 0; q < re.points.size(); ++q)
+    {
+        const PointGeometry& g = pre.geometries[q];
+        const std::array<double, POINT_VARIABLES> v = pointVariation(re, def, q, phi);
+        const SpaceVector d1{v[0], v[1], v[2]};
+        const SpaceVector d2{v[3], v[4], v[5]};
+        // The factors of wc[0], wc[1], wc[2] in membraneSecondVariation.
+        const std::array<double, 3> pc{dot3(d1, d1), dot3(d2, d2), dot3(d1, d2)};
+        for (std::size_t m = 0; m < nri; ++m)
+            products[f + m] += re.weights[q] * re.reggeTest[q * nri + m] * pc[re.reggeInteriorMoments[m].component];
+        if (def.mapReferenceConstants)
+        {
+            for (std::size_t cc = 0; cc < 3; ++cc)
+                products[f + nri + cc] += re.weights[q] * pc[cc];
+        }
+        else
+        {
+            const Matrix33 tm = covariantToVoigt(g.cov());
+            const Matrix33 tt = strainTransformation(g.phi);
+            for (std::size_t cc = 0; cc < 3; ++cc)
+            {
+                double s = 0.0;
+                for (std::size_t comp = 0; comp < 3; ++comp)
+                    s += (tt[cc][0] * tm[0][comp] + tt[cc][1] * tm[1][comp] + tt[cc][2] * tm[2][comp]) * pc[comp];
+                products[f + nri + cc] += re.weights[q] * g.j * s;
+            }
+        }
+    }
+    return products;
+}
+
+// b_j = φᵀ·(∂K/∂m_j)·φ for each moment function j: the bending (addBendingSecondVariation) and kink
+// (addKinkSecondVariation) second variations of a unit moment j, contracted with φ.
+Vector momentSecondVariationProducts(const ShellReferenceElement& re, const ShellElementDefinition& def,
+                                     const NonlinearPreparation& pre, std::span<const double> phi)
+{
+    const std::size_t ns = re.momentCount;
+    const Vector zero(shellUnknownCount(re), 0.0);
+    Vector products(ns, 0.0);
+    for (std::size_t q = 0; q < re.points.size(); ++q)
+    {
+        const PointGeometry& g = pre.geometries[q];
+        const std::array<HessianScalar<POINT_VARIABLES>, 3> kb =
+            bendingMeasure(pointVariables(re, def, pre, q, zero), pre.referenceCurvature[q]);
+        const std::array<double, POINT_VARIABLES> v = pointVariation(re, def, q, phi);
+        const Voigt3 h{quadraticForm(kb[0].hessian, v), quadraticForm(kb[1].hessian, v),
+                       quadraticForm(kb[2].hessian, v)};
+        // Σ_r wcov_r h_r with wcov = tmᵀ·(sv·m): the weight of m_j is Σ_s sv(s, j) (tm·h)_s.
+        const Voigt3 th = times33(covariantToVoigt(g.cov()), h);
+        const Matrix sv =
+            momentsLocal(re, [&](std::size_t jj) { return re.moments[q * ns + jj]; }, g, def.mapReferenceConstants);
+        const double w = re.weights[q] * g.j;
+        for (std::size_t j = 0; j < ns; ++j)
+            products[j] += w * (sv(0, j) * th[0] + sv(1, j) * th[1] + sv(2, j) * th[2]);
+    }
+    for (std::size_t k = 0; k < re.cornerCount; ++k)
+    {
+        for (std::size_t gi = 0; gi < pre.edges[k].size(); ++gi)
+        {
+            const NonlinearEdgePoint& point = pre.edges[k][gi];
+            const HessianScalar<EDGE_VARIABLES> angle =
+                edgeAngle(edgeVariables(re, def, point, k, gi, zero), point.tv, point.tangent, point.g.nu);
+            const double h = quadraticForm(angle.hessian, edgeVariation(re, def, k, gi, phi));
+            const double w = -re.edgeWeights[gi] * point.length * h;
+            for (std::size_t j = 0; j < ns; ++j)
+                products[j] += w * point.normalMoments[j];
+        }
+    }
+    return products;
+}
+
+} // namespace
+
+Vector geometricStiffnessGradient(const ShellReferenceElement& re, const ShellElementDefinition& def,
+                                  const ShellElementMatrices& matrices, const NonlinearPreparation& pre,
+                                  std::span<const double> phi)
+{
+    // In evaluateNonlinear with `geometric`: K(x) = Σ_f w_f (Q_f ⊗ I₃) + Σ_j m_j B_j, with c = R x, m = C⁻¹ P x and
+    // w = F⁻ᵀ (K_r c + C_rᵀ m) (R the Regge interpolation, P the pairing, C⁻¹ the inverse compliance, F⁻¹ the inverse
+    // of the Regge functionals; the thermal terms are constant in x). With a_f = φᵀ (Q_f ⊗ I₃) φ, b_j = φᵀ B_j φ and
+    // α = F⁻¹ a:
+    //   φᵀ K(x) φ = w · a + m · b,   ∂/∂x = Rᵀ K_rᵀ α + Pᵀ C⁻ᵀ (C_r α + b).
+    const Vector alpha = matrices.reggeFunctionalInverse * membraneSecondVariationProducts(re, def, pre, phi);
+    const Vector b = momentSecondVariationProducts(re, def, pre, phi);
+    const Vector onMoments = transposeTimes(matrices.complianceInverse, add(pre.cr * alpha, b));
+    return add(transposeTimes(matrices.reggeInterpolation, transposeTimes(pre.kr, alpha)),
+               transposeTimes(matrices.pairing, onMoments));
 }
 
 void acceptNonlinearState(const ShellReferenceElement& re, const ShellElementDefinition& def,

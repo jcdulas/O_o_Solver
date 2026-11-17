@@ -63,6 +63,21 @@ AdjointColumns::AdjointColumns(const SensitivitySystem& system, const PseudoLoad
 void AdjointColumns::reduceToEquations(std::vector<double>& scratch, std::vector<base::DofIndex>& touched,
                                        std::span<double> equations) const
 {
+    // A weight on an excluded DOF of an element formulation (the rotation of a shell grid point) moves onto every DOF
+    // its value is filled from (FormulationConstraints::moveExcludedWeights), which the entries of the item do not
+    // bound: that column is made as toEquations makes it, on the whole vector.
+    if (const assembly::FormulationConstraints* formulation = m_system->formulation(); formulation != nullptr)
+    {
+        const std::span<const base::DofIndex> excluded = formulation->excludedDofs();
+        if (std::any_of(touched.begin(), touched.end(), [&](base::DofIndex dof)
+                        { return std::binary_search(excluded.begin(), excluded.end(), dof); }))
+        {
+            m_system->toEquationsInPlace(scratch, equations);
+            std::fill(scratch.begin(), scratch.end(), 0.0);
+            touched.clear();
+            return;
+        }
+    }
     m_system->gm().reduceToN(scratch);
     std::fill(equations.begin(), equations.end(), 0.0);
     const auto gather = [&](base::DofIndex dof)

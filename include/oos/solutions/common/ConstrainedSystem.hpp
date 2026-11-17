@@ -127,6 +127,10 @@ public:
     {
         return m_formulation.get();
     }
+    [[nodiscard]] std::shared_ptr<const assembly::FormulationConstraints> sharedFormulationConstraints() const noexcept
+    {
+        return m_formulation;
+    }
     // Completes a g-set displacement vector expanded by Gm (RigidElimination::expandToG): the excluded DOFs of the
     // formulation filled (nothing without a formulation).
     void fillExcluded(std::span<double> displacementsG) const
@@ -163,7 +167,7 @@ private:
     std::unique_ptr<assembly::FastenerConstraints> m_fasteners;
     std::unique_ptr<assembly::GlueConstraints> m_glue;
     std::shared_ptr<assembly::RigidElimination> m_gm;
-    std::unique_ptr<assembly::FormulationConstraints> m_formulation;
+    std::shared_ptr<const assembly::FormulationConstraints> m_formulation;
     std::unique_ptr<assembly::SpcSet> m_ownSpc;
     const assembly::SpcSet* m_spc = nullptr;     // m_ownSpc, or the caller's
     std::vector<base::DofIndex> m_permanentDofs; // the sg DOFs with the external units' held DOFs (empty: sgDofs())

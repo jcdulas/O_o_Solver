@@ -1,11 +1,13 @@
 #include "oos/elements/mixedHybrid/families/MixedHybridShellFamily.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/base/errors/SolverError.hpp"
 #include "oos/elements/mixedHybrid/families/LocalMap.hpp"
 #include "oos/elements/mixedHybrid/geometry/ReferenceShapes.hpp"
 #include "oos/elements/mixedHybrid/model/MixedHybridModel.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellElement.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellGeometry.hpp"
+#include "oos/elements/mixedHybrid/shell/ShellPointLaw.hpp"
 #include "oos/elements/shells/ShellPressure.hpp"
 #include "oos/elements/shells/ShellRecovery.hpp"
 #include "oos/elements/shells/ShellTemperature.hpp"
@@ -37,9 +39,13 @@ ShellElementData shellElementOf(const MixedHybridModel& model, const MixedShell&
 {
     std::variant<ShellElementData, std::string> element =
         model.shellPart()->elementWithMatrices(shell.partIndex, withMass);
+    // check() builds the matrices of the elements the model keeps; in a larger model it checks the section and the
+    // geometry of the others, and their matrices may refuse them here.
     if (const std::string* message = std::get_if<std::string>(&element))
-        throw std::logic_error(base::concatenate({"MixedHybridShellFamily: element ", std::to_string(shell.elementId),
-                                                  ": ", *message, " (check() accepted it: a bug of O_o_Solver)"}));
+        throw base::SolverError(
+            base::concatenate({"shell element ", std::to_string(shell.elementId), " of ", MIXED_HYBRID_FORMULATION,
+                               ": ", *message, "; its geometry or its section makes its matrices singular: check "
+                                               "its grid points, its thickness and its material"}));
     return std::get<ShellElementData>(std::move(element));
 }
 
@@ -189,6 +195,27 @@ Matrix addedMassOf(const ShellPart& part, const ShellElementData& element, doubl
                 mass(i, j) += weight * (u(0, i) * u(0, j) + u(1, i) * u(1, j) + u(2, i) * u(2, j));
     }
     return mass;
+}
+
+// The volume of a shell, ∫ t μ0 dA on the rule of the element (the rule of its mass): t the thickness of the section
+// at the point, μ0 the area of the reference surface of an offset section over that of the grid points (offsetArea; 1
+// without an offset). It is what the translational inertia of the element is the density times (the I0 of
+// sectionAtGeometry without the non-structural mass), and a sum over the points of a symmetric rule: the corner the
+// element starts from changes only the order of its terms.
+double shellVolumeOf(const ShellPart& part, const MixedShell& shell)
+{
+    const ShellElementData element = part.element(shell.partIndex);
+    const ShellReferenceElement& re = part.referenceElement(element.cornerCount);
+    const ShellElementDefinition definition = element.definition();
+    double volume = 0.0;
+    for (std::size_t q = 0; q < re.points.size(); ++q)
+    {
+        const PointGeometry g = volumeGeometry(definition, re.h1Count, q);
+        const double thickness = definition.section->thicknessAt(re.points[q][0], re.points[q][1]);
+        const double areaRatio = definition.offset == 0.0 ? 1.0 : offsetArea(g, definition.offset);
+        volume += re.weights[q] * g.j * thickness * areaRatio;
+    }
+    return volume;
 }
 
 // The components (11, 22, 12) of a plane symmetric tensor in the frame turned by the angle φ (cosine c, sine s) about
@@ -342,6 +369,16 @@ void MixedHybridShellFamily::computeMass(const ElementBatchView& view, ElementRa
     }
 }
 
+bool MixedHybridShellFamily::computeVolumes(const ElementBatchView& view, ElementRange range,
+                                            std::span<double> volumes) const
+{
+    const MixedHybridModel& model = MixedHybridModel::of(view.index());
+    for (std::int64_t row = range.first; row < range.last; ++row)
+        volumes[static_cast<std::size_t>(row - range.first)] =
+            shellVolumeOf(*model.shellPart(), requiredShell(model, view, row));
+    return true;
+}
+
 void MixedHybridShellFamily::checkPressureLoads(const ElementBatchView& view,
                                                 std::span<const ElementPressure> pressures,
                                                 base::DiagnosticSink& sink) const
@@ -358,7 +395,8 @@ void MixedHybridShellFamily::computePressureLoads(const ElementBatchView& view,
     for (const ElementPressure& pressure : pressures)
     {
         const MixedShell& shell = requiredShell(model, view, pressure.elementRow);
-        const ShellElementData element = shellElementOf(model, shell);
+        // The load of a pressure reads the tables of the element, not its matrices (which take most of its build).
+        const ShellElementData element = part.element(shell.partIndex);
         Vector load;
         if (!pressure.hasDirection)
             load = part.pressureLoad(element, pressure.cornerPressures);
@@ -436,6 +474,21 @@ void MixedHybridShellFamily::computeDifferentialStiffness(const ElementBatchView
         block.append(row, map.dofs,
                      congruent(part.geometricStiffness(element, x, momentTerm, membraneTerm, nullptr), map));
     }
+}
+
+bool MixedHybridShellFamily::differentialStiffnessPreloadGradient(const ElementBatchView& view, std::int64_t row,
+                                                                  const NodalDisplacements& shape,
+                                                                  ElementVectorBlock& block) const
+{
+    // K_e(u) = Tᵀ K(T u) T (computeDifferentialStiffness), so φ_eᵀ K_e(e_k) φ_e = (T e_k) · ∇_x(φᵀ K(x) φ) at
+    // φ = T φ_e.
+    const MixedHybridModel& model = MixedHybridModel::of(view.index());
+    const MixedShell& shell = requiredShell(model, view, row);
+    const ShellElementData element = shellElementOf(model, shell);
+    const LocalMap map = shellMapOf(view, model, shell);
+    const Vector phi = localUnknowns(map, shape);
+    block.append(row, map.dofs, onDofs(model.shellPart()->geometricStiffnessGradient(element, phi), map));
+    return true;
 }
 
 void MixedHybridShellFamily::recover(const ElementBatchView& view, ElementRange range, ElementOutput output,

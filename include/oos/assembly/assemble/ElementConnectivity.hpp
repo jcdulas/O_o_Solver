@@ -66,6 +66,10 @@ public:
     {
         return m_stiffenedComponents.span();
     }
+    // The components an element acts on, by its stiffness (stiffenedComponents) or, for an element without stiffness,
+    // by its matrix (the rotations of a point mass with inertia or an offset): those an element formulation without
+    // unknowns there must give a value (UsedElsewhere::markStiffened), so that the mass is not lost.
+    [[nodiscard]] std::span<const std::uint8_t> usedComponents() const noexcept { return m_usedComponents.span(); }
 
 private:
     base::BudgetedBuffer<std::int64_t> m_offsets; // groupCount + 1
@@ -73,6 +77,7 @@ private:
     base::BudgetedBuffer<std::int32_t> m_groupElementIds; // groupCount
     base::BudgetedBuffer<PointElement> m_pointElements;
     base::BudgetedBuffer<std::uint8_t> m_stiffenedComponents; // per node
+    base::BudgetedBuffer<std::uint8_t> m_usedComponents;      // per node
 };
 
 } // namespace oos::assembly

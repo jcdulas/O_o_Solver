@@ -33,7 +33,7 @@ public:
     [[nodiscard]] std::string_view formulation() const noexcept override { return MIXED_HYBRID_FORMULATION; }
     [[nodiscard]] FacetSet facets() const noexcept override
     {
-        return {Facet::Stiffness, Facet::Mass, Facet::Loads, Facet::Differential, Facet::Recovery};
+        return {Facet::Stiffness, Facet::Mass, Facet::Loads, Facet::Differential, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] std::vector<std::string> propertyCards() const override { return m_classic->propertyCards(); }
     [[nodiscard]] std::vector<input::FieldRule> fieldRules() const override { return m_classic->fieldRules(); }
@@ -42,6 +42,12 @@ public:
     void computeStiffness(const ElementBatchView& view, ElementRange range, ElementMatrixBlock& block) const override;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                      ElementMatrixBlock& block) const override;
+    // ∫ t μ0 dA on the rule of the element: the thickness of the section over the surface of the element (μ0 the area
+    // of the reference surface of an offset section over that of the grid points). The displacement of a shell is not
+    // that of its grid points alone (its edges and its interior carry part of a rigid translation), so its lumped
+    // mass at its grid points is not its mass.
+    [[nodiscard]] bool computeVolumes(const ElementBatchView& view, ElementRange range,
+                                      std::span<double> volumes) const override;
 
     // A pressure along the normal of the element surface (its corner values interpolated over the element), or a
     // traction along the direction of the load (CID, N1-N3), per unit area of the reference surface of the section.
@@ -61,6 +67,9 @@ public:
     void checkDifferentialStiffness(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
     void computeDifferentialStiffness(const ElementBatchView& view, ElementRange range,
                                       const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
+    bool differentialStiffnessPreloadGradient(const ElementBatchView& view, std::int64_t row,
+                                              const NodalDisplacements& shape,
+                                              ElementVectorBlock& block) const override;
 
     // The rows of the card's other families (shells/ShellRecovery: forces, stresses at Z1 and Z2, strains and
     // curvatures, the plies of a laminate) at the centre and at the corners, in their output frame (x along the side

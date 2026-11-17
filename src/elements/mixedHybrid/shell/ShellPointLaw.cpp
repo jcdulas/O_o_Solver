@@ -3,7 +3,12 @@
 #include "oos/base/errors/InternalError.hpp"
 #include "oos/elements/mixedHybrid/core/DenseDecompositions.hpp"
 #include "oos/elements/mixedHybrid/core/DualScalar.hpp"
+#include "oos/elements/mixedHybrid/core/JacobiEigen.hpp"
 #include "oos/elements/mixedHybrid/core/Matrix.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <utility>
 
 namespace oos::elements::mixedHybrid
 {
@@ -54,6 +59,36 @@ bool isFlat(const PointGeometry& g)
 SurfaceFrame offsetBasis(const PointGeometry& g, double offset)
 {
     return {add3(g.a[0], scl3(g.dnu[0], offset)), add3(g.a[1], scl3(g.dnu[1], offset))};
+}
+
+// The eigenvalues of the scaled membrane-bending matrix of a membrane-only or bending-only section below this fraction
+// of the largest are its null space (they are zero but for the round-off of the offset terms).
+constexpr double COMPLIANCE_EIGENVALUE_RATIO = 1e-10;
+
+bool isZero(const Matrix33& m)
+{
+    for (const auto& row : m)
+        for (const double v : row)
+            if (v != 0.0)
+                return false;
+    return true;
+}
+
+// [A B; Bᵀ D] as a 6 × 6 matrix.
+Matrix membraneBendingMatrix(const SectionPoint& point)
+{
+    Matrix m(6, 6);
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        for (std::size_t j = 0; j < 3; ++j)
+        {
+            m(i, j) = point.a[i][j];
+            m(i, 3 + j) = point.b[i][j];
+            m(3 + i, j) = point.b[j][i];
+            m(3 + i, 3 + j) = point.d[i][j];
+        }
+    }
+    return m;
 }
 
 } // namespace
@@ -171,10 +206,18 @@ Matrix33 offsetMap(const PointGeometry& g, double offset)
 
 SectionLaws sectionLaws(const SectionPoint& point)
 {
+    SectionLaws laws;
+    if (point.parts == SectionParts::MembraneOnly && isZero(point.d))
+    {
+        // no moments: the membrane alone
+        laws.abar = point.a;
+        laws.b = point.b;
+        laws.h = point.h;
+        return laws;
+    }
     const std::optional<Matrix33> dinv = inverse33(point.d);
     if (!dinv)
         throw base::InternalError("bending stiffness of the section is singular");
-    SectionLaws laws;
     laws.dinv = *dinv;
     Matrix33 bt{};
     for (std::size_t i = 0; i < 3; ++i)
@@ -190,27 +233,57 @@ SectionLaws sectionLaws(const SectionPoint& point)
     return laws;
 }
 
+bool sectionCarriesMoments(SectionParts parts, double offset)
+{
+    return parts != SectionParts::MembraneOnly || offset != 0.0;
+}
+
+Matrix membraneBendingCompliance(const SectionPoint& point)
+{
+    const Matrix m = membraneBendingMatrix(point);
+    if (point.parts == SectionParts::MembraneAndBending)
+    {
+        std::optional<Matrix> inverseM = inverse(m);
+        if (!inverseM)
+            throw base::InternalError("singular membrane-bending section");
+        return std::move(*inverseM);
+    }
+    // a generalised inverse S (S M S)⁺ S: the scaling takes the units of A and D out of the eigenvalues
+    std::array<double, 6> scale{};
+    for (std::size_t i = 0; i < 6; ++i)
+        scale[i] = m(i, i) > 0.0 ? 1.0 / std::sqrt(m(i, i)) : 0.0;
+    Matrix scaled(6, 6);
+    for (std::size_t i = 0; i < 6; ++i)
+        for (std::size_t j = 0; j < 6; ++j)
+            scaled(i, j) = scale[i] * m(i, j) * scale[j];
+    const SymmetricEigen eigen = jacobiEigen(scaled);
+    double largest = 0.0;
+    for (const double value : eigen.values)
+        largest = std::max(largest, value);
+    if (!(largest > 0.0))
+        throw base::InternalError("section without stiffness");
+    Matrix out(6, 6);
+    for (std::size_t k = 0; k < 6; ++k)
+    {
+        if (!(eigen.values[k] > COMPLIANCE_EIGENVALUE_RATIO * largest))
+            continue;
+        for (std::size_t i = 0; i < 6; ++i)
+            for (std::size_t j = 0; j < 6; ++j)
+                out(i, j) += scale[i] * eigen.vectors(i, k) * eigen.vectors(j, k) * scale[j] / eigen.values[k];
+    }
+    return out;
+}
+
 std::pair<Voigt3, Voigt3> freeStrains(const SectionPoint& point, const Matrix22& curvature,
                                       const std::array<double, 2>& temperatures)
 {
-    Matrix m(6, 6);
     Vector r(6);
     for (std::size_t i = 0; i < 3; ++i)
     {
-        for (std::size_t j = 0; j < 3; ++j)
-        {
-            m(i, j) = point.a[i][j];
-            m(i, 3 + j) = point.b[i][j];
-            m(3 + i, j) = point.b[j][i];
-            m(3 + i, 3 + j) = point.d[i][j];
-        }
         r[i] = point.thermalA[i] * temperatures[0] + point.thermalB[i] * temperatures[1];
         r[3 + i] = point.thermalB[i] * temperatures[0] + point.thermalD[i] * temperatures[1];
     }
-    const std::optional<Matrix> inverseM = inverse(m);
-    if (!inverseM)
-        throw base::InternalError("singular section");
-    const Vector f = *inverseM * r;
+    const Vector f = membraneBendingCompliance(point) * r;
     // the free strain as a tensor, times the curvature: the part of the free expansion on a curved surface
     const Matrix22 strain{{{f[0], 0.5 * f[2]}, {0.5 * f[2], f[1]}}};
     Matrix22 ek{};

@@ -414,6 +414,10 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
     }
     stopOnErrors(sink, "the full path streamed");
 
+    // The rigid-body motions on the entities of an element formulation (its edges, faces and interiors), which
+    // the rigid-force check, inertia relief and the GravityLoad accelerations take there.
+    const base::BudgetedBuffer<double> entityRigidRows = StreamedFront::entityRigidRowsOf(dofMap, budget);
+
     // The constraints, the sets and the singularities (the n-set diagonal blocks summed element by element).
     std::optional<StreamedFront::NodeDiagonals> diagonals;
     ConstrainedSystemOptions systemOptions;
@@ -421,7 +425,8 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
     systemOptions.supportDofs.assign(inputs.supports.begin(), inputs.supports.end());
     systemOptions.diagonalBlocks = [&](const assembly::RigidElimination& gm, const assembly::DofSets&)
     {
-        diagonals.emplace(StreamedFront::nodeDiagonals(model, gm, budget, inputs.pool, inputs.cancellation));
+        diagonals.emplace(
+            StreamedFront::nodeDiagonals(model, gm, entityRigidRows.span(), budget, inputs.pool, inputs.cancellation));
         return std::move(diagonals->blocks);
     };
     const ConstrainedSystem system(model, inputs.selection, budget, inputs.pool, inputs.cancellation, sink,
@@ -601,11 +606,11 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
     base::BudgetedBuffer<std::uint8_t> isOutputNode(budget, static_cast<std::size_t>(dofMap.nodeCount()),
                                                     "streamed output points");
     const output::OutputRequestPlan& displacement = plan.of(output::OutputKind::Displacement);
+    // The grid and scalar points (the nodes of the entities of an element formulation are no output point).
     if (displacement.isRequested)
-        for (std::int32_t node = 0; node < dofMap.nodeCount(); ++node)
+        for (std::int32_t node = 0; node < dofMap.firstEntityNode(); ++node)
         {
-            const base::EntityId id =
-                node < dofMap.gridCount() ? dofMap.gridId(node) : dofMap.scalarId(node - dofMap.gridCount());
+            const base::EntityId id = dofMap.nodeIdOf(node);
             isOutputNode[static_cast<std::size_t>(node)] =
                 displacement.isAll || std::binary_search(displacement.members.begin(), displacement.members.end(), id)
                     ? 1
@@ -640,6 +645,7 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
     frontInputs.diagonalOfDof = diagonals->diagonalOfDof.span();
     frontInputs.gm = &system.gm();
     frontInputs.reliefSets = &solveSets;
+    frontInputs.entityRigidRows = entityRigidRows.span();
     StreamedFront front(frontInputs);
     base::MatN<6> rigidBodyMass{}; // Φᵀ·M·Φ (the refinement's gauge)
     if (hasRelief)
@@ -674,6 +680,14 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
                 "the full path streamed keeps the grid point forces of the declared cuts' points alone, not of every "
                 "point (its regions are gone after the solve); declare the cuts, or make "
                 "the basis on the full or condensed path with every point's grid point forces");
+        // The grid point forces sum each element's forces at its grid points: the elements of an element formulation
+        // with entities also act on the unknowns of their edges, faces and interiors (as the full path refuses them,
+        // docs/mixed-hybrid-formulation-spec.md section 5.9).
+        if (dofMap.hasEntities())
+            throw base::SolverError(
+                "expected the grid point forces of the declared cuts for a model in ClassicFormulation, found a model "
+                "in MixedHybridFormulation, whose elements also act on the unknowns of their edges, faces and "
+                "interiors; declare no cut in the load basis of this model");
         fixedRows =
             BasisFixedRows::plan(inputs.basisFixedRows, dofMap, system.gm(), system.isConstrained(), columns, budget);
         fixedRows->loads = front.loadsAt(fixedRows->dofs.span(), budget);
@@ -709,7 +723,8 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
                         6 * sizeof(double)));
     const std::uint64_t outputBytes = StreamedOutputs::chunkBytes(chunkValues, columns, chunkCases) +
                                       3 * static_cast<std::uint64_t>(dofMap.nodeCount()) * sizeof(std::int32_t) +
-                                      inputs.resultBytes + basisBytes;
+                                      inputs.resultBytes + basisBytes +
+                                      StreamedOutputs::wholeVectorBytes(dofMap, plan, inputs.keepsLoadBasis, columns);
     const std::uint64_t heldBefore = budget.used();
     for (const base::MemoryConsumer& consumer : budget.largestConsumers(HELD_CONSUMERS))
         record.heldConsumers.emplace_back(consumer.label, consumer.bytes);
@@ -952,6 +967,7 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
         outputInputs.gaugeRowOf = [&front](base::DofIndex dof) { return front.reliefRowOf(dof); };
     }
     outputInputs.chunkValues = chunkValues;
+    outputInputs.formulation = system.formulationConstraints();
     outputInputs.pool = inputs.pool;
     outputInputs.cancellation = inputs.cancellation;
     StreamedOutputs outputs(outputInputs, budget);

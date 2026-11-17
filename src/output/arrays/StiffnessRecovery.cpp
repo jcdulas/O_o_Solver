@@ -1,6 +1,7 @@
 #include "oos/output/arrays/StiffnessRecovery.hpp"
 
 #include "oos/assembly/assemble/ElementVolumes.hpp"
+#include "oos/assembly/dofs/EntityForceCarry.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/elements/core/ElementMatrixBlock.hpp"
 #include "oos/elements/core/ElementVectorBlock.hpp"
@@ -320,11 +321,23 @@ GridPointForceTable StiffnessRecovery::gridPointForces(std::int32_t subcase, con
     requireGSize(state.appliedLoads, gSize, "applied loads");
     requireGSize(state.spcForces, gSize, "SPC forces");
     requireGSize(state.mpcForces, gSize, "MPC forces");
-    const std::int32_t nodeCount = m_dofMap->nodeCount();
+    // The grid and scalar points: the nodes of the entities of an element formulation, which follow them, have no row.
+    const std::int32_t nodeCount = m_dofMap->gridCount() + m_dofMap->scalarCount();
     const auto pointIdOf = [&](std::int32_t node)
     {
         return node < m_dofMap->gridCount() ? m_dofMap->gridId(node) : m_dofMap->scalarId(node - m_dofMap->gridCount());
     };
+    // The forces on the entity DOFs are carried to the grid points of their entities.
+    const assembly::EntityForceCarry carry(*m_dofMap);
+    const bool hasEntities = carry.hasEntities();
+    const base::DofIndex firstEntityDof = m_dofMap->firstEntityDof();
+    // The relations of the formulation give a row: their forces need K·u on the whole g set.
+    const bool hasFormulationRow = hasEntities && state.relations != nullptr && state.relations->hasFormulationRows() &&
+                                   units.excludedElements.empty();
+    std::vector<double> elementForcesG; // bounded by the g set, with the formulation's relations only
+    if (hasFormulationRow)
+        elementForcesG.assign(gSize, 0.0);
+    std::vector<base::DofIndex> elementDofs; // one element's
     const auto dofsOf = [&](std::int32_t node, std::array<base::DofIndex, 6>& dofs) -> int
     {
         if (node < m_dofMap->gridCount())
@@ -358,12 +371,12 @@ GridPointForceTable StiffnessRecovery::gridPointForces(std::int32_t subcase, con
                 table.names.push_back(m_set->batches()[batchIndex].family->resultElementType(false));
             }
             const std::size_t firstOfElement = contributions.size();
-            for (std::size_t k = 0; k < dofs.size(); ++k)
+            // The force `value` of the element on the grid or scalar DOF `dof` goes to its row at that point.
+            const auto addForce = [&](base::DofIndex dof, double value)
             {
-                const base::DofIndex dof = m_dofMap->dofOf(dofs[k]);
                 const linalg::NodeDof nodeDof = m_dofMap->nodeDofOf(dof);
                 if (!request.takes(pointIdOf(nodeDof.node)))
-                    continue;
+                    return;
                 ElementContribution* entry = nullptr;
                 for (std::size_t e = firstOfElement; e < contributions.size(); ++e)
                     if (contributions[e].pointRow == nodeDof.node)
@@ -373,8 +386,19 @@ GridPointForceTable StiffnessRecovery::gridPointForces(std::int32_t subcase, con
                     contributions.push_back({nodeDof.node, view.elementId(row), nameOfBatch[batchIndex], {}});
                     entry = &contributions.back();
                 }
-                entry->values[static_cast<std::size_t>(nodeDof.component)] -= force[k];
+                entry->values[static_cast<std::size_t>(nodeDof.component)] -= value;
+            };
+            elementDofs.resize(dofs.size());
+            for (std::size_t k = 0; k < dofs.size(); ++k)
+            {
+                elementDofs[k] = m_dofMap->dofOf(dofs[k]);
+                if (hasFormulationRow)
+                    elementForcesG[static_cast<std::size_t>(elementDofs[k])] += force[k];
+                if (elementDofs[k] < firstEntityDof)
+                    addForce(elementDofs[k], force[k]);
             }
+            if (hasEntities)
+                carry.carry(elementDofs, force, addForce);
             if (contributions.size() * sizeof(ElementContribution) > contributionCharge.bytes())
                 contributionCharge = budget.reserve(2 * contributions.size() * sizeof(ElementContribution),
                                                     "grid point force contributions");
@@ -404,8 +428,82 @@ GridPointForceTable StiffnessRecovery::gridPointForces(std::int32_t subcase, con
         unitName = static_cast<std::int32_t>(table.names.size());
         table.names.emplace_back(UNIT_ROW_NAME);
     }
-    // The multiPointConstrForce rows by relation, when the reader takes them.
-    const bool isMpcSplit = state.isMpcSplit && !state.mpcForces.empty();
+    // With entities, the loads and the relations' forces on their DOFs are carried to the grid points too.
+    std::vector<double> carriedLoads;     // bounded by the g set, with entities only
+    std::vector<double> carriedMpcForces; // as carriedLoads
+    std::vector<double> formulationForces; // as carriedLoads, with the formulation's relations only
+    std::span<const double> appliedLoads = state.appliedLoads;
+    std::span<const double> mpcForces = state.mpcForces;
+    if (hasEntities)
+    {
+        carriedLoads.assign(state.appliedLoads.begin(), state.appliedLoads.end());
+        carry.carry(carriedLoads);
+        appliedLoads = carriedLoads;
+        if (!state.mpcForces.empty())
+        {
+            carriedMpcForces.assign(state.mpcForces.begin(), state.mpcForces.end());
+            carry.carry(carriedMpcForces);
+            mpcForces = carriedMpcForces;
+        }
+    }
+    std::int32_t formulationName = -1;
+    const bool closesWithFormulationRow = hasEntities && state.closesWithFormulationRow;
+    if (closesWithFormulationRow)
+    {
+        // What the other rows of each grid point leave: −(loads + supports + relations of cards + elements).
+        formulationForces.assign(gSize, 0.0);
+        std::vector<double> largest(static_cast<std::size_t>(m_dofMap->gridCount()), 0.0); // per grid point
+        const auto addRows = [&](std::span<const double> valuesG)
+        {
+            for (std::size_t dof = 0; dof < static_cast<std::size_t>(firstEntityDof) && !valuesG.empty(); ++dof)
+            {
+                formulationForces[dof] -= valuesG[dof];
+                if (dof < 6 * largest.size())
+                    largest[dof / 6] = std::max(largest[dof / 6], std::fabs(valuesG[dof]));
+            }
+        };
+        addRows(appliedLoads);
+        addRows(state.spcForces);
+        addRows(mpcForces);
+        for (const ElementContribution& contribution : contributions)
+        {
+            if (contribution.pointRow >= m_dofMap->gridCount())
+                continue;
+            const auto row = static_cast<std::size_t>(contribution.pointRow);
+            for (std::size_t c = 0; c < 6; ++c)
+            {
+                formulationForces[6 * row + c] -= contribution.values[c];
+                largest[row] = std::max(largest[row], std::fabs(contribution.values[c]));
+            }
+        }
+        // Round-off is no row: a point keeps its closing row when it stands out of the forces there.
+        for (std::size_t dof = 0; dof < 6 * largest.size(); ++dof)
+            if (std::fabs(formulationForces[dof]) <= CLOSING_ROW_RATIO * largest[dof / 6])
+                formulationForces[dof] = 0.0;
+        // The scalar points have no entity: nothing to close there.
+        for (std::size_t dof = 6 * largest.size(); dof < static_cast<std::size_t>(firstEntityDof); ++dof)
+            formulationForces[dof] = 0.0;
+        formulationName = static_cast<std::int32_t>(table.names.size());
+        table.names.emplace_back(FORMULATION_ROW_NAME);
+    }
+    if (hasFormulationRow && !closesWithFormulationRow)
+    {
+        // The forces of the formulation's rows: those of every row less those of the cards' rows.
+        formulationForces.assign(gSize, 0.0);
+        std::vector<double> ofCards(gSize, 0.0);
+        state.relations->computeMpcForces(elementForcesG, state.appliedLoads, formulationForces,
+                                          assembly::RigidElimination::Rows::All);
+        state.relations->computeMpcForces(elementForcesG, state.appliedLoads, ofCards,
+                                          assembly::RigidElimination::Rows::OfCards);
+        for (std::size_t dof = 0; dof < gSize; ++dof)
+            formulationForces[dof] -= ofCards[dof];
+        carry.carry(formulationForces);
+        formulationName = static_cast<std::int32_t>(table.names.size());
+        table.names.emplace_back(FORMULATION_ROW_NAME);
+    }
+    // The multiPointConstrForce rows by relation, when the reader takes them (not with entities: a relation's forces
+    // on their DOFs are carried with the others').
+    const bool isMpcSplit = state.isMpcSplit && !state.mpcForces.empty() && !hasEntities;
     SplitMpcRows split;
     if (isMpcSplit)
     {
@@ -435,9 +533,10 @@ GridPointForceTable StiffnessRecovery::gridPointForces(std::int32_t subcase, con
             isConstrained =
                 isConstrained || state.isConstrained[static_cast<std::size_t>(dofs[static_cast<std::size_t>(c)])] != 0;
         rowCount += 2 + (isConstrained ? 1 : 0);
+        rowCount += isNonzero(formulationForces, dofs, count) ? 1 : 0;
         if (!isMpcSplit)
         {
-            rowCount += isNonzero(state.mpcForces, dofs, count) ? 1 : 0;
+            rowCount += isNonzero(mpcForces, dofs, count) ? 1 : 0;
             continue;
         }
         while (nextSplit < split.nodes.size() && split.nodes[nextSplit] < node)
@@ -482,15 +581,17 @@ GridPointForceTable StiffnessRecovery::gridPointForces(std::int32_t subcase, con
                 total[c] += values[c];
             return values;
         };
-        append(0, APPLIED_LOAD_NAME, pointValues(state.appliedLoads));
+        append(0, APPLIED_LOAD_NAME, pointValues(appliedLoads));
         bool isConstrained = false;
         for (int c = 0; c < count; ++c)
             isConstrained =
                 isConstrained || state.isConstrained[static_cast<std::size_t>(dofs[static_cast<std::size_t>(c)])] != 0;
         if (isConstrained)
             append(0, SPC_FORCE_NAME, pointValues(state.spcForces));
-        if (!isMpcSplit && isNonzero(state.mpcForces, dofs, count))
-            append(0, MPC_FORCE_NAME, pointValues(state.mpcForces));
+        if (!isMpcSplit && isNonzero(mpcForces, dofs, count))
+            append(0, MPC_FORCE_NAME, pointValues(mpcForces));
+        if (isNonzero(formulationForces, dofs, count))
+            append(0, formulationName, pointValues(formulationForces));
         if (isMpcSplit)
         {
             // total adds the point's MPC force as before (the same bits); the rows are its relations'.
@@ -532,12 +633,26 @@ StiffnessRecovery::PointForces StiffnessRecovery::pointForces(
 {
     const auto gSize = static_cast<std::size_t>(m_dofMap->gSetSize());
     const std::size_t columns = displacements.columns;
-    const std::size_t rowCount = window != nullptr ? 6 * window->gridSlotCount + window->scalarSlotCount : gSize;
-    // The row of a g-set DOF in `displacements`: the DOF itself, or its slot's in the window.
+    const std::size_t rowCount = window != nullptr ? window->rowCount() : gSize;
+    // The row of a g-set DOF in `displacements`: the DOF itself, or its slot's in the window (an entity's DOF in the
+    // block of its entity).
     const auto rowOf = [&](base::DofIndex dof) -> std::size_t
     {
         if (window == nullptr)
             return static_cast<std::size_t>(dof);
+        if (dof >= m_dofMap->firstEntityDof())
+        {
+            const assembly::DofLabel label = m_dofMap->labelOf(dof);
+            const std::int64_t first = window->slots.entityOffsets.empty()
+                                           ? -1
+                                           : window->slots.entityOffsets[static_cast<std::size_t>(label.row)];
+            if (first < 0)
+                throw std::invalid_argument(
+                    "StiffnessRecovery::pointForces: an entity of an element given holds no block of the window (a "
+                    "bug of O_o_Solver: report it)");
+            return 6 * window->gridSlotCount + window->scalarSlotCount + static_cast<std::size_t>(first) +
+                   static_cast<std::size_t>(label.component);
+        }
         const linalg::NodeDof nodeDof = m_dofMap->nodeDofOf(dof);
         const bool isGrid = nodeDof.node < m_dofMap->gridCount();
         const std::int32_t slot =

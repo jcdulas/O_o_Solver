@@ -88,8 +88,23 @@ The folder `mixedHybrid/`:
 | `families/` | the element families of the cards (`MixedHybridLineFamily`, `MixedHybridShellFamily`, `MixedHybridSolidFamily`), thin: they call the model and carry the element matrices to the displacement systems (`LocalMap`) |
 
 The shell and solid parts keep the element matrices and kernels they build, within a memory budget (each facet of
-an element then reuses them): a shell of degree 4 takes a few milliseconds to build, a hexahedron about 50 ms. The
-functions of a solid depend only on the relative order of its grid IDs and are kept per order.
+an element then reuses them): a shell of degree 4 takes a few milliseconds to build, a hexahedron about 40 ms (native;
+about twice that in the WebAssembly build). A kept kernel built without the mass gets it when an analysis asks for it
+(`VolumeKernel::withMass`, a third of a build) instead of being built again. The functions of a solid depend only on
+the relative order of its grid IDs and are kept per order.
+
+The families offer `Facet::Derivatives`: the design module differences their facets on the snapshots of the design
+point moved by one field, each building its own model of the formulation. Beside the ties and supports, the model
+answers what the paths around the elements ask: the elements of an entity (`entityElements`, for the external units),
+the grid points whose positions an element reads (`readGridRows`, two rings of elements: the shape derivatives), and
+what the elements of a set of grid points read around them (`describeSurroundings`, for the keys of the condensation
+cache) (docs/mixed-hybrid-formulation-spec.md sections 5.11 to 5.15).
+
+Membrane-only and bending-only shell properties are taken (`SectionParts`): a membrane alone without offset has no
+moments, no transverse shear and no rotation about its edges, a bending alone no membrane stiffness. The model holds
+at zero the entity DOFs that no element stiffens (`ShellPart::unstiffenedUnknowns`: the shear and rotations of the
+edges of membranes, the singular directions of the displacement functions, as the singularity processor does at the
+grid points); two shells on the same corner grids are refused.
 
 To add a formulation of a card: write its family (in the card's folder, `formulation()` returning its name), and
 register it in `ElementRegistry::standard()` after the card's default.
@@ -285,6 +300,7 @@ independent of load values, so their existing caches remain valid across subcase
 | dK/dv, dM/dv of a designed field | `stiffnessFieldDerivative`, `massFieldDerivative`; several fields of one element at once `stiffnessFieldDerivatives` (by default one by one) | the `ShellProp` T of `ShellQuad4`, `ShellQuad4Drilling`, `ShellTria3`, `ShellTria3Drilling` whose corners follow T; the A and J of `Rod2` (`RodProp`) and `Rod2InlineSection`; the AnisoMat2D stiffness terms (`stiffness`, named by their MID: `DesignedField::id`, `item`) of the `ShellProp`'s MID1 to MID4 for `ShellQuad4`, `ShellQuad4Drilling`, `ShellTria3`, `ShellTria3Drilling`, `ShellQuad8`, `ShellTria6` (`ShellSectionRate`; no mass: the terms change none), a MID4 at a coupling zero at the point too but on the drilling membranes; the ply thicknesses of a CompProp or CompPropGlobal (`ply_thickness`, the item the card's ply) for the six shells (`LaminateRate`, `laminateSectionRate`; the mass of the ShellQuad4, ShellTria3 and their drilling variants) |
 | The ply rows' rates in a designed field | `layerRecoveryFieldRates`, several fields `layerRecoveryFieldRatesOfFields` | a ply thickness of the shells' laminates: the ply stresses, strains, failure and bond indices, ply states (`appendLaminateRowRates`) |
 | dK_d/dv at a fixed preload (the buckling factors' explicit parts) | `differentialStiffnessFieldDerivative` | the shells above in their AnisoMat2D terms, and the T of `ShellQuad4`, `ShellQuad4Drilling`, `ShellTria3`, `ShellTria3Drilling`; none under a temperature change of the preload; `Rod2` area and torsion rates, including fixed initial strains |
+| The gradient of φᵀ·K_d(u)·φ in the preload u, along a mode φ (the buckling factors' preload part) | `differentialStiffnessPreloadGradient` (false by default: the caller forms K_d of each unit displacement) | the shells and solids of `MixedHybridFormulation` (one pass per element: K_d linear in the stresses of the preload) |
 | Mixed d2K_d/dp dq at fixed preload | `differentialStiffnessFieldMixedDerivative` | thickness of the quadrilateral and triangular shells above; `Rod2` area/torsion zero curvature; an inert or unaffected field gives a known zero |
 | The rows' rates with respect to a designed field at fixed u (the explicit parts) | `recoveryFieldRates`; several fields at once `recoveryFieldRatesOfFields` | the same fields and families (the AnisoMat2D terms not under a temperature change) |
 | d²K/dv², d²M/dv² (the Hessian blocks) | `stiffnessFieldSecondDerivative`, `massFieldSecondDerivative` (true with nothing appended: zero) | the same fields and families (the rods' all zero) |

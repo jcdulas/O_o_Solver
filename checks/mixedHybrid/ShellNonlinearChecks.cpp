@@ -189,3 +189,27 @@ CHECK_CASE("shell: geometric stiffness of a uniform membrane force")
     const mh::Matrix km = mh::geometricMembrane(re, def, m, forces);
     runner.expectNear(mh::dot(w, km * w) / expected, 1.0, 1e-9, "wᵀ Kg w from the membrane forces");
 }
+
+// The gradient of φᵀ K_g(x) φ with respect to the preload x (the derivative of a buckling factor through its preload):
+// K_g is linear in x, so φᵀ K_g(x) φ = g · x for every x, on the curved elements with an offset section.
+CHECK_CASE("shell: gradient of the geometric stiffness along a shape")
+{
+    for (const TestElement& e : {nonlinearQuadrilateral(4), nonlinearTriangle(4)})
+    {
+        const mh::ShellReferenceElement& re = *e.re;
+        const mh::ShellElementDefinition def = e.data.definition();
+        const mh::ShellElementMatrices& m = e.data.matrices;
+        const std::size_t n = mh::shellUnknownCount(re);
+        mh::Vector phi(n);
+        mh::Vector x(n);
+        for (std::size_t k = 0; k < n; ++k)
+        {
+            phi[k] = std::sin(1.3 * static_cast<double>(k) + 0.4);
+            x[k] = 1e-3 * std::cos(0.7 * static_cast<double>(k) - 0.2);
+        }
+        const mh::Vector g = mh::geometricStiffnessGradient(re, def, m, mh::prepareNonlinear(re, def), phi);
+        const mh::Matrix kg = mh::elementGeometricStiffness(re, def, m, x, nullptr, nullptr, nullptr);
+        runner.expectNear(mh::dot(g, x) / mh::dot(phi, kg * phi), 1.0, 1e-10,
+                          re.cornerCount == 4 ? "quadrilateral" : "triangle");
+    }
+}

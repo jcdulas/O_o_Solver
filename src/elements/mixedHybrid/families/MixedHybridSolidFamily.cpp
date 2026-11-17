@@ -142,6 +142,23 @@ void MixedHybridSolidFamily::computeMass(const ElementBatchView& view, ElementRa
     }
 }
 
+bool MixedHybridSolidFamily::computeVolumes(const ElementBatchView& view, ElementRange range,
+                                            std::span<double> volumes) const
+{
+    // A view without the entities of the analysis names no kernel (check() refuses it): no volume from here.
+    if (view.entities() == nullptr)
+        return false;
+    const MixedHybridModel& model = MixedHybridModel::of(view.index());
+    const EntityLayout::Kind kind = kindOf(view);
+    for (std::int64_t row = range.first; row < range.last; ++row)
+    {
+        // The kernel without its mass: the one the stiffness of the element is made from, kept by the SolidPart.
+        const SolidPart::SharedKernel kernel = kernelOf(model, requiredSolid(model, view, row), kind, false);
+        volumes[static_cast<std::size_t>(row - range.first)] = kernel->volume();
+    }
+    return true;
+}
+
 void MixedHybridSolidFamily::checkPressureLoads(const ElementBatchView& view,
                                                 std::span<const ElementPressure> pressures,
                                                 base::DiagnosticSink& sink) const
@@ -212,9 +229,10 @@ void MixedHybridSolidFamily::computePressureLoads(const ElementBatchView& view,
         const SolidPart::SharedKernel kernel = kernelOf(model, solid, kind, false);
         Vector onParameters;
         if (!pressure.hasDirection)
-            onParameters =
-                part.faceCornerPressureLoad(*kernel, solid.partIndex, face, grids,
-                                            std::span<const double>(pressure.cornerPressures.data(), grids.size()));
+            onParameters = part.facePressureLoad(
+                *kernel, face,
+                model.solidFacePressure(solid, grids,
+                                        std::span<const double>(pressure.cornerPressures.data(), grids.size())));
         else
         {
             // The unit direction in the basic system (the element frame of pressureDirectionOf taken as the basic one).
@@ -313,6 +331,28 @@ void MixedHybridSolidFamily::computeDifferentialStiffness(const ElementBatchView
         local.setBlock(0, 0, geometric.value());
         block.append(row, map.dofs, congruent(local, map));
     }
+}
+
+bool MixedHybridSolidFamily::differentialStiffnessPreloadGradient(const ElementBatchView& view, std::int64_t row,
+                                                                  const NodalDisplacements& shape,
+                                                                  ElementVectorBlock& block) const
+{
+    // K_e(u) = Tᵀ K_g(β(T u)) T on the parameters (computeDifferentialStiffness): the gradient on the local unknowns,
+    // zero on the interior fields of a modal layout, carried to the DOFs by Tᵀ.
+    const MixedHybridModel& model = MixedHybridModel::of(view.index());
+    const EntityLayout::Kind kind = kindOf(view);
+    const MixedSolid& solid = requiredSolid(model, view, row);
+    const MixedHybridModel::SolidCaseStresses stresses = model.solidStresses(solid, kind, shape);
+    const LocalMap map = solidMapOf(view, model, solid, kind);
+    const Vector phi = localUnknowns(map, shape);
+    SolidResult<Vector> gradient = stresses.kernel->geometricGradient(phi);
+    if (!gradient.ok())
+        throw std::logic_error(base::concatenate(
+            {"MixedHybridSolidFamily: element ", std::to_string(solid.elementId), ": ", gradient.refusal()}));
+    Vector local(map.toLocal.rows(), 0.0);
+    std::copy(gradient.value().begin(), gradient.value().end(), local.begin());
+    block.append(row, map.dofs, onDofs(local, map));
+    return true;
 }
 
 void MixedHybridSolidFamily::recover(const ElementBatchView& view, ElementRange range, ElementOutput output,

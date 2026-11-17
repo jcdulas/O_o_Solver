@@ -1,6 +1,7 @@
 #include "oos/reduction/cache/CacheKey.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/reduction/cache/CacheHasher.hpp"
 
 #include <algorithm>
@@ -32,13 +33,40 @@ void mixMatrix(CacheHasher& hasher, linalg::ConstDenseMatrixView matrix)
             hasher.mix(matrix(i, j));
 }
 
-constexpr int GRID_DOF_COUNT = 6;
-
 // The g-set DOF of a component (from 0) of a model node (UnitSystem::modelDofOfNode).
 base::DofIndex modelDofOfNode(const assembly::DofMap& dofMap, std::int32_t node, int component) noexcept
 {
-    return node < dofMap.gridCount() ? dofMap.gridDof(node, component + 1)
-                                     : dofMap.scalarDof(node - dofMap.gridCount());
+    return dofMap.dofsOfNode(node).first + component;
+}
+
+// The DOFs of a model node: six for a grid point, one for a scalar point, up to six for a node of an entity of an
+// element formulation.
+int dofCountOfNode(const assembly::DofMap& dofMap, std::int32_t node) noexcept
+{
+    return static_cast<int>(dofMap.dofsOfNode(node).count);
+}
+
+// The label of component `component` (from 0) of a model node, as UnitSystem::labelOf gives it.
+UnitDofLabel labelOfNode(const assembly::DofMap& dofMap, std::int32_t node, int component) noexcept
+{
+    UnitDofLabel label;
+    if (node < dofMap.gridCount())
+    {
+        label.kind = UnitPointKind::Grid;
+        label.component = static_cast<std::uint8_t>(component + 1);
+    }
+    else if (dofMap.isEntityNode(node))
+    {
+        label.kind = UnitPointKind::EntityNode;
+        label.component = static_cast<std::uint8_t>(component + 1);
+    }
+    else
+    {
+        label.kind = UnitPointKind::Scalar;
+        label.component = 0;
+    }
+    label.id = dofMap.nodeIdOf(node);
+    return label;
 }
 
 std::string parameterText(const std::vector<CacheParameter>& parameters, std::string_view name)
@@ -183,8 +211,7 @@ std::uint64_t unitInputStamp(const UnitModel& model, const UnitDescription& desc
     {
         const bool isGrid = node < dofMap.gridCount();
         hasher.mix(node);
-        hasher.mix(
-            static_cast<std::int32_t>(isGrid ? dofMap.gridId(node) : dofMap.scalarId(node - dofMap.gridCount())));
+        hasher.mix(static_cast<std::int32_t>(dofMap.nodeIdOf(node)));
         if (isGrid)
         {
             const base::Vec3 position = dofMap.positionInBasic(node);
@@ -194,7 +221,10 @@ std::uint64_t unitInputStamp(const UnitModel& model, const UnitDescription& desc
             for (const double value : dofMap.cdToBasic(node).values)
                 hasher.mix(value);
         }
-        for (int c = 0; c < (isGrid ? GRID_DOF_COUNT : 1); ++c)
+        // A node of an entity: its DOF count (the last node of an entity may have fewer than six).
+        if (dofMap.isEntityNode(node))
+            hasher.mix(static_cast<std::uint64_t>(dofCountOfNode(dofMap, node)));
+        for (int c = 0; c < dofCountOfNode(dofMap, node); ++c)
         {
             const base::DofIndex dof = modelDofOfNode(dofMap, node, c);
             hasher.mix(static_cast<std::uint64_t>(!model.isConstrainedEverywhere.empty() &&
@@ -244,6 +274,16 @@ std::uint64_t unitInputStamp(const UnitModel& model, const UnitDescription& desc
                                                    : std::span<const double>();
         hasher.mix(shares.empty() ? 0.0 : shares[static_cast<std::size_t>(place->row)]);
     }
+    // What an element formulation reads around the unit's elements (FormulationModel::describeSurroundings): the
+    // geometry of the elements beside them, which may lie in other units, and the formulation's declarations.
+    if (const elements::FormulationModel* formulation = dofMap.formulation())
+    {
+        std::vector<std::int32_t> gridRows; // bounded by the unit's points
+        for (const std::int32_t node : nodes.span())
+            if (node < dofMap.gridCount())
+                gridRows.push_back(node);
+        formulation->describeSurroundings(gridRows, [&](double value) { hasher.mix(value); });
+    }
     // The options of its assembly, its mass and its singularity processor (the parameters are in the key too, by name).
     hasher.mix(static_cast<std::uint64_t>(model.massOptions.formulation));
     hasher.mix(model.massOptions.weightToMass);
@@ -289,19 +329,12 @@ CacheKey makeUnitKey(const UnitKeySources& sources, base::MemoryBudget& budget)
         const base::BudgetedBuffer<std::int32_t> nodes = unitPointNodes(dofMap, description, budget);
         if (!model.isConstrainedEverywhere.empty())
             for (const std::int32_t node : nodes.span())
-            {
-                const bool isGrid = node < dofMap.gridCount();
-                for (int c = 0; c < (isGrid ? GRID_DOF_COUNT : 1); ++c)
+                for (int c = 0; c < dofCountOfNode(dofMap, node); ++c)
                 {
                     if (model.isConstrainedEverywhere[static_cast<std::size_t>(modelDofOfNode(dofMap, node, c))] == 0)
                         continue;
-                    UnitDofLabel label;
-                    label.kind = isGrid ? UnitPointKind::Grid : UnitPointKind::Scalar;
-                    label.id = isGrid ? dofMap.gridId(node) : dofMap.scalarId(node - dofMap.gridCount());
-                    label.component = isGrid ? static_cast<std::uint8_t>(c + 1) : std::uint8_t{0};
-                    mixLabel(hasher, label);
+                    mixLabel(hasher, labelOfNode(dofMap, node, c));
                 }
-            }
         key.constraintStamp = hasher.value();
     }
     // The boundary points, and the generated points of the fastener sides (on the boundary without being listed).

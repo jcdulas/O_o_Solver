@@ -78,7 +78,8 @@ public:
     [[nodiscard]] std::span<const std::int32_t> nodesOf(std::int32_t element) const noexcept;
     // The supernode whose columns hold an equation.
     [[nodiscard]] std::int32_t supernodeOf(std::int32_t equation) const noexcept;
-    // The g-set DOFs of a node of the DOF map (six for a grid point, one for a scalar point), into `dofs`.
+    // The g-set DOFs of a node of the DOF map (six for a grid point, one for a scalar point, up to six for a node of an
+    // entity of an element formulation), into `dofs`.
     void nodeDofs(std::int32_t node, std::vector<base::DofIndex>& dofs) const;
     // StreamedReduction of g-set DOFs.
     void reduce(std::span<const base::DofIndex> dofs, StreamedReduction& out) const;

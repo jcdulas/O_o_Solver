@@ -204,6 +204,7 @@ ElementOutputSelection elementSelectionOf(const OutputPlan& plan)
     selection.forces = kindOf(plan.of(OutputKind::Force));
     selection.isStrainAtFibres = plan.of(OutputKind::Strain).isFiber;
     selection.isMaximumShear = false;
+    selection.gridPointScope = plan.gridPointScope();
     return selection;
 }
 

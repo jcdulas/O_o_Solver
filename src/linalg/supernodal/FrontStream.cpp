@@ -460,6 +460,7 @@ FrontStream::FrontStream(const SymbolicFactor& symbolic, FrontSource& source, st
         throw std::invalid_argument(base::concatenate(
             {"StreamedSolve::solve: the symbolic factor leaves ", std::to_string(symbolic.trailingDofCount()),
              " trailing equations unfactorised; analyse the whole matrix, without a trailing set"}));
+    requireReferenceDiagonal(options.referenceDiagonal, symbolic.dofCount());
     const auto total = static_cast<std::size_t>(m_count);
     m_status = base::BudgetedBuffer<Status>(budget, total, "front stream: supernode status");
     m_zeroPivotAt = base::BudgetedBuffer<std::int32_t>(budget, total, "front stream: zero pivots");
@@ -606,6 +607,7 @@ void FrontStream::testRatios(const FrontLayout& layout, ConstDenseMatrixView pan
     {
         const std::int32_t equation = layout.firstColumn + static_cast<std::int32_t>(j);
         const double pivot = panel(j, j);
+        diagonal[j] = ratioTestDiagonal(m_options.referenceDiagonal, equation, diagonal[j]);
         const double ratio = diagonal[j] / pivot;
         if (ratios.equationOfLargest < 0 || ratio > ratios.largestRatio)
         {

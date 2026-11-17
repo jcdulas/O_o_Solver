@@ -50,6 +50,11 @@ public:
     void computeStiffness(const ElementBatchView& view, ElementRange range, ElementMatrixBlock& block) const override;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                      ElementMatrixBlock& block) const override;
+    // ∫ A μ ds along the axis of the line (μ the length of an offset axis over that of its edge): the momentum of a
+    // unit translation of the line with a unit density and no non-structural mass. A line on an edge of shells moves
+    // with the unknowns of that edge, which carry part of a rigid translation.
+    [[nodiscard]] bool computeVolumes(const ElementBatchView& view, ElementRange range,
+                                      std::span<double> volumes) const override;
     [[nodiscard]] std::vector<std::string> outputColumns(ElementOutput output) const override;
     void recover(const ElementBatchView& view, ElementRange range, ElementOutput output,
                  const NodalDisplacements& displacements, ElementResultBlock& block) const override;

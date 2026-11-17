@@ -59,7 +59,7 @@ public:
         const StreamedElements* elements = nullptr;
         const output::ElementResultBuilder* builder = nullptr;
         const linalg::DenseMatrix* coefficients = nullptr; // α: basis × cases
-        std::span<const base::EntityId> caseLabels;       // the cases, in α's order
+        std::span<const base::EntityId> caseLabels;        // the cases, in α's order
         const output::OutputPlan* plan = nullptr;          // the plan every case shares
         output::EnvelopeAccumulator* envelopes = nullptr;  // null: none
         bool keepsCaseTables = true;                       // the tables of the kinds no envelope takes are kept anyway
@@ -80,6 +80,9 @@ public:
         output::ElementOutputSelection basisSelection;
         std::span<const std::uint8_t> isForceNode;
         const KeptFixedRows* fixedRows = nullptr;
+        // The element formulation's constraints of the set (ConstrainedSystem::formulationConstraints): its excluded
+        // DOFs filled in the whole vectors (keepsWholeVectors); null: none.
+        const assembly::FormulationConstraints* formulation = nullptr;
         base::ThreadPool* pool = nullptr;
         const base::CancellationToken* cancellation = nullptr;
     };
@@ -109,6 +112,17 @@ public:
     // The values of a chunk whose chunkBytes() is about `bytes` (at least one node's).
     [[nodiscard]] static std::int64_t chunkValuesFor(std::uint64_t bytes, std::size_t columns,
                                                      std::size_t cases) noexcept;
+    // Whether the outputs of the cases of `plan` keep the displacements of the whole g set of every vector: a model
+    // with the entities of an element formulation whose displacements or element tables are asked. The value of an
+    // excluded rotation of a grid point is the mean over every shell there (FormulationConstraints::fillExcluded),
+    // the stress of a grid point of solids the mean over every solid there (the "SolidGridPoints" table), and those
+    // elements may lie in other regions: every element's nodes then go into the chunks, each chunk's values into the
+    // whole vectors, and finish() makes the displacement rows and the grid point stresses from them (all the
+    // displacement rows, so that a point's row comes once). Their bytes: wholeVectorBytes().
+    [[nodiscard]] static bool keepsWholeVectors(const assembly::DofMap& dofMap, const output::OutputPlan& plan,
+                                                bool isBasis);
+    [[nodiscard]] static std::uint64_t wholeVectorBytes(const assembly::DofMap& dofMap, const output::OutputPlan& plan,
+                                                        bool isBasis, std::size_t columns);
 
 private:
     // The nodes of an item into the chunk, their displacements from the front's solution.
@@ -116,6 +130,10 @@ private:
                  linalg::ConstDenseMatrixView rowValues);
     void flush();
     [[nodiscard]] bool isGaugeReady() const noexcept;
+    // The amplitudes C·u_r of each vector's rigid motion (the gauge of the FreeBodySupport DOFs); empty without them.
+    [[nodiscard]] std::vector<std::array<double, 6>> gaugeAmplitudes() const;
+    // The displacement rows of every case and the grid point stresses from the whole vectors (keepsWholeVectors).
+    void finishWholeVectors();
 
     Inputs m_inputs;
     base::MemoryBudget& m_budget;
@@ -128,11 +146,20 @@ private:
     base::BudgetedBuffer<std::int32_t> m_gridSlots;   // per grid point row: its slot in a window, or −1
     base::BudgetedBuffer<std::int32_t> m_scalarSlots; // per scalar point row
     std::vector<std::int32_t> m_slotNodes;            // per slot (bounded by the chunk)
-    std::vector<double> m_values;                     // per slot: its DOFs (6, or 1) × the vectors, DOF-major
-    std::vector<double> m_gauge;                      // per slot: its DOFs × 6 (Σ coefficient·Φ)
-    std::vector<std::int64_t> m_valueOffset;          // per slot
+    std::vector<double> m_values;            // per slot: its DOFs (6, 1, or an entity node's) × the vectors, DOF-major
+    std::vector<double> m_gauge;             // per slot: its DOFs × 6 (Σ coefficient·Φ)
+    std::vector<std::int64_t> m_valueOffset; // per slot
     std::vector<std::vector<elements::ElementRange>> m_rowsOfBatch; // per batch: the chunk's elements' rows
     std::vector<std::int32_t> m_points;                             // the output points of the chunk
+    // The entities of an element formulation in the chunk's window: per entity row of the layout, the first of its
+    // values in the window's entity part (−1: not in the window), and the rows set (to reset them).
+    base::BudgetedBuffer<std::int64_t> m_entityOffsets;
+    std::vector<std::int32_t> m_windowEntities;
+    // keepsWholeVectors: the displacements of every vector on the whole g set (g × vectors), and the output points
+    // their rows are made for at finish().
+    bool m_keepsWhole = false;
+    linalg::DenseMatrix m_whole;
+    std::vector<std::int32_t> m_wholePoints;
     // The FreeBodySupport DOFs' values (per vector), once solved.
     std::vector<std::vector<double>> m_supportValues;
     std::vector<std::uint8_t> m_isSupportSolved;

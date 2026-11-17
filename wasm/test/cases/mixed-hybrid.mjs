@@ -786,27 +786,31 @@ for (const shape of ["SolidHexa", "SolidPenta", "SolidTetra", "SolidPyramid"])
         `stresses at grid point ${row.id}`);
   });
 
+// The pure bending of a block: u = −κ x y', v = κ (x² + ν (y'² − z'²)) / 2, w = κ ν y' z' (y', z' from the centre of
+// the section), and the supports that impose it: u on both ends, and v, w at two grid points of the end x = 0.
+const BENT_BLOCK = { kappa: 1.0e-3, poisson: 0.3 };
+function bentBlockField(x, y, z) {
+  const { kappa, poisson } = BENT_BLOCK;
+  const yc = y - BLOCK.height / 2;
+  const zc = z - BLOCK.width / 2;
+  return [-kappa * x * yc, (kappa * (x * x + poisson * (yc * yc - zc * zc))) / 2, kappa * poisson * yc * zc];
+}
+function bentBlockRecords(node, nx) {
+  const at = (i, j, k) => bentBlockField((BLOCK.length * i) / nx, BLOCK.height * j, BLOCK.width * k);
+  const records = [];
+  for (let k = 0; k <= 1; ++k)
+    for (let j = 0; j <= 1; ++j)
+      for (const i of [0, nx]) records.push(`SinglePointConstr;1;${node(i, j, k)};1;${real(at(i, j, k)[0])}`);
+  records.push(`SinglePointConstr;1;${node(0, 0, 0)};2;${real(at(0, 0, 0)[1])}`,
+    `SinglePointConstr;1;${node(0, 0, 0)};3;${real(at(0, 0, 0)[2])}`,
+    `SinglePointConstr;1;${node(0, 1, 0)};3;${real(at(0, 1, 0)[2])}`);
+  return records;
+}
+
 test("a block of SolidHexa in MixedHybridFormulation bent by its supports takes the linear stress of a pure bending", () => {
-  // u = −κ x y', v = κ (x² + ν (y'² − z'²)) / 2, w = κ ν y' z' (y', z' from the centre of the section): the supports
-  // give u on both ends, and v, w at two grid points of the end x = 0.
-  const kappa = 1.0e-3;
-  const poisson = 0.3;
-  const field = (x, y, z) => {
-    const yc = y - BLOCK.height / 2;
-    const zc = z - BLOCK.width / 2;
-    return [-kappa * x * yc, (kappa * (x * x + poisson * (yc * yc - zc * zc))) / 2, kappa * poisson * yc * zc];
-  };
-  const model = solidBlock({ shape: "SolidHexa", nx: 2, poisson, records: (node, nx) => {
-    const at = (i, j, k) => field((BLOCK.length * i) / nx, BLOCK.height * j, BLOCK.width * k);
-    const records = [];
-    for (let k = 0; k <= 1; ++k)
-      for (let j = 0; j <= 1; ++j)
-        for (const i of [0, nx]) records.push(`SinglePointConstr;1;${node(i, j, k)};1;${real(at(i, j, k)[0])}`);
-    records.push(`SinglePointConstr;1;${node(0, 0, 0)};2;${real(at(0, 0, 0)[1])}`,
-      `SinglePointConstr;1;${node(0, 0, 0)};3;${real(at(0, 0, 0)[2])}`,
-      `SinglePointConstr;1;${node(0, 1, 0)};3;${real(at(0, 1, 0)[2])}`);
-    return records;
-  } });
+  const { kappa, poisson } = BENT_BLOCK;
+  const field = bentBlockField;
+  const model = solidBlock({ shape: "SolidHexa", nx: 2, poisson, records: bentBlockRecords });
   const run = runSolids(model, "mixed-solid-bend");
   for (const { id, x, y, z } of model.points)
     assertClose(nodal(run, "displacements", id).slice(0, 3), field(x, y, z), 1e-8, `grid ${id}`, kappa);
@@ -1063,6 +1067,50 @@ for (const partner of ["a shell on its top face", "a Bar2 along its top edge"])
     assert.ok(Math.abs(pull / expected - 1) < 1e-8, `pull ${pull}, expected ${expected}`);
   });
 
+test("a block of SolidHexa and a separate strip of ShellQuad4 in MixedHybridFormulation stretched by their supports take their uniform stresses", () => {
+  // The two parts share no grid point: the elements of each family read their own entities on the whole g set (the
+  // estimate of the output volume and the recovery give them the entity values too).
+  const delta = 1.0e-3;
+  const poisson = 0.3;
+  const lift = 3.0; // the strip lies in the plane z = lift, above the block
+  const stripNode = (i, j) => 200 + 3 * j + i; // a strip of 2 × 1 shells, STRIP.length by STRIP.width
+  const stripPoints = [];
+  const model = solidBlock({ shape: "SolidHexa", poisson, records: (node, nx) => {
+    const records = stretchRecords(node, nx, delta);
+    records.push(`ShellProp;2;2;${real(STRIP.thickness)};2;;2`, `IsoMat;2;${real(STRIP.young)};;${real(poisson)};2700.`);
+    for (let j = 0; j <= 1; ++j)
+      for (let i = 0; i <= 2; ++i) {
+        const point = { id: stripNode(i, j), x: (STRIP.length * i) / 2, y: STRIP.width * j };
+        stripPoints.push(point);
+        records.push(`Node;${point.id};;${real(point.x)};${real(point.y)};${real(lift)}`,
+          `SinglePointConstrList;1;3;${point.id}`);
+      }
+    for (let i = 0; i < 2; ++i)
+      records.push(`ShellQuad4;${100 + i};2;${stripNode(i, 0)};${stripNode(i + 1, 0)};${stripNode(i + 1, 1)};${stripNode(i, 1)}`);
+    records.push(`SinglePointConstrList;1;2;${stripNode(0, 0)}`);
+    for (let j = 0; j <= 1; ++j)
+      records.push(`SinglePointConstrList;1;1;${stripNode(0, j)}`, `SinglePointConstr;1;${stripNode(2, j)};1;${real(delta)}`);
+    return records;
+  } });
+  const run = runSolids(model, "mixed-block-and-strip");
+  const strain = delta / BLOCK.length;
+  for (const { id, x, y, z } of model.points)
+    assertClose(nodal(run, "displacements", id).slice(0, 3), [strain * x, -poisson * strain * y, -poisson * strain * z],
+      1e-8, `grid ${id}`, delta);
+  for (const row of rowsOf(run, "SolidHexa", "stress"))
+    assertClose([row.oxx, row.oyy, row.ozz, row.txy, row.tyz, row.txz], [BLOCK.young * strain, 0, 0, 0, 0, 0], 1e-8,
+      `stresses of element ${row.id} at ${row.nodeId}`);
+  const stripStrain = delta / STRIP.length;
+  for (const { id, x, y } of stripPoints)
+    assertClose(nodal(run, "displacements", id).slice(0, 3), [stripStrain * x, -poisson * stripStrain * y, 0], 1e-8,
+      `grid ${id}`, delta);
+  const shellRows = rowsOf(run, "ShellQuad4", "stress");
+  assert.ok(shellRows.length > 0, "shell stress rows");
+  for (const row of shellRows)
+    assertClose([row.oxx, row.oyy, row.txy], [STRIP.young * stripStrain, 0, 0], 1e-8,
+      `stresses of element ${row.id} at ${row.nodeId}, fibre ${row.layer}`);
+});
+
 test("a free block of SolidHexa in MixedHybridFormulation with a shell fin on its edge has six rigid-body modes and no mechanism", () => {
   // The fin stands on the edge y = 0, z = W of the block, in the plane y = 0: its rotation about that edge follows the
   // rotation of the solid (tie 4); left free, it would turn about the edge as a hinge, a seventh mode of zero energy.
@@ -1083,4 +1131,989 @@ test("a free block of SolidHexa in MixedHybridFormulation with a shell fin on it
       assert.ok(Math.abs(values[k]) < 1e-6 * values[6], `eigenvalue ${k + 1} is ${values[k]}, the first elastic ${values[6]}`);
     assert.ok(values[6] > 1e-3 * values[7], `the seventh eigenvalue ${values[6]} is a mechanism (eighth ${values[7]})`);
   });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Membrane-only and bending-only shells (spec section 4.1): the membrane alone has no moments, no transverse shear and
+// no rotation about its edges; the bending alone has no membrane stiffness. The formulation holds the entity directions
+// no element stiffens (the normal of a flat membrane, the plane of a flat bending-only plate), the singularity processor
+// those of the grid points.
+
+const FULL_SECTION = `ShellProp;1;1;${real(STRIP.thickness)};1;;1`;
+const MEMBRANE_ONLY = `ShellProp;1;1;${real(STRIP.thickness)};;;`;
+const BENDING_ONLY = `ShellProp;1;;${real(STRIP.thickness)};1;;1`;
+function withSection(model, section) {
+  assert.ok(model.text.includes(FULL_SECTION), "the strip's shell property");
+  return { ...model, text: model.text.replace(FULL_SECTION, section) };
+}
+const heldDirections = (run) => run.diagnostics.find((d) => d.code === "unstiffened-directions-held");
+
+for (const { shape, stiffened } of STRETCH_CASES)
+  test(`a strip of membrane-only ${shape} in MixedHybridFormulation${stiffened ? " stiffened by Bar2 on its edge" : ""} stretched by its supports takes the uniform uniaxial stress`, () => {
+    // No normal displacement held: the grid points' by the singularity processor, the edges' and interiors' by the
+    // formulation. The stiffeners are beams that the membrane does not hold out of its plane: their ends hold their
+    // deflection and one end their twist.
+    const delta = 1.0e-3;
+    const poisson = 0.3;
+    const model = withSection(strip({ shape, poisson, records: (node, nx, ny) => {
+      const records = [`SinglePointConstrList;1;2;${node(0, 0)}`];
+      for (let j = 0; j <= ny; ++j)
+        records.push(`SinglePointConstrList;1;1;${node(0, j)}`, `SinglePointConstr;1;${node(nx, j)};1;${real(delta)}`);
+      return stiffened
+        ? records.concat(stiffeners(node, nx), [`SinglePointConstrList;1;34;${node(0, 0)}`, `SinglePointConstrList;1;3;${node(nx, 0)}`])
+        : records;
+    } }), MEMBRANE_ONLY);
+    const run = runShells(model.text, `mixed-membrane-stretch-${shape}`);
+    assert.ok(heldDirections(run), JSON.stringify(run.diagnostics.map((d) => d.code)));
+    for (const { id, x, y } of model.points)
+      assertClose(nodal(run, "displacements", id).slice(0, 3),
+        [(delta * x) / STRIP.length, (-poisson * delta * y) / STRIP.length, 0], 1e-8, `grid ${id}`, delta);
+    let pull = 0;
+    for (let j = 0; j <= model.ny; ++j) pull += nodal(run, "singlePointConstrForces", model.node(model.nx, j))[0];
+    const area = STRIP.thickness * STRIP.width + (stiffened ? STIFFENER.area : 0);
+    const expected = (STRIP.young * area * delta) / STRIP.length;
+    assert.ok(Math.abs(pull / expected - 1) < 1e-8, `pull ${pull}, expected ${expected}`);
+  });
+
+for (const shape of ["ShellQuad4", "ShellTria3", "ShellQuad8", "ShellTria6"])
+  test(`a strip of bending-only ${shape} in MixedHybridFormulation bent by its supports takes the uniform moment`, () => {
+    // No in-plane displacement held but at the clamped end.
+    const theta = 1.0e-3;
+    const model = withSection(strip({ shape, poisson: 0, records: (node, nx, ny) => {
+      const records = [];
+      for (let j = 0; j <= ny; ++j)
+        records.push(`SinglePointConstrList;1;123456;${node(0, j)}`, `SinglePointConstr;1;${node(nx, j)};5;${real(-theta)}`);
+      return records;
+    } }), BENDING_ONLY);
+    const run = runShells(model.text, `mixed-bending-bend-${shape}`);
+    assert.ok(heldDirections(run), JSON.stringify(run.diagnostics.map((d) => d.code)));
+    for (const { id, x } of model.points)
+      assertClose(nodal(run, "displacements", id).slice(0, 3), [0, 0, (theta * x * x) / (2 * STRIP.length)], 1e-8,
+        `grid ${id}`, theta);
+    let moment = 0;
+    for (let j = 0; j <= model.ny; ++j) moment += nodal(run, "singlePointConstrForces", model.node(model.nx, j))[4];
+    const expected = -(STRIP.young * STRIP.thickness ** 3 * STRIP.width * theta) / (12 * STRIP.length);
+    assert.ok(Math.abs(moment / expected - 1) < 1e-8, `moment ${moment}, expected ${expected}`);
+  });
+
+test("a cantilever strip of bending-only ShellQuad4 in MixedHybridFormulation under a uniform pressure bends as the Timoshenko beam with no membrane force", () => {
+  const p = 200.0;
+  const model = withSection(cantileverStrip({ loads: (nx, ny) => [`ShellPressureLoad;2;${real(p)};1;Through;${nx * ny}`] }),
+    BENDING_ONLY);
+  const text = loadCase(model.text).replace("SinglePointConstrForceOutput;All",
+    "SinglePointConstrForceOutput;All\nElemForceOutput;All;CornerResults");
+  const run = runShells(text, "mixed-bending-pressure");
+  const d = (STRIP.young * STRIP.thickness ** 3) / 12;
+  const g = STRIP.young / 2;
+  const expected = (p * STRIP.length ** 4) / (8 * d) + (p * STRIP.length ** 2) / (2 * SHEAR_FACTOR * g * STRIP.thickness);
+  for (let j = 0; j <= model.ny; ++j) {
+    const w = nodal(run, "displacements", model.node(model.nx, j))[2];
+    assert.ok(Math.abs(w / expected - 1) < 1e-8, `tip deflection ${w}, expected ${expected}`);
+  }
+  const rows = rowsOf(run, "ShellQuad4", "forces");
+  assert.ok(rows.length > 0, "force rows");
+  for (const row of rows)
+    for (const name of ["nx", "ny", "nxy"]) assert.equal(row[name], 0, `${name} of element ${row.id} at ${row.nodeId}`);
+});
+
+test("an octant of a sphere of membrane-only ShellTria3 in MixedHybridFormulation under internal pressure takes the membrane stress", () => {
+  // Radius R, held by symmetry on its three edges (u_x = 0 on x = 0, u_y = 0 on y = 0, u_z = 0 on z = 0): N = p R / 2
+  // in every direction, the radial displacement p R² (1 − ν) / (2 E t) everywhere. A membrane sphere has no
+  // inextensional motion, so no mechanism (an open membrane cylinder would have them: its rings ovalise freely).
+  const radius = 1.0;
+  const thickness = 0.01;
+  const young = 7.0e10;
+  const poisson = 0.3;
+  const pressure = 1.0e5;
+  const n = 6;
+  // Grid (i, j), i + j ≤ n: the point of the sphere along i X + j Y + (n − i − j) Z.
+  const ids = new Map();
+  const lines = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
+    "StaticLoadSelection;2", "DisplacementOutput;All", "[model]"];
+  const points = [];
+  for (let i = 0; i <= n; ++i)
+    for (let j = 0; i + j <= n; ++j) {
+      const v = [i, j, n - i - j];
+      const length = Math.hypot(...v);
+      const p = v.map((c) => (radius * c) / length);
+      const id = ids.size + 1;
+      ids.set(`${i},${j}`, id);
+      points.push({ id, p });
+      lines.push(`Node;${id};;${real(p[0])};${real(p[1])};${real(p[2])}`);
+      if (i === 0) lines.push(`SinglePointConstrList;1;1;${id}`);
+      if (j === 0) lines.push(`SinglePointConstrList;1;2;${id}`);
+      if (i + j === n) lines.push(`SinglePointConstrList;1;3;${id}`);
+    }
+  const node = (i, j) => ids.get(`${i},${j}`);
+  let element = 0;
+  // Their normal points outward: the internal pressure acts along it.
+  for (let i = 0; i < n; ++i)
+    for (let j = 0; i + j < n; ++j) {
+      lines.push(`ShellTria3;${++element};1;${node(i, j)};${node(i + 1, j)};${node(i, j + 1)}`);
+      if (i + j < n - 1) lines.push(`ShellTria3;${++element};1;${node(i + 1, j)};${node(i + 1, j + 1)};${node(i, j + 1)}`);
+    }
+  lines.push(`ShellProp;1;1;${real(thickness)};;;`, `IsoMat;1;${real(young)};;${real(poisson)};2700.`,
+    `ShellPressureLoad;2;${real(pressure)};1;Through;${element}`);
+  const run = runShells(lines.join("\n") + "\n", "mixed-membrane-sphere");
+  const expected = (pressure * radius ** 2 * (1 - poisson)) / (2 * young * thickness);
+  for (const { id, p } of points) {
+    const u = nodal(run, "displacements", id);
+    const radial = (u[0] * p[0] + u[1] * p[1] + u[2] * p[2]) / radius;
+    assert.ok(Math.abs(radial / expected - 1) < 1e-3, `radial displacement of grid ${id}: ${radial}, expected ${expected}`);
+  }
+});
+
+test("a membrane-only and a bending-only ShellQuad4 on the same grid points are refused in MixedHybridFormulation", () => {
+  // Two shells on one face would put two shells on one side of its edges: one property with both parts is the way.
+  const model = strip({ nx: 1, ny: 1 });
+  const text = model.text.replace(FULL_SECTION,
+    [MEMBRANE_ONLY, BENDING_ONLY.replace("ShellProp;1;", "ShellProp;2;"), `ShellQuad4;2;2;1;2;4;3`].join("\n"));
+  withModel(text, "mixed-overlay", SHELL_OPTIONS, (model) =>
+    assert.throws(() => solver.run(model, "statics"), /ShellQuad4 2: .*corner grids of element 1: coincident shells/));
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The points of the elements of the formulation that other elements read (spec section 5.10): a fastener that pierces a
+// shell reads its displacement and rotation at the point, a glued contact the displacement of a shell or of a solid face
+// there, over all their unknowns. On fields the elements hold exactly (a pure bending, quadratic) the point moves
+// exactly as the field, where the corner grid points alone would give their bilinear interpolation.
+
+// A strip bent by its supports (w = θ x² / (2 L), the rotation −θ x / L about y) and the records `extra` added.
+const BENT_STRIP_ROTATION = 1.0e-3;
+function bentStrip(extra) {
+  return strip({ poisson: 0, records: (node, nx, ny) => {
+    const records = [];
+    for (let j = 0; j <= ny; ++j)
+      records.push(`SinglePointConstrList;1;123456;${node(0, j)}`,
+        `SinglePointConstr;1;${node(nx, j)};5;${real(-BENT_STRIP_ROTATION)}`);
+    return records.concat(extra);
+  } });
+}
+const bentStripDeflection = (x) => (BENT_STRIP_ROTATION * x * x) / (2 * STRIP.length);
+
+test("a Fastener from a bent strip of ShellQuad4 in MixedHybridFormulation reads the motion of the shell at its piercing point", () => {
+  // A plate above element 2 of the strip (x 0.5 to 1, y 0 to 0.2), joined to it by a fastener at (0.6, 0.07) with GA
+  // and GB given: the plate carries nothing, so the fastener carries nothing and GA moves with the shell there.
+  const x = 0.6;
+  const model = bentStrip(["Node;101;;0.5;0.;0.05", "Node;102;;1.;0.;0.05", "Node;103;;1.;0.2;0.05",
+    "Node;104;;0.5;0.2;0.05", "ShellQuad4;100;2;101;102;103;104", "ShellProp;2;1;0.01;1;;1",
+    `Node;110;;${real(x)};0.07;0.025`, `Node;111;;${real(x)};0.07;0.`, `Node;112;;${real(x)};0.07;0.05`,
+    "Fastener;201;3;Elements;2;100;110;111;112", "FastenerProp;3;0.1;0;1;1.e5;1.e5;1.e5;1.e3;1.e3;1.e3"]);
+  const run = runShells(model.text, "mixed-fastener-bent");
+  const slope = (BENT_STRIP_ROTATION * x) / STRIP.length;
+  assertClose(nodal(run, "displacements", 111), [0, 0, bentStripDeflection(x), 0, -slope, 0], 1e-8, "GA",
+    BENT_STRIP_ROTATION);
+  // GB follows the plate, which follows the fastener rigidly: u_B = u_A + θ_A × (x_B − x_A).
+  assertClose(nodal(run, "displacements", 112), [-0.05 * slope, 0, bentStripDeflection(x), 0, -slope, 0], 1e-8, "GB",
+    BENT_STRIP_ROTATION);
+});
+
+const GLUE_RECORDS = ["ContactBody;1;ThreeDimensional;Deformable;1", "ContactBody;2;ThreeDimensional;Deformable;2",
+  "ContactTable;1;;;;;;Secondary;2;;;;;1;;;;;;;;;;;;;;;;;;;;;;;;;Primary;1;1"];
+const withContact = (text) => text.replace("[case]\n", "[case]\nContactSelection;1\n");
+
+test("a plate glued on a bent strip of ShellQuad4 in MixedHybridFormulation moves with the shell at its glued points", () => {
+  // A very soft plate on element 2 of the strip, its four corners glued to the strip's surface.
+  const corners = [[301, 0.6, 0.07], [302, 0.9, 0.07], [303, 0.9, 0.15], [304, 0.6, 0.15]];
+  const model = bentStrip([...corners.map(([id, x, y]) => `Node;${id};;${real(x)};${real(y)};0.`),
+    "ShellQuad4;300;2;301;302;303;304", "ShellProp;2;2;0.01;2;;2", "IsoMat;2;7.;;0.;2700.",
+    "ContactElemSurface;1;1;Through;8", "ContactElemSurface;2;300", ...GLUE_RECORDS]);
+  const run = runShells(withContact(model.text), "mixed-glue-strip");
+  assert.ok(run.diagnostics.some((d) => d.code === "glued-pair" && /4 grid points tied/.test(d.text)),
+    JSON.stringify(run.diagnostics.map((d) => d.code)));
+  for (const [id, x] of corners)
+    assertClose(nodal(run, "displacements", id).slice(0, 3), [0, 0, bentStripDeflection(x)], 1e-8, `grid ${id}`,
+      BENT_STRIP_ROTATION);
+});
+
+test("a plate glued on a face of a bent block of SolidHexa in MixedHybridFormulation moves with the solid at its glued points", () => {
+  // A very soft plate on the face z = W of the first cell, its four corners glued to the face.
+  const corners = [[301, 0.3, 0.2], [302, 0.8, 0.2], [303, 0.8, 0.7], [304, 0.3, 0.7]];
+  const model = solidBlock({ shape: "SolidHexa", nx: 2, poisson: BENT_BLOCK.poisson, records: (node, nx) =>
+    bentBlockRecords(node, nx).concat(corners.map(([id, x, y]) => `Node;${id};;${real(x)};${real(y)};${real(BLOCK.width)}`),
+      ["ShellQuad4;300;2;301;302;303;304", "ShellProp;2;2;0.01;2;;2", "IsoMat;2;2.;;0.;7800.",
+        "ContactPropertyRegion;1;1", "ContactElemSurface;2;300", ...GLUE_RECORDS]) });
+  const run = runSolids({ ...model, text: withContact(model.text) }, "mixed-glue-block");
+  for (const [id, x, y] of corners)
+    assertClose(nodal(run, "displacements", id).slice(0, 3), bentBlockField(x, y, BLOCK.width), 1e-8, `grid ${id}`,
+      BENT_BLOCK.kappa);
+});
+
+test("two free plates of ShellQuad4 in MixedHybridFormulation joined by a Fastener have six rigid-body modes", () => {
+  // The motion of the piercing points is exact for every rigid motion of the shells: the fastener stores no energy.
+  const lines = ["[executive]", "SolutionSequence;103", "[case]", "SubcaseStart;1", "EigenMethodSelection;3", "[model]",
+    "Node;1;;0.;0.;0.", "Node;2;;1.;0.;0.", "Node;3;;1.;1.;0.2", "Node;4;;0.;1.;0.", "Node;5;;0.;0.;0.1",
+    "Node;6;;1.;0.;0.1", "Node;7;;1.;1.;0.3", "Node;8;;0.;1.;0.1", "Node;9;;0.3;0.6;0.08", "Node;10;;0.3;0.6;0.06",
+    "Node;11;;0.3;0.6;0.16", "ShellQuad4;1;1;1;2;3;4", "ShellQuad4;2;1;5;6;7;8", "ShellProp;1;1;0.01;1;;1",
+    "IsoMat;1;7.e10;;0.3;2700.", "Fastener;101;3;Elements;1;2;9;10;11",
+    "FastenerProp;3;0.1;0;1;1.e6;1.e6;1.e6;1.e3;1.e3;1.e3", "LanczosEigenMethod;3;;;8"];
+  withModel(lines.join("\n") + "\n", "mixed-fastener-free", SHELL_OPTIONS, (model) => {
+    const run = solver.run(model, "modes");
+    assert.ok(!run.diagnostics.some((d) => d.severity === "error"), JSON.stringify(run.diagnostics));
+    const values = run.eigenvalues[0].rows.map((row) => row.eigenvalue);
+    assert.ok(values.length >= 7, `${values.length} eigenvalues`);
+    for (let k = 0; k < 6; ++k)
+      assert.ok(Math.abs(values[k]) < 1e-6 * values[6], `eigenvalue ${k + 1} is ${values[k]}, the first elastic ${values[6]}`);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Design derivatives (docs/mixed-hybrid-formulation-spec.md section 5.9): the semi-analytic sensitivities difference the
+// facets of the mixed hybrid elements on the snapshots of the design point moved by one field (the formulation's model
+// built again on each), and solve on the analysis' factors over its entities.
+
+// A cantilever strip of n ShellQuad4 along x (0.1 thick), held at x = 0, its tip loaded by `load`, in the analysis
+// `solution` (105: subcase 2 the buckling of the preload of subcase 1), with design variable 1 (the thickness) and, with `shape`, variable 3 (grid points 5 and 6 moved out of the
+// plane: from 0, so that the strip the gradient is taken at is warped, see the shape test).
+function designStrip({ n = 2, solution = 101, load = "1.;0.;0.;1.", shape = false, extra = [] } = {}) {
+  const records = [];
+  for (let i = 0; i <= n; ++i)
+    for (let j = 0; j <= 1; ++j) records.push(`Node;${i * 2 + j + 1};;${real(i / n)};${real(j)};0.`);
+  for (let i = 0; i < n; ++i) records.push(`ShellQuad4;${i + 1};1;${i * 2 + 1};${i * 2 + 3};${i * 2 + 4};${i * 2 + 2}`);
+  records.push("ShellProp;1;1;0.1;1;;1", "IsoMat;1;1000.;;0.3;1.", "SinglePointConstrList;1;123456;1;2",
+    `PointForceLoad;2;${2 * n + 1};;${load}`, `PointForceLoad;2;${2 * n + 2};;${load}`, "LanczosEigenMethod;3;;;2",
+    ...extra);
+  if (shape) records.push("DesignVar;3;MOVE;0.;-0.1;0.1", "DesignNodeMove;3;5;0;1.;0.;0.;1.",
+    "DesignNodeMove;3;6;0;1.;0.;0.;1.");
+  else records.push("DesignVar;1;THICK;0.1;0.05;0.2", "DesignPropRelation1;1;ShellProp;1;thickness;;;;1;1.");
+  const cases = solution === 101 ? ["SubcaseStart;1", "SinglePointConstrSelection;1", "StaticLoadSelection;2"]
+    : solution === 105 ? ["SubcaseStart;1", "SinglePointConstrSelection;1", "StaticLoadSelection;2", "SubcaseStart;2",
+      "SinglePointConstrSelection;1", "EigenMethodSelection;3", "StaticSubcaseSelection;1"]
+    : ["SubcaseStart;1", "SinglePointConstrSelection;1", "EigenMethodSelection;3"];
+  return { tip: 2 * n + 1, text: ["[executive]", `SolutionSequence;${solution}`, "[case]", ...cases,
+    "DisplacementOutput;All", "StressOutput;All", "[model]", ...records, ""].join("\n") };
+}
+
+// The native gradient of every response (by each of `methods`; [undefined]: the default) against the central
+// differences of the analysis (by default a step of 1e-4 of the value of each variable), relative to the largest of
+// each response's gradient.
+function assertGradients(problem, x, tolerance, steps = x.map((value) => 1e-4 * (Math.abs(value) || 1)),
+  methods = [undefined]) {
+  const valuesAt = (point) => point.values().responses.map((response) => response.values[0]);
+  const point = problem.evaluate(x);
+  try {
+    const natives = methods.map((method) => point.gradients(method ? { method } : undefined));
+    for (let v = 0; v < x.length; ++v) {
+      const h = steps[v];
+      const plus = problem.evaluate(x.map((value, k) => (k === v ? value + h : value)));
+      const minus = problem.evaluate(x.map((value, k) => (k === v ? value - h : value)));
+      try {
+        const [up, down] = [valuesAt(plus), valuesAt(minus)];
+        natives.forEach((native, m) => native.responses.forEach((response, r) => {
+          const scale = Math.max(...response.values.map(Math.abs), 1e-12);
+          const numerical = (up[r] - down[r]) / (2 * h);
+          assert.ok(Math.abs(response.values[v] - numerical) <= tolerance * scale,
+            `${methods[m] ?? "default"} method, response ${r}, variable ${v + 1}: native ${response.values[v]}, ` +
+            `differences ${numerical}`);
+        }));
+      } finally { plus.delete(); minus.delete(); }
+    }
+  } finally { point.delete(); }
+}
+
+const BOTH_METHODS = ["direct", "adjoint"];
+
+function withDesign({ text }, responses, settings, action) {
+  oor.writeFile("/work/mixed-design.oos", text);
+  const deck = oor.readModel("/work/mixed-design.oos", { strict: true });
+  try {
+    const problem = solver.optimizationFromReader(oor, deck, { responses }, settings, SHELL_OPTIONS);
+    try { action(problem); } finally { problem.delete(); }
+  } finally { deck.delete(); }
+}
+
+const GRADIENT_TOLERANCE = 1e-5;
+// A shape gradient against the differences of the analysis, whose first response is a small difference of large
+// displacements: 2e-5 off at the step 1e-4 (its extrapolated differences agree to 1e-5).
+const SHAPE_GRADIENT_TOLERANCE = 1e-4;
+
+test("the thickness gradients of a static strip in MixedHybridFormulation are those of the analysis", () => {
+  // Response 12 reads the rotation of a grid point of the shells (an excluded DOF filled from them): its adjoint takes
+  // its weight on the unknowns the rotation is filled from (FormulationConstraints::moveExcludedWeights).
+  const strip = designStrip();
+  withDesign(strip, [{ id: 10, type: "Displacement", attributeA: 3, targets: [strip.tip] },
+    { id: 11, type: "Stress", attributeA: 9, propertyType: "Elements", targets: [1] },
+    { id: 12, type: "Displacement", attributeA: 5, targets: [strip.tip] }], {},
+  (problem) => assertGradients(problem, [0.1], GRADIENT_TOLERANCE, undefined, BOTH_METHODS));
+});
+
+test("the thickness gradient of the first mode of a ShellQuad4 in MixedHybridFormulation is the analysis'", () => {
+  withDesign(designStrip({ n: 1, solution: 103 }), [{ id: 14, type: "Eigenvalue", attributeA: 1 }],
+    { analyses: { modes: [1] } }, (problem) => assertGradients(problem, [0.1], GRADIENT_TOLERANCE));
+});
+
+test("the thickness gradient of the buckling factor of a ShellQuad4 strip in MixedHybridFormulation is the analysis'", () => {
+  // The factor's derivative through the preload takes the product φᵀ K_d(e_k) φ of the shells in one pass per element
+  // (differentialStiffnessPreloadGradient) rather than K_d of each of their hundred or so DOFs.
+  withDesign(designStrip({ solution: 105, load: "1.;-1.;0.;0." }),
+    [{ id: 14, type: "BucklingFactor", attributeA: 1, tracksMode: true, subcases: [2] }],
+    { analyses: { buckling: [2] } }, (problem) => assertGradients(problem, [0.1], GRADIENT_TOLERANCE));
+});
+
+test("the inertia gradient of the buckling factor of a Bar2 column in MixedHybridFormulation is the analysis'", () => {
+  // The lines have no product of K_d along a shape: the derivative through the preload forms K_d of each of their
+  // DOFs, which are few.
+  const text = column({ count: 2, solution: 105 }) + `DesignVar;1;INERTIA;${real(BEAM.i1)};0.5e-6;2.e-6\n` +
+    "DesignPropRelation1;1;BarProp;1;bendingInertia1;;;;1;1.\n";
+  oor.writeFile("/work/mixed-design.oos", text);
+  const deck = oor.readModel("/work/mixed-design.oos", { strict: true });
+  try {
+    const problem = solver.optimizationFromReader(oor, deck,
+      { responses: [{ id: 14, type: "BucklingFactor", attributeA: 1, tracksMode: true, subcases: [2] }] },
+      { analyses: { buckling: [2] } }, { elementFormulation: "MixedHybridFormulation" });
+    try { assertGradients(problem, [BEAM.i1], GRADIENT_TOLERANCE); } finally { problem.delete(); }
+  } finally { deck.delete(); }
+});
+
+test("the shape gradient of a strip in MixedHybridFormulation reaches the elements beside the grid points it moves",
+  () => {
+    // Element 1 has none of the grid points 5 and 6, but the normals of its edge at x = 1/3 are read from element 2.
+    // The strip is warped where the gradient is taken (0.05): on the flat strip, a straight boundary that a move bends
+    // switches the reading of the surface (SurfaceReconstruction's straight boundary), and the matrices of the
+    // elements are not smooth there.
+    const strip = designStrip({ n: 3, shape: true, load: "1.;0.;0.;1." });
+    withDesign(strip, [{ id: 10, type: "Displacement", attributeA: 3, targets: [strip.tip] },
+      { id: 11, type: "Displacement", attributeA: 1, targets: [strip.tip + 1] }], {},
+    (problem) => assertGradients(problem, [0.05], SHAPE_GRADIENT_TOLERANCE, [1e-4]));
+  });
+
+// A shape that moves the relations of the formulation (docs/mixed-hybrid-formulation-spec.md section 5.15): a spring
+// on the rotation of grid point 5, or a moment there, makes that rotation an observer relation of the shells' unknowns,
+// whose coefficients move with the grid points; the rotations of the other grid points are excluded DOFs filled from
+// the shells. Responses 11 and 12 read such rotations.
+for (const [name, extra] of [["spring", ["SpringDofInline;50;10.;5;4;;"]], ["moment", ["PointMomentLoad;2;5;;0.3;1.;0.;0."]]])
+  test(`the shape gradients of a strip in MixedHybridFormulation with an observer relation (${name}) are the analysis'`,
+    () => {
+      const strip = designStrip({ n: 2, shape: true, extra });
+      withDesign(strip, [{ id: 10, type: "Displacement", attributeA: 3, targets: [strip.tip] },
+        { id: 11, type: "Displacement", attributeA: 4, targets: [5] },
+        { id: 12, type: "Displacement", attributeA: 5, targets: [strip.tip] },
+        { id: 13, type: "Stress", attributeA: 9, propertyType: "Elements", targets: [2] }], {},
+      (problem) => assertGradients(problem, [0.05], SHAPE_GRADIENT_TOLERANCE, [1e-4], BOTH_METHODS));
+    });
+
+test("the shape gradients of the roots of a strip in MixedHybridFormulation with an observer relation are the analysis'",
+  () => {
+    // The roots of the reduced problem change with the relations: the projection takes D·(K − λ·M)·φ (EigenItems).
+    const strip = designStrip({ n: 2, shape: true, solution: 103, extra: ["SpringDofInline;50;10.;5;4;;"] });
+    withDesign(strip, [{ id: 14, type: "Eigenvalue", attributeA: 1 }, { id: 15, type: "Eigenvalue", attributeA: 2 }],
+      { analyses: { modes: [1] } }, (problem) => assertGradients(problem, [0.05], SHAPE_GRADIENT_TOLERANCE, [1e-4]));
+  });
+
+test("the shape gradient of the buckling factor of a strip in MixedHybridFormulation with an observer relation is the analysis'",
+  () => {
+    const strip = designStrip({ n: 2, shape: true, solution: 105, load: "1.;-1.;0.;0.05",
+      extra: ["SpringDofInline;50;10.;5;4;;"] });
+    withDesign(strip, [{ id: 14, type: "BucklingFactor", attributeA: 1, tracksMode: true, subcases: [2] }],
+      { analyses: { buckling: [2] } }, (problem) => assertGradients(problem, [0.05], SHAPE_GRADIENT_TOLERANCE, [1e-4]));
+  });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// External units (docs/mixed-hybrid-formulation-spec.md section 5.9): a zone's elements replaced by matrices on the
+// grid points of its contour. The rotations of the shells' grid points the matrices act on become observer relations.
+
+// Two plates of n × n ShellQuad4 side by side, A on x in [0, 1] held along x = 0, B on x in [1, 2] loaded along x = 2,
+// with their own grid points on x = 1 joined by springs on components 1 to 5 between coincident points (stiffnesses
+// that no rigid motion strains: an external unit's K* must not). Gives the deck and the external unit whose matrix is
+// that of the springs.
+function springJoinedPlates(n = 2) {
+  const id = (plate, i, j) => plate * 100 + i * (n + 1) + j + 1;
+  const bulk = [];
+  for (const plate of [0, 1])
+    for (let i = 0; i <= n; ++i)
+      for (let j = 0; j <= n; ++j) bulk.push(`Node;${id(plate, i, j)};;${real(plate + i / n)};${real(j / n)};0.`);
+  let element = 1;
+  for (const plate of [0, 1])
+    for (let i = 0; i < n; ++i)
+      for (let j = 0; j < n; ++j)
+        bulk.push(`ShellQuad4;${element++};1;${id(plate, i, j)};${id(plate, i + 1, j)};${id(plate, i + 1, j + 1)};` +
+          `${id(plate, i, j + 1)}`);
+  bulk.push("ShellProp;1;1;0.1;1;;1", "IsoMat;1;1000.;;0.3;1.");
+  const springs = []; // [ID, grid of A, grid of B, component]
+  for (let j = 0; j <= n; ++j)
+    for (let c = 1; c <= 5; ++c) {
+      springs.push([500 + springs.length, id(0, n, j), id(1, 0, j), c]);
+      const [spring, a, b] = springs[springs.length - 1];
+      bulk.push(`SpringDofInline;${spring};1000.;${a};${c};${b};${c}`);
+    }
+  bulk.push(`SinglePointConstrList;1;123456;${Array.from({ length: n + 1 }, (_, j) => id(0, 0, j)).join(";")}`);
+  for (let j = 0; j <= n; ++j) bulk.push(`PointForceLoad;2;${id(1, n, j)};;1.;0.;0.3;1.`);
+  const text = ["[executive]", "SolutionSequence;101", "[case]", "DisplacementOutput;All",
+    "SinglePointConstrForceOutput;All", "SubcaseStart;1", "SinglePointConstrSelection;1", "StaticLoadSelection;2",
+    "[model]", ...bulk, ""].join("\n");
+  // K* of the springs: k on the diagonal of both DOFs of a spring, −k between them.
+  const labels = [];
+  const rowOf = new Map();
+  for (const [, a, b, c] of springs)
+    for (const grid of [a, b])
+      if (!rowOf.has(`${grid}:${c}`)) {
+        rowOf.set(`${grid}:${c}`, labels.length);
+        labels.push([grid, c]);
+      }
+  const size = labels.length;
+  const stiffness = new Array(size * size).fill(0);
+  for (const [, a, b, c] of springs) {
+    const [p, q] = [rowOf.get(`${a}:${c}`), rowOf.get(`${b}:${c}`)];
+    stiffness[p * size + p] += 1000;
+    stiffness[q * size + q] += 1000;
+    stiffness[p * size + q] -= 1000;
+    stiffness[q * size + p] -= 1000;
+  }
+  const grids = [...new Set(labels.map(([grid]) => grid))];
+  const unit = { zone: { id: 1, name: "springs", elements: springs.map(([spring]) => spring),
+    boundary: grids.map((grid) => ({ grid, components: "12345" })) }, labels, stiffness };
+  return { text, unit, firstPlateGrid: (i, j) => id(0, i, j) };
+}
+
+test("an external unit replaces the springs between two plates of MixedHybridFormulation", () => {
+  const { text, unit } = springJoinedPlates();
+  const model = readDeck(text, "mixed-external");
+  try {
+    const shells = solver.modelFromReader(oor, model, SHELL_OPTIONS);
+    try {
+      const full = solver.run(shells, "statics");
+      const external = solver.run(shells, "statics", { externalUnits: [unit] });
+      assert.ok(!external.diagnostics.some((d) => d.severity === "error"), JSON.stringify(external.diagnostics));
+      for (const kind of ["displacements", "singlePointConstrForces"]) {
+        const [a, b] = [full, external].map((run) => run.nodalTables.find((table) => table.kind === kind));
+        const largest = Math.max(...Array.from(a.values).map(Math.abs));
+        a.values.forEach((value, k) => assert.ok(Math.abs(value - b.values[k]) < 1e-6 * largest, `${kind} ${k}`));
+      }
+    } finally { shells.delete(); }
+  } finally { model.delete(); }
+});
+
+test("an external unit whose zone cuts the shells of MixedHybridFormulation is refused", () => {
+  // The zone of element 1 of plate A: its edges with elements 2 and 3 are unknowns of both sides.
+  const { text, firstPlateGrid } = springJoinedPlates();
+  const contour = [firstPlateGrid(1, 0), firstPlateGrid(1, 1), firstPlateGrid(0, 1)];
+  const labels = contour.flatMap((grid) => [1, 2, 3].map((c) => [grid, c]));
+  const stiffness = labels.flatMap((_, i) => labels.map((__, j) => (i === j ? 1 : 0)));
+  const unit = { zone: { id: 2, name: "one shell", elements: [1], boundary: contour.map((grid) => ({ grid,
+    components: "123" })) }, labels, stiffness };
+  const model = readDeck(text, "mixed-external-cut");
+  try {
+    const shells = solver.modelFromReader(oor, model, SHELL_OPTIONS);
+    try {
+      assert.throws(() => solver.run(shells, "statics", { externalUnits: [unit] }), /external-unit-formulation-contour/);
+    } finally { shells.delete(); }
+  } finally { model.delete(); }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Superelements (docs/mixed-hybrid-formulation-spec.md section 5.9): a part of its own model joined to the residual
+// structure at grid points, reduced on them.
+
+// Plate A (2 × 2 ShellQuad4 on x in [0, 1], held along x = 0) and plate B (2 × 2 on x in [0.5, 1.5], loaded along
+// x = 1.5), the points of the lines x = 0.5 and x = 1 of each plate coincident and joined by springs on components 1 to
+// `springComponents` (two lines: no hinge). With `shared`, B is on x in [1, 2] and has A's grid points of the line
+// x = 1 (no spring): the plates share the edges of that line. Gives the decks of the whole model, of the residual
+// structure (A, the springs and B's points they reach) and of the part (B), and the part's boundary.
+function superelementPlates({ springComponents = 3, shared = false, solution = 101 } = {}) {
+  const n = 2;
+  const idA = (i, j) => i * (n + 1) + j + 1;
+  const idB = (i, j) => (shared && i === 0 ? idA(n, j) : 100 + i * (n + 1) + j + 1);
+  const xB = shared ? 1 : 1 - 1 / n;
+  const nodesA = [];
+  const nodesB = [];
+  for (let i = 0; i <= n; ++i)
+    for (let j = 0; j <= n; ++j) {
+      nodesA.push(`Node;${idA(i, j)};;${real(i / n)};${real(j / n)};0.`);
+      if (!shared || i > 0) nodesB.push(`Node;${idB(i, j)};;${real(xB + i / n)};${real(j / n)};0.`);
+    }
+  const shells = (id, first) => {
+    const records = [];
+    let element = first;
+    for (let i = 0; i < n; ++i)
+      for (let j = 0; j < n; ++j)
+        records.push(`ShellQuad4;${element++};1;${id(i, j)};${id(i + 1, j)};${id(i + 1, j + 1)};${id(i, j + 1)}`);
+    return records;
+  };
+  const boundary = [];
+  const springs = [];
+  if (shared) for (let j = 0; j <= n; ++j) boundary.push(idA(n, j));
+  else
+    for (const [ia, ib] of [[n - 1, 0], [n, 1]])
+      for (let j = 0; j <= n; ++j) {
+        boundary.push(idB(ib, j));
+        for (let c = 1; c <= springComponents; ++c)
+          springs.push(`SpringDofInline;${500 + springs.length};1000.;${idA(ia, j)};${c};${idB(ib, j)};${c}`);
+      }
+  const common = ["ShellProp;1;1;0.1;1;;1", "IsoMat;1;1000.;;0.3;1."];
+  const held = `SinglePointConstrList;1;123456;${Array.from({ length: n + 1 }, (_, j) => idA(0, j)).join(";")}`;
+  const loads = Array.from({ length: n + 1 }, (_, j) => `PointForceLoad;2;${idB(n, j)};;1.;0.;0.3;1.`);
+  const selection = solution === 103 ? ["EigenMethodSelection;3"] : ["StaticLoadSelection;2"];
+  const method = solution === 103 ? ["LanczosEigenMethod;3;;;3"] : [];
+  const deck = (records) => ["[executive]", `SolutionSequence;${solution}`, "[case]", "DisplacementOutput;All",
+    "SubcaseStart;1", "SinglePointConstrSelection;1", ...selection, "[model]", ...records, ...method, ""].join("\n");
+  const boundaryNodes = nodesB.filter((record) => boundary.includes(Number(record.split(";")[1])));
+  return {
+    boundary,
+    whole: deck([...nodesA, ...nodesB, ...shells(idA, 1), ...shells(idB, 101), ...springs, ...common, held, ...loads]),
+    residual: deck([...nodesA, ...boundaryNodes, ...shells(idA, 1), ...springs, ...common, held,
+      `PointForceLoad;2;${idA(1, 1)};;0.;0.;0.;1.`]),
+    // The part's own SPC set 1 holds a scalar point only (the Case Control selects it).
+    part: deck([...(shared ? nodesA.slice(-(n + 1)) : []), ...nodesB, ...shells(idB, 101), ...common, ...loads,
+      "ScalarPoint;999", "SinglePointConstrList;1;0;999"]),
+  };
+}
+
+function withSuperelementModels(plates, action) {
+  const decks = [];
+  const models = [];
+  try {
+    for (const name of ["whole", "residual", "part"]) {
+      decks.push(readDeck(plates[name], `mixed-superelement-${name}`));
+      models.push(solver.modelFromReader(oor, decks[decks.length - 1], SHELL_OPTIONS));
+    }
+    return action(...models);
+  } finally {
+    models.forEach((model) => model.delete());
+    decks.forEach((deck) => deck.delete());
+  }
+}
+
+test("a superelement of MixedHybridFormulation gives the displacements of the whole model", () => {
+  const plates = superelementPlates();
+  withSuperelementModels(plates, (whole, residual, part) => {
+    const full = solver.run(whole, "statics").nodalTables.find((table) => table.kind === "displacements");
+    const run = solver.runSuperelements(residual, [{ id: 1, model: part,
+      boundary: plates.boundary.map((point) => [point, point]) }], "statics");
+    assert.deepEqual(run.superelements.map((entry) => entry.id), [0, 1]);
+    const largest = Math.max(...Array.from(full.values).map(Math.abs));
+    for (const entry of run.superelements) {
+      const table = entry.nodalTables.find((candidate) => candidate.kind === "displacements");
+      for (let r = 0; r < table.ids.length; ++r) {
+        // The rotation of a boundary point is the mean of the part's shells there: the residual structure, which has
+        // no shell there, takes it from the part's recovery.
+        const row = Array.from(full.ids).indexOf(table.ids[r]);
+        if (row < 0) continue; // the part's own scalar point
+        for (let c = 0; c < 6; ++c)
+          assert.ok(Math.abs(table.values[r * 6 + c] - full.values[row * 6 + c]) < 1e-8 * largest,
+            `superelement ${entry.id}, grid point ${table.ids[r]}, component ${c + 1}`);
+      }
+    }
+  });
+});
+
+test("the mode shapes of a superelement of MixedHybridFormulation take the part's rotations at its boundary", () => {
+  // The rotation of a boundary point is the mean of the part's shells there; the residual structure, which has no
+  // shell there, takes it in each mode from the part's mode shape.
+  const plates = superelementPlates({ solution: 103 });
+  withSuperelementModels(plates, (whole, residual, part) => {
+    const run = solver.runSuperelements(residual, [{ id: 1, model: part,
+      boundary: plates.boundary.map((point) => [point, point]) }], "modes");
+    const shapesOf = (id) => run.superelements.find((entry) => entry.id === id).nodalTables
+      .filter((table) => table.kind === "eigenvectors");
+    const [residualShapes, partShapes] = [shapesOf(0), shapesOf(1)];
+    assert.ok(residualShapes.length >= 1 && residualShapes.length === partShapes.length,
+      `${residualShapes.length} and ${partShapes.length} mode shapes`);
+    residualShapes.forEach((shape, mode) => {
+      const other = partShapes[mode];
+      const largest = Math.max(...Array.from(shape.values).map(Math.abs));
+      for (const point of plates.boundary) {
+        const [r, q] = [Array.from(shape.ids).indexOf(point), Array.from(other.ids).indexOf(point)];
+        for (let c = 0; c < 6; ++c)
+          assert.ok(Math.abs(shape.values[r * 6 + c] - other.values[q * 6 + c]) < 1e-10 * largest,
+            `mode ${mode + 1}, grid point ${point}, component ${c + 1}: ${shape.values[r * 6 + c]} and ` +
+            `${other.values[q * 6 + c]}`);
+      }
+      const rotations = plates.boundary.flatMap((point) => {
+        const r = Array.from(shape.ids).indexOf(point);
+        return [3, 4, 5].map((c) => Math.abs(shape.values[r * 6 + c]));
+      });
+      assert.ok(Math.max(...rotations) > 1e-6 * largest, `mode ${mode + 1}: the boundary does not turn`);
+    });
+  });
+});
+
+test("a superelement whose shell rotations the residual structure stiffens is refused", () => {
+  const plates = superelementPlates({ springComponents: 5 });
+  withSuperelementModels(plates, (whole, residual, part) => {
+    assert.throws(() => solver.runSuperelements(residual, [{ id: 1, model: part,
+      boundary: plates.boundary.map((point) => [point, point]) }], "statics"), /superelement-boundary-rotation/);
+  });
+});
+
+test("a superelement that shares the edges of shells of MixedHybridFormulation with the residual is refused", () => {
+  const plates = superelementPlates({ shared: true });
+  withSuperelementModels(plates, (whole, residual, part) => {
+    assert.throws(() => solver.runSuperelements(residual, [{ id: 1, model: part,
+      boundary: plates.boundary.map((point) => [point, point]) }], "statics"), /superelement-boundary-formulation/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Supports and relations at the grid points of shells (docs/mixed-hybrid-formulation-spec.md section 5.6): the shells
+// have no rotation at their grid points, so what a support holds there, or what a rigid element moves, is read along
+// the edges whose two grid points have it, and tied to the mean rotation of the shells where no edge reads it.
+
+// A strip with a static load set selected.
+function loadedStrip(options) {
+  const model = strip(options);
+  return { ...model,
+    text: model.text.replace("SinglePointConstrSelection;1", "SinglePointConstrSelection;1\nStaticLoadSelection;2") };
+}
+
+// The largest difference between the displacements of the grid points `ids` in two runs (their first `count`
+// components), relative to the largest displacement.
+function displacementGap(a, b, ids, count = 6) {
+  let [gap, scale] = [0, 0];
+  for (const id of ids) {
+    const [ua, ub] = [nodal(a, "displacements", id), nodal(b, "displacements", id)];
+    for (let c = 0; c < count; ++c) {
+      gap = Math.max(gap, Math.abs(ua[c] - ub[c]));
+      scale = Math.max(scale, Math.abs(ua[c]));
+    }
+  }
+  return gap / scale;
+}
+
+const clampedEnd = (node, ny) => Array.from({ length: ny + 1 }, (_, j) => `SinglePointConstrList;1;123456;${node(0, j)}`);
+
+test("an edge of ShellQuad4 in MixedHybridFormulation tied to a RigidBodyStar moves as under the same enforced motion", () => {
+  // The grid points of the end x = L depend on grid point 900 above its middle, which is moved by w along z and
+  // turned by θ about y: they move by u = u_900 + θ × r, r = (0, y − W / 2, −h), that is u_x = −h θ, u_z = w. The
+  // edges between them follow by the map that carries the same values enforced at the grid points themselves.
+  const [theta, w, h] = [1.0e-2, 2.0e-3, 0.05];
+  const rigid = strip({ nx: 3, records: (node, nx, ny) => clampedEnd(node, ny).concat(
+    `Node;900;;${real(STRIP.length)};${real(STRIP.width / 2)};${real(h)}`,
+    `RigidBodyStar;800;900;123456;${Array.from({ length: ny + 1 }, (_, j) => node(nx, j)).join(";")}`,
+    "SinglePointConstrList;1;1246;900", `SinglePointConstr;1;900;3;${real(w)}`,
+    `SinglePointConstr;1;900;5;${real(theta)}`) });
+  const enforced = strip({ nx: 3, records: (node, nx, ny) => {
+    const records = clampedEnd(node, ny);
+    for (let j = 0; j <= ny; ++j)
+      records.push(`SinglePointConstrList;1;246;${node(nx, j)}`,
+        `SinglePointConstr;1;${node(nx, j)};1;${real(-h * theta)}`, `SinglePointConstr;1;${node(nx, j)};3;${real(w)}`,
+        `SinglePointConstr;1;${node(nx, j)};5;${real(theta)}`);
+    return records;
+  } });
+  const [a, b] = [runShells(rigid.text, "mixed-rigid-edge"), runShells(enforced.text, "mixed-enforced-edge")];
+  assert.ok(!a.diagnostics.some((d) => d.code === "rotation-not-transmitted"), "no rotation left out");
+  const gap = displacementGap(a, b, enforced.points.map((point) => point.id));
+  assert.ok(gap < 1e-9, `the rigid element and the enforced motion differ by ${gap}`);
+  // The force and the moment that hold grid point 900 are those of the enforced end about it.
+  const total = [0, 0, 0, 0, 0, 0];
+  for (let j = 0; j <= enforced.ny; ++j) {
+    const id = enforced.node(enforced.nx, j);
+    const f = nodal(b, "singlePointConstrForces", id);
+    const r = [0, enforced.points.find((point) => point.id === id).y - STRIP.width / 2, -h];
+    const arm = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]];
+    for (let c = 0; c < 3; ++c) { total[c] += f[c]; total[3 + c] += f[3 + c] + arm[c]; }
+  }
+  assertClose(nodal(a, "singlePointConstrForces", 900), total, 1e-7, "the forces at grid point 900");
+});
+
+test("a rigid element joined to ShellQuad4 of MixedHybridFormulation at one grid point turns with their mean rotation", () => {
+  // A force F at grid point 900, h above grid point g of the shells and tied to it by a RigidBodyStar, works on the
+  // shells as the force F and the moment (x_900 − x_g) × F at g: the rotation of the rigid element is the mean
+  // rotation of the shells at g, on which a moment given there acts (spec section 5.4).
+  const h = 0.05;
+  const [fx, fz] = [30.0, 2.0];
+  const rigid = loadedStrip({ nx: 3, records: (node, nx, ny) => clampedEnd(node, ny).concat(
+    `Node;900;;${real(STRIP.length)};${real(STRIP.width / 2)};${real(h)}`,
+    `RigidBodyStar;800;900;123456;${node(nx, 1)}`, `PointForceLoad;2;900;;1.;${real(fx)};0.;${real(fz)}`) });
+  const direct = loadedStrip({ nx: 3, records: (node, nx, ny) => clampedEnd(node, ny).concat(
+    `PointForceLoad;2;${node(nx, 1)};;1.;${real(fx)};0.;${real(fz)}`,
+    `PointMomentLoad;2;${node(nx, 1)};;1.;0.;${real(h * fx)};0.`) });
+  const [a, b] = [runShells(rigid.text, "mixed-rigid-point"), runShells(direct.text, "mixed-direct-point")];
+  assert.ok(!a.diagnostics.some((d) => d.code === "rotation-not-transmitted"), "the rotation is transmitted");
+  const gap = displacementGap(a, b, direct.points.map((point) => point.id));
+  assert.ok(gap < 1e-8, `the rigid element and the loads at its grid point differ by ${gap}`);
+  // Grid point 900 turns with the shells.
+  const g = direct.node(direct.nx, 1);
+  assertClose(nodal(a, "displacements", 900).slice(3), nodal(b, "displacements", g).slice(3), 1e-8,
+    "the rotation of grid point 900");
+});
+
+test("a plate of ShellQuad4 in MixedHybridFormulation clamped at one grid point is held, with the reactions of the loads", () => {
+  // The six components held at one corner hold the plate as a free body: its translations there, and the mean
+  // rotation of the shells there about the three axes (no other grid point holds a rotation).
+  const model = loadedStrip({ nx: 3, records: (node, nx, ny) => [`SinglePointConstrList;1;123456;${node(0, 0)}`,
+    `PointForceLoad;2;${node(nx, ny)};;1.;0.;0.;1.`, `PointForceLoad;2;${node(nx, 0)};;1.;0.;1.;0.`] });
+  const run = runShells(model.text, "mixed-clamp-point");
+  // F = −ΣF; M = −Σ r × F about the corner: r × F = (W, −L, 0) for the force along z, (0, 0, L) for the one along y.
+  assertClose(nodal(run, "singlePointConstrForces", model.node(0, 0)),
+    [0, -1, -1, -STRIP.width, STRIP.length, -STRIP.length], 1e-7, "the reactions at the corner");
+});
+
+test("the rotation about the normal held at every grid point of a plate of MixedHybridFormulation stiffens nothing", () => {
+  // The support written for shells without drilling stiffness: the shells of the formulation have no rotation of
+  // their own about their normal, and the rotation of their membrane field stays free.
+  const records = (drilling) => (node, nx, ny) => {
+    const lines = clampedEnd(node, ny).concat(`PointForceLoad;2;${node(nx, ny)};;1.;0.;40.;1.`);
+    if (drilling)
+      for (let j = 0; j <= ny; ++j)
+        for (let i = 1; i <= nx; ++i) lines.push(`SinglePointConstrList;1;6;${node(i, j)}`);
+    return lines;
+  };
+  const free = loadedStrip({ nx: 3, records: records(false) });
+  const held = loadedStrip({ nx: 3, records: records(true) });
+  const [a, b] = [runShells(free.text, "mixed-drilling-free"), runShells(held.text, "mixed-drilling-held")];
+  const gap = displacementGap(a, b, free.points.map((point) => point.id), 5);
+  assert.ok(gap < 1e-10, `the supports of the rotation about the normal change the displacements by ${gap}`);
+});
+
+test("a line of grid points clamped inside a strip of ShellQuad4 in MixedHybridFormulation clamps the shells along it", () => {
+  // The grid points of the section x = L / 2 hold their six components: the edges between them are held as the
+  // edges of a boundary are, so the half beyond them does not move under a load on the first half, which bends as a
+  // cantilever of length L / 2 (without Poisson's ratio: P (L / 2)³ / (3 E I) under the end force P).
+  const force = 1.0;
+  const model = loadedStrip({ nx: 4, poisson: 0, records: (node, nx, ny) => {
+    const lines = [];
+    for (let j = 0; j <= ny; ++j)
+      lines.push(`SinglePointConstrList;1;123456;${node(nx / 2, j)}`,
+        `PointForceLoad;2;${node(0, j)};;1.;0.;0.;${real(force / (ny + 1))}`);
+    return lines;
+  } });
+  const run = runShells(model.text, "mixed-clamp-line");
+  const inertia = (STRIP.width * STRIP.thickness ** 3) / 12;
+  const expected = (force * (STRIP.length / 2) ** 3) / (3 * STRIP.young * inertia);
+  const tip = nodal(run, "displacements", model.node(0, 1))[2];
+  assert.ok(Math.abs(tip / expected - 1) < 0.02, `deflection of the loaded end ${tip}, of the cantilever ${expected}`);
+  for (const { id, x } of model.points)
+    if (x > STRIP.length / 2)
+      assertClose(nodal(run, "displacements", id), [0, 0, 0, 0, 0, 0], 1e-10, `grid ${id} beyond the clamped line`,
+        expected);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Grid point force balance (docs/mixed-hybrid-formulation-spec.md section 10.1): the forces on the unknowns of the
+// edges, faces and interiors are carried to the grid points of their entities with their resultant, so that the rows
+// of a grid point sum to zero, the rows of an element have no resultant, and the rows of the grid points of a free
+// body give the forces on it.
+
+const FIXED_FORCE_ROWS = ["appliedLoad", "singlePointConstrForce", "multiPointConstrForce", "total", "elementFormulation"];
+
+// The rows of a grid point force table as { node, element, name, values }.
+function forceRows(table) {
+  return Array.from(table.nodeIds, (node, r) => ({ node, element: table.elementIds[r],
+    name: table.names[table.nameIndices[r]], values: Array.from(table.values.slice(6 * r, 6 * r + 6)) }));
+}
+
+// The resultant of `rows` about `centre` (force, then moment), `positionOf` giving the position of a grid point.
+function resultantOf(rows, positionOf, centre = [0, 0, 0]) {
+  const total = [0, 0, 0, 0, 0, 0];
+  for (const { node, values } of rows) {
+    const p = positionOf(node).map((x, c) => x - centre[c]);
+    const arm = [p[1] * values[2] - p[2] * values[1], p[2] * values[0] - p[0] * values[2],
+      p[0] * values[1] - p[1] * values[0]];
+    for (let c = 0; c < 3; ++c) { total[c] += values[c]; total[3 + c] += values[3 + c] + arm[c]; }
+  }
+  return total;
+}
+
+// A cantilever strip curved along x (z = c x²: its elements are not flat), stiffened by Bar2 on one edge, under a
+// pressure and a force F at a corner of its free end; `extra` more records.
+const BALANCE_FORCE = [3, 2, 1];
+function balanceStrip(extra = () => []) {
+  const curve = 0.15;
+  const model = loadedStrip({ nx: 3, z: (x) => curve * x * x, records: (node, nx, ny) => clampedEnd(node, ny).concat(
+    stiffeners(node, nx), `PointForceLoad;2;${node(nx, ny)};;1.;${BALANCE_FORCE.map(real).join(";")}`,
+    Array.from({ length: nx * ny }, (_, e) => `ShellPressureLoad;2;50.;${e + 1}`), extra(node, nx, ny)) });
+  const positions = new Map(model.points.map((point) => [point.id, [point.x, point.y, point.z]]));
+  return { ...model, text: model.text.replace("DisplacementOutput;All", "DisplacementOutput;All\nNodeForceOutput;All"),
+    positionOf: (id) => positions.get(id) };
+}
+
+test("the grid point forces of a curved stiffened strip in MixedHybridFormulation balance at every grid point", () => {
+  const model = balanceStrip();
+  const run = runShells(model.text, "mixed-balance");
+  const rows = forceRows(run.gridPointForces[0]);
+  const scale = Math.max(...rows.flatMap((row) => row.values.map(Math.abs)));
+  for (const row of rows.filter((entry) => entry.name === "total"))
+    assertClose(row.values, [0, 0, 0, 0, 0, 0], 1e-8, `the total at grid point ${row.node}`, scale);
+  // The rows of one element are the forces it applies to its grid points: they have no resultant.
+  const elements = rows.filter((row) => !FIXED_FORCE_ROWS.includes(row.name));
+  assert.ok(elements.some((row) => row.name === "Bar2") && elements.some((row) => row.name === "ShellQuad4"));
+  for (const element of new Set(elements.map((row) => row.element)))
+    assertClose(resultantOf(elements.filter((row) => row.element === element), model.positionOf), [0, 0, 0, 0, 0, 0],
+      1e-8, `the resultant of element ${element}`, scale);
+  // The supports hold the loads.
+  const applied = resultantOf(rows.filter((row) => row.name === "appliedLoad"), model.positionOf);
+  const supports = resultantOf(rows.filter((row) => row.name === "singlePointConstrForce"), model.positionOf);
+  assertClose(supports, applied.map((value) => -value), 1e-8, "the resultant of the supports");
+});
+
+test("the grid point forces of a strip in MixedHybridFormulation give the forces through a section", () => {
+  // The free body beyond the section x = L / 3 (the grid points of the columns i ≥ 1 and the elements between
+  // them): the elements before the section apply, at the grid points of the section, minus the loads on the body.
+  const model = balanceStrip();
+  const run = runShells(model.text, "mixed-section");
+  const rows = forceRows(run.gridPointForces[0]);
+  const cut = STRIP.length / 3;
+  const isBeyond = (id) => model.positionOf(id)[0] > cut - 1e-9;
+  const isOnSection = (id) => Math.abs(model.positionOf(id)[0] - cut) < 1e-9;
+  // The elements before the section: those with a grid point not beyond it.
+  const before = new Set(rows.filter((row) => !FIXED_FORCE_ROWS.includes(row.name) && !isBeyond(row.node))
+    .map((row) => row.element));
+  const through = resultantOf(rows.filter((row) => before.has(row.element) && !FIXED_FORCE_ROWS.includes(row.name) &&
+    isOnSection(row.node)), model.positionOf);
+  const loads = resultantOf(rows.filter((row) => row.name === "appliedLoad" && isBeyond(row.node)), model.positionOf);
+  assertClose(through, loads.map((value) => -value), 1e-8, "the forces through the section");
+});
+
+test("the grid point forces of MixedHybridFormulation count the relations of the formulation at their grid points", () => {
+  // A moment at a grid point of shells acts on their mean rotation there (an observer relation, spec section 5.4):
+  // its row is the moment, the formulation's row what the relation gives the shells around.
+  const model = balanceStrip((node, nx) => [`PointMomentLoad;2;${node(nx, 1)};;1.;0.;5.;0.`]);
+  const run = runShells(model.text, "mixed-balance-moment");
+  const rows = forceRows(run.gridPointForces[0]);
+  const scale = Math.max(...rows.flatMap((row) => row.values.map(Math.abs)));
+  assert.ok(rows.some((row) => row.name === "elementFormulation"), "a row of the formulation's relations");
+  for (const row of rows.filter((entry) => entry.name === "total"))
+    assertClose(row.values, [0, 0, 0, 0, 0, 0], 1e-8, `the total at grid point ${row.node}`, scale);
+  // The relation moves the moment without adding a force: its rows have no resultant.
+  assertClose(resultantOf(rows.filter((row) => row.name === "elementFormulation"), model.positionOf),
+    [0, 0, 0, 0, 0, 0], 1e-8, "the resultant of the formulation's rows", scale);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// What the validation suite found (wasm/test/validation): each case below failed before its correction.
+
+// A plate of n × n ShellQuad4 or a block of n SolidHexa turned by 30 degrees about z, every grid point in the
+// rectangular displacement system 5 turned with it (its axis 1 along the first side): a model whose supports are
+// along no basic axis.
+const TURN = Math.PI / 6;
+const turned = (x, y) => [x * Math.cos(TURN) - y * Math.sin(TURN), x * Math.sin(TURN) + y * Math.cos(TURN)];
+const TURNED_FRAME = `RectFrame2;5;;0.;0.;0.;0.;0.;1.;${real(Math.cos(TURN))};${real(Math.sin(TURN))};0.`;
+
+test("the supports of shells of MixedHybridFormulation in a displacement system turned from the basic one hold the edges", () => {
+  // A stretch along the first side: component 1 held on the side s = 0 and enforced on the side s = 1. The edges
+  // hold the direction their two grid points share (spec section 5.6), so the state is the uniform one:
+  // u1 = δ s, u2 = −ν δ r, and the pull is E t δ (the plate is a unit square).
+  const [n, delta, young, poisson, thickness] = [2, 1.0e-3, 7.0e10, 0.3, 0.01];
+  const id = (i, j) => j * (n + 1) + i + 1;
+  const lines = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
+    "DisplacementOutput;All", "SinglePointConstrForceOutput;All", "[model]", TURNED_FRAME];
+  for (let j = 0; j <= n; ++j)
+    for (let i = 0; i <= n; ++i) {
+      const [x, y] = turned(i / n, j / n);
+      lines.push(`Node;${id(i, j)};;${real(x)};${real(y)};0.;5`);
+    }
+  for (let j = 0; j < n; ++j)
+    for (let i = 0; i < n; ++i)
+      lines.push(`ShellQuad4;${j * n + i + 1};1;${id(i, j)};${id(i + 1, j)};${id(i + 1, j + 1)};${id(i, j + 1)}`);
+  lines.push(`ShellProp;1;1;${real(thickness)};1;;1`, `IsoMat;1;${real(young)};;${real(poisson)};2700.`);
+  for (let j = 0; j <= n; ++j)
+    lines.push(`SinglePointConstrList;1;13;${id(0, j)}`, `SinglePointConstrList;1;3;${id(n, j)}`,
+      `SinglePointConstr;1;${id(n, j)};1;${real(delta)}`);
+  lines.push(`SinglePointConstrList;1;2;${id(0, 0)}`);
+  const run = runShells(lines.join("\n") + "\n", "mixed-turned-shells");
+  assert.ok(!run.diagnostics.some((d) => d.severity === "warning"), JSON.stringify(run.diagnostics));
+  for (let j = 0; j <= n; ++j)
+    for (let i = 0; i <= n; ++i)
+      assertClose(nodal(run, "displacements", id(i, j)).slice(0, 3), [(delta * i) / n, (-poisson * delta * j) / n, 0],
+        1e-8, `grid ${id(i, j)}`, delta);
+  let pull = 0;
+  for (let j = 0; j <= n; ++j) pull += nodal(run, "singlePointConstrForces", id(n, j))[0];
+  assert.ok(Math.abs(pull / (young * thickness * delta) - 1) < 1e-8, `pull ${pull}`);
+});
+
+test("the supports of a SolidHexa of MixedHybridFormulation in a turned displacement system hold its faces", () => {
+  // One hexahedron 2 × 1 × 1.5 turned by 30 degrees, stretched between its end faces (component 1 of the turned
+  // system): the uniaxial state, pull E ε b c.
+  const [a, b, c, delta, young] = [2.0, 1.0, 1.5, 1.0e-3, 2.0e11];
+  const corners = [[0, 0, 0], [a, 0, 0], [a, b, 0], [0, b, 0], [0, 0, c], [a, 0, c], [a, b, c], [0, b, c]];
+  const lines = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
+    "DisplacementOutput;All", "SinglePointConstrForceOutput;All", "[model]", TURNED_FRAME];
+  corners.forEach(([x, y, z], k) => {
+    const [bx, by] = turned(x, y);
+    lines.push(`Node;${k + 1};;${real(bx)};${real(by)};${real(z)};5`);
+  });
+  lines.push("SolidHexa;1;1;1;2;3;4;5;6;7;8", "SolidProp;1;1", `IsoMat;1;${real(young)};;0.3;7800.`);
+  for (const k of [1, 4, 5, 8]) lines.push(`SinglePointConstrList;1;1;${k}`);
+  for (const k of [2, 3, 6, 7]) lines.push(`SinglePointConstr;1;${k};1;${real(delta)}`);
+  lines.push("SinglePointConstrList;1;23;1", "SinglePointConstrList;1;3;4", "SinglePointConstrList;1;2;5");
+  const edges = [[1, 2], [2, 3], [3, 4], [4, 1], [5, 6], [6, 7], [7, 8], [8, 5], [1, 5], [2, 6], [3, 7], [4, 8]];
+  const model = { text: lines.join("\n") + "\n",
+    options: { elementFormulation: "MixedHybridFormulation", formulationGeometry: { sharpEdges: edges } } };
+  const run = runSolids(model, "mixed-turned-solid");
+  assert.ok(!run.diagnostics.some((d) => d.severity === "warning"), JSON.stringify(run.diagnostics));
+  let pull = 0;
+  for (const k of [2, 3, 6, 7]) pull += nodal(run, "singlePointConstrForces", k)[0];
+  const expected = (young * delta * b * c) / a;
+  assert.ok(Math.abs(pull / expected - 1) < 1e-8, `pull ${pull}, expected ${expected}`);
+});
+
+test("a couple at a grid point of a Rod2 on an edge of ShellQuad4 in MixedHybridFormulation bends the shells", () => {
+  // A rod on an edge of shells stiffens no rotation of its grid points in bending: there the rotation follows the
+  // shells (spec section 5.4), so a couple about y at the end of the rod bends the strip as it does without the rod
+  // (whose section is too small to stiffen it): tip deflection −M L² / (2 E I) of the strip, without Poisson's ratio.
+  const moment = 1.0;
+  const rods = (node, nx) => ["RodProp;2;1;1.e-8;2.e-14"].concat(
+    Array.from({ length: nx }, (_, i) => `Rod2;${100 + i};2;${node(i, 0)};${node(i + 1, 0)}`));
+  const model = loadedStrip({ nx: 3, ny: 1, poisson: 0, records: (node, nx, ny) => clampedEnd(node, ny).concat(
+    rods(node, nx), `PointMomentLoad;2;${node(nx, 0)};;1.;0.;${real(moment / 2)};0.`,
+    `PointMomentLoad;2;${node(nx, 1)};;1.;0.;${real(moment / 2)};0.`) });
+  const run = runShells(model.text, "mixed-rod-couple");
+  const inertia = (STRIP.width * STRIP.thickness ** 3) / 12;
+  const expected = -(moment * STRIP.length ** 2) / (2 * STRIP.young * inertia);
+  for (const j of [0, 1]) {
+    const deflection = nodal(run, "displacements", model.node(model.nx, j))[2];
+    assert.ok(Math.abs(deflection / expected - 1) < 0.02, `deflection ${deflection}, of the strip ${expected}`);
+  }
+});
+
+test("the inertia of a point mass at a grid point of ShellQuad4 in MixedHybridFormulation acts on the modes", () => {
+  // A mass with a rotary inertia at the middle of the free end of a cantilever strip: the first torsion mode turns it,
+  // and its frequency falls when the inertia is given (it was ignored: the rotation of the grid point had no
+  // unknown and nothing told the formulation that the mass uses it).
+  const frequencies = (mass) => {
+    const model = strip({ nx: 2, ny: 2, records: (node, nx, ny) => clampedEnd(node, ny).concat(
+      `PointMassInertia;900;${node(nx, 1)};;${mass}`, "LanczosEigenMethod;3;;;3") });
+    const text = model.text.replace("[executive]\nSolutionSequence;101", "[executive]\nSolutionSequence;103")
+      .replace("SinglePointConstrSelection;1", "SinglePointConstrSelection;1\nEigenMethodSelection;3");
+    return withModel(text, "mixed-point-inertia", SHELL_OPTIONS, (m) => {
+      const run = solver.run(m, "modes");
+      assert.ok(!run.diagnostics.some((d) => d.severity === "error"), JSON.stringify(run.diagnostics));
+      return run.eigenvalues[0].rows.map((row) => row.radians);
+    });
+  };
+  const bare = frequencies("0.5;0.;0.;0.");
+  const withInertia = frequencies("0.5;0.;0.;0.;0.5;;0.5;;;0.5");
+  // An inertia lowers every frequency, and by much that of a mode that turns the grid point.
+  for (let k = 0; k < bare.length; ++k)
+    assert.ok(withInertia[k] <= bare[k] * (1 + 1e-9), `mode ${k + 1}: ${withInertia[k]} with the inertia, ${bare[k]}`);
+  assert.ok(withInertia.some((frequency, k) => frequency < 0.8 * bare[k]),
+    `with the inertia ${withInertia}, without ${bare}`);
+});
+
+test("the support forces of a curved clamped edge of ShellQuad4 in MixedHybridFormulation balance the loads in moment", () => {
+  // The clamped end of the strip is an arc (x = c y (W − y) on it): the reactions of the unknowns of its edges are
+  // carried to its grid points with their resultant (assembly::EntityForceCarry), so the table balances the force
+  // and its moment about the origin; the applied load table gives the pressure whole.
+  const [bow, pressure] = [0.5, 100.0];
+  const model = loadedStrip({ nx: 2, ny: 2, records: (node, nx, ny) => clampedEnd(node, ny).concat(
+    `PointForceLoad;2;${node(nx, ny)};;1.;1.;2.;3.`,
+    Array.from({ length: nx * ny }, (_, e) => `ShellPressureLoad;2;${real(pressure)};${e + 1}`)) });
+  // Bend the clamped end in the plane of the strip.
+  const bent = model.points.map((point) =>
+    ({ ...point, x: point.x + bow * point.y * (STRIP.width - point.y) * (1 - point.x / STRIP.length) }));
+  let text = model.text.replace("DisplacementOutput;All", "DisplacementOutput;All\nAppliedLoadOutput;All");
+  for (const point of bent)
+    text = text.replace(new RegExp(`Node;${point.id};;[^\\n]*`), `Node;${point.id};;${real(point.x)};${real(point.y)};0.`);
+  const run = runShells(text, "mixed-curved-clamp");
+  const positions = new Map(bent.map((point) => [point.id, [point.x, point.y, 0]]));
+  const resultant = (kind) => {
+    const table = run.nodalTables.find((t) => t.kind === kind);
+    return resultantOf(Array.from(table.ids, (node, r) => ({ node, values: Array.from(table.values.slice(6 * r, 6 * r + 6)) })),
+      (id) => positions.get(id));
+  };
+  const [applied, supports] = [resultant("appliedLoads"), resultant("singlePointConstrForces")];
+  assertClose(supports, applied.map((value) => -value), 1e-8, "the support forces against the applied loads");
+  // The pressure acts along z on the area of the strip, which the bend of its end keeps to first order in the bow.
+  assert.ok(Math.abs(applied[1] - 2) < 1e-9 && Math.abs(applied[0] - 1) < 1e-9, `applied force ${applied}`);
+  assert.ok(applied[2] > 3 + 0.9 * pressure * STRIP.length * STRIP.width, `the pressure is in the table: ${applied[2]}`);
+});
+
+test("a declared edge of MixedHybridFormulation that is no edge of the model is refused", () => {
+  const run = (geometry, name) => withModel(plate(), name,
+    { elementFormulation: "MixedHybridFormulation", formulationGeometry: geometry }, (model) => solver.run(model, "statics"));
+  // Grid points 1 and 3 of the plate are joined by no shell; a sharp edge is an edge of solids.
+  assert.throws(() => run({ rawEdges: [[1, 3]] }, "mixed-raw-unknown"), /geometry-declaration-unknown/);
+  assert.throws(() => run({ sharpEdges: [[1, 2]] }, "mixed-sharp-unknown"), /geometry-declaration-unknown/);
+  const accepted = run({ rawEdges: [[1, 2]] }, "mixed-raw-known");
+  assert.ok(!accepted.diagnostics.some((d) => d.severity === "error"), JSON.stringify(accepted.diagnostics));
 });

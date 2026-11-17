@@ -66,6 +66,15 @@ The objects a caller uses to decide what is condensed. In the order a plan uses 
 What the plan needs from a solution (the analysis model, the subcases' SinglePointConstr and MultiPointConstr sets, Gm, the node graph) is
 gathered by `solutions/common/CondensationPlanner`, which the caller drives (list the units, regroup them, plan).
 
+An element formulation with entities (the edges, faces and interiors of MixedHybridFormulation,
+docs/mixed-hybrid-formulation-spec.md section 5.11): its entity nodes are points of the plan with negative IDs
+(`assembly::DofMap::nodeIdOf`), labelled `UnitPointKind::EntityNode`. `PlanGraph::entityNodes` gives the entity nodes
+of each element; `CondensationPlan` adds them to the units of their elements and puts on the boundary those another
+unit or a connection holds and those whose constraints vary between the subcases. Each relation of the formulation
+is a relation of its own (`formulationRelationKey`, one per dependent node), eliminated at the interface when its
+points are not all one unit's. `UnitSystem` and `InterfaceProblem` leave the entity nodes out of the singularity
+processor and take the formulation's rigid fields on them (`UnitModel::entityRigidModes`).
+
 The group and connection tables come from O_o_Reader: the points of each component from `componentNodes`, the group
 summary and boundaries from `groupRevisions` and `componentBoundaries(groups=)` (keyed by `group`, the decimal text
 of the group ID), the clusters from `connectionClusters`, and the list of every connection with its stamp
@@ -183,7 +192,9 @@ The pieces between the condensed units and the static solution. In the order the
 
 ## The condensation cache
 
-Never condense twice what has not changed, and store only what is light. In `cache/`, in the order a store uses them:
+Never condense twice what has not changed, and store only what is light. In `cache/`, in the order a store uses them
+(an element formulation with entities: the key names its entity nodes and mixes in what the formulation reads around
+the unit's elements, `FormulationModel::describeSurroundings`, docs/mixed-hybrid-formulation-spec.md section 5.11):
 
 - `CacheHasher`: FNV-1a on 64-bit words, the hash of the keys, the content checksums and the file checksum.
 - `CacheKey`: its parts (version, kernel, the `MATRIX_PARAMETERS`, the unit's identity,

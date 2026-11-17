@@ -140,6 +140,10 @@ public:
                        std::vector<FormulationRelationTerm>& terms) const override;
     void deriveSupports(EntityLayout::Kind kind, std::span<const HeldGridComponent> held,
                         std::vector<DerivedSupport>& supports, base::DiagnosticSink& sink) const override;
+    void supportRows(EntityLayout::Kind kind, std::span<const HeldGridComponent> held,
+                     std::vector<std::vector<FormulationRelationTerm>>& rows) const override;
+    [[nodiscard]] std::optional<base::Vec3> commonShellNormal(std::int32_t gridRow) const override;
+    void shellEdges(std::vector<std::array<std::int32_t, 2>>& edges) const override;
     void affineField(EntityLayout::Kind kind, const base::Mat3& gradient, const base::Vec3& translation,
                      std::span<double> entityValues) const override;
 
@@ -187,6 +191,13 @@ public:
                                                          const ElementTemperatures* temperatures) const;
     // Whether a solid takes a thermal strain from its corner changes (an expansion and a change that is not zero).
     [[nodiscard]] static bool takesThermalStrain(const MixedSolid& solid, std::span<const double> changes);
+    // The pressure over a face of a solid given at the grids of the face (`faceGrids`, grid indices, with
+    // `cornerPressures`): at a position, the pressures of the corners interpolated by the functions of the corners of
+    // the straight element at the point nearest to it (as the temperatures are), so that a pressure linear in the
+    // position is read as such whatever the curves the skin reads between the grids.
+    [[nodiscard]] VolumeKernel::PressureField solidFacePressure(const MixedSolid& solid,
+                                                                std::span<const std::size_t> faceGrids,
+                                                                std::span<const double> cornerPressures) const;
     // The kernel of a solid with the free expansion of its corner changes as its only load: the changes interpolated
     // by the functions of its corners at the point of its straight element nearest to each point of the kernel.
     [[nodiscard]] VolumeKernel solidThermalKernel(const MixedSolid& solid, EntityLayout::Kind kind,
@@ -205,6 +216,30 @@ public:
     void gridPointStresses(EntityLayout::Kind kind, const NodalDisplacements& displacements,
                            const SolidSelection& takes, std::vector<GridPointStress>& stresses) const override;
     [[nodiscard]] std::optional<FormulationFace> faceOf(std::span<const std::int32_t> gridRows) const override;
+    // The grids of the elements of two rings around the element's grids (describeSurroundings).
+    [[nodiscard]] std::vector<std::int32_t> readGridRows(std::string_view card, std::int64_t batchRow) const override;
+    // From the name of the entity: the element of an interior or a line end, the elements at its first grid point that
+    // have its other grid points.
+    [[nodiscard]] std::vector<std::int32_t> entityElements(EntityLayout::Kind kind, std::int32_t row) const override;
+    [[nodiscard]] std::vector<std::int32_t> entityGridRows(EntityLayout::Kind kind, std::int32_t row) const override;
+    // The elements of two rings around the grid points (those that have one of them, then those that have a grid
+    // point of the first ring: the normals at a grid point are read from the elements there, the curve of an edge from
+    // the normals at its ends), each with its kind, ID, card and the IDs and positions of its grid points, then the
+    // geometry declarations of the model.
+    void describeSurroundings(std::span<const std::int32_t> gridRows,
+                              const std::function<void(double)>& mix) const override;
+    // The motion of a point of a shell pierced by a fastener or a weld (section 5.10): the point of the shell placed by
+    // the shape functions of its card (corner grids at the reference corners, mid-side grids at the middles of their
+    // edges), its displacement and rotation there (ShellPart::pointRows) carried rigidly to the piercing point.
+    [[nodiscard]] std::optional<PointMotion> shellPointMotion(std::int32_t elementId,
+                                                              std::span<const std::int32_t> gridRows,
+                                                              std::span<const double> shapeValues,
+                                                              const base::Vec3& point) const override;
+    // The translations of a point of a face of a shell or of a solid of the formulation (faceOf: the face of its
+    // corners), placed by the shape functions of the face: of the shell at its reference point, of the solid at the
+    // point of its reference shape (the functions of its kernel there; its interior fields vanish on a face).
+    [[nodiscard]] std::optional<PointMotion> facePointMotion(std::span<const std::int32_t> faceGridRows,
+                                                             std::span<const double> shapeValues) const override;
     // The CD-to-basic rotation of a grid of the model.
     [[nodiscard]] const base::Mat3& gridFrame(std::size_t gridIndex) const { return m_gridFrames[gridIndex]; }
     // The index of a grid of the model from its node table row (−1 when no element of the formulation uses it).
@@ -232,7 +267,8 @@ private:
     void readShells(const SnapshotIndex& index);
     // The ShellPart of the shells (and of the lines on their edges), and its entities.
     void buildShellPart(const SnapshotIndex& index);
-    // The geometry report of the shells (spec section 10.5), as information diagnostics of the model.
+    // The geometry report of the shells (spec section 10.5), as diagnostics of the model: its summary, and the edges
+    // named, warnings where the reading takes as smooth an edge that kinks or an outline that turns.
     void reportGeometry();
     // The largest angle along each edge of the shells between the normal of the surface read and the normal of the
     // plane of the corners of a shell of the edge (the rounding of the reading).
@@ -245,6 +281,21 @@ private:
     // The interior fields of the solids, in the modal layout only, after every other entity (so that the rows of the
     // other entities are the same in both layouts).
     void addModalInteriors(const SnapshotIndex& index);
+    // m_elementsAtGrid, for describeSurroundings.
+    void indexElementsByGrid();
+    // The elements of `rings` rings around the grids `grids` (indices), and the grids they have, `grids` included.
+    void collectRings(std::set<std::int32_t>& grids, std::set<std::pair<std::uint8_t, std::size_t>>& elements,
+                      int rings) const;
+    // The grid indices of element `element` of kind `kind` (ElementKind), its mid-side grids included.
+    [[nodiscard]] std::vector<std::int32_t> gridsOfElement(std::uint8_t kind, std::size_t element) const;
+    // The entity DOFs of the membrane-only and bending-only shells that no element stiffens
+    // (ShellPart::unstiffenedUnknowns; the solids stiffen the entities they follow), added to m_unstiffenedEntityDofs,
+    // and an information on the singular displacement directions held.
+    void holdUnstiffenedShellDofs();
+    // The directions of the rotation of the grid points of shells whose line elements all lie on shell edges that
+    // those lines do not stiffen (m_unstiffenedLineRotations): a rod has no bending stiffness, a bar may bend in one
+    // plane only. The rotation of the grid point follows the shells in those directions (ties()).
+    void findUnstiffenedLineRotations();
     // The terms of a row of ShellPart unknowns carried to ElementDofs, the grid components to the CD systems.
     void appendPartTerms(std::span<const ShellPartTerm> partTerms, double factor,
                          std::vector<FormulationRelationTerm>& terms) const;
@@ -262,18 +313,25 @@ private:
     void fillSolidComponents(const NodalDisplacements& displacements,
                              const std::function<void(std::int32_t, int, double)>& write) const;
     // The components held at each grid of the model in the basic system (section 5.6): a basic axis is held when it
-    // lies in the span of the held CD axes; a warning names the grids that hold a skew direction, which the edges and
-    // faces do not carry.
+    // lies in the span of the held CD axes; `values` the held translation and rotation as basic vectors; `isHeldInCd`
+    // the components held in the displacement system; `skew` the held CD axes that are no held basic axis (their
+    // direction in the basic system, their component 0 to 5).
     struct BasicSupport
     {
         std::array<bool, 6> isHeld{};
         std::array<double, 6> values{};
+        std::array<bool, 6> isHeldInCd{};
+        std::vector<ShellSkewAxis> skew;
+        // A component of the grid point follows a relation of the model (HeldGridComponent::followsRelation).
+        bool followsRelation = false;
     };
-    [[nodiscard]] std::map<std::int32_t, BasicSupport> basicSupportsOf(std::span<const HeldGridComponent> held,
-                                                                       base::DiagnosticSink& sink) const;
-    void shellSupports(const std::map<std::int32_t, BasicSupport>& basic, std::vector<DerivedSupport>& supports,
-                       base::DiagnosticSink& sink) const;
-    void solidSupports(const std::map<std::int32_t, BasicSupport>& basic, std::vector<DerivedSupport>& supports) const;
+    [[nodiscard]] std::map<std::int32_t, BasicSupport> basicSupportsOf(std::span<const HeldGridComponent> held) const;
+    // The supports of the entity DOFs of the shells (`supports`) and the rows of the directions off the basic axes
+    // (`rows`), either null when not asked; a warning counts the edges whose grids hold different directions.
+    void shellSupports(const std::map<std::int32_t, BasicSupport>& basic, std::vector<DerivedSupport>* supports,
+                       std::vector<std::vector<FormulationRelationTerm>>* rows, base::DiagnosticSink& sink) const;
+    void solidSupports(const std::map<std::int32_t, BasicSupport>& basic, std::vector<DerivedSupport>* supports,
+                       std::vector<std::vector<FormulationRelationTerm>>* rows, base::DiagnosticSink& sink) const;
     void solidAffineField(EntityLayout::Kind kind, const base::Mat3& gradient, std::span<double> entityValues) const;
     void addElementProblem(std::string_view card, std::int64_t batchRow, base::Diagnostic problem);
 
@@ -292,11 +350,16 @@ private:
     std::vector<MixedLine> m_lines;
     std::map<std::string, std::vector<std::int32_t>, std::less<>> m_lineOfRow; // per line card: per batch row, or −1
     std::vector<MixedEdge> m_edges;
-    // The entity DOFs no element stiffens (the functions across a rod...), held at 0 in every constraint set.
+    // The entity DOFs no element stiffens (the functions across a rod alone, the shear and the rotations of the edges
+    // of membrane-only shells, the plane of a flat bending-only plate...), held at 0 in every constraint set where no
+    // support holds them with a value.
     std::vector<ElementDof> m_unstiffenedEntityDofs;
+    // By grid index: the unit directions (basic system) of the grid point's rotation that its lines do not stiffen.
+    std::map<std::int32_t, std::vector<base::Vec3>> m_unstiffenedLineRotations;
 
     std::vector<MixedShell> m_shells; // by increasing element ID (their index in the ShellPart)
     std::map<std::string, std::vector<std::int32_t>, std::less<>> m_shellOfRow; // per shell card: per batch row, or −1
+    std::map<std::int32_t, std::size_t> m_shellOfId; // the shell of each element ID (the first of an ID given twice)
     std::unique_ptr<ShellPart> m_shellPart;
     std::vector<std::int32_t> m_shellEntityRow; // the layout row of each entity of the ShellPart
     // The mid-side grids of the shells that only their edge carries: grid index → (shell, reference point).
@@ -314,6 +377,11 @@ private:
     std::vector<std::int32_t> m_solidEntityRow; // the layout row of each entity of the SolidPart (modal list)
     std::set<std::int32_t> m_solidOnlyGrids;    // the grids of solids that no line or shell has: no rotation
     std::map<std::int32_t, std::size_t> m_solidMidSideGrids; // the mid-side grids of the solids: grid → its edge
+
+    // The geometry declarations of the snapshot, and the elements at each grid (index): (kind, index in m_lines,
+    // m_shells or m_solids), for describeSurroundings.
+    std::optional<input::FormulationGeometry> m_declarations;
+    std::vector<std::vector<std::pair<std::uint8_t, std::size_t>>> m_elementsAtGrid;
 };
 
 } // namespace oos::elements::mixedHybrid

@@ -46,6 +46,7 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
     std::vector<std::optional<aero::TrimCase>> trimCases;
     std::vector<output::OutputPlan>& plans = kept->outputPlans; // bounded by the subcases
     AnalysisModelOptions modelOptions;
+    modelOptions.index = m_options.snapshotIndex;
     modelOptions.checkCases = [&](base::DiagnosticSink& caseSink)
     {
         subcases = staticSubcasesOf(snapshot, m_options.subcases, caseSink);
@@ -258,6 +259,8 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
             nodal.spcForces = spcForces.span();
             nodal.mpcForces = mpcForces.span();
             nodal.isConstrained = isConstrained;
+            nodal.spc = structure.spcSet();
+            nodal.relations = &structure.gm();
             const output::OutputRequestPlan& request = plan.of(output::OutputKind::GridPointForces);
             const std::optional<output::StiffnessRecovery::CondensedUnits> units = structure.condensedUnits(unitRows);
             arrays.gridPointForceTables.push_back(
@@ -324,8 +327,11 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
         spcSets.reserve(subcases.size());
         for (std::size_t s = 0; s < subcases.size(); ++s)
         {
-            spcSets.emplace_back(constraints, snapshot.findLoads(), dofMap, subcases[s].spc, subcases[s].load, budget,
-                                 sink);
+            // With the supports the element formulation derives on its edges and faces (none for most).
+            spcSets.push_back(
+                assembly::withFormulationSupports(assembly::SpcSet(constraints, snapshot.findLoads(), dofMap,
+                                                                   subcases[s].spc, subcases[s].load, budget, sink),
+                                                  dofMap, model.formulation(), model.layoutKind(), budget, sink));
             solved.push_back(s);
         }
         stopOnErrors(sink, "the constraints");
@@ -410,8 +416,8 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
             results.largestLsetSize =
                 std::max<std::int64_t>(results.largestLsetSize, loadGroup.interface->equationCount());
             results.timings.factorisation += watch.lap();
-            structure = std::make_unique<CondensedStructure>(*condensed, std::move(loadGroup), supportDofs, rigidModes,
-                                                             reference.referenceFrame.axes, budget);
+            structure = std::make_unique<CondensedStructure>(*condensed, std::move(loadGroup), spc, supportDofs,
+                                                             rigidModes, reference.referenceFrame.axes, budget);
         }
         else
         {
@@ -432,6 +438,7 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
             FsetSolverOptions solverOptions;
             solverOptions.pivotPolicy = pivotPolicyOf(params, first.label, sink);
             solverOptions.cancellation = cancellation;
+            solverOptions.unreducedStiffness = &system->kgg();
             solver.emplace(system->knn(), system->graph(), dofMap, system->solveSets(), kernels, solverOptions, budget,
                            pool);
             results.largestLsetSize = std::max<std::int64_t>(results.largestLsetSize, solver->equationCount());

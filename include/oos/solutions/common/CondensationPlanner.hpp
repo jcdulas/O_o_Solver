@@ -12,11 +12,13 @@
 #include "oos/reduction/absorption/AbsorptionEligibility.hpp"
 #include "oos/reduction/absorption/AbsorptionSafeguard.hpp"
 #include "oos/reduction/absorption/SharedConnectionNodes.hpp"
+#include "oos/reduction/absorption/SpiderAbsorption.hpp"
 #include "oos/reduction/absorption/SpiderCatalog.hpp"
 #include "oos/reduction/plan/CondensationPlan.hpp"
 #include "oos/reduction/plan/PlanGraph.hpp"
 #include "oos/reduction/units/UnitSet.hpp"
 #include "oos/solutions/common/GlueUnitCheck.hpp"
+#include "oos/solutions/common/RunCatalog.hpp"
 
 #include <memory>
 #include <vector>
@@ -65,10 +67,12 @@ class AnalysisModel;
 class CondensationPlanner
 {
 public:
+    // `analysis`: the analysis the plan is made for, whose analysis model numbers the entities of an element
+    // formulation as that analysis does (the interior fields of the solids of MixedHybridFormulation in normal modes).
     // Throws as AnalysisModel (UnsupportedCardError, SolverError) and as the constraint builders (SolverError listing
     // the problems), MemoryBudgetError.
     CondensationPlanner(const input::ModelSnapshot& snapshot, base::MemoryBudget& budget, base::ThreadPool* pool,
-                        base::DiagnosticSink& sink);
+                        base::DiagnosticSink& sink, AnalysisKind analysis = AnalysisKind::Statics);
     CondensationPlanner(const CondensationPlanner&) = delete;
     CondensationPlanner& operator=(const CondensationPlanner&) = delete;
     CondensationPlanner(CondensationPlanner&&) = delete;
@@ -110,6 +114,23 @@ public:
     }
 
 private:
+    // A row of the model's Gm with its own terms (before the chains are resolved), for resolvedDependents.
+    struct ChainRow
+    {
+        base::DofIndex dof = 0;
+        std::int32_t node = 0;
+        reduction::RelationKey relation;
+        bool isHeldEverywhere = false;
+        std::size_t termBegin = 0; // its own terms' DOFs in m_chainTerms
+        std::size_t termEnd = 0;
+    };
+    // The dependent points with their independent points when the references `freed` are unknowns (absorbed spiders):
+    // each row's own terms resolved through the other rows, a chain stopping at a freed reference (a RigidBodyStar
+    // whose independent point is the reference of an absorbed RigidInterpolation depends on that point, not on the
+    // legs). Empty when the model's Gm has no chain (its rows are their own terms).
+    [[nodiscard]] std::vector<reduction::DependentPoint> resolvedDependents(
+        std::span<const reduction::FreedReference> freed) const;
+
     const input::ModelSnapshot* m_snapshot;
     base::MemoryBudget* m_budget;
     base::ThreadPool* m_pool;
@@ -131,6 +152,9 @@ private:
     base::BudgetedBuffer<reduction::SpiderMeasurement> m_spiderMeasurements; // parallel to the catalog
     std::unique_ptr<reduction::SharedConnectionNodes> m_sharing;
     base::BudgetedBuffer<reduction::GluedPoint> m_gluedPoints; // sorted by point; views the snapshot's contact table
+    // With chains in the model's Gm: its rows and their own terms (bounded by Gm, as the dependent points).
+    std::vector<ChainRow> m_chainRows;
+    std::vector<base::DofIndex> m_chainTerms;
 };
 
 } // namespace oos::solutions

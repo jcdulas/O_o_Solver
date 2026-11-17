@@ -124,9 +124,15 @@ struct InterfaceInputs
     // The relations eliminated at the interface (those of the connection system and of the units kept full, and the
     // rows a condensed unit shares with it at its boundary points), every row's dependent DOF at an interface point.
     const assembly::RigidElimination* relations = nullptr;
-    // The DOF sets of the full path for these subcases (m, sb, sg, r), for the held DOFs (the s and r sets) and the
-    // DOFs the singularity processor checks (the f set).
+    // Every relation of the constraint set, resolved (the full path's Gm), or null: a row of `relations` with a term on
+    // a DOF a unit eliminates inside it takes its terms from there.
+    const assembly::RigidElimination* resolvedRelations = nullptr;
+    // The DOF sets of the full path for these subcases (m, sb, sg, r, x), for the held DOFs (the s, r and x sets) and
+    // the DOFs the singularity processor checks (the f set).
     const assembly::DofSets* modelSets = nullptr;
+    // UnitModel::entityRigidModes: the rigid-body motions on the entity DOFs of the element formulation (empty
+    // without entities).
+    std::span<const double> entityRigidModes;
     // Step 10.24: the g-set DOFs held in place of the r set of modelSets (a free body solved on conditioned
     // supports, assembly::chooseConditionedSupports; its FreeBodySupport DOFs then equations); empty: the r set held.
     std::span<const base::DofIndex> conditionedSupports;

@@ -18,21 +18,21 @@ namespace
 
 constexpr std::array<const char*, 2> SIDE_FIELDS{"patchIdA", "patchIdB"};
 
-// The local index of a grid row in `rows`, appended when new.
-std::size_t localIndex(std::vector<std::int32_t>& rows, std::int32_t gridRow)
+// The local index of a DOF in `dofs`, appended when new.
+std::size_t localIndex(std::vector<ElementDof>& dofs, const ElementDof& dof)
 {
-    const auto found = std::find(rows.begin(), rows.end(), gridRow);
-    if (found != rows.end())
-        return static_cast<std::size_t>(found - rows.begin());
-    rows.push_back(gridRow);
-    return rows.size() - 1;
+    const auto found = std::find(dofs.begin(), dofs.end(), dof);
+    if (found != dofs.end())
+        return static_cast<std::size_t>(found - dofs.begin());
+    dofs.push_back(dof);
+    return dofs.size() - 1;
 }
 
-Resolution<SideInterpolation> resolveSide(const ElementBatchView& view, std::int64_t row,
-                                          const input::FastenerPiercingTable* table, input::PiercingRows rows,
-                                          std::size_t side, std::int32_t directGrid)
+Resolution<SideMotion> resolveSide(const ElementBatchView& view, std::int64_t row,
+                                   const input::FastenerPiercingTable* table, input::PiercingRows rows,
+                                   std::size_t side, std::int32_t directGrid)
 {
-    using Result = Resolution<SideInterpolation>;
+    using Result = Resolution<SideMotion>;
     const char* sideName = side == 0 ? "A" : "B";
     if (table == nullptr || rows.isEmpty())
     {
@@ -59,7 +59,7 @@ Resolution<SideInterpolation> resolveSide(const ElementBatchView& view, std::int
         result.point = view.positionInBasic(*gridRow.value);
         result.gridRows = {*gridRow.value};
         result.map = directGridMap(view.displacementFrame(*gridRow.value));
-        return Result::success(std::move(result));
+        return Result::success(sideMotionOf(result));
     }
     const SideGridLookup findGrid = [&view](std::int32_t gridId) -> std::optional<SideGrid>
     {
@@ -68,25 +68,15 @@ Resolution<SideInterpolation> resolveSide(const ElementBatchView& view, std::int
             return std::nullopt;
         return SideGrid{*gridRow, view.positionInBasic(*gridRow), view.displacementFrame(*gridRow)};
     };
-    std::variant<SideInterpolation, std::string> interpolation = interpolateSide(*table, rows, findGrid);
-    if (const auto* problem = std::get_if<std::string>(&interpolation))
+    std::variant<SideMotion, std::string> motion = resolveSideMotion(*table, rows, findGrid, view.formulation());
+    if (const auto* problem = std::get_if<std::string>(&motion))
         return Result::failure(
             elementProblem(view, row, problem_code::INVALID_FIELD, SIDE_FIELDS[side],
                            base::concatenate({"pierced element of side ", sideName, ": ", *problem})));
-    return Result::success(std::move(std::get<SideInterpolation>(interpolation)));
+    return Result::success(std::move(std::get<SideMotion>(motion)));
 }
 
 } // namespace
-
-std::vector<ElementDof> FastenerConnection::dofs() const
-{
-    std::vector<ElementDof> result;
-    result.reserve(dofCount());
-    for (const std::int32_t gridRow : gridRows)
-        for (int c = 1; c <= 6; ++c)
-            result.push_back(ElementDof::grid(gridRow, c));
-    return result;
-}
 
 std::vector<double> FastenerConnection::condense(const base::MatN<12>& k) const
 {
@@ -121,9 +111,8 @@ std::array<double, 12> FastenerConnection::pointMotions(const NodalDisplacements
 {
     const std::size_t n = dofCount();
     std::vector<double> u(n);
-    for (std::size_t g = 0; g < gridRows.size(); ++g)
-        for (int c = 0; c < 6; ++c)
-            u[6 * g + static_cast<std::size_t>(c)] = displacements.valueAt(ElementDof::grid(gridRows[g], c + 1));
+    for (std::size_t j = 0; j < n; ++j)
+        u[j] = displacements.valueAt(dofList[j]);
     std::array<double, 12> w{};
     for (std::size_t i = 0; i < 12; ++i)
     {
@@ -151,10 +140,10 @@ Resolution<FastenerConnection> resolveFastenerConnection(const ElementBatchView&
     const std::optional<input::FastenerPiercingRows> rows =
         table != nullptr ? table->findFastener(view.elementId(row)) : std::nullopt;
     const input::FastenerPiercingRows sides = rows.value_or(input::FastenerPiercingRows{});
-    Resolution<SideInterpolation> sideA = resolveSide(view, row, table, sides.sideA, 0, directGrids[0]);
+    Resolution<SideMotion> sideA = resolveSide(view, row, table, sides.sideA, 0, directGrids[0]);
     if (!sideA)
         return Result::failure(std::move(sideA.problem));
-    Resolution<SideInterpolation> sideB = resolveSide(view, row, table, sides.sideB, 1, directGrids[1]);
+    Resolution<SideMotion> sideB = resolveSide(view, row, table, sides.sideB, 1, directGrids[1]);
     if (!sideB)
         return Result::failure(std::move(sideB.problem));
     if (base::norm(sideB.value->point - sideA.value->point) <= FASTENER_COINCIDENT_DISTANCE)
@@ -168,17 +157,17 @@ Resolution<FastenerConnection> resolveFastenerConnection(const ElementBatchView&
     connection.pointB = sideB.value->point;
     std::array<std::vector<std::size_t>, 2> localOf;
     for (std::size_t s = 0; s < 2; ++s)
-        for (const std::int32_t gridRow : (s == 0 ? sideA : sideB).value->gridRows)
-            localOf[s].push_back(localIndex(connection.gridRows, gridRow));
+        for (const ElementDof& dof : (s == 0 ? sideA : sideB).value->dofs)
+            localOf[s].push_back(localIndex(connection.dofList, dof));
     const std::size_t n = connection.dofCount();
     connection.map.assign(12 * n, 0.0);
     for (std::size_t s = 0; s < 2; ++s)
     {
-        const PiercingMap& map = (s == 0 ? sideA : sideB).value->map;
+        const SideMotion& motion = *(s == 0 ? sideA : sideB).value;
+        const std::size_t width = motion.dofs.size();
         for (std::size_t i = 0; i < 6; ++i)
-            for (std::size_t g = 0; g < map.gridCount; ++g)
-                for (std::size_t c = 0; c < 6; ++c)
-                    connection.map[(6 * s + i) * n + 6 * localOf[s][g] + c] += map.at(i, 6 * g + c);
+            for (std::size_t j = 0; j < width; ++j)
+                connection.map[(6 * s + i) * n + localOf[s][j]] += motion.map[i * width + j];
     }
     return Result::success(std::move(connection));
 }

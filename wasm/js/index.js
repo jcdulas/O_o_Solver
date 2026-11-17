@@ -114,6 +114,18 @@ const CONTACT_TABLE_CARDS = ["ContactTable", "ContactTable1", "ContactPair", "Co
   "ContactSlideline"];
 const CONTACT_PAIR_QUERIES = ["contactNodePairs", "contactPairsTable"];
 const CONTACT_RULE = "components";
+// The component tables of a condensed analysis (modelFromReader's `condensation` option), with the queries and
+// arguments that make them: the components and their elements, their boundaries, the points of each component, every
+// connection between them, the spiders (rigid elements with their legs) and the connections at each grid point.
+const CONDENSATION_QUERIES = {
+  connectedComponents: ["connectedComponents", {}],
+  componentElements: ["connectedComponents", { detail: "elements" }],
+  componentBoundaries: ["componentBoundaries", {}],
+  componentNodes: ["connectedComponents", { detail: "nodes" }],
+  connectionList: ["connectionClusters", { detail: "connections" }],
+  spiders: ["spiders", {}],
+  connectionSharing: ["connectionSharing", {}],
+};
 
 export class OosSolver {
   constructor(core, threads = 1) {
@@ -168,6 +180,8 @@ export class OosSolver {
   // model's ElementFormulation parameter. `options.formulationGeometry` gives the geometry declarations of that
   // formulation: { rawEdges: [[g1, g2], ...], rawElements: [id, ...], sharpEdges: [[g1, g2], ...] } (grid point and
   // element IDs; an empty object says that every edge is smooth).
+  // `options.condensation`: true also takes the component tables of the model, which a condensed static analysis reads
+  // (run(model, "statics", { condensation: "all" })).
   // Throws an Error naming the table and the column when a table of the reader is not what the solver reads.
   modelFromReader(oor, deck, options = {}) {
     const reader = oor.core;
@@ -288,6 +302,14 @@ export class OosSolver {
         }
       }
 
+      // The component tables of a condensed analysis.
+      if (options.condensation === true) {
+        for (const [name, [queryName, args]] of Object.entries(CONDENSATION_QUERIES)) {
+          if (!hasQuery(queryName)) throw new Error(`condensation: the reader has no ${queryName} query`);
+          putTable(name, packageOf(query(queryName, args)));
+        }
+      }
+
       // The aeroelastic model, when the model has aerodynamic panels.
       const hasAeroPanels = AERO_PANEL_CARDS.some((card) => (cardCounts[card] ?? 0) > 0);
       if (hasAeroPanels) {
@@ -309,12 +331,13 @@ export class OosSolver {
     return new OptimizationProblem(this.core.createOptimization(model, declarations, { threads: this.defaultThreads, ...settings }));
   }
 
-  optimizationFromReader(oor, deck, declarations = {}, settings = {}) {
+  // `modelOptions`: the options of modelFromReader (elementFormulation, formulationGeometry...).
+  optimizationFromReader(oor, deck, declarations = {}, settings = {}, modelOptions = {}) {
     const design = oor.designVariables(deck);
     if (design.problems.length || design.notApplied.length)
       throw new Error("the reader cannot export this design: " +
         [...design.problems, ...design.notApplied.map(p => `${p.card} ${p.id}: ${p.reason}`)].join("; "));
-    const model = this.modelFromReader(oor, deck);
+    const model = this.modelFromReader(oor, deck, modelOptions);
     try {
       return this.createOptimization(model, {
         ...declarations, tables: { ...oor.optimizationTables(deck), ...declarations.tables },
@@ -328,10 +351,34 @@ export class OosSolver {
     return model.checkSupport(analysis);
   }
 
-  // Runs an analysis ("statics", "modes" or "buckling") on a model.
-  // settings: { subcases?: number[], memoryBytes?: number, threads?: number }.
-  // Gives { nodalTables, elementTables, gridPointForces, eigenvalues, diagnostics }.
+  // Runs an analysis ("statics", "modes", "buckling" or "aeroelastic") on a model.
+  // settings: { subcases?: number[], memoryBytes?: number, threads?: number, condensation?, streamed?: boolean }.
+  // condensation (a model read with { condensation: true }): "all", "recommended" (every unit but those whose
+  // condensed stiffness would cost more than their interior), or { units: "all" | "recommended" | unitIds,
+  // fullUnits?: unitIds, retainedNodes?: gridIds, modeCount?: number, memoryMode?: "auto" | "speed" | "low_memory",
+  // cache?: CondensationCache, cacheModelTag?: string }; the units are the components of the reader. Statics and the
+  // trim condense their units statically; modes and buckling reduce them by Craig-Bampton (modeCount fixed-interface
+  // modes per unit, 0: those below a cut-off). streamed (statics): the full path without a factor of the whole model.
+  // Gives { nodalTables, elementTables, gridPointForces, eigenvalues, diagnostics, condensation } (condensation: null,
+  // or { condensedUnits, fullUnits, interfaceDofs, note } when a condensation was asked).
   run(model, analysis = "statics", settings = {}) {
     return this.core.runAnalysis(model, analysis, { threads: this.defaultThreads, ...settings });
+  }
+
+  // Runs "statics" or "modes" of the residual structure `residual` (a Model) with superelements upstream of it:
+  // parts is [{ id, model, boundary: [[partPoint, residualPoint], ...] }], each part a Model read with the residual's
+  // Case Control (its subcases select the sets of its own model), its boundary points the points it shares with the
+  // residual structure. Gives { superelements: [{ id, nodalTables, elementTables, eigenvalues }], diagnostics }, the
+  // residual structure (id 0) first.
+  runSuperelements(residual, parts, analysis = "statics", settings = {}) {
+    return this.core.runSuperelements(residual, parts, analysis, { threads: this.defaultThreads, ...settings });
+  }
+
+  // A condensation cache that lives in memory, shared by the analyses given it (settings.condensation.cache): a unit
+  // found in it is not condensed again, with the same results to the bit. memoryBytes: its size (default 512 MiB).
+  // .statistics() gives { memoryHits, diskHits, misses, stores, refusedStores, evictions, missCauses }; .delete()
+  // releases it.
+  condensationCache(options = {}) {
+    return this.core.condensationCache(options.memoryBytes ?? 0);
   }
 }

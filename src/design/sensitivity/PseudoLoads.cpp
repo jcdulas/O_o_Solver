@@ -99,6 +99,14 @@ void PseudoLoads::addDenseLoad(std::size_t field, std::size_t subcase, std::span
         }
 }
 
+void PseudoLoads::addConstraintLoad(std::size_t field, std::size_t subcase, std::span<const double> valuesG)
+{
+    SparseVector& load = m_loads[field][subcase];
+    for (std::size_t dof = 0; dof < valuesG.size(); ++dof)
+        if (valuesG[dof] != 0.0)
+            load.emplace_back(static_cast<base::DofIndex>(dof), valuesG[dof]);
+}
+
 void PseudoLoads::finish(std::size_t field)
 {
     for (SparseVector& load : m_loads[field])

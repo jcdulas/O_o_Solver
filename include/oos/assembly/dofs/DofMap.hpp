@@ -146,6 +146,19 @@ public:
     // The DOF count of each node (6 for a grid point, 1 for a scalar point, 1 to 6 for a node of an entity), for
     // linalg::DofSelection.
     [[nodiscard]] base::BudgetedBuffer<std::uint8_t> nodeDofCounts(base::MemoryBudget& budget) const;
+    // The ID of a node as the condensed path names its points (docs/mixed-hybrid-formulation-spec.md section 5.11): a
+    // grid point's or a scalar point's ID; for a node of an entity, which has no ID, entityNodeId(node −
+    // firstEntityNode()), a negative number that no point of the input format has. It follows the numbering of the
+    // entities: a condensation cache keys it with the entity it stands for.
+    [[nodiscard]] static constexpr base::EntityId entityNodeId(std::int32_t entityNode) noexcept
+    {
+        return -1 - entityNode;
+    }
+    [[nodiscard]] base::EntityId nodeIdOf(std::int32_t node) const noexcept;
+    // The node of such an ID, or nothing for an ID the model does not have.
+    [[nodiscard]] std::optional<std::int32_t> findNode(base::EntityId id) const noexcept;
+    // Whether a node is a node of an entity.
+    [[nodiscard]] bool isEntityNode(std::int32_t node) const noexcept { return node >= firstEntityNode(); }
     // The g-DOFs of a node: its first DOF and its DOF count (a grid point's six, a scalar point's one, the DOFs of a
     // node of an entity).
     struct NodeDofs

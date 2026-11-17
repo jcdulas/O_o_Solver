@@ -16,6 +16,15 @@ struct GridComponent
 {
     std::int32_t grid = 0;
     int component = 0;
+    // How a message names a DOF that is no component of a grid or scalar point: an unknown of an element formulation
+    // ("DOF 2 of the edge between grid points 4, 9"), which has no ID (`grid` is 0). Empty for a point's component.
+    std::string name;
+
+    GridComponent() = default;
+    GridComponent(std::int32_t gridId, int componentOfPoint, std::string nameInMessages = {})
+        : grid(gridId), component(componentOfPoint), name(std::move(nameInMessages))
+    {
+    }
 
     friend bool operator==(const GridComponent&, const GridComponent&) = default;
 };

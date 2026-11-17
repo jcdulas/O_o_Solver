@@ -2,9 +2,11 @@
 
 #include "oos/assembly/assemble/MassAssembler.hpp"
 #include "oos/assembly/assemble/ParamLookup.hpp"
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/constraints/SpcSet.hpp"
 #include "oos/assembly/singularities/GridPointSingularities.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/linalg/ordering/NodeGraph.hpp"
 #include "oos/linalg/sparse/BlockSparseMatrix.hpp"
 #include "oos/linalg/sparse/SparsePattern.hpp"
@@ -66,7 +68,6 @@ PartReduction::PartReduction(const Inputs& inputs, base::MemoryBudget& budget, b
     if (inputs.part == nullptr || !inputs.part->snapshot || inputs.kernels == nullptr)
         throw std::invalid_argument("PartReduction: expected a part with its snapshot, and the kernels");
     const SuperelementPart& part = *inputs.part;
-    elements::refuseMixedHybridOn(*part.snapshot, "superelements");
     m_superelementId = part.superelementId;
     m_kernels = inputs.kernels;
     m_cancellation = inputs.cancellation;
@@ -101,11 +102,7 @@ PartReduction::PartReduction(const Inputs& inputs, base::MemoryBudget& budget, b
             assembly::findIntegerParam(params, "SingularityBailOut", std::nullopt, sink))
         m_factorOptions.pivotPolicy.bailout = *bailout;
     m_factorOptions.cancellation = inputs.cancellation;
-    m_factorOptions.equationNamer = [system = m_system.get()](std::int32_t equation)
-    {
-        const reduction::UnitDofLabel label = system->labelOf(system->localDofOfEquation(equation));
-        return base::GridComponent{label.id, label.component};
-    };
+    m_factorOptions.equationNamer = reduction::equationNamerOf(m_system.get(), &m_model->dofMap());
 
     buildLoads(inputs, budget, sink);
     stopOnErrors(sink, base::concatenate({"the loads of ", partName(m_superelementId)}));
@@ -162,7 +159,11 @@ void PartReduction::buildConstraints(base::MemoryBudget& budget, base::Diagnosti
     const input::ModelSnapshot& snapshot = m_model->snapshot();
     const assembly::DofMap& dofMap = m_model->dofMap();
     const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
-    const CommonConstraints common = CommonConstraints::of(snapshot, dofMap, m_subcases, budget, sink);
+    // With the element formulation's constraints (its relations eliminated in the part, its excluded DOFs held there:
+    // docs/mixed-hybrid-formulation-spec.md section 5.11).
+    const CommonConstraints common = CommonConstraints::of(snapshot, dofMap, m_subcases, budget, sink,
+                                                           m_model->connectivity().usedComponents());
+    m_formulationExcluded = common.formulationExcluded;
     // One reduction serves every subcase of the part: its constraints must not vary between them.
     std::int64_t varying = 0;
     base::EntityId firstVarying = 0;
@@ -177,6 +178,11 @@ void PartReduction::buildConstraints(base::MemoryBudget& budget, base::Diagnosti
                 firstVarying = dofMap.pointIdOf(static_cast<base::DofIndex>(dof));
             ++varying;
         }
+    }
+    if (varying == 0 && !common.formulationVaryingNodes.empty())
+    {
+        varying = static_cast<std::int64_t>(common.formulationVaryingNodes.size());
+        firstVarying = dofMap.nodeIdOf(common.formulationVaryingNodes.front());
     }
     if (varying > 0)
         sink.report(partProblem(
@@ -208,9 +214,11 @@ void PartReduction::buildConstraints(base::MemoryBudget& budget, base::Diagnosti
         snapshot.hasTable(input::TableRole::FastenerPiercings) ? &snapshot.fastenerPiercings() : nullptr;
     m_mpc = std::make_unique<assembly::MpcEquations>(constraints, dofMap, common.commonMpcSet(), common.commonMpcCards,
                                                      budget, sink);
-    m_fasteners = std::make_unique<assembly::FastenerConstraints>(piercings, dofMap, budget, sink);
-    m_relations = std::make_unique<assembly::RigidElimination>(rigidElements, m_mpc.get(), dofMap, budget, sink,
-                                                               m_fasteners.get());
+    m_fasteners =
+        std::make_unique<assembly::FastenerConstraints>(piercings, dofMap, budget, sink, dofMap.formulation());
+    m_relations = std::make_unique<assembly::RigidElimination>(
+        rigidElements, m_mpc.get(), dofMap, budget, sink, m_fasteners.get(), nullptr, assembly::ConstraintRowFilter{},
+        common.formulationRelations.get());
     m_elementIndex = std::make_unique<reduction::UnitElementIndex>(m_model->elementSet(), budget);
     m_shares = std::make_unique<assembly::NonStructuralMassShares>(m_model->elementSet());
 }
@@ -260,6 +268,10 @@ void PartReduction::describe(const SuperelementPart& part, base::DiagnosticSink&
     for (std::int32_t row = 0; row < dofMap.scalarCount(); ++row)
         if (!std::binary_search(modalNodes.begin(), modalNodes.end(), dofMap.gridCount() + row))
             m_description.nodeIds.push_back(dofMap.scalarId(row));
+    // The nodes of the entities of an element formulation (its edges, faces and interiors: DofMap::nodeIdOf, negative
+    // IDs), interior to the part.
+    for (std::int32_t node = dofMap.firstEntityNode(); node < dofMap.nodeCount(); ++node)
+        m_description.nodeIds.push_back(dofMap.nodeIdOf(node));
     std::sort(m_description.nodeIds.begin(), m_description.nodeIds.end());
     for (const assembly::AssemblyBatch& batch : m_model->elementSet().batches())
         for (std::int64_t row = 0; row < batch.view.rowCount(); ++row)
@@ -311,7 +323,10 @@ void PartReduction::checkBoundaryRoles(base::DiagnosticSink& sink)
                          " is made dependent by a relation of the part (an MultiPointConstr or a rigid element): a "
                          "boundary DOF cannot be in the m set; make that point the independent point of "
                          "the relation, or move the relation to the residual structure"})));
-            else if (role == reduction::UnitDofRole::Constrained)
+            else if (role == reduction::UnitDofRole::Constrained &&
+                     !std::binary_search(m_formulationExcluded.begin(), m_formulationExcluded.end(), *dof))
+                // Held by a support of the part (an excluded DOF of the element formulation is no support: the
+                // residual structure keeps its own).
                 m_heldBoundary.push_back(system.labelOf(*local));
         }
     }
@@ -340,7 +355,10 @@ void PartReduction::buildLoads(const Inputs& inputs, base::MemoryBudget& budget,
     bool needsMass = false;
     for (const StaticSubcase& subcase : m_subcases)
     {
-        spcSets.emplace_back(constraints, snapshot.findLoads(), dofMap, subcase.spc, subcase.load, budget, sink);
+        // With the supports the element formulation derives on its edges and faces (none for most).
+        spcSets.push_back(assembly::withFormulationSupports(
+            assembly::SpcSet(constraints, snapshot.findLoads(), dofMap, subcase.spc, subcase.load, budget, sink),
+            dofMap, m_model->formulation(), m_model->layoutKind(), budget, sink));
         needsMass = needsMass || (subcase.load && loadBuilder.needsMass(*subcase.load));
     }
     // The inertial loads are the part's Mgg times an acceleration field (LoadVectorBuilder).
@@ -588,6 +606,28 @@ linalg::DenseMatrix PartReduction::toGSet(linalg::ConstDenseMatrixView localValu
     for (std::size_t q = 0; q < m_modalDofs.size() && q < modalValues.rows; ++q)
         for (std::size_t c = 0; c < localValues.columns; ++c)
             valuesG(static_cast<std::size_t>(m_modalDofs[q]), c) = modalValues(q, c);
+    // The excluded DOFs of the element formulation (the rotations of the grid points of its shells), filled from the
+    // part's solution as the full path fills them.
+    const assembly::DofMap& dofMap = m_model->dofMap();
+    if (const elements::FormulationModel* formulation = dofMap.formulation(); formulation != nullptr)
+        for (std::size_t c = 0; c < localValues.columns; ++c)
+        {
+            const std::span<double> column(&valuesG(0, c), gSize);
+            std::vector<std::pair<base::DofIndex, double>> values; // gathered first: the formulation reads `column`
+            formulation->fillDeterminedComponents(
+                dofMap.layoutKind(),
+                elements::NodalDisplacements::ofGSet(column, static_cast<std::size_t>(dofMap.gridCount()),
+                                                     static_cast<std::size_t>(dofMap.scalarCount()),
+                                                     &dofMap.entities()),
+                [&](std::int32_t gridRow, int component, double value)
+                {
+                    const base::DofIndex dof = dofMap.gridDof(gridRow, component);
+                    if (std::binary_search(m_formulationExcluded.begin(), m_formulationExcluded.end(), dof))
+                        values.emplace_back(dof, value);
+                });
+            for (const auto& [dof, value] : values)
+                column[static_cast<std::size_t>(dof)] = value;
+        }
     return valuesG;
 }
 

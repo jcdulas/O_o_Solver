@@ -116,6 +116,9 @@ public:
     {
         return m_heldBoundary;
     }
+    // The g-set DOFs of the part that its element formulation excludes (the rotations of the grid points of its
+    // shells: no stiffness of the part acts on them), increasing; empty without one.
+    [[nodiscard]] std::span<const base::DofIndex> formulationExcluded() const noexcept { return m_formulationExcluded; }
 
     // A modal analysis: the reduced boundary mass M_bb, and the q part (null without a q set) with its points.
     [[nodiscard]] const linalg::DenseMatrix& boundaryMass() const noexcept { return m_boundaryMass; }
@@ -177,6 +180,9 @@ private:
     linalg::DenseMatrix m_modes;           // Φ: interior equations × N (Craig-Bampton), normalised
     std::unique_ptr<reduction::ModalReduction> m_modal;
     std::vector<reduction::UnitDofLabel> m_heldBoundary;
+    // The DOFs the element formulation excludes in every subcase of the part (held inside it, filled at its
+    // recovery), increasing; empty without one.
+    std::vector<base::DofIndex> m_formulationExcluded;
 };
 
 } // namespace oos::solutions

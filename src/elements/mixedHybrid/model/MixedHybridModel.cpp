@@ -183,25 +183,255 @@ const MixedHybridModel& MixedHybridModel::of(const SnapshotIndex& index)
     return index.computedOnce<MixedHybridModel>([&] { return MixedHybridModel(index); });
 }
 
-MixedHybridModel::MixedHybridModel(const SnapshotIndex& index)
+MixedHybridModel::MixedHybridModel(const SnapshotIndex& index) : m_declarations(index.snapshot().formulationGeometry())
 {
-    checkDeclarations(index);
     readLines(index);
     readShells(index);
     readSolids(index);
+    checkDeclarations(index);
     buildGridsAndEdges(index);
     buildShellPart(index);
     buildAloneEdges(index);
     buildSolidPart(index);
+    holdUnstiffenedShellDofs();
+    findUnstiffenedLineRotations();
     buildEntities(index);
     addModalInteriors(index);
+    indexElementsByGrid();
+}
+
+namespace
+{
+
+// The kinds of elements of describeSurroundings, in the order it gives them.
+constexpr std::uint8_t LINE_ELEMENT = 0;
+constexpr std::uint8_t SHELL_ELEMENT = 1;
+constexpr std::uint8_t SOLID_ELEMENT = 2;
+// The rings of elements whose geometry the matrices of an element read (section 4.4: the normal at a grid point from
+// the elements there, the curve of an edge from the normals at its ends).
+constexpr int SURROUNDING_RINGS = 2;
+
+} // namespace
+
+std::vector<std::int32_t> MixedHybridModel::gridsOfElement(std::uint8_t kind, std::size_t element) const
+{
+    std::vector<std::int32_t> rows;
+    if (kind == LINE_ELEMENT)
+        rows.assign(m_lines[element].gridRows.begin(), m_lines[element].gridRows.end());
+    else if (kind == SHELL_ELEMENT)
+    {
+        const MixedShell& shell = m_shells[element];
+        rows.assign(shell.gridRows.begin(), shell.gridRows.begin() + static_cast<std::ptrdiff_t>(shell.cornerCount));
+        rows.insert(rows.end(), shell.midRows.begin(), shell.midRows.end());
+    }
+    else
+    {
+        rows = m_solids[element].cornerRows;
+        rows.insert(rows.end(), m_solids[element].midRows.begin(), m_solids[element].midRows.end());
+    }
+    std::vector<std::int32_t> grids; // an absent mid-side grid (row −1) has no index
+    for (const std::int32_t row : rows)
+        grids.push_back(row < 0 ? -1 : gridIndexOfRow(row));
+    return grids;
+}
+
+void MixedHybridModel::indexElementsByGrid()
+{
+    m_elementsAtGrid.assign(m_gridRows.size(), {});
+    const std::array<std::size_t, 3> counts{m_lines.size(), m_shells.size(), m_solids.size()};
+    for (std::uint8_t kind = LINE_ELEMENT; kind <= SOLID_ELEMENT; ++kind)
+        for (std::size_t element = 0; element < counts[kind]; ++element)
+            for (const std::int32_t grid : gridsOfElement(kind, element))
+                if (grid >= 0)
+                    m_elementsAtGrid[static_cast<std::size_t>(grid)].emplace_back(kind, element);
+}
+
+std::vector<std::int32_t> MixedHybridModel::entityElements(EntityLayout::Kind kind, std::int32_t row) const
+{
+    const EntityName& name = layout(kind).name(row);
+    if (name.kind == EntityKind::Interior || name.kind == EntityKind::LineEnd)
+        return {name.elementId};
+    std::vector<std::int32_t> grids; // the indices of its grid points (a grid ID 0: none)
+    for (const std::int32_t gridId : name.gridIds)
+        if (gridId != 0)
+        {
+            const auto found = std::lower_bound(m_gridIds.begin(), m_gridIds.end(), gridId);
+            if (found == m_gridIds.end() || *found != gridId)
+                return {};
+            grids.push_back(static_cast<std::int32_t>(found - m_gridIds.begin()));
+        }
+    std::vector<std::int32_t> elements;
+    if (grids.empty())
+        return elements;
+    for (const auto& [elementKind, element] : m_elementsAtGrid[static_cast<std::size_t>(grids.front())])
+    {
+        const std::vector<std::int32_t> own = gridsOfElement(elementKind, element);
+        const bool hasAll = std::all_of(grids.begin(), grids.end(), [&](std::int32_t grid)
+                                        { return std::find(own.begin(), own.end(), grid) != own.end(); });
+        if (!hasAll)
+            continue;
+        elements.push_back(elementKind == LINE_ELEMENT    ? m_lines[element].elementId
+                           : elementKind == SHELL_ELEMENT ? m_shells[element].elementId
+                                                          : m_solids[element].elementId);
+    }
+    std::sort(elements.begin(), elements.end());
+    elements.erase(std::unique(elements.begin(), elements.end()), elements.end());
+    return elements;
+}
+
+std::vector<std::int32_t> MixedHybridModel::entityGridRows(EntityLayout::Kind kind, std::int32_t row) const
+{
+    const EntityName& name = layout(kind).name(row);
+    std::vector<std::int32_t> rows;
+    if (name.kind == EntityKind::Edge || name.kind == EntityKind::Face)
+    {
+        for (const std::int32_t gridId : name.gridIds)
+        {
+            const auto found = std::lower_bound(m_gridIds.begin(), m_gridIds.end(), gridId);
+            if (gridId != 0 && found != m_gridIds.end() && *found == gridId)
+                rows.push_back(m_gridRows[static_cast<std::size_t>(found - m_gridIds.begin())]);
+        }
+        return rows;
+    }
+    // The element of an interior or of a line end, by its ID: the shells and the solids are in the order of their IDs.
+    const auto isBefore = [](const auto& element, std::int32_t id) { return element.elementId < id; };
+    const auto shell = std::lower_bound(m_shells.begin(), m_shells.end(), name.elementId, isBefore);
+    const auto solid = std::lower_bound(m_solids.begin(), m_solids.end(), name.elementId, isBefore);
+    if (shell != m_shells.end() && shell->elementId == name.elementId)
+        rows.assign(shell->gridRows.begin(), shell->gridRows.begin() + static_cast<std::ptrdiff_t>(shell->cornerCount));
+    else if (solid != m_solids.end() && solid->elementId == name.elementId)
+        rows.assign(solid->cornerRows.begin(), solid->cornerRows.end());
+    else
+        for (const MixedLine& line : m_lines)
+            if (line.elementId == name.elementId)
+                rows.assign(line.gridRows.begin(), line.gridRows.end());
+    return rows;
+}
+
+void MixedHybridModel::collectRings(std::set<std::int32_t>& grids,
+                                    std::set<std::pair<std::uint8_t, std::size_t>>& elements, int rings) const
+{
+    for (int ring = 0; ring < rings; ++ring)
+    {
+        std::set<std::int32_t> reached = grids;
+        for (const std::int32_t grid : grids)
+            for (const std::pair<std::uint8_t, std::size_t>& element : m_elementsAtGrid[static_cast<std::size_t>(grid)])
+                if (elements.insert(element).second)
+                    for (const std::int32_t other : gridsOfElement(element.first, element.second))
+                        if (other >= 0)
+                            reached.insert(other);
+        grids = std::move(reached);
+    }
+}
+
+std::vector<std::int32_t> MixedHybridModel::readGridRows(std::string_view card, std::int64_t batchRow) const
+{
+    // The element of the card's batch row, by its kind.
+    const auto indexIn = [&](const std::map<std::string, std::vector<std::int32_t>, std::less<>>& ofRow)
+    {
+        const auto found = ofRow.find(card);
+        if (found == ofRow.end() || batchRow < 0 || static_cast<std::size_t>(batchRow) >= found->second.size())
+            return std::int32_t{-1};
+        return found->second[static_cast<std::size_t>(batchRow)];
+    };
+    std::optional<std::pair<std::uint8_t, std::size_t>> element;
+    if (const std::int32_t line = indexIn(m_lineOfRow); line >= 0)
+        element = {LINE_ELEMENT, static_cast<std::size_t>(line)};
+    else if (const std::int32_t shell = indexIn(m_shellOfRow); shell >= 0)
+        element = {SHELL_ELEMENT, static_cast<std::size_t>(shell)};
+    else if (const std::int32_t solid = indexIn(m_solidOfRow); solid >= 0)
+        element = {SOLID_ELEMENT, static_cast<std::size_t>(solid)};
+    if (!element)
+        return {};
+    std::set<std::int32_t> grids;
+    for (const std::int32_t grid : gridsOfElement(element->first, element->second))
+        if (grid >= 0)
+            grids.insert(grid);
+    std::set<std::pair<std::uint8_t, std::size_t>> elements;
+    collectRings(grids, elements, SURROUNDING_RINGS);
+    std::vector<std::int32_t> rows;
+    for (const std::int32_t grid : grids)
+        rows.push_back(m_gridRows[static_cast<std::size_t>(grid)]);
+    std::sort(rows.begin(), rows.end());
+    return rows;
+}
+
+void MixedHybridModel::describeSurroundings(std::span<const std::int32_t> gridRows,
+                                            const std::function<void(double)>& mix) const
+{
+    std::set<std::int32_t> grids;
+    for (const std::int32_t row : gridRows)
+        if (const std::int32_t grid = gridIndexOfRow(row); grid >= 0)
+            grids.insert(grid);
+    std::set<std::pair<std::uint8_t, std::size_t>> elements; // (kind, index): by kind, then by increasing ID
+    collectRings(grids, elements, SURROUNDING_RINGS);
+    mix(static_cast<double>(elements.size()));
+    for (const auto& [kind, element] : elements)
+    {
+        const std::string_view card = kind == LINE_ELEMENT    ? m_lines[element].card
+                                      : kind == SHELL_ELEMENT ? m_shells[element].card
+                                                              : m_solids[element].card;
+        const std::int32_t elementId = kind == LINE_ELEMENT    ? m_lines[element].elementId
+                                       : kind == SHELL_ELEMENT ? m_shells[element].elementId
+                                                               : m_solids[element].elementId;
+        mix(static_cast<double>(kind));
+        mix(static_cast<double>(elementId));
+        for (const char letter : card)
+            mix(static_cast<double>(letter));
+        for (const std::int32_t grid : gridsOfElement(kind, element))
+        {
+            if (grid < 0)
+            {
+                mix(-1.0);
+                continue;
+            }
+            const base::Vec3& position = m_gridPositions[static_cast<std::size_t>(grid)];
+            mix(static_cast<double>(m_gridIds[static_cast<std::size_t>(grid)]));
+            mix(position.x());
+            mix(position.y());
+            mix(position.z());
+        }
+    }
+    // The declarations of the whole model: a change of one condenses every unit again (they rarely change).
+    mix(m_declarations ? 1.0 : 0.0);
+    if (!m_declarations)
+        return;
+    const auto mixEdges = [&](const std::vector<input::GridEdge>& edges)
+    {
+        mix(static_cast<double>(edges.size()));
+        for (const input::GridEdge& edge : edges)
+        {
+            mix(static_cast<double>(edge[0]));
+            mix(static_cast<double>(edge[1]));
+        }
+    };
+    mixEdges(m_declarations->rawEdges);
+    mix(static_cast<double>(m_declarations->rawElements.size()));
+    for (const std::int32_t elementId : m_declarations->rawElements)
+        mix(static_cast<double>(elementId));
+    mixEdges(m_declarations->sharpEdges);
 }
 
 void MixedHybridModel::checkDeclarations(const SnapshotIndex& index)
 {
     const input::ModelSnapshot& snapshot = index.snapshot();
-    if (snapshot.formulationGeometry())
+    if (const std::optional<input::FormulationGeometry>& geometry = snapshot.formulationGeometry())
+    {
+        // The sharp edges are edges of the skin of solids: without a solid, none can be one (with solids,
+        // buildSolidPart checks each).
+        if (m_solids.empty() && !geometry->sharpEdges.empty())
+        {
+            base::Diagnostic diagnostic;
+            diagnostic.code = "geometry-declaration-unknown";
+            diagnostic.message = base::concatenate(
+                {"expected the sharp edges of the geometry declarations to be edges of the solids of ",
+                 MIXED_HYBRID_FORMULATION, ", found ", std::to_string(geometry->sharpEdges.size()),
+                 " sharp edges in a model without solids (the folds of shells are raw edges); correct the "
+                 "declaration"});
+            m_problems.push_back(std::move(diagnostic));
+        }
         return;
+    }
     for (const std::string_view card : CARDS_READ_FROM_THE_MESH)
     {
         const input::ElementBatch* batch = snapshot.findElementBatch(card);
@@ -586,14 +816,36 @@ void MixedHybridModel::fillDeterminedComponents(EntityLayout::Kind, const NodalD
 void MixedHybridModel::deriveSupports(EntityLayout::Kind, std::span<const HeldGridComponent> held,
                                       std::vector<DerivedSupport>& supports, base::DiagnosticSink& sink) const
 {
-    // The DOFs no element stiffens, held at 0 in every constraint set.
+    const std::size_t first = supports.size();
+    if ((m_shellPart != nullptr && m_shellPart->usable()) || m_solidPart != nullptr)
+    {
+        const std::map<std::int32_t, BasicSupport> basic = basicSupportsOf(held);
+        shellSupports(basic, &supports, nullptr, sink);
+        solidSupports(basic, &supports, nullptr, sink);
+    }
+    // The DOFs no element stiffens, held at 0 in every constraint set where the supports do not hold them already
+    // (with the value they carry along an edge).
+    std::set<std::pair<std::int32_t, int>> derived;
+    for (std::size_t i = first; i < supports.size(); ++i)
+        derived.insert({supports[i].dof.row, supports[i].dof.component});
     for (const ElementDof& dof : m_unstiffenedEntityDofs)
-        supports.push_back({dof, 0.0, {}});
+        if (derived.count({dof.row, dof.component}) == 0)
+            supports.push_back({dof, 0.0, {}});
+}
+
+void MixedHybridModel::supportRows(EntityLayout::Kind, std::span<const HeldGridComponent> held,
+                                   std::vector<std::vector<FormulationRelationTerm>>& rows) const
+{
     if ((m_shellPart == nullptr || !m_shellPart->usable()) && m_solidPart == nullptr)
         return;
-    const std::map<std::int32_t, BasicSupport> basic = basicSupportsOf(held, sink);
-    shellSupports(basic, supports, sink);
-    solidSupports(basic, supports);
+    const std::map<std::int32_t, BasicSupport> basic = basicSupportsOf(held);
+    const bool hasSkew =
+        std::any_of(basic.begin(), basic.end(), [](const auto& entry) { return !entry.second.skew.empty(); });
+    if (!hasSkew)
+        return;
+    base::DiagnosticSink quiet; // deriveSupports reports the directions the edges and faces do not carry
+    shellSupports(basic, nullptr, &rows, quiet);
+    solidSupports(basic, nullptr, &rows, quiet);
 }
 
 void MixedHybridModel::affineField(EntityLayout::Kind kind, const base::Mat3& gradient, const base::Vec3& translation,
@@ -704,6 +956,13 @@ const FormulationModel* formulationModelOf(const SnapshotIndex& index, const Ele
     if (!registry.isMixedHybrid())
         return nullptr;
     return &mixedHybrid::MixedHybridModel::of(index);
+}
+
+const EntityLayout* formulationEntitiesOf(const SnapshotIndex& index, const ElementRegistry& registry,
+                                          EntityLayout::Kind kind)
+{
+    const FormulationModel* formulation = formulationModelOf(index, registry);
+    return formulation != nullptr ? &formulation->layout(kind) : nullptr;
 }
 
 } // namespace oos::elements

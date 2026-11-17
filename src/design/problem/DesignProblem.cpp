@@ -8,6 +8,7 @@
 #include "oos/design/problem/ShapeDistortion.hpp"
 #include "oos/design/responses/ModeTracking.hpp"
 #include "oos/design/sensitivity/StaticSensitivity.hpp"
+#include "oos/elements/core/ElementRegistry.hpp"
 #include "oos/solutions/common/RunChecks.hpp"
 
 #include <algorithm>
@@ -81,7 +82,6 @@ DesignProblem::DesignProblem(std::shared_ptr<const input::ModelSnapshot> snapsho
       m_responses(std::move(responses), m_model, *m_snapshot),
       m_constraints(std::move(constraints), m_responses)
 {
-    elements::refuseMixedHybridOn(*m_snapshot, "the design interfaces (design points, sensitivities, optimization)");
 }
 
 std::vector<std::int64_t> DesignProblem::drivenUnits() const
@@ -187,7 +187,10 @@ DesignProblem::PreparedStatics DesignProblem::prepareStatics(const DesignPoint& 
     {
         // The gradients solve on the factors of the analysis (StaticSensitivity), kept with the evaluation.
         withResponses.keepsSystems = true;
-        if (isCondensed)
+        // A model whose element formulation has unknowns off the grid points (the edges, faces and interiors of
+        // MixedHybridFormulation) has no table of them: its vectors are kept too.
+        const bool hasEntities = elements::ElementRegistry::forModel(overlaid).isMixedHybrid();
+        if (isCondensed || hasEntities)
         {
             // The g-set displacements of every subcase, kept as vectors: an output of every point would recover every
             // unit; the units a sensitivity reads are recovered (the driven ones, those the responses read).

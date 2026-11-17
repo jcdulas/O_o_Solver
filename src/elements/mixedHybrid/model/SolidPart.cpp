@@ -615,12 +615,17 @@ std::variant<SolidPart::SharedKernel, std::string> SolidPart::kernelOf(std::size
         return s < cache.kernels.size() && cache.kernels[s] && (!mass || cache.hasMass[s]) &&
                (!interior || cache.hasInterior[s]);
     };
+    // A kept kernel without the mass that a call asks for (without interior fields) gets its mass added.
+    SharedKernel withoutMass;
     {
         const std::lock_guard<std::mutex> lock(cache.mutex);
         if (serves(solid))
             return cache.kernels[solid];
+        if (mass && !interior && solid < cache.kernels.size())
+            withoutMass = cache.kernels[solid];
     }
-    SolidResult<VolumeKernel> built = buildKernel(solid, kind, withMass);
+    SolidResult<VolumeKernel> built = withoutMass != nullptr ? withoutMass->withMass(m_basicMaterials[solid].density)
+                                                             : buildKernel(solid, kind, withMass);
     if (!built.ok())
         return built.refusal();
     SharedKernel kernel = std::make_shared<const VolumeKernel>(std::move(built.value()));

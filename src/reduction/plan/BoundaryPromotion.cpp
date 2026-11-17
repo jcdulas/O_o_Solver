@@ -25,11 +25,13 @@ std::vector<BoundaryNode> BoundaryPromotion::apply(const PlanGraph& graph, std::
         {
             if (std::binary_search(interfaceRelations.begin(), interfaceRelations.end(), entry.relation))
                 continue;
+            // Every independent point of the unit, a point held in every subcase too: the interface eliminates the
+            // relation again at the boundary point (a congruence) and reads its terms there; held, the point brings
+            // no DOF to K*.
             for (const std::int32_t independent : entry.independentNodes)
             {
                 const base::EntityId nodeId = graph.nodeIds()[static_cast<std::size_t>(independent)];
-                if (graph.unitDofCount(independent, interfaceRelations) > 0 &&
-                    std::binary_search(unitNodes.begin(), unitNodes.end(), nodeId))
+                if (std::binary_search(unitNodes.begin(), unitNodes.end(), nodeId))
                     reasons[nodeId] |= node.reasons;
             }
         }

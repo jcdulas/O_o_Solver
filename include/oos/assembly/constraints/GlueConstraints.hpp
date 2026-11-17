@@ -28,6 +28,9 @@ struct GlueContext
     const FastenerConstraints* fasteners = nullptr;
     std::span<const base::DofIndex> spcDofs;       // the sb set of the subcase (SpcSet::sbDofs)
     std::span<const base::DofIndex> permanentDofs; // the sg set (SpcSet::sgDofs: GRID PS)
+    // The element formulation with unknowns besides the grid points (null: none): a primary face of one of its
+    // elements gives the translations of the tied point over the DOFs of that element.
+    const elements::FormulationModel* formulation = nullptr;
 };
 
 // What the glue did with one glued pair: its tolerances, the grid points it ties and those it does not.
@@ -68,7 +71,10 @@ struct GluedPairReport
 //   POSITION TOLERANCE: this project's choice), else the default tolerance.
 // - The tie: u_s = R_sᵀ·Σ_i N_i(ξ, η)·R_i·u_i on the translations (components 1 2 3), N_i the shape functions of
 //   the face (faceShapeFunctions: linear or quadratic, quadrilateral or triangular) at the tied point, R the rotation
-//   from the displacement system CD of a grid point to the basic system. Σ N_i = 1, so a rigid translation gives no
+//   from the displacement system CD of a grid point to the basic system. A face of an element of a formulation with
+//   unknowns besides its grid points (GlueContext::formulation) gives u_s = R_sᵀ·u(P) instead, u(P) the displacement
+//   of that element at the point the shape functions place on it, over its DOFs (FormulationModel::facePointMotion,
+//   docs/mixed-hybrid-formulation-spec.md section 5.10). Σ N_i = 1, so a rigid translation gives no
 //   tie force; a rigid rotation gives none where the point lies on its face (a point kept off its face by a gap feels
 //   the rotation times the gap, as with the manual's ADJUST=NO).
 // - Translations only, for solids and shells alike, as the tie of the manual: it ties the displacements of

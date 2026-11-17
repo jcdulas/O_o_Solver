@@ -73,15 +73,15 @@ struct UnitPlan
 {
     std::int64_t unitId = 0;
     UnitOrigin origin = UnitOrigin::Component;
-    std::vector<std::int64_t> memberUnits;   // the unit and the 1D/0D-only units absorbed into it
-    std::int64_t revision = 0;               // its stamp, absorbed clusters included
+    std::vector<std::int64_t> memberUnits;  // the unit and the 1D/0D-only units absorbed into it
+    std::int64_t revision = 0;              // its stamp, absorbed clusters included
     std::vector<base::EntityId> elementIds; // its elements and the connections it absorbed, sorted
     std::vector<base::EntityId> nodeIds;    // its points, absorbed connection-only points included, sorted
     // Its boundary points before absorption: the points of its own units that a connection uses (O_o_Reader's
     // componentBoundaries, with the grid points of the elements the fasteners pierce), and those O_o_Reader's group
     // boundary adds.
     std::int64_t boundaryNodeCountBefore = 0;
-    std::vector<BoundaryNode> boundary;         // after absorption, with the analysis' additions; free points only
+    std::vector<BoundaryNode> boundary;        // after absorption, with the analysis' additions; free points only
     std::vector<base::EntityId> retainedNodes; // the caller's retained points in the unit
     std::vector<base::EntityId> absorbedNodes; // connection-only points made interior
     std::int64_t absorbedClusterCount = 0;
@@ -98,12 +98,12 @@ struct UnitPlan
 // The connection system as the plan reports it.
 struct ConnectionSummary
 {
-    std::int64_t connectionCount = 0;               // connections left in the connection system
-    std::int64_t clusterCount = 0;                  // clusters left in it
-    std::int64_t absorbedClusterCount = 0;          // clusters absorbed into a unit
-    std::int64_t absorbedSpiderCount = 0;           // spiders and fastener sides absorbed into a unit
+    std::int64_t connectionCount = 0;              // connections left in the connection system
+    std::int64_t clusterCount = 0;                 // clusters left in it
+    std::int64_t absorbedClusterCount = 0;         // clusters absorbed into a unit
+    std::int64_t absorbedSpiderCount = 0;          // spiders and fastener sides absorbed into a unit
     std::vector<base::EntityId> connectionNodeIds; // connection-only points left in it (DOFs of the interface problem)
-    std::vector<std::int64_t> movedUnits;           // the 1D/0D-only units it holds
+    std::vector<std::int64_t> movedUnits;          // the 1D/0D-only units it holds
     // Its relations (rigid elements, fasteners by element ID, MPC sets by set ID, and the glue equations that join
     // points of several units, glueRelationKey), and the relations of a unit that make a point another unit holds
     // dependent, eliminated at the interface; sorted.
@@ -130,8 +130,9 @@ struct ConnectionSummary
 //
 // Rules: the request decides unit by unit; a unit may be named by the ID of a 1D/0D-only unit absorbed into it; a unit
 // moved to the connection system is never condensed (naming it is an error); a model of one unit and no connection is
-// the full path whatever the request. The plan recommends, it does not override: a condensed unit whose
-// K* would cost more than its interior keeps its decision and carries the recommendation (UnitCostEstimate).
+// the full path whatever the request; a unit whose every DOF is held or dependent is kept full (nothing to condense).
+// The plan recommends, it does not override: a condensed unit whose K* would cost more than its interior keeps its
+// decision and carries the recommendation (UnitCostEstimate).
 //
 // Thread-safety: immutable once built. Ownership: owns its lists; borrows nothing after construction.
 class CondensationPlan
@@ -155,7 +156,8 @@ public:
     [[nodiscard]] const InterfaceEstimate& fullPathEstimate() const noexcept { return m_fullPath; }
     // No unit condensed.
     [[nodiscard]] bool isFullPath() const noexcept;
-    // Why the plan differs from the request (empty when it does not): the one-unit rule.
+    // Why the plan differs from the request (empty when it does not): the one-unit rule, the units with nothing to
+    // condense (every DOF held or dependent) kept full.
     [[nodiscard]] const std::string& note() const noexcept { return m_note; }
     [[nodiscard]] ReductionKind reduction() const noexcept { return m_reduction; }
     // The decision on every spider and fastener side (empty without spider absorption), in the catalog's order.

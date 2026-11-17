@@ -29,12 +29,17 @@ struct EnforcedDisplacement
 
 // A support the element formulation derives from the supports of the grid points (an entity DOF of an edge or a face
 // held because the grid points of the edge hold a direction: docs/mixed-hybrid-formulation-spec.md section 5.6), with
-// its value and the terms that carry its reaction back to the grid DOFs (the reaction r adds r·c to each term's DOF).
+// its value, the map of the held grid values to it (`carriedTo`: value = Σ c·held value; the grid components the edge
+// reads) and the terms that carry its reaction back to the grid DOFs (`reactionTo`: the reaction r adds r·c to each
+// term's DOF). The reaction is carried as every force on an entity DOF is (EntityForceCarry: forces and moments at
+// the grid points of the entity with the same resultant), so that the reported support forces balance the loads in
+// force and in moment, on a curved edge too.
 struct DerivedSupportDof
 {
     base::DofIndex dof = 0;
     double value = 0.0;
     std::vector<ConstraintTerm> carriedTo;
+    std::vector<ConstraintTerm> reactionTo;
 };
 
 // The single-point constraints of one subcase, from the singlePointConstrTable of O_o_Reader
@@ -115,9 +120,9 @@ public:
     [[nodiscard]] SpcSet withDerivedSupports(std::vector<DerivedSupportDof> derived, base::MemoryBudget& budget) const;
     // The derived supports (empty without a formulation that derives some).
     [[nodiscard]] std::span<const DerivedSupportDof> derivedSupports() const noexcept;
-    // Adds to the support forces of the grid DOFs those of the derived supports (each carried by its terms), then sets
-    // the derived DOFs' own to 0: the support force tables name grid points only, and the carrying is exact for rigid
-    // motions, so the reported forces balance the loads.
+    // Adds to the support forces of the grid DOFs those of the derived supports (each carried by its reactionTo terms),
+    // then sets the derived DOFs' own to 0: the support force tables name grid points only, and the carrying is exact
+    // for rigid motions, so the reported forces balance the loads.
     void carryDerivedReactions(std::span<double> supportForcesG) const noexcept;
 
 private:

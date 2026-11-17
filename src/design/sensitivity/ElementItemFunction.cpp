@@ -563,21 +563,14 @@ std::optional<ItemSlopes> ElementItemFunction::slopes(const elements::ElementBat
         const std::size_t n = result.dofs.size();
         // rows(e_d) − rows(0) at unit displacements of the element's DOFs, the others at zero, no temperatures.
         const ScratchDisplacements copy = scratch();
-        const std::span<double> grid = copy.grid;
-        const std::span<double> scalar = copy.scalar;
         std::vector<double> saved(n);
-        const auto at = [&](const elements::ElementDof& dof) -> double&
-        {
-            return dof.kind == input::PointKind::Scalar
-                       ? scalar[static_cast<std::size_t>(dof.row)]
-                       : grid[static_cast<std::size_t>(dof.row) * 6 + dof.component - 1];
-        };
+        const auto at = [&](const elements::ElementDof& dof) -> double& { return copy.at(dof); };
         for (std::size_t d = 0; d < n; ++d)
         {
             saved[d] = at(result.dofs[d]);
             at(result.dofs[d]) = 0.0;
         }
-        const elements::NodalDisplacements unit{grid, scalar, nullptr};
+        const elements::NodalDisplacements unit = copy.nodal();
         const auto recoverAt = [&](elements::ElementResultBlock& block)
         {
             if (key.first)
@@ -726,19 +719,14 @@ bool unitSlopes(std::span<const elements::ElementDof> dofs, std::span<const elem
                 const ScratchDisplacements& copy, RowsAt&& rowsAt, elements::RecoverySlopes& slopes)
 {
     const std::size_t n = dofs.size();
-    const auto at = [&](const elements::ElementDof& dof) -> double&
-    {
-        return dof.kind == input::PointKind::Scalar
-                   ? copy.scalar[static_cast<std::size_t>(dof.row)]
-                   : copy.grid[static_cast<std::size_t>(dof.row) * 6 + dof.component - 1];
-    };
+    const auto at = [&](const elements::ElementDof& dof) -> double& { return copy.at(dof); };
     std::vector<double> saved(n); // bounded by the element's DOFs
     for (std::size_t d = 0; d < n; ++d)
     {
         saved[d] = at(dofs[d]);
         at(dofs[d]) = 0.0;
     }
-    const elements::NodalDisplacements unit{copy.grid, copy.scalar, nullptr};
+    const elements::NodalDisplacements unit = copy.nodal();
     elements::ElementResultBlock atRest;
     bool isSameLayout = rowsAt(unit, atRest);
     slopes.reset(dofs, atRest.columns().size());
@@ -1021,8 +1009,7 @@ std::optional<double> ElementItemFunction::mixedFieldRate(const elements::Elemen
         const ElementItemSpec& item = m_items[k];
         const bool isRecovered =
             item.type == ResponseType::Stress || item.type == ResponseType::Strain || item.type == ResponseType::Force;
-        if (!isRecovered ||
-            item.location.isComposite || item.location.isStrengthRatio)
+        if (!isRecovered || item.location.isComposite || item.location.isStrengthRatio)
             return std::nullopt;
         auto [found, isNew] = outputs.try_emplace(item.location.tableKind);
         Output& part = found->second;

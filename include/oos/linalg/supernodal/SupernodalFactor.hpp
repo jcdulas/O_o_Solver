@@ -48,6 +48,12 @@ struct FactorOptions
     PivotingMode pivoting = PivotingMode::PositiveDefinite;
     // The MAXRATIO and BAILOUT of the ratio test (positive definite mode only).
     PivotPolicy pivotPolicy;
+    // The diagonal the ratio test compares the factor diagonal with, in place of the matrix diagonal, for the
+    // equations it gives a value that is not negative (positive definite mode only; PivotDiagnostics.hpp says when a
+    // caller gives one): one value per equation of the matrix, NO_REFERENCE_DIAGONAL where the matrix diagonal is
+    // kept. Empty (the default): the matrix diagonal for every equation. Borrowed: it outlives the factorisation
+    // (every run of a streamed one).
+    std::span<const double> referenceDiagonal;
     // Names the DOFs of the diagnostics; empty: equations by number.
     EquationNamer equationNamer;
     // Checked before every supernode, and inside a front between the tiles and blocks of the dense kernels; not owned,

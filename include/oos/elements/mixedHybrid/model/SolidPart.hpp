@@ -126,7 +126,7 @@ struct SolidPartInput
     // The degrees and the interior fields (defaults: trace 4, face 4, stress 4, three interior fields).
     SolidOptions options;
     // The bytes of kernels the part keeps once built (kernelOf), 0 for none: a hexahedron of degree 4 takes about
-    // 50 ms to build and 3 MB to keep. The kernels built once the budget is spent are built again at each call.
+    // 40 ms to build and 3 MB to keep. The kernels built once the budget is spent are built again at each call.
     std::size_t kernelCacheBytes = 0;
     // The shells of the model (ties 1, 2 and 4), built on the same grids (the same dense indices), or null when the
     // model has none. Not copied: the ShellPart must outlive the SolidPart and its copies.
@@ -302,6 +302,32 @@ struct SolidDerivedSupport
     std::vector<SolidSupportTerm> carriedTo;
 };
 
+// A translation direction held at a grid that is no axis of the basic system (unit vector, basic), and the component
+// of the displacement system of the grid that holds it (0 to 2).
+struct SolidSkewAxis
+{
+    std::size_t grid = 0;
+    SolidPoint direction{};
+    std::size_t component = 0;
+};
+
+// A constraint the supports put on the functions of an edge or a face along a direction d that is no basic axis, the
+// same at every grid of the entity: Σ_c d_c q_(m, c) = 0 for each function m (`dofs`: the DOFs of the entity and
+// their coefficients). The value of a function in a motion of its grids vanishes on a straight edge and a flat face.
+struct SolidSupportRow
+{
+    std::size_t entity = 0;
+    std::vector<std::pair<std::size_t, double>> dofs;
+};
+
+// The rows of the directions off the basic axes, and the count of edges and faces whose grids hold directions that
+// differ (their grids hold them, the entity does not).
+struct SolidSupportRows
+{
+    std::vector<SolidSupportRow> rows;
+    std::size_t uncarried = 0;
+};
+
 // A problem of the model attached to a solid (its index and element ID).
 struct SolidPartProblem
 {
@@ -400,15 +426,16 @@ public:
     // solid with interior fields in a modal analysis: they come from the mass), with the loads `loads` (their results
     // in kernel.loads(), in the same order). Refused for a folded element, a trace residual of 1e-8 or more, matrices
     // that are not positive definite. Nothing is cached: each call builds the functions of the element (a minimum-norm
-    // inverse of its trace matrix, kept per orientation: elementFunctions) and its matrices: at degree 4 and on
-    // one thread, about 0.05 s for a hexahedron, 0.02 s for a pentahedron, a few milliseconds for a tetrahedron or a
-    // pyramid (measured November 2026), the mass and the interior fields adding a tenth. kernelOf keeps them.
+    // inverse of its trace matrix, kept per orientation: elementFunctions) and its matrices: at degree 4, native and on
+    // one thread, about 0.04 s for a hexahedron, 0.015 s for a pentahedron, a few milliseconds for a tetrahedron or a
+    // pyramid (measured November 2026), the mass and the interior fields adding a fifth. kernelOf keeps them.
     [[nodiscard]] SolidResult<VolumeKernel> buildKernel(std::size_t solid, EntityLayout::Kind kind, bool withMass,
                                                         std::span<const SolidLoad> loads = {}) const;
 
     // The kernel of a usable solid without loads, as buildKernel builds it, kept by the part once built when its
     // budget allows (SolidPartInput::kernelCacheBytes): a kernel with the mass and the interior fields serves the
-    // calls that ask for less. Or the reason the solid is refused.
+    // calls that ask for less; a kept kernel without the mass gets it from VolumeKernel::withMass when a call asks for
+    // the mass without the interior fields (about a third of a build). Or the reason the solid is refused.
     using SharedKernel = std::shared_ptr<const VolumeKernel>;
     [[nodiscard]] std::variant<SharedKernel, std::string> kernelOf(std::size_t solid, EntityLayout::Kind kind,
                                                                    bool withMass) const;
@@ -499,7 +526,11 @@ public:
     // by a linear map exact for the rigid motions (and the uniform strains along the face or edge) that the held
     // values see; see SolidPartSupports.cpp.
     // Reference: src/tdnns/solid.rs::Solids::supports (edge_bc), with values and reaction maps
-    [[nodiscard]] std::vector<SolidDerivedSupport> deriveSupports(std::span<const SolidHeldComponent> held) const;
+    // `skew`: the translation directions held off the basic axes; an edge or a face whose grids all hold the same one
+    // gives the rows of `rows` (when not null).
+    [[nodiscard]] std::vector<SolidDerivedSupport> deriveSupports(std::span<const SolidHeldComponent> held,
+                                                                  std::span<const SolidSkewAxis> skew = {},
+                                                                  SolidSupportRows* rows = nullptr) const;
 
     // The values on the entity DOFs (entities(kind) order, dofOffset) of the affine field u(x) = b + A x, A =
     // `gradient` (∂u_i/∂x_j in row i): A times the geometry coefficients of each edge and face function (the corner

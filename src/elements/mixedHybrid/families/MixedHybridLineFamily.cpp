@@ -9,6 +9,7 @@
 #include "oos/elements/mixedHybrid/core/Quadrature.hpp"
 #include "oos/elements/mixedHybrid/families/LocalMap.hpp"
 #include "oos/elements/mixedHybrid/model/MixedHybridModel.hpp"
+#include "oos/elements/mixedHybrid/shell/ShellElementData.hpp"
 
 #include <algorithm>
 #include <array>
@@ -33,12 +34,10 @@ const MixedLine& requiredLine(const MixedHybridModel& model, const ElementBatchV
     return *line;
 }
 
-// The kernel's data of a line, with or without its mass: that of its edge alone, or that of a line on an edge of
-// shells (its kinematics the trace of the first shell of the edge: ShellPart::lineData).
-LineData lineDataOf(const MixedHybridModel& model, const MixedLine& line, bool withMass, double addedMass = 0.0)
+// The kernel's data of a line with the section `section`, with or without its mass: that of its edge alone, or that
+// of a line on an edge of shells (its kinematics the trace of the first shell of the edge: ShellPart::lineData).
+LineData lineDataWith(const MixedHybridModel& model, const MixedLine& line, const LineSection& section, bool withMass)
 {
-    LineSection section = line.section;
-    section.nonStructuralMass += addedMass;
     std::variant<LineData, std::string> data =
         line.shellLine >= 0
             ? model.shellPart()->lineData(static_cast<std::size_t>(line.shellLine), section, withMass)
@@ -48,6 +47,66 @@ LineData lineDataOf(const MixedHybridModel& model, const MixedLine& line, bool w
         throw std::logic_error(base::concatenate({"MixedHybridLineFamily: element ", std::to_string(line.elementId),
                                                   ": ", *message, " (check() accepted it: a bug of O_o_Solver)"}));
     return std::get<LineData>(std::move(data));
+}
+
+// The kernel's data of a line with its own section and the mass per length `addedMass` of the NSM cards.
+LineData lineDataOf(const MixedHybridModel& model, const MixedLine& line, bool withMass, double addedMass = 0.0)
+{
+    LineSection section = line.section;
+    section.nonStructuralMass += addedMass;
+    return lineDataWith(model, line, section, withMass);
+}
+
+// The section with a unit density and no non-structural mass: its mass per length is its area.
+LineSection unitDensity(const LineSection& section)
+{
+    LineSection unit = section;
+    unit.density = 1.0;
+    unit.nonStructuralMass = 0.0;
+    return unit;
+}
+
+// The first translation of the lower and of the upper grid of its edge among the local unknowns of a line alone
+// (LineKinematics.hpp), the x component of the basic system.
+constexpr std::array<std::size_t, 2> ALONE_GRID_X_TRANSLATIONS{0, 3};
+// The unit translation along the x axis of the basic system among the six rigid motions of a shell
+// (rigidMotionUnknowns).
+constexpr std::size_t RIGID_X_TRANSLATION = 0;
+
+// The local unknowns of a line (those of `data`) under a unit translation along the x axis of the basic system. A line
+// alone: the x translations of the two grids of its edge (the functions between them vanish at the grids and take
+// nothing of a constant). A line on an edge of shells has the local unknowns of the first shell of that edge, then
+// the rotations at its two grids: the translation is that of the shell, whose edges and interior carry part of a
+// constant (rigidMotionUnknowns), and the rotations stay zero.
+Vector unitTranslationOf(const MixedHybridModel& model, const MixedLine& line, const LineData& data)
+{
+    Vector x(data.dofs.size(), 0.0);
+    if (line.shellLine < 0)
+    {
+        for (const std::size_t translation : ALONE_GRID_X_TRANSLATIONS)
+            x[translation] = 1.0;
+        return x;
+    }
+    const ShellPart& part = *model.shellPart();
+    const ShellElementData shell = part.element(data.source.element);
+    const ShellReferenceElement& reference = part.referenceElement(shell.cornerCount);
+    const std::array<Vector, 6> rigid = rigidMotionUnknowns(reference, shell.definition());
+    const Vector& translation = rigid[RIGID_X_TRANSLATION];
+    std::copy(translation.begin(), translation.end(), x.begin());
+    return x;
+}
+
+// The volume of a line, ∫ A μ ds along its axis (μ the length of an offset axis over that of its edge): with a unit
+// density and no non-structural mass, the momentum along x of its unit translation along x, Σ_i x_i · inertia(i, x)
+// (LineData::inertia = ∫ (u + θ × o)ᵀ m μ ds with m = A, on the rule of the mass of the line).
+double lineVolumeOf(const MixedHybridModel& model, const MixedLine& line)
+{
+    const LineData data = lineDataWith(model, line, unitDensity(line.section), false);
+    const Vector x = unitTranslationOf(model, line, data);
+    double volume = 0.0;
+    for (std::size_t i = 0; i < x.size(); ++i)
+        volume += x[i] * data.inertia(i, 0);
+    return volume;
 }
 
 // The kinematics of a line at the fraction `fraction` of its chord from its grid A: those of its edge alone, or the
@@ -349,7 +408,7 @@ MixedHybridLineFamily::MixedHybridLineFamily(std::unique_ptr<ElementFamily> clas
 
 FacetSet MixedHybridLineFamily::facets() const noexcept
 {
-    return {Facet::Stiffness, Facet::Mass, Facet::Loads, Facet::Differential, Facet::Recovery};
+    return {Facet::Stiffness, Facet::Mass, Facet::Loads, Facet::Differential, Facet::Recovery, Facet::Derivatives};
 }
 
 void MixedHybridLineFamily::check(const ElementBatchView& view, base::DiagnosticSink& sink) const
@@ -401,6 +460,15 @@ void MixedHybridLineFamily::computeMass(const ElementBatchView& view, ElementRan
         const LocalMap map = lineMapOf(view, model, line, data);
         block.append(row, map.dofs, congruent(*data.mass, map));
     }
+}
+
+bool MixedHybridLineFamily::computeVolumes(const ElementBatchView& view, ElementRange range,
+                                           std::span<double> volumes) const
+{
+    const MixedHybridModel& model = MixedHybridModel::of(view.index());
+    for (std::int64_t row = range.first; row < range.last; ++row)
+        volumes[static_cast<std::size_t>(row - range.first)] = lineVolumeOf(model, requiredLine(model, view, row));
+    return true;
 }
 
 std::vector<std::string> MixedHybridLineFamily::outputColumns(ElementOutput output) const

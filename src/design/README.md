@@ -155,6 +155,16 @@ from the design cards of their decks.
 
 ## `problem/` — the DesignProblem core
 
+A model in `MixedHybridFormulation` (docs/mixed-hybrid-formulation-spec.md section 5.15): its families difference
+their facets; the element sets and the DOF map of the sensitivities take its entities (`elements::formulationEntitiesOf`)
+and the analysis keeps the g-set displacements of its subcases; the systems solve with its relations, excluded and
+derived supports (`SensitivitySystem`: the excluded DOFs filled by `fromEquations`, their weights moved by
+`toEquations` and `AdjointColumns::reduceToEquations`); a shape reaches the elements that read its grid points'
+positions (`ShapeElements`: `readGridRows`), and the derivatives of the formulation's relations and excluded fill with
+respect to the positions are formed by differences of their rows on the perturbation's sides (`FormulationShape`,
+`SensitivityComputation::addFormulationShapeTerms` for the static items, `EigenItems::addFormulationShapeTerms` for the
+roots).
+
 `DesignProblem`: a `DesignModel` bound to a shared snapshot (`FieldTargets`), giving design points, their overlaid
 snapshots and the static analysis on them. The caller gathers the deck's design model and its own declarations
 (variables, relations, links) into `DesignModelParts` and builds this object again after each declaration, so that a

@@ -338,6 +338,32 @@ namespace
 {
 
 // The rigid motion of `amplitudes` added at the grid point of row `row` (addRigidMotion's arithmetic, one point).
+// Φ_e·a at the entity DOF `dof` (entityRigidModes, `entityDofCount` rows per motion).
+void addRigidMotionOfEntityDof(const DofMap& dofMap, const std::array<double, RigidBodyModes::MODE_COUNT>& amplitudes,
+                               std::span<double> valuesG, base::DofIndex dof, std::span<const std::uint8_t> isHeld,
+                               std::span<const double> entityModes, std::size_t entityDofCount)
+{
+    const auto g = static_cast<std::size_t>(dof);
+    if (!isHeld.empty() && isHeld[g] != 0)
+        return;
+    const auto row = static_cast<std::size_t>(dof - dofMap.firstEntityDof());
+    double motion = 0.0;
+    for (std::size_t a = 0; a < RigidBodyModes::MODE_COUNT; ++a)
+        motion += entityModes[a * entityDofCount + row] * amplitudes[a];
+    valuesG[g] += motion;
+}
+
+// The count of entity DOFs whose modes `entityModes` holds, after checking its size.
+std::size_t entityDofCountOf(const DofMap& dofMap, std::span<const double> entityModes, std::string_view caller)
+{
+    const auto count = static_cast<std::size_t>(dofMap.gSetSize() - dofMap.firstEntityDof());
+    if (!entityModes.empty() && entityModes.size() != RigidBodyModes::MODE_COUNT * count)
+        throw std::invalid_argument(base::concatenate({std::string(caller), ": expected the six rigid motions of the ",
+                                                       std::to_string(count), " entity DOFs, found ",
+                                                       std::to_string(entityModes.size()), " values"}));
+    return count;
+}
+
 void addRigidMotionOfRow(const DofMap& dofMap, const std::array<double, RigidBodyModes::MODE_COUNT>& amplitudes,
                          std::span<double> valuesG, std::int32_t row, std::span<const std::uint8_t> isHeld)
 {
@@ -359,20 +385,59 @@ void addRigidMotionOfRow(const DofMap& dofMap, const std::array<double, RigidBod
 
 } // namespace
 
+std::vector<double> entityRigidModes(const DofMap& dofMap)
+{
+    std::vector<double> modes; // the entity DOFs × 6
+    if (!dofMap.hasEntities())
+        return modes;
+    const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
+    const auto first = static_cast<std::size_t>(dofMap.firstEntityDof());
+    const std::size_t entityDofs = gSize - first;
+    modes.resize(RigidBodyModes::MODE_COUNT * entityDofs);
+    std::vector<double> field(gSize); // one g-set vector at a time
+    for (std::size_t mode = 0; mode < RigidBodyModes::MODE_COUNT; ++mode)
+    {
+        base::Mat3 gradient{};
+        base::Vec3 translation{};
+        if (mode < 3)
+            translation[mode] = 1.0;
+        else
+        {
+            // u = θ × x: the skew matrix of the axis.
+            base::Vec3 axis{};
+            axis[mode - 3] = 1.0;
+            gradient =
+                base::matrixFromRows({0.0, -axis[2], axis[1]}, {axis[2], 0.0, -axis[0]}, {-axis[1], axis[0], 0.0});
+        }
+        std::fill(field.begin(), field.end(), 0.0);
+        dofMap.addAffineEntityField(gradient, translation, field);
+        std::copy(field.begin() + static_cast<std::ptrdiff_t>(first), field.end(),
+                  modes.begin() + static_cast<std::ptrdiff_t>(mode * entityDofs));
+    }
+    return modes;
+}
+
 void addRigidMotion(const DofMap& dofMap, const std::array<double, RigidBodyModes::MODE_COUNT>& amplitudes,
-                    std::span<double> valuesG, std::span<const std::uint8_t> isHeld)
+                    std::span<double> valuesG, std::span<const std::uint8_t> isHeld,
+                    std::span<const double> entityModes)
 {
     if (valuesG.size() != static_cast<std::size_t>(dofMap.gSetSize()) ||
         (!isHeld.empty() && isHeld.size() != valuesG.size()))
         throw std::invalid_argument(base::concatenate({"addRigidMotion: expected ", std::to_string(dofMap.gSetSize()),
                                                        " values (the g set), found ", std::to_string(valuesG.size())}));
+    const std::size_t entityDofCount = entityDofCountOf(dofMap, entityModes, "addRigidMotion");
     for (std::int32_t row = 0; row < dofMap.gridCount(); ++row)
         addRigidMotionOfRow(dofMap, amplitudes, valuesG, row, isHeld);
+    if (entityModes.empty())
+        return;
+    for (base::DofIndex dof = dofMap.firstEntityDof(); dof < dofMap.gSetSize(); ++dof)
+        addRigidMotionOfEntityDof(dofMap, amplitudes, valuesG, dof, isHeld, entityModes, entityDofCount);
 }
 
 void addRigidMotionAt(const DofMap& dofMap, const std::array<double, RigidBodyModes::MODE_COUNT>& amplitudes,
                       std::span<double> valuesG, std::span<const std::int32_t> gridRows,
-                      std::span<const std::uint8_t> isHeld)
+                      std::span<const std::uint8_t> isHeld, std::span<const double> entityModes,
+                      std::span<const base::DofIndex> entityDofs)
 {
     if (valuesG.size() != static_cast<std::size_t>(dofMap.gSetSize()) ||
         (!isHeld.empty() && isHeld.size() != valuesG.size()))
@@ -385,6 +450,17 @@ void addRigidMotionAt(const DofMap& dofMap, const std::array<double, RigidBodyMo
                 base::concatenate({"addRigidMotionAt: expected grid rows below ", std::to_string(dofMap.gridCount()),
                                    ", found ", std::to_string(row)}));
         addRigidMotionOfRow(dofMap, amplitudes, valuesG, row, isHeld);
+    }
+    const std::size_t entityDofCount = entityDofCountOf(dofMap, entityModes, "addRigidMotionAt");
+    if (entityModes.empty())
+        return;
+    for (const base::DofIndex dof : entityDofs)
+    {
+        if (dof < dofMap.firstEntityDof() || dof >= dofMap.gSetSize())
+            throw std::invalid_argument(base::concatenate(
+                {"addRigidMotionAt: expected entity DOFs from ", std::to_string(dofMap.firstEntityDof()), " below ",
+                 std::to_string(dofMap.gSetSize()), ", found ", std::to_string(dof)}));
+        addRigidMotionOfEntityDof(dofMap, amplitudes, valuesG, dof, isHeld, entityModes, entityDofCount);
     }
 }
 

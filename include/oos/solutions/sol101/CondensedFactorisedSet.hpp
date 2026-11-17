@@ -1,5 +1,6 @@
 #pragma once
 
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/constraints/RigidElimination.hpp"
 #include "oos/assembly/dofs/DofMap.hpp"
 #include "oos/base/ids/EntityId.hpp"
@@ -92,6 +93,8 @@ struct CondensedFactorisedSetParts
     std::vector<base::EntityId> subcases; // the subcases solved on it, in solve order
     // The inertia relief of the set (PARAM INREL = −1), null without one.
     std::shared_ptr<const CondensedRelief> relief;
+    // What the element formulation adds to the constraints (its excluded DOFs filled in a solution), null without one.
+    std::shared_ptr<const assembly::FormulationConstraints> formulation;
 };
 
 // One constraint set of a condensed static run kept after the run (StaticOptions::keepsSystems with a condensation
@@ -131,6 +134,10 @@ public:
     [[nodiscard]] const std::vector<base::EntityId>& subcases() const noexcept { return m_parts.subcases; }
     // The inertia relief of the set (null without one).
     [[nodiscard]] const CondensedRelief* relief() const noexcept { return m_parts.relief.get(); }
+    [[nodiscard]] const assembly::FormulationConstraints* formulation() const noexcept
+    {
+        return m_parts.formulation.get();
+    }
     [[nodiscard]] bool solves(base::EntityId subcase) const
     {
         return std::find(m_parts.subcases.begin(), m_parts.subcases.end(), subcase) != m_parts.subcases.end();

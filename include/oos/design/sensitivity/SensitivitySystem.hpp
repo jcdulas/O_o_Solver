@@ -3,6 +3,7 @@
 #include "oos/assembly/assemble/ElementConnectivity.hpp"
 #include "oos/assembly/assemble/ElementSet.hpp"
 #include "oos/assembly/constraints/FastenerConstraints.hpp"
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/constraints/GlueConstraints.hpp"
 #include "oos/assembly/constraints/MpcEquations.hpp"
 #include "oos/assembly/constraints/MsetCouplings.hpp"
@@ -95,6 +96,8 @@ public:
     [[nodiscard]] const std::vector<solutions::StaticSubcase>& subcases() const noexcept { return m_subcases; }
     [[nodiscard]] const assembly::DofMap& dofMap() const noexcept { return *m_dofMap; }
     [[nodiscard]] const assembly::RigidElimination& gm() const noexcept { return *m_gmView; }
+    // What the element formulation adds to the constraints (its relations and excluded DOFs), null without one.
+    [[nodiscard]] const assembly::FormulationConstraints* formulation() const noexcept { return m_formulationView; }
     // The DOF sets of the factor; precondition: not on the condensed path (isCondensed()), which has no set of the
     // whole model (isConstrained() answers there).
     [[nodiscard]] const assembly::DofSets& sets() const noexcept { return *m_setsView; }
@@ -186,6 +189,10 @@ private:
     std::unique_ptr<assembly::FastenerConstraints> m_fasteners;
     std::unique_ptr<assembly::GlueConstraints> m_glue;
     std::unique_ptr<assembly::RigidElimination> m_gm;
+    // What the element formulation adds to the constraints, built here or kept by the analysis (its excluded DOFs
+    // filled by fromEquations); null without one.
+    std::shared_ptr<const assembly::FormulationConstraints> m_formulation;
+    const assembly::FormulationConstraints* m_formulationView = nullptr;
     std::unique_ptr<assembly::SpcSet> m_spc;
     std::unique_ptr<assembly::DofSets> m_solveSets;
     std::unique_ptr<assembly::ElementConnectivity> m_connectivity;

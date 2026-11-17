@@ -74,9 +74,10 @@ namespace oos::elements::mixedHybrid
 // and signs: ShellElementData without its tables) and numbers the unknowns. The tables of an element (its jets) and
 // its matrices are built on demand (element(), elementWithMatrices(), lineData()): a shell of degree 4 holds about
 // 0.2 MB of jets and 0.3 MB of matrices, too much to keep for every element of a large model. With
-// ShellPartInput::checkElements the constructor builds the matrices of every shell and line once to report the
-// elements the formulation refuses (a degenerate element, an element that turns too much, a singular section), then
-// drops them; elementRefusal() does the same for one element, from any thread.
+// ShellPartInput::checkElements the constructor checks every shell and line once to report the elements the
+// formulation refuses (a degenerate element, an element that turns too much, a singular section), building the
+// matrices of those it has room to keep (elementRefusal); elementRefusal() does the same for one element, from any
+// thread.
 //
 // Reference: src/tdnns/analysis.rs (the shell part of Analysis::new: numbering, geometry, elements, lines on shell
 // edges, supports, the loads of the shells; Analysis::fill_rotations, rotation_rows, edge_traction, resultants, state,
@@ -218,13 +219,27 @@ struct ShellPartTerm
     double coefficient = 0.0;
 };
 
+// A direction held at a grid point that is no axis of the basic system (a component of a displacement system turned
+// from it): its unit vector in the basic system and the component of the grid point that holds it (0 to 2 a
+// translation, 3 to 5 a rotation, in the displacement system of the grid point).
+struct ShellSkewAxis
+{
+    SpaceVector direction{};
+    std::size_t component = 0;
+};
+
 // The components held at one grid point, in the basic system (0 to 2 the translations, 3 to 5 the rotations), with
-// their enforced values (0 where none).
+// their enforced values (0 where none), and the directions it holds that are no basic axis (`skewAxes`; `values` is
+// then the held translation and the held rotation as basic vectors, the parts along the directions not held zero).
 struct ShellGridSupport
 {
     std::size_t grid = 0;
     std::array<bool, 6> held{};
     std::array<double, 6> values{};
+    std::vector<ShellSkewAxis> skewAxes;
+    // The grid is not held by a support: a relation of the model moves it (a rigid element). The edges between two
+    // such grids follow them wherever they are.
+    bool followsRelation = false;
 };
 
 // A term of the map that carries the reaction of a derived support to a grid component (0 to 5, basic).
@@ -245,13 +260,33 @@ struct ShellDerivedSupport
     std::vector<ShellGridTerm> carriedTo;
 };
 
-// The supports derived from those of the grid points, by increasing unknown, and the notes on what the shells do not
-// represent (a rotation held at a grid acts only through the edges that hold it; a rotation across an edge held with
-// the normal displacement free).
+// A term of a support row on a component of a grid point in its displacement system (0 to 5).
+struct ShellAxisTerm
+{
+    std::size_t grid = 0;
+    std::size_t component = 0;
+    double coefficient = 0.0;
+};
+
+// A constraint that the supports put on the unknowns of an edge along a direction that is no basic axis (a
+// translation held in a displacement system turned from the basic one, at both grids of the edge):
+// Σ unknowns + Σ grids = 0. It is no support of one unknown: the solver eliminates it as a relation.
+struct ShellSupportRow
+{
+    std::vector<ShellPartTerm> unknowns;
+    std::vector<ShellAxisTerm> grids;
+};
+
+// The supports derived from those of the grid points, by increasing unknown; the rows of the directions that are no
+// basic axis; the notes on what the shells do not represent (a rotation across an edge held with the normal
+// displacement free); and the count of edges whose two grids hold directions that differ (a cylindrical displacement
+// system along a circle: the grids hold them, the edge between them does not).
 struct ShellSupports
 {
     std::vector<ShellDerivedSupport> held;
+    std::vector<ShellSupportRow> rows;
     std::vector<std::string> notes;
+    std::size_t uncarriedEdges = 0;
 };
 
 // A point of a shell where a load per unit area is read: its reference coordinates, its position on the reference
@@ -297,6 +332,19 @@ struct ShellDisplacementRows
 {
     std::array<std::vector<ShellPartTerm>, 3> rows;
     SpaceVector point{};
+};
+
+// The entity unknowns of the part that no shell or line of it stiffens (ShellPart::unstiffenedUnknowns), and what
+// the displacement directions among them are.
+struct ShellUnstiffened
+{
+    // By increasing unknown.
+    std::vector<std::size_t> unknowns;
+    // The singular directions of displacement functions held, those of them that do not lie along the basic axes (held
+    // by the components closest to them), and the entity of the first of those.
+    std::size_t displacementDirections = 0;
+    std::size_t skewedDirections = 0;
+    std::size_t firstSkewedEntity = 0;
 };
 
 // The direction of an edge of a shell and the measure of its rotation unknowns at a point of the edge, s the parameter
@@ -351,11 +399,17 @@ public:
     // (ShellPartInput::matrixCacheBytes).
     [[nodiscard]] std::variant<ShellElementData, std::string> elementWithMatrices(std::size_t shell,
                                                                                   bool withMass) const;
-    // Why the formulation refuses shell `shell`: a section without bending stiffness or a thickness that is not
-    // positive (a singular section), a normal that turns by 90° or more from that of its corners at a point of the
-    // element (an element that turns too much), a map that is not invertible, membrane functionals that are not
-    // unisolvent or a moment block that is not positive definite (a degenerate element). Empty when it is accepted.
+    // Why the formulation refuses shell `shell`: a section without bending stiffness (without membrane stiffness for a
+    // membrane-only section) or a thickness that is not positive (a singular section), a normal that turns by 90° or
+    // more from that of its corners at a point of the element (an element that turns too much), a map that is not
+    // invertible, membrane functionals that are not unisolvent or a moment block that is not positive definite (a
+    // degenerate element). Empty when it is accepted. An element whose matrices the part has no room to keep
+    // (ShellPartInput::matrixCacheBytes) is checked without building them: its section and its geometry (the map
+    // included); the two refusals that only its matrices show are then those of elementWithMatrices.
     [[nodiscard]] std::optional<std::string> elementRefusal(std::size_t shell) const;
+    // Whether shell `shell` carries moments: every shell but a membrane-only one without offset
+    // (sectionCarriesMoments). The others have no moment, no transverse shear and no rotation about their edges.
+    [[nodiscard]] bool carriesMoments(std::size_t shell) const;
     // The part unknowns of the local unknowns of a shell and their signs (local = sign × part).
     [[nodiscard]] std::span<const std::size_t> localUnknowns(std::size_t shell) const;
     [[nodiscard]] std::span<const double> localSigns(std::size_t shell) const;
@@ -408,8 +462,12 @@ public:
     // ---- supports
 
     // The entity DOFs held for the grid supports `grids` (basic components; grids not listed hold nothing): the shear
-    // of the junction edges (three shells or more) and of the Kirchhoff shells, at zero; then, along each external
-    // edge whose two grids hold components (edgeHeld): the displacement moments of each component held, with the
+    // of the junction edges (three shells or more) and of the Kirchhoff shells, at zero; then, along each edge
+    // whose two grids hold components (edgeHeld): an external edge, an edge inside the shells one of whose grids is
+    // inside them too (a line of supports across a plate), and any edge between two grids that follow a relation; not
+    // an inner edge between two grids of the outline (the diagonal of a triangle at a corner, the edge across a strip
+    // one element wide), which would hold what lies between two supported sides. On it: the displacement moments of
+    // each component held, with the
     // grid values carried along the edge as by a rod (linear along the chord, cubic Hermite across it with the
     // rotations held at both grids, moments on the isoparametric edge); where the tangent is in the span of the held
     // rotation axes, the edge rotation (2l + 1) ∫ W² θ · X_τ P_l with θ linear along the chord; where the conormal is
@@ -420,19 +478,45 @@ public:
     // Reference: the supports of tdnns/analysis.rs::Analysis::new
     [[nodiscard]] ShellSupports supportsOf(std::span<const ShellGridSupport> grids) const;
 
+    // The entity unknowns that no shell or line of the part stiffens, to be held at zero in every constraint set (spec
+    // sections 4.1 and 5.8; not in the reference). Only the entities whose shells are all membrane-only or bending-only
+    // are looked at:
+    // - the shear of an edge none of whose shells has a transverse shear (a shell without moments has none), and the
+    //   interior shear of a shell without moments;
+    // - the rotation about an edge none of whose shells carries moments, unless a line on it turns it (its diagonal
+    //   terms there above 1e-14 of its largest: not a rod without torsion constant);
+    // - the displacement functions of an entity (an edge function l, an interior function) that `followed` does not
+    //   name (the entities whose displacement a solid follows, which the solids stiffen): the 3 × 3 block of the
+    //   stiffness of the shells of the entity and of the lines on the edge on the three components of the function,
+    //   whose eigenvalues below 1e-8 of the largest are singular directions (the normal of a flat membrane, the plane
+    //   of a flat bending-only plate). s singular directions V (orthonormal columns) are held by the s components C
+    //   that maximise |det V_C|, the lowest on a tie, as the singularity processor of the grid points does; they lie
+    //   along the components held when |det V_C| reaches cos 1°.
+    // The elements are built (through the cache of the part).
+    [[nodiscard]] ShellUnstiffened unstiffenedUnknowns(const std::function<bool(std::size_t entity)>& followed) const;
+
     // ---- rotations at grid points
 
     // The mean rotation of the shells at grid `grid`, basic component `component` (0 to 2): the rotation of each shell
-    // at its corner there (rotationRowsOf), averaged with equal weights, as a row on the part unknowns (by increasing
-    // unknown; the terms whose magnitude is at most `relativeThreshold` times the largest are left out: 0 keeps every
-    // term that is not zero, the reference's tie of a line alone at a grid of shells uses 1e-14). Empty at a grid of
-    // no shell.
-    // Reference: tdnns/analysis.rs::Analysis::fill_rotations and the rows of the lines alone at grids of shells
+    // at its corner there (rotationRowsOf), averaged with equal weights over the shells that carry moments there (over
+    // all of them where none does: a membrane alone turns only with its surface; rotationShellsAt), as a row on the
+    // part unknowns (by increasing unknown; the terms whose magnitude is at most `relativeThreshold` times the largest
+    // are left out: 0 keeps every term that is not zero, the reference's tie of a line alone at a grid of shells uses
+    // 1e-14). Empty at a grid of no shell. Reference: tdnns/analysis.rs::Analysis::fill_rotations and the rows of the
+    // lines alone at grids of shells
     [[nodiscard]] std::vector<ShellPartTerm> meanRotationRow(std::size_t grid, std::size_t component,
                                                              double relativeThreshold = 0.0) const;
+    // The shells whose rotation the mean rotation at grid `grid` takes, with their corner there (shellsAt, without the
+    // shells that carry no moments when one there does).
+    [[nodiscard]] std::vector<std::pair<std::size_t, std::size_t>> rotationShellsAt(std::size_t grid) const;
     // The three rows at once (the tables of the shells there are built once).
     [[nodiscard]] std::array<std::vector<ShellPartTerm>, 3> meanRotationRows(std::size_t grid,
                                                                              double relativeThreshold = 0.0) const;
+    // The unit normal the shells of rotationShellsAt(grid) share at the grid (up to its sign, within a degree): the
+    // rotation about it is the rotation of their membrane field in its plane (the drilling rotation of a shell with
+    // rotations at its grid points). Empty at a grid of no shell, and where the shells meet at an angle (a fold: the
+    // rotation about the normal of one bends the other).
+    [[nodiscard]] std::optional<SpaceVector> commonNormalAt(std::size_t grid) const;
 
     // ---- loads (on the local unknowns of one shell or line)
     //
@@ -478,6 +562,10 @@ public:
     [[nodiscard]] Matrix geometricStiffness(const ShellElementData& element, std::span<const double> x,
                                             const Vector* momentTerm, const Vector* membraneTerm,
                                             const PressureAt* followerPressure) const;
+    // The gradient of φᵀ·K_g(x)·φ with respect to the local preload unknowns x, φ local unknowns too (the geometric
+    // stiffness without a following pressure; geometricStiffnessGradient of ShellNonlinear.hpp).
+    [[nodiscard]] Vector geometricStiffnessGradient(const ShellElementData& element,
+                                                    std::span<const double> phi) const;
 
     // ---- fields
 
@@ -504,6 +592,16 @@ public:
     [[nodiscard]] std::vector<ShellDisplacementRows> displacementRowsAt(
         std::size_t shell, std::span<const ReferencePoint> points,
         const std::function<bool(const FunctionKind&)>& keep = {}) const;
+    // The motion of shell `shell` at (ξ, η) as rows on the part unknowns, without building the tables of the element:
+    // the displacement (rows 0 to 2, basic) and the rotation θ = ν × β + ω ν (rows 3 to 5, rotationRowsOf), each by
+    // increasing unknown, and the point of its surface there (a fastener or a weld that pierces the shell,
+    // FormulationModel::shellPointMotion; not in the reference).
+    struct PointRows
+    {
+        std::array<std::vector<ShellPartTerm>, 6> rows;
+        SpaceVector point{};
+    };
+    [[nodiscard]] PointRows pointRows(std::size_t shell, double xi, double eta) const;
     // The reference point of shell `shell` at the parameter s ∈ [0, 1] of its edge `localEdge` (from its corner
     // localEdge to its corner localEdge + 1), s from the lower grid of the edge: the parameter of the shell is τ = s
     // where the shell runs the edge from its lower grid, 1 − s otherwise.

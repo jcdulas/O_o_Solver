@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -16,8 +17,41 @@ namespace oos::assembly
 namespace
 {
 
-// The elements whose mass matrices are computed at once: a bounded block.
+// The elements whose mass matrices (or volumes) are computed at once: a bounded block.
 constexpr std::int64_t RANGE_ELEMENTS = 2048;
+
+// The volumes of the elements of a batch whose family computes them from its geometry
+// (ElementFamily::computeVolumes), range by range on the pool, into `volumes`; false, with `volumes` untouched, for a
+// family that gives none. A family answers for its card, so the same for every range: it is asked on an empty range
+// first.
+bool volumesFromGeometry(const AssemblyBatch& batch, base::MemoryBudget& budget, base::ThreadPool* pool,
+                         base::BudgetedBuffer<double>& volumes)
+{
+    const elements::ElementFamily& family = *batch.family;
+    const elements::ElementBatchView& view = batch.view;
+    if (!family.computeVolumes(view, {0, 0}, {}))
+        return false;
+    const std::int64_t rows = view.rowCount();
+    volumes = base::BudgetedBuffer<double>(budget, static_cast<std::size_t>(rows), "element volumes");
+    const std::span<double> values = volumes.span();
+    const auto ranges = static_cast<std::size_t>((rows + RANGE_ELEMENTS - 1) / RANGE_ELEMENTS);
+    base::parallelFor(pool, ranges, 1,
+                      [&](std::size_t firstRange, std::size_t endRange)
+                      {
+                          for (std::size_t r = firstRange; r < endRange; ++r)
+                          {
+                              const auto first = static_cast<std::int64_t>(r) * RANGE_ELEMENTS;
+                              const std::int64_t last = std::min(rows, first + RANGE_ELEMENTS);
+                              const std::span<double> ofRange = values.subspan(
+                                  static_cast<std::size_t>(first), static_cast<std::size_t>(last - first));
+                              if (!family.computeVolumes(view, {first, last}, ofRange))
+                                  throw std::logic_error("ElementVolumes: a family gave the volumes of its card on "
+                                                         "an empty range and not on a range of its elements (a bug "
+                                                         "of O_o_Solver: report it)");
+                          }
+                      });
+    return true;
+}
 
 // The x component of the basic system at one DOF of an element: column c of the displacement frame R
 // (u_basic = R·u_CD), zero at a rotation or a scalar point.
@@ -57,17 +91,26 @@ ElementVolumes::ElementVolumes(const ElementSet& set, std::span<const std::uint8
         return facets.has(elements::Facet::Mass) && facets.has(elements::Facet::Stiffness) &&
                (isBatchWanted.empty() || isBatchWanted[b] != 0);
     };
-    bool hasWanted = false;
+    // The batches whose family computes the volumes from its geometry are done first (the elements of the mixed
+    // hybrid formulation, whose mass at their grid points is not their mass); the others take theirs from their mass
+    // at unit density, and the snapshot of unit density is made only when one of them is wanted.
+    std::vector<std::uint8_t> isFromMass(set.batches().size(), 0); // bounded by the element types
+    bool hasFromMass = false;
     for (std::size_t b = 0; b < set.batches().size(); ++b)
-        hasWanted = hasWanted || isWanted(b);
-    if (!hasWanted)
+    {
+        if (!isWanted(b) || volumesFromGeometry(set.batches()[b], budget, pool, m_volumes[b]))
+            continue;
+        isFromMass[b] = 1;
+        hasFromMass = true;
+    }
+    if (!hasFromMass)
         return;
     // The base snapshot outlives the unit-density one, which lives only in this constructor: no keepAlive needed.
     const input::ModelSnapshot unitDensity = unitDensitySnapshot(set.index().snapshot(), {});
     const elements::SnapshotIndex index(unitDensity, budget);
     for (std::size_t b = 0; b < set.batches().size(); ++b)
     {
-        if (!isWanted(b))
+        if (isFromMass[b] == 0)
             continue;
         const AssemblyBatch& base = set.batches()[b];
         std::size_t occurrence = 0;

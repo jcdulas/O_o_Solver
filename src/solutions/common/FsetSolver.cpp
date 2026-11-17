@@ -4,8 +4,66 @@
 #include "oos/base/threading/Stopwatch.hpp"
 #include "oos/linalg/supernodal/FactorSolve.hpp"
 
+#include <algorithm>
+#include <cstddef>
+
 namespace oos::solutions
 {
+
+namespace
+{
+
+// The diagonal term of a stiffness matrix at a g-set DOF (0 when the node of the DOF has no block).
+double diagonalOf(const linalg::BlockSparseMatrix& matrix, const assembly::DofMap& dofMap, base::DofIndex dof)
+{
+    const linalg::NodeDof at = dofMap.nodeDofOf(dof);
+    const linalg::SparsePattern& pattern = matrix.pattern();
+    const std::int64_t block = pattern.findBlock(at.node, at.node);
+    if (block < 0)
+        return 0.0;
+    // The diagonal block of a node is square and column-major: term (c, c) is at c·(count + 1).
+    const auto count = static_cast<std::size_t>(pattern.nodeDofCount(at.node));
+    return matrix.blockValues(block)[static_cast<std::size_t>(at.component) * (count + 1)];
+}
+
+// A pivot below the diagonal of Knn over this ratio has lost twelve of the sixteen digits of a double to the
+// elimination: it is not known from zero, whatever the stiffness of the elements of its DOF.
+constexpr double PIVOT_PRECISION_RATIO = 1.0e12;
+
+// The reference diagonal of the ratio test (linalg::FactorOptions::referenceDiagonal), one value per equation of
+// `selection`: at an entity DOF, the diagonal of the stiffness before the relations are eliminated (`kgg`: the
+// stiffness of the elements of the DOF) where it is below that of `knn` (the class comment of FsetSolver says why);
+// no reference at the other DOFs, nor where the relations did not raise the diagonal.
+//
+// The reference is not taken below the diagonal of Knn times maxRatio / PIVOT_PRECISION_RATIO, so that the test,
+// reference / pivot > maxRatio, also fails a pivot below the diagonal of Knn over PIVOT_PRECISION_RATIO: under a
+// very stiff relation the round-off of the elimination (a fraction of the diagonal of Knn) may exceed the stiffness
+// of the elements over maxRatio, and a mechanism would pass the test against that stiffness alone.
+base::BudgetedBuffer<double> entityReferenceDiagonal(const linalg::BlockSparseMatrix& kgg,
+                                                     const linalg::BlockSparseMatrix& knn,
+                                                     const assembly::DofMap& dofMap,
+                                                     const linalg::DofSelection& selection, double maxRatio,
+                                                     base::MemoryBudget& budget)
+{
+    const auto equations = static_cast<std::size_t>(selection.keptDofCount());
+    base::BudgetedBuffer<double> reference(budget, equations, "ratio test reference diagonal");
+    const double precisionShare = maxRatio / PIVOT_PRECISION_RATIO;
+    for (std::size_t equation = 0; equation < equations; ++equation)
+    {
+        const auto dof = static_cast<base::DofIndex>(selection.dofOfEquation(static_cast<std::int32_t>(equation)));
+        reference[equation] = linalg::NO_REFERENCE_DIAGONAL;
+        if (dof < dofMap.firstEntityDof())
+            continue;
+        const double reduced = diagonalOf(knn, dofMap, dof);
+        const double ofElements = diagonalOf(kgg, dofMap, dof);
+        const double candidate = std::max(ofElements, precisionShare * reduced);
+        if (candidate < reduced)
+            reference[equation] = candidate;
+    }
+    return reference;
+}
+
+} // namespace
 
 FsetSolver::FsetSolver(const linalg::BlockSparseMatrix& knn, const linalg::NodeGraph& graph,
                        const assembly::DofMap& dofMap, const assembly::DofSets& sets,
@@ -41,10 +99,16 @@ FsetSolver::FsetSolver(const linalg::BlockSparseMatrix& knn, const linalg::NodeG
     const base::OperationControl control{options.cancellation, nullptr};
     const linalg::SymmetricCsc matrix =
         linalg::SymmetricCsc::fromBlocks(knn, m_ordering->selection(), budget, pool, control);
+    // The reference of the ratio test at the entity DOFs; none (the test as it is) for a model without entity DOFs.
+    base::BudgetedBuffer<double> referenceDiagonal;
+    if (options.unreducedStiffness != nullptr && dofMap.hasEntities())
+        referenceDiagonal = entityReferenceDiagonal(*options.unreducedStiffness, knn, dofMap, m_ordering->selection(),
+                                                    options.pivotPolicy.maxRatio, budget);
     m_timings.conversion = watch.lap();
     linalg::FactorOptions factorOptions;
     factorOptions.pivoting = linalg::PivotingMode::PositiveDefinite;
     factorOptions.pivotPolicy = options.pivotPolicy;
+    factorOptions.referenceDiagonal = referenceDiagonal.span();
     factorOptions.equationNamer = [this](std::int32_t equation) { return nameOf(equation); };
     factorOptions.cancellation = options.cancellation;
     factorOptions.progress = options.progress;
@@ -105,7 +169,9 @@ base::GridComponent FsetSolver::nameOf(std::int32_t equation) const
 base::GridComponent equationName(const assembly::DofMap& dofMap, base::DofIndex dof)
 {
     const assembly::DofLabel label = dofMap.labelOf(dof);
-    return {dofMap.pointIdOf(dof), label.kind == input::PointKind::Scalar ? 0 : static_cast<int>(label.component)};
+    if (label.kind == input::PointKind::Entity)
+        return {0, static_cast<int>(label.component) + 1, dofMap.describe(dof)};
+    return {dofMap.pointIdOf(dof), label.kind == input::PointKind::Scalar ? 0 : static_cast<int>(label.component), {}};
 }
 
 } // namespace oos::solutions

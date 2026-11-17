@@ -2,6 +2,7 @@
 
 #include "oos/assembly/assemble/ElementSet.hpp"
 #include "oos/assembly/constraints/RigidElimination.hpp"
+#include "oos/assembly/constraints/SpcSet.hpp"
 #include "oos/assembly/dofs/DofMap.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/base/threading/CancellationToken.hpp"
@@ -76,7 +77,30 @@ public:
         const elements::ElementTemperatures* temperatures = nullptr;
         bool isMpcSplit = false;
         std::span<const assembly::RelationForce> mpcRelationForces;
+        // With an element formulation that has unknowns outside the grid points (the mixed hybrid formulation): the
+        // SPC set of the case, and the relations of the constraint set, whose rows of the formulation (its ties, the
+        // rotations of the shells' grid points) give the row FORMULATION_ROW_NAME. Null otherwise.
+        const assembly::SpcSet* spc = nullptr;
+        const assembly::RigidElimination* relations = nullptr;
+        // A case that is a combination of cases of several constraint sets (a SUBCOM) has no one set of relations:
+        // its row FORMULATION_ROW_NAME is then what closes the balance of each grid point, which the combination of
+        // its terms' rows is (the balance is linear), less what the supports of the terms carry otherwise.
+        bool closesWithFormulationRow = false;
     };
+    // A row that closes the balance of a grid point is written when it exceeds this times the largest force there.
+    static constexpr double CLOSING_ROW_RATIO = 1.0e-9;
+    // The row of the forces of the relations of the element formulation at a grid point (the ties between its
+    // elements, the relations that give a grid point of shells its rotation): they are no card of the model, so they
+    // are not among the multipoint constraint forces, but they act at the grid points and the balance counts them.
+    static constexpr const char* FORMULATION_ROW_NAME = "elementFormulation";
+    //
+    // The elements of the mixed hybrid formulation also act on the unknowns of their edges, faces and interiors
+    // (docs/mixed-hybrid-formulation-spec.md section 10.1). Every force on such an unknown (of an element, of a load,
+    // of a relation) is carried to the grid points of its entity with its resultant force and moment
+    // (assembly::EntityForceCarry): each element's row at a grid point then holds what it applies there and through
+    // the entities of that grid point, the rows of a grid point still sum to zero, and the rows of the grid points of
+    // a free body have the resultant of the forces on it. The multiPointConstrForce rows are then not split by
+    // relation.
     [[nodiscard]] GridPointForceTable gridPointForces(std::int32_t subcase, const NodalState& state,
                                                       const OutputRequestPlan& request, base::MemoryBudget& budget,
                                                       const base::CancellationToken* cancellation = nullptr) const;

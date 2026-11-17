@@ -4,7 +4,9 @@
 #include "oos/assembly/relief/InertiaRelief.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/errors/SolverError.hpp"
+#include "oos/elements/core/ElementFormulation.hpp"
 #include "oos/elements/core/ElementRegistry.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/output/sections/ZoneContour.hpp"
 #include "oos/reduction/external/ExternalLoadSource.hpp"
@@ -56,7 +58,6 @@ ExternalUnitPath::ExternalUnitPath(const Inputs& inputs, base::MemoryBudget& bud
 {
     if (inputs.snapshot == nullptr || inputs.elements == nullptr || inputs.dofMap == nullptr)
         throw std::invalid_argument("ExternalUnitPath: expected the snapshot, the element set and the DOF map");
-    elements::refuseMixedHybridOn(*inputs.snapshot, "external units");
     for (const ExternalUnitRequest& request : inputs.requests)
         if (!request.unit)
             throw std::invalid_argument(
@@ -254,6 +255,8 @@ void ExternalUnitPath::resolve(const Inputs& inputs, base::MemoryBudget& budget,
                 }
     std::sort(m_replaced.begin(), m_replaced.end());
     m_replaced.erase(std::unique(m_replaced.begin(), m_replaced.end()), m_replaced.end());
+    if (const elements::FormulationModel* formulation = dofMap.formulation())
+        holdReplacedEntities(*formulation, inputs, sink);
     std::sort(m_heldDofs.begin(), m_heldDofs.end());
     m_heldDofs.erase(std::unique(m_heldDofs.begin(), m_heldDofs.end()), m_heldDofs.end());
     std::sort(m_interiorNodes.begin(), m_interiorNodes.end());
@@ -275,6 +278,53 @@ void ExternalUnitPath::resolve(const Inputs& inputs, base::MemoryBudget& budget,
                 linalg::DenseMatrix(budget, n, m_subcases.size(), "external unit case displacements");
             unit.caseForces = linalg::DenseMatrix(budget, n, m_subcases.size(), "external unit case forces");
         }
+}
+
+void ExternalUnitPath::holdReplacedEntities(const elements::FormulationModel& formulation, const Inputs& inputs,
+                                            base::DiagnosticSink& sink)
+{
+    const assembly::DofMap& dofMap = *inputs.dofMap;
+    const elements::EntityLayout& layout = dofMap.entities();
+    std::vector<std::string> cut; // the entities across a contour (bounded by the entities)
+    for (std::int32_t row = 0; row < layout.count(); ++row)
+    {
+        const std::vector<std::int32_t> owners = formulation.entityElements(layout.kind(), row);
+        const auto replaced = static_cast<std::size_t>(
+            std::count_if(owners.begin(), owners.end(), [&](std::int32_t elementId)
+                          { return std::binary_search(m_replaced.begin(), m_replaced.end(), elementId); }));
+        if (replaced == 0)
+            continue;
+        if (replaced < owners.size())
+        {
+            cut.push_back(layout.describe(row));
+            continue;
+        }
+        for (int d = 0; d < layout.dofCount(row); ++d)
+        {
+            const base::DofIndex dof = dofMap.dofOf(elements::ElementDof::entity(row, d));
+            m_heldDofs.push_back(dof);
+            m_heldEntityDofs.push_back(dof);
+        }
+    }
+    std::sort(m_heldEntityDofs.begin(), m_heldEntityDofs.end());
+    if (cut.empty())
+        return;
+    std::string named;
+    constexpr std::size_t NAMED = 3;
+    for (std::size_t k = 0; k < cut.size() && k < NAMED; ++k)
+        named.append(k == 0 ? "" : "; ").append(cut[k]);
+    if (cut.size() > NAMED)
+        named.append(" and ").append(std::to_string(cut.size() - NAMED)).append(" more");
+    base::Diagnostic diagnostic;
+    diagnostic.severity = base::Severity::Error;
+    diagnostic.code = "external-unit-formulation-contour";
+    diagnostic.message = base::concatenate(
+        {"expected the contour of an external unit to pass through grid points of the elements of ",
+         elements::MIXED_HYBRID_FORMULATION, " only, found unknowns that elements replaced and elements kept share (",
+         named,
+         "): the plugin's matrices act on grid points, not on the edges and faces of these elements; put the whole "
+         "surface or volume on one side of the contour, or join the zone to the rest through connectors"});
+    sink.report(std::move(diagnostic));
 }
 
 void ExternalUnitPath::addStiffness(linalg::BlockSparseMatrix& kgg) const
@@ -322,6 +372,7 @@ void ExternalUnitPath::condenseLoads(std::int32_t constraintSet, std::span<const
     for (const Unit& unit : m_units)
         interior.emplace_back(budget, unit.placement ? unit.placement->interiorSize() : 0, k,
                               "external unit interior loads");
+    bool isFormulationLoaded = false; // a load on the held unknowns of a replaced element of the formulation
     {
         base::BudgetedBuffer<double> loads(budget, gSize, "external unit basis loads");
         base::BudgetedBuffer<double> enforced(budget, gSize, "external unit basis enforced displacements");
@@ -329,6 +380,8 @@ void ExternalUnitPath::condenseLoads(std::int32_t constraintSet, std::span<const
         for (std::size_t b = 0; b < k; ++b)
         {
             loadCases.basisVector(b, loads.span(), enforced.span(), budget, sink);
+            for (const base::DofIndex dof : m_heldEntityDofs)
+                isFormulationLoaded = isFormulationLoaded || loads[static_cast<std::size_t>(dof)] != 0.0;
             for (std::size_t u = 0; u < m_units.size(); ++u)
             {
                 if (!m_units[u].placement)
@@ -339,6 +392,21 @@ void ExternalUnitPath::condenseLoads(std::int32_t constraintSet, std::span<const
                     interior[u](i, b) = values[i];
             }
         }
+    }
+    if (isFormulationLoaded)
+    {
+        // The plugin's load source takes the loads of grid points: those of the edges, faces and interiors of the
+        // replaced elements of the formulation (a pressure on a replaced shell) have no label it can read.
+        base::Diagnostic diagnostic;
+        diagnostic.severity = base::Severity::Error;
+        diagnostic.code = "external-unit-formulation-loads";
+        diagnostic.message = base::concatenate(
+            {"expected no element load on the replaced elements of ", elements::MIXED_HYBRID_FORMULATION,
+             " (constraint set ", std::to_string(constraintSet),
+             "), found loads on the unknowns of their edges, faces or interiors, which the plugin's load source "
+             "cannot take; give the loads of the zone to the plugin, or keep the loaded elements outside the zone"});
+        sink.report(std::move(diagnostic));
+        return;
     }
     condenseLoads(constraintSet, cases, std::move(interior), loadCases.coefficients(), budget, sink);
 }

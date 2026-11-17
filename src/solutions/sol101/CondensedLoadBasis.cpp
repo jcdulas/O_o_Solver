@@ -30,16 +30,6 @@ void checkCancelled(const base::CancellationToken* cancellation)
         cancellation->throwIfCancelled();
 }
 
-// The names of a unit's equations for the diagnostics of its factorisations (as the condensed analysis names them).
-linalg::EquationNamer equationNamerOf(const reduction::UnitSystem* system)
-{
-    return [system](std::int32_t equation)
-    {
-        const reduction::UnitDofLabel label = system->labelOf(system->localDofOfEquation(equation));
-        return base::GridComponent{label.id, label.component};
-    };
-}
-
 // Whether a unit's system numbers its local DOFs as the kept unit does (the numbering its loads are gathered in).
 bool isSameNumbering(const KeptCondensedUnit& unit, const reduction::UnitSystem& system)
 {
@@ -93,7 +83,7 @@ public:
                      ": its equations built again number its DOFs otherwise than its condensation's (an internal "
                      "error: report it)"}));
             condensation.releaseInteriorFactor();
-            condensation.rebindSystem(m_rebuilt, equationNamerOf(m_rebuilt.get()));
+            condensation.rebindSystem(m_rebuilt, reduction::equationNamerOf(m_rebuilt.get(), model.dofMap));
         }
         if (purpose == Purpose::Recovery && !condensation.isInteriorFactorKept())
         {
@@ -138,7 +128,8 @@ public:
         release();
         if (m_rebuilt)
         {
-            m_unit->condensation->rebindSystem(m_unit->system, equationNamerOf(m_unit->system.get()));
+            m_unit->condensation->rebindSystem(
+                m_unit->system, reduction::equationNamerOf(m_unit->system.get(), m_unit->rebuild->model().dofMap));
             m_rebuilt.reset();
         }
     }
@@ -556,7 +547,8 @@ void CondensedBasisColumns::fill(std::size_t i, std::span<double> displacementsG
         std::array<double, RIGID_MOTIONS> amplitudes{};
         for (std::size_t m = 0; m < RIGID_MOTIONS; ++m)
             amplitudes[m] = m_basis->gaugeAmplitudes(m, m_columns[i]);
-        assembly::addRigidMotion(set.dofMap(), amplitudes, displacementsG, set.isConstrained());
+        assembly::addRigidMotion(set.dofMap(), amplitudes, displacementsG, set.isConstrained(),
+                                 assembly::entityRigidModes(set.dofMap()));
         for (const std::size_t local : set.relief()->supportLocals)
             if (const std::optional<base::DofIndex> dof = interface.modelDofOf(static_cast<std::int64_t>(local)))
                 displacementsG[static_cast<std::size_t>(*dof)] = 0.0;

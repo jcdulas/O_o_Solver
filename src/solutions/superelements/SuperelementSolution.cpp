@@ -3,10 +3,16 @@
 #include "oos/assembly/assemble/MassAssembler.hpp"
 #include "oos/assembly/assemble/NonStructuralMassShares.hpp"
 #include "oos/assembly/assemble/ParamLookup.hpp"
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/constraints/SpcSet.hpp"
 #include "oos/assembly/loads/LoadVectorBuilder.hpp"
 #include "oos/assembly/relief/InertiaRelief.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/elements/core/ElementFormulation.hpp"
+#include "oos/elements/core/ElementRegistry.hpp"
+#include "oos/elements/core/EntityLayout.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
+#include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/linalg/dense/DenseKernels.hpp"
 #include "oos/linalg/eigen/BlockLanczos.hpp"
 #include "oos/linalg/eigen/SparsePencil.hpp"
@@ -32,6 +38,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -442,6 +450,226 @@ void reduceSuperelements(const SuperelementOptions& options, const linalg::Dense
     residual.heldDofs.erase(std::unique(residual.heldDofs.begin(), residual.heldDofs.end()), residual.heldDofs.end());
 }
 
+// The edges and faces of the entities of `layout`, by the sorted IDs of their grid points in the residual structure
+// (`toResidual`: a grid point's, or nothing for a point that is not on the boundary); those not all on it left out.
+std::map<std::vector<base::EntityId>, std::int32_t> boundaryEntitiesOf(
+    const elements::EntityLayout& layout,
+    const std::function<std::optional<base::EntityId>(base::EntityId)>& toResidual)
+{
+    std::map<std::vector<base::EntityId>, std::int32_t> entities; // the grid IDs → the entity's row
+    for (std::int32_t row = 0; row < layout.count(); ++row)
+    {
+        const elements::EntityName& name = layout.name(row);
+        if (name.kind != elements::EntityKind::Edge && name.kind != elements::EntityKind::Face)
+            continue;
+        std::vector<base::EntityId> ids; // bounded by a face
+        bool isOnBoundary = true;
+        for (const std::int32_t gridId : name.gridIds)
+            if (gridId != 0)
+            {
+                const std::optional<base::EntityId> mapped = toResidual(gridId);
+                isOnBoundary = isOnBoundary && mapped.has_value();
+                if (mapped)
+                    ids.push_back(*mapped);
+            }
+        if (!isOnBoundary)
+            continue;
+        std::sort(ids.begin(), ids.end());
+        entities.emplace(std::move(ids), row);
+    }
+    return entities;
+}
+
+// The residual point a part's point is joined to, or nothing.
+std::optional<base::EntityId> residualPointOf(const SuperelementPart& part, base::EntityId pointId)
+{
+    const auto found =
+        std::lower_bound(part.boundary.begin(), part.boundary.end(), pointId,
+                         [](const SuperelementBoundaryPoint& point, base::EntityId id) { return point.nodeId < id; });
+    if (found == part.boundary.end() || found->nodeId != pointId)
+        return std::nullopt;
+    return found->residualNodeId;
+}
+
+// The element formulation (docs/mixed-hybrid-formulation-spec.md section 5.9): a part joins the residual structure at
+// grid points. Refused, before any part is reduced: an edge or a face of the formulation that a part and the residual
+// structure (or two parts) both have, whose unknowns would be joined at its grid points only.
+void checkFormulationCuts(const SuperelementOptions& options, const AnalysisModel& residual, base::MemoryBudget& budget,
+                          base::DiagnosticSink& sink)
+{
+    std::map<std::vector<base::EntityId>, std::int32_t> owners; // the superelement of the first that has it
+    const auto addEntities = [&](const elements::EntityLayout& layout, std::int32_t superelementId,
+                                 const std::function<std::optional<base::EntityId>(base::EntityId)>& toResidual)
+    {
+        for (const auto& [ids, row] : boundaryEntitiesOf(layout, toResidual))
+        {
+            const auto [found, isNew] = owners.emplace(ids, superelementId);
+            if (isNew || found->second == superelementId)
+                continue;
+            sink.report(runProblem(
+                "superelement-boundary-formulation", "BEGIN SUPER", superelementId,
+                base::concatenate({"expected the boundary of superelement ", std::to_string(superelementId),
+                                   " to pass through grid points of the elements of ",
+                                   elements::MIXED_HYBRID_FORMULATION, " only, found the ", layout.describe(row),
+                                   ", which superelement ", std::to_string(found->second),
+                                   " (0: the residual structure) has too: the unknowns of its edges and faces would be "
+                                   "joined at its grid points only; keep the surface or volume in one superelement, "
+                                   "or join them through connectors"})));
+        }
+    };
+    if (residual.dofMap().hasEntities())
+        addEntities(residual.dofMap().entities(), RESIDUAL_STRUCTURE,
+                    [](base::EntityId gridId) { return std::optional<base::EntityId>(gridId); });
+    for (const SuperelementPart& part : options.parts)
+    {
+        if (!part.snapshot)
+            continue;
+        const elements::ElementRegistry registry = elements::ElementRegistry::forModel(*part.snapshot);
+        if (!registry.isMixedHybrid())
+            continue;
+        const elements::SnapshotIndex index(*part.snapshot, budget);
+        const elements::EntityLayout* layout = elements::formulationEntitiesOf(index, registry, residual.layoutKind());
+        if (layout != nullptr)
+            addEntities(*layout, part.superelementId,
+                        [&](base::EntityId gridId) { return residualPointOf(part, gridId); });
+    }
+}
+
+// The element formulation: refused, a component of a boundary point that a part's formulation excludes (the rotation
+// of a grid point of its shells, on which no stiffness of the part acts) while an element of the residual structure
+// stiffens it.
+void checkFormulationRotations(const SuperelementOptions& options, const Residual& residual, base::DiagnosticSink& sink)
+{
+    const assembly::DofMap& residualDofs = residual.model->dofMap();
+    const std::span<const std::uint8_t> stiffened = residual.model->connectivity().stiffenedComponents();
+    for (std::size_t p = 0; p < options.parts.size(); ++p)
+    {
+        const PartReduction* part = residual.parts[p].get();
+        if (part == nullptr)
+            continue;
+        const SuperelementPart& definition = options.parts[p];
+        const assembly::DofMap& partDofs = part->model().dofMap();
+        for (const base::DofIndex dof : part->formulationExcluded())
+        {
+            const linalg::NodeDof nodeDof = partDofs.nodeDofOf(dof);
+            const std::optional<base::EntityId> residualId = residualPointOf(definition, partDofs.gridId(nodeDof.node));
+            if (!residualId)
+                continue;
+            const std::optional<std::int32_t> residualRow = residualDofs.findNode(*residualId);
+            if (!residualRow || ((stiffened[static_cast<std::size_t>(*residualRow)] >> nodeDof.component) & 1U) == 0)
+                continue;
+            sink.report(
+                runProblem("superelement-boundary-rotation", "BEGIN SUPER", definition.superelementId,
+                           base::concatenate(
+                               {"expected the components of the boundary points of superelement ",
+                                std::to_string(definition.superelementId),
+                                " that the residual structure stiffens to be unknowns of the part, found component ",
+                                std::to_string(nodeDof.component + 1), " of grid point ", std::to_string(*residualId),
+                                ", the mean rotation of the shells of ", elements::MIXED_HYBRID_FORMULATION,
+                                " of the part there, on which no stiffness of the part acts; join the part through the "
+                                "translations, or put a line element of the part on that grid point"})));
+        }
+    }
+}
+
+// The element formulation: a component of a boundary point that a part's formulation determines (the mean rotation of
+// its shells there) and that no element of the residual structure acts on (checkFormulationRotations refuses those an
+// element stiffens; those the residual's own shells determine are left to them). The residual has no value of its own
+// there (zero: nothing turns it); the part's recovery gives the structure's, which the residual's vectors take before
+// its tables are made.
+struct DeterminedComponent
+{
+    base::DofIndex partDof = 0;
+    base::DofIndex residualDof = 0;
+};
+
+std::vector<DeterminedComponent> determinedComponentsOf(const SuperelementPart& definition, const PartReduction& part,
+                                                        const assembly::DofMap& residualDofs,
+                                                        std::span<const base::DofIndex> residualExcluded)
+{
+    std::vector<DeterminedComponent> result; // bounded by the part's excluded DOFs
+    const assembly::DofMap& partDofs = part.model().dofMap();
+    for (const base::DofIndex dof : part.formulationExcluded())
+    {
+        const linalg::NodeDof nodeDof = partDofs.nodeDofOf(dof);
+        const std::optional<base::EntityId> residualId = residualPointOf(definition, partDofs.gridId(nodeDof.node));
+        if (!residualId)
+            continue;
+        const std::optional<base::DofIndex> residualDof = residualDofs.findDof(*residualId, nodeDof.component + 1);
+        if (residualDof && !std::binary_search(residualExcluded.begin(), residualExcluded.end(), *residualDof))
+            result.push_back({dof, *residualDof});
+    }
+    return result;
+}
+
+std::span<const base::DofIndex> excludedOf(const ConstrainedSystem& system)
+{
+    const assembly::FormulationConstraints* formulation = system.formulationConstraints();
+    return formulation != nullptr ? formulation->excludedDofs() : std::span<const base::DofIndex>();
+}
+
+// Statics: the components each part determines at its boundary points (DeterminedComponent) in column `s` of the
+// residual's displacements (subcase `s` of the residual), from the part's recovery of that subcase; a part that the
+// subcase does not apply to leaves the residual's value.
+void copyDeterminedStatics(const SuperelementOptions& options, const Residual& residual,
+                           const ConstrainedSystem& system, std::size_t s, linalg::DenseMatrix& displacements,
+                           base::MemoryBudget& budget)
+{
+    const assembly::DofMap& residualDofs = residual.model->dofMap();
+    const auto gSize = static_cast<std::size_t>(residualDofs.gSetSize());
+    const base::EntityId label = residual.subcases[s].subcase.label;
+    for (std::size_t p = 0; p < residual.parts.size(); ++p)
+    {
+        const PartReduction* part = residual.parts[p].get();
+        if (part == nullptr || part->formulationExcluded().empty())
+            continue;
+        const std::vector<DeterminedComponent> components =
+            determinedComponentsOf(options.parts[p], *part, residualDofs, excludedOf(system));
+        const std::span<const StaticSubcase> partSubcases = part->subcases();
+        const auto found = std::find_if(partSubcases.begin(), partSubcases.end(),
+                                        [&](const StaticSubcase& subcase) { return subcase.label == label; });
+        if (components.empty() || found == partSubcases.end())
+            continue;
+        const auto subcaseIndex = static_cast<std::size_t>(found - partSubcases.begin());
+        const std::size_t boundary = part->boundaryLabels().size();
+        const linalg::DenseMatrix values =
+            residual.placed[p]->gather(displacements.view().block(0, s, gSize, 1), budget);
+        const linalg::DenseMatrix partU = part->recoverStatic(values.view().block(0, 0, boundary, 1),
+                                                              std::span<const std::size_t>(&subcaseIndex, 1), budget);
+        for (const DeterminedComponent& component : components)
+            displacements(static_cast<std::size_t>(component.residualDof), s) =
+                partU(static_cast<std::size_t>(component.partDof), 0);
+    }
+}
+
+// Modes: the same in every mode shape of a solve of the residual (`vectors`, g × modes), from the parts' mode shapes.
+void copyDeterminedModes(const SuperelementOptions& options, const Residual& residual, const ConstrainedSystem& system,
+                         linalg::DenseMatrix& vectors, base::MemoryBudget& budget)
+{
+    const assembly::DofMap& residualDofs = residual.model->dofMap();
+    const std::size_t count = vectors.columns();
+    for (std::size_t p = 0; p < residual.parts.size(); ++p)
+    {
+        const PartReduction* part = residual.parts[p].get();
+        if (part == nullptr || part->formulationExcluded().empty() || count == 0)
+            continue;
+        const std::vector<DeterminedComponent> components =
+            determinedComponentsOf(options.parts[p], *part, residualDofs, excludedOf(system));
+        if (components.empty())
+            continue;
+        const std::size_t boundary = part->boundaryLabels().size();
+        const std::size_t modalCount = part->modal() != nullptr ? part->modal()->modeCount() : 0;
+        const linalg::DenseMatrix values = residual.placed[p]->gather(vectors.view(), budget);
+        const linalg::DenseMatrix shapes = part->recoverModes(values.view().block(0, 0, boundary, count),
+                                                              values.view().block(boundary, 0, modalCount, count),
+                                                              budget);
+        for (std::size_t mode = 0; mode < count; ++mode)
+            for (const DeterminedComponent& component : components)
+                vectors(static_cast<std::size_t>(component.residualDof), mode) =
+                    shapes(static_cast<std::size_t>(component.partDof), mode);
+    }
+}
+
 // The options of the residual's constrained system: its superelements' cliques, K added to Kgg, their held DOFs.
 ConstrainedSystemOptions residualSystemOptions(const Residual& residual)
 {
@@ -515,9 +743,12 @@ void solveStatics(const SuperelementOptions& options, const linalg::DenseKernels
     const std::vector<std::vector<elements::ElementLineLoad>> noLineLoads;
     std::vector<assembly::SpcSet> spcSets; // bounded by the subcases
     spcSets.reserve(subcaseCount);
+    // With the supports the element formulation derives on its edges and faces (none for most).
     for (const SubcaseOfModel& entry : residual.subcases)
-        spcSets.emplace_back(constraints, snapshot.findLoads(), dofMap, entry.subcase.spc, entry.subcase.load, budget,
-                             sink);
+        spcSets.push_back(
+            assembly::withFormulationSupports(assembly::SpcSet(constraints, snapshot.findLoads(), dofMap,
+                                                               entry.subcase.spc, entry.subcase.load, budget, sink),
+                                              dofMap, model.formulation(), model.layoutKind(), budget, sink));
     stopOnErrors(sink, "the constraints of the residual structure");
 
     // The displacements of every subcase on the residual's g set, then each superelement recovered from them.
@@ -556,6 +787,7 @@ void solveStatics(const SuperelementOptions& options, const linalg::DenseKernels
         FsetSolverOptions solverOptions;
         solverOptions.pivotPolicy = pivotPolicyOf(model.params(), sink);
         solverOptions.cancellation = options.cancellation;
+        solverOptions.unreducedStiffness = &system.kgg();
         const FsetSolver solver(system.knn(), system.graph(), dofMap, system.solveSets(), kernels, solverOptions,
                                 budget, options.pool);
         results.largestAnalysisSetSize = std::max<std::int64_t>(results.largestAnalysisSetSize, solver.equationCount());
@@ -642,11 +874,15 @@ void solveStatics(const SuperelementOptions& options, const linalg::DenseKernels
                 if (enforcedOf(dof, c) != 0.0)
                     ug[dof] = enforcedOf(dof, c);
             system.gm().expandToG(ug.span());
+            system.fillExcluded(ug.span());
             for (std::size_t dof = 0; dof < gSize; ++dof)
             {
                 displacements(dof, s) = ug[dof];
                 loadsWithParts[dof] = applied(dof, c);
             }
+            copyDeterminedStatics(options, residual, system, s, displacements, budget);
+            for (std::size_t dof = 0; dof < gSize; ++dof)
+                ug[dof] = displacements(dof, s);
             for (const std::unique_ptr<PlacedSuperelement>& placed : residual.placed)
                 placed->addLoadsTo(s, loadsWithParts.span());
             std::fill(kug.data(), kug.data() + gSize, 0.0);
@@ -655,6 +891,12 @@ void solveStatics(const SuperelementOptions& options, const linalg::DenseKernels
             system.gm().computeMpcForces(kug.span(), loadsWithParts.span(), mpcForces.span());
             for (std::size_t dof = 0; dof < gSize; ++dof)
                 spcForces[dof] = isConstrained[dof] != 0 ? kug[dof] - loadsWithParts[dof] - mpcForces[dof] : 0.0;
+            // The element formulation: its supports of edges and faces reported at their grid points, and its
+            // relations left out of the multipoint constraint forces (they are no card of the model).
+            system.spc().carryDerivedReactions(spcForces.span());
+            if (system.gm().hasFormulationRows())
+                system.gm().computeMpcForces(kug.span(), loadsWithParts.span(), mpcForces.span(),
+                                             assembly::RigidElimination::Rows::OfCards);
             const SubcaseOfModel& entry = residual.subcases[s];
             const std::vector<std::vector<elements::ElementLineLoad>> lineLoads =
                 entry.subcase.load ? loadBuilder.lineLoadsOf(*entry.subcase.load) : noLineLoads;
@@ -871,6 +1113,7 @@ void solveModes(const SuperelementOptions& options, const linalg::DenseKernels& 
                 const base::BudgetedBuffer<double> modeG = recovery.expand(solution.eigenvectors, mode, dofs, budget);
                 std::copy(modeG.data(), modeG.data() + gSize, &modes.vectors(0, mode));
             }
+            copyDeterminedModes(options, residual, system, modes.vectors, budget);
             // The strain energies of every mode at once (ModeRecovery::strainEnergyTables), then each mode's tables.
             std::vector<std::vector<std::vector<output::ElementResultTable>>> energies;      // per subcase, per mode
             std::vector<std::vector<std::vector<output::ElementResultTable>>> elementTables; // the same
@@ -1005,7 +1248,6 @@ SuperelementResults SuperelementSolution::run(base::MemoryBudget& budget) const
     const linalg::DenseKernels kernels(m_options.kernel, linalg::DenseKernelOptions{m_options.pool});
     results.kernel = std::string(linalg::kernelName(m_options.kernel));
 
-    elements::refuseMixedHybridOn(*m_residual, "superelements");
     Residual residual;
     residual.model = std::make_unique<AnalysisModel>(*m_residual, m_options.analysis, budget, m_options.pool,
                                                      m_options.cancellation, sink);
@@ -1021,7 +1263,10 @@ SuperelementResults SuperelementSolution::run(base::MemoryBudget& budget) const
                                    "one of them"}));
     stopOnErrors(sink, "the analysis of the superelements");
 
+    checkFormulationCuts(m_options, *residual.model, budget, sink);
+    stopOnErrors(sink, "the analysis of the superelements");
     reduceSuperelements(m_options, kernels, residual, results, budget, sink);
+    checkFormulationRotations(m_options, residual, sink);
     stopOnErrors(sink, "the analysis of the residual structure");
     results.reductionSeconds = watch.lap();
     if (m_options.analysis == AnalysisKind::Statics)

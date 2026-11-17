@@ -1,10 +1,18 @@
 #include "EigenItems.hpp"
 
+#include "FormulationShape.hpp"
+#include "oos/assembly/assemble/DifferentialStiffnessAssembler.hpp"
+#include "oos/assembly/assemble/MassAssembler.hpp"
+#include "oos/assembly/assemble/NonStructuralMassShares.hpp"
+
 #include "oos/base/diagnostics/DiagnosticSink.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/base/errors/InternalError.hpp"
 #include "oos/base/errors/OptimisationError.hpp"
 #include "oos/design/sensitivity/SubcaseSolve.hpp"
+#include "oos/solutions/sol101/StaticSubcases.hpp"
 #include "oos/elements/core/ElementMatrixBlock.hpp"
+#include "oos/elements/core/ElementVectorBlock.hpp"
 #include "oos/linalg/dense/SmallEigenSolver.hpp"
 
 #include <algorithm>
@@ -181,9 +189,144 @@ void EigenItems::formClusters()
     }
 }
 
-void EigenItems::setPreload(std::int32_t subcase, const elements::NodalDisplacements& preload)
+void EigenItems::setPreload(std::int32_t subcase, const elements::NodalDisplacements& preload,
+                            std::span<const double> displacementsG)
 {
     m_preloads[subcase] = preload;
+    m_preloadVectors[subcase] = displacementsG;
+}
+
+std::vector<double> EigenItems::normalisedShape(const Solve& solve, std::size_t mode) const
+{
+    const linalg::DenseMatrix& shapes = *solve.shapes;
+    std::vector<double> shape(shapes.rows());
+    for (std::size_t i = 0; i < shapes.rows(); ++i)
+        shape[i] = shapes(i, mode) / (*solve.scales)[mode];
+    return shape;
+}
+
+EigenItems::SolveConstraints& EigenItems::constraintsOf(std::size_t solveIndex)
+{
+    const auto found = m_solveConstraints.find(solveIndex);
+    if (found != m_solveConstraints.end())
+        return found->second;
+    SolveConstraints& made = m_solveConstraints[solveIndex];
+    const Solve& solve = m_solves[solveIndex];
+    if (m_in.snapshot == nullptr)
+        throw std::logic_error("EigenItems: the snapshot of the design point is not given (a bug of O_o_Solver)");
+    base::MemoryBudget& budget = *m_in.budget;
+    base::DiagnosticSink sink; // the analysis reported the problems of the model
+    made.model = std::make_unique<solutions::AnalysisModel>(
+        *m_in.snapshot, solve.isBuckling ? solutions::AnalysisKind::Buckling : solutions::AnalysisKind::Modes, budget,
+        m_in.pool, nullptr, sink);
+    const std::vector<solutions::StaticSubcase> subcases =
+        solutions::staticSubcasesOf(made.model->snapshot(), {solve.subcase}, sink);
+    if (subcases.empty())
+        throw base::OptimisationError(base::concatenate(
+            {"the sensitivities of the eigenvalues of subcase ", std::to_string(solve.subcase),
+             " under a shape: the subcase is not found again in the model"}));
+    const solutions::StaticSubcase& subcase = subcases.front();
+    made.system = std::make_unique<solutions::ConstrainedSystem>(
+        *made.model,
+        solutions::ConstraintSelection{subcase.label, subcase.spc, subcase.mpc, std::nullopt, subcase.contact}, budget,
+        m_in.pool, nullptr, sink);
+    const assembly::FormulationConstraints* formulation = made.system->formulationConstraints();
+    if (formulation == nullptr || formulation->relations().empty())
+    {
+        made.system.reset();
+        return made;
+    }
+    const assembly::DofMap& dofMap = made.model->dofMap();
+    const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
+    if (solve.shapes->rows() != gSize)
+        throw std::logic_error("EigenItems: the shapes of a solve are not on the g set of its analysis model (a bug "
+                               "of O_o_Solver: report it)");
+    // The second matrix: the mass of the vibration, the differential stiffness of the preload.
+    linalg::BlockSparseMatrix second(made.system->pattern(), budget, "eigenvalue shape second matrix");
+    if (solve.isBuckling)
+    {
+        const auto preload = m_preloadVectors.find(solve.preloadSubcase);
+        if (preload == m_preloadVectors.end())
+            throw std::logic_error("EigenItems: the preload of a buckling solve was not read (a bug of O_o_Solver)");
+        const auto nodal = m_preloads.find(solve.preloadSubcase);
+        assembly::DifferentialStiffnessAssembler(made.model->elementSet(), dofMap)
+            .assemble(preload->second, nodal != m_preloads.end() ? nodal->second.temperatures : nullptr, second,
+                      m_in.pool);
+    }
+    else
+    {
+        const assembly::MassAssemblyOptions options =
+            assembly::MassAssemblyOptions::fromParams(m_in.params, solve.subcase, sink);
+        const assembly::NonStructuralMassShares shares(made.model->elementSet());
+        assembly::MassAssembler(made.model->elementSet(), dofMap, shares, options).assemble(second, m_in.pool);
+    }
+    for (const Cluster& cluster : m_clusters)
+    {
+        if (cluster.solve != solveIndex)
+            continue;
+        for (const std::size_t mode : cluster.modes)
+        {
+            const std::vector<double> shape = normalisedShape(solve, mode);
+            std::vector<double> stiffness(gSize, 0.0);
+            std::vector<double> other(gSize, 0.0);
+            made.system->kgg().multiply(shape, stiffness);
+            second.multiply(shape, other);
+            made.products[mode] = {std::move(stiffness), std::move(other)};
+        }
+    }
+    return made;
+}
+
+void EigenItems::addFormulationShapeTerms(
+    std::size_t quantity, const FieldPerturbation& perturbation,
+    const std::array<const elements::FormulationModel*, FIELD_SIDE_COUNT>& models)
+{
+    for (Cluster& cluster : m_clusters)
+    {
+        SolveConstraints& made = constraintsOf(cluster.solve);
+        if (!made.system)
+            continue;
+        const Solve& solve = m_solves[cluster.solve];
+        const assembly::FormulationConstraints& formulation = *made.system->formulationConstraints();
+        base::DiagnosticSink sink;
+        const std::array<assembly::FormulationRelations, FIELD_SIDE_COUNT> sides =
+            sideRelations(formulation, models, sink);
+        const std::size_t m = cluster.modes.size();
+        std::vector<std::vector<double>> derivatives; // D_a, one per mode of the cluster
+        std::vector<std::vector<double>> residuals;   // R_a
+        for (const std::size_t mode : cluster.modes)
+        {
+            derivatives.push_back(dependentDerivative(made.system->gm(), formulation.relations(), sides, perturbation,
+                                                      normalisedShape(solve, mode)));
+            const auto& [stiffness, other] = made.products.at(mode);
+            // (K − λ·M)·φ or (K + λ·K_d)·φ.
+            const double factor = solve.isBuckling ? cluster.root : -cluster.root;
+            std::vector<double> residual(stiffness.size());
+            for (std::size_t i = 0; i < residual.size(); ++i)
+                residual[i] = stiffness[i] + factor * other[i];
+            residuals.push_back(std::move(residual));
+        }
+        const auto dot = [](const std::vector<double>& a, const std::vector<double>& b)
+        {
+            double sum = 0.0;
+            for (std::size_t i = 0; i < a.size(); ++i)
+                sum += a[i] * b[i];
+            return sum;
+        };
+        std::vector<double>& target = cluster.byQuantity[quantity];
+        if (target.empty())
+            target.assign(m * m, 0.0);
+        for (std::size_t a = 0; a < m; ++a)
+            for (std::size_t b = 0; b < m; ++b)
+                target[a * m + b] += dot(derivatives[a], residuals[b]) + dot(derivatives[b], residuals[a]);
+        if (!solve.isBuckling && m == 1)
+        {
+            const auto& [stiffness, mass] = made.products.at(cluster.modes.front());
+            auto& [strain, kinetic] = cluster.energiesByQuantity[quantity];
+            strain += 2.0 * dot(derivatives.front(), stiffness);
+            kinetic += 2.0 * dot(derivatives.front(), mass);
+        }
+    }
 }
 
 double EigenItems::shapeValue(const Solve& solve, std::size_t mode, base::DofIndex dof) const
@@ -230,6 +373,30 @@ void EigenItems::addProjection(const Cluster& cluster, std::span<const base::Dof
     }
 }
 
+bool EigenItems::addProductWeights(const elements::ElementFamily& family, const elements::ElementBatchView& view,
+                                   std::int64_t row, std::span<const Item* const> items,
+                                   std::span<const elements::NodalDisplacements> shapes,
+                                   std::vector<std::vector<std::pair<base::DofIndex, double>>>& weights) const
+{
+    for (std::size_t i = 0; i < items.size(); ++i)
+    {
+        elements::ElementVectorBlock block;
+        if (!family.differentialStiffnessPreloadGradient(view, row, shapes[i], block))
+            return false; // the family has no product: none of the items takes one
+        // φ_normalised = column / scale: the product is quadratic in φ.
+        const double scale = (*m_solves[items[i]->solve].scales)[items[i]->mode];
+        for (std::size_t e = 0; e < block.size(); ++e)
+        {
+            const std::span<const elements::ElementDof> dofs = block.dofs(e);
+            const std::span<const double> values = block.values(e);
+            for (std::size_t k = 0; k < dofs.size(); ++k)
+                if (values[k] != 0.0)
+                    weights[i].emplace_back(m_in.dofMap->dofOf(dofs[k]), values[k] / (scale * scale));
+        }
+    }
+    return true;
+}
+
 std::vector<std::pair<ItemKey, SparseVector>> EigenItems::bucklingWeights() const
 {
     // The LAMA items whose cluster has one mode, and the modes they read.
@@ -242,14 +409,27 @@ std::vector<std::pair<ItemKey, SparseVector>> EigenItems::bucklingWeights() cons
         return result;
     const assembly::DofMap& dofMap = *m_in.dofMap;
     const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
-    const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(dofMap.gridCount());
-    // ∂(φᵀ·K_d(u)·φ)/∂u_k = φᵀ·K_d(e_k)·φ: K_d is linear in u (the preload's internal forces are), so the
+    // ∂(φᵀ·K_d(u)·φ)/∂u_k = φᵀ·K_d(e_k)·φ: K_d is linear in u (the preload's internal forces are). A family that has
+    // the product gives it in one pass per element and shape (differentialStiffnessPreloadGradient); for the others the
     // differential stiffness of a unit displacement of each DOF of an element gives the element's share exactly. The
     // temperatures are left out: they add a term of K_d that does not depend on u.
+    const auto gridCount = static_cast<std::size_t>(dofMap.gridCount());
+    const auto scalarCount = static_cast<std::size_t>(dofMap.scalarCount());
     base::BudgetedBuffer<double> unit(*m_in.budget, gSize, "LAMA weights unit displacements");
     std::fill(unit.data(), unit.data() + gSize, 0.0);
-    const elements::NodalDisplacements displacements{unit.span().first(gridValues), unit.span().subspan(gridValues),
-                                                     nullptr};
+    const elements::NodalDisplacements displacements =
+        elements::NodalDisplacements::ofGSet(unit.span(), gridCount, scalarCount, &dofMap.entities());
+    // The shape of each item as displacements (the solve's columns are whole g-set vectors, not normalised).
+    std::vector<elements::NodalDisplacements> shapes; // bounded by the items
+    shapes.reserve(items.size());
+    for (const Item* item : items)
+    {
+        const Solve& solve = m_solves[item->solve];
+        OOS_ASSERT(solve.shapes->rows() == gSize);
+        const std::span<const double> column(solve.shapes->data() + item->mode * solve.shapes->leadingDimension(),
+                                             gSize);
+        shapes.push_back(elements::NodalDisplacements::ofGSet(column, gridCount, scalarCount, &dofMap.entities()));
+    }
     std::vector<std::vector<std::pair<base::DofIndex, double>>> weights(items.size());
     for (const assembly::AssemblyBatch& batch : m_in.set->batches())
     {
@@ -258,6 +438,8 @@ std::vector<std::pair<ItemKey, SparseVector>> EigenItems::bucklingWeights() cons
             continue;
         for (std::int64_t row = 0; row < batch.view.rowCount(); ++row)
         {
+            if (addProductWeights(family, batch.view, row, items, shapes, weights))
+                continue;
             elements::ElementMatrixBlock layout;
             family.computeDifferentialStiffness(batch.view, {row, row + 1}, displacements, layout);
             if (layout.empty())
@@ -267,10 +449,8 @@ std::vector<std::pair<ItemKey, SparseVector>> EigenItems::bucklingWeights() cons
             const std::size_t n = dofs.size();
             for (std::size_t k = 0; k < n; ++k)
             {
-                const elements::ElementDof& dof = elementDofs[k];
-                const std::size_t place = dof.kind == input::PointKind::Scalar
-                                              ? gridValues + static_cast<std::size_t>(dof.row)
-                                              : static_cast<std::size_t>(dof.row) * 6 + dof.component - 1;
+                // The DOF's place in the g set (a grid, scalar or entity DOF alike).
+                const auto place = static_cast<std::size_t>(dofs[k]);
                 unit[place] = 1.0;
                 elements::ElementMatrixBlock block;
                 family.computeDifferentialStiffness(batch.view, {row, row + 1}, displacements, block);
@@ -459,7 +639,6 @@ std::int64_t EigenItems::addPreloadTerms(std::int32_t preloadSubcase, const Sens
             variables.push_back(j);
     const assembly::DofMap& dofMap = *m_in.dofMap;
     const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
-    const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(dofMap.gridCount());
     const auto equations = static_cast<std::size_t>(system.equationCount());
     base::BudgetedBuffer<double> vectorG(*m_in.budget, gSize, "LAMA preload derivative");
     base::BudgetedBuffer<double> column(*m_in.budget, equations, "LAMA preload equations");
@@ -485,8 +664,9 @@ std::int64_t EigenItems::addPreloadTerms(std::int32_t preloadSubcase, const Sens
                 column[e] = rightHandSides(e, b);
             system.fromEquations(column.span(), vectorG.span());
             // K_d(du_j), linear in the displacements, without the temperatures (they do not move with x here).
-            const elements::NodalDisplacements derivative{vectorG.span().first(gridValues),
-                                                          vectorG.span().subspan(gridValues), nullptr};
+            const elements::NodalDisplacements derivative = elements::NodalDisplacements::ofGSet(
+                vectorG.span(), static_cast<std::size_t>(dofMap.gridCount()),
+                static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
             const std::size_t j = variables[first + b];
             for (const assembly::AssemblyBatch& batch : m_in.set->batches())
             {

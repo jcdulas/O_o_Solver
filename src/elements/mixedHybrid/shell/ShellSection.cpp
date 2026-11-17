@@ -312,7 +312,11 @@ SectionPoint Section::at(double thickness, double angle) const
     }
     else
     {
-        const double m = kirchhoffRatio * (aScaled[0][0] + aScaled[1][1] + aScaled[2][2]) / 3.0;
+        // the Kirchhoff limit: a shear stiffness far above the membrane's (12 D / t² for a section without membrane)
+        double membrane = (aScaled[0][0] + aScaled[1][1] + aScaled[2][2]) / 3.0;
+        if (membrane == 0.0 && thickness > 0.0)
+            membrane = 12.0 * r * r * r * (d[0][0] + d[1][1] + d[2][2]) / (3.0 * thickness * thickness);
+        const double m = kirchhoffRatio * membrane;
         hMaterial = {{{m, 0.0}, {0.0, m}}};
     }
     // γ_material = R γ_local with R = [[c, s], [−s, c]]: H_local = Rᵀ H R
@@ -320,6 +324,7 @@ SectionPoint Section::at(double thickness, double angle) const
     const double c = std::cos(angle);
     const Matrix22 rotation{{{c, s}, {-s, c}}};
     SectionPoint point;
+    point.parts = parts;
     point.a = rotateStiffness(aScaled, angle);
     point.b = rotateStiffness(scaled(b, r * r), angle);
     point.d = rotateStiffness(scaled(d, r * r * r), angle);

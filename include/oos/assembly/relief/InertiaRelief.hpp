@@ -84,19 +84,29 @@ enum class InertiaReliefMode : std::int8_t
 [[nodiscard]] std::vector<base::DofIndex> chooseConditionedSupports(const DofMap& dofMap,
                                                                     std::span<const std::uint8_t> isCandidate);
 
+// The six rigid-body motions of RigidBodyModes' convention on the entity DOFs of an element formulation (the entity
+// DOFs × 6, column-major: translations along the basic axes, then rotations about them through the basic origin; each
+// the formulation's field of the motion, DofMap::addAffineEntityField); empty without entities.
+[[nodiscard]] std::vector<double> entityRigidModes(const DofMap& dofMap);
+
 // u ← u + Φ·a on every grid point of the g set (`valuesG`, one value per g-set DOF): the rigid-body motion of
 // amplitudes `amplitudes` (translations along the basic axes, rotations about them through the basic origin; Φ the
 // convention of RigidBodyModes, u_cd = Rᵀ·(t + θ × x), θ_cd = Rᵀ·θ), made point by point without the g × 6 modes
-// (the displacements of a free body brought back to the gauge of its FreeBodySupport DOFs). Scalar points do not
-// move, nor the DOFs `isHeld` flags (one flag per g-set DOF; empty: none). Throws std::invalid_argument when `valuesG`
-// or `isHeld` is not of the g-set size.
+// (the displacements of a free body brought back to the gauge of its FreeBodySupport DOFs), and on every entity DOF of
+// an element formulation from `entityModes` (entityRigidModes; empty: the entity DOFs do not move, which only a model
+// without entities may ask). Scalar points do not move, nor the DOFs `isHeld` flags (one flag per g-set DOF; empty:
+// none). Throws std::invalid_argument when `valuesG` or `isHeld` is not of the g-set size, or `entityModes` is neither
+// empty nor of the entity DOFs × 6.
 void addRigidMotion(const DofMap& dofMap, const std::array<double, RigidBodyModes::MODE_COUNT>& amplitudes,
-                    std::span<double> valuesG, std::span<const std::uint8_t> isHeld = {});
-// The same on the grid points `gridRows` only (rows of the DOF map's grid table, any order; for a condensed
-// unit's points, recovered unit by unit): the values addRigidMotion adds there, to the bit.
+                    std::span<double> valuesG, std::span<const std::uint8_t> isHeld = {},
+                    std::span<const double> entityModes = {});
+// The same on the grid points `gridRows` and the entity DOFs `entityDofs` only (rows of the DOF map's grid table and
+// g-set DOFs, any order; for a condensed unit's points, recovered unit by unit): the values addRigidMotion adds there,
+// to the bit.
 void addRigidMotionAt(const DofMap& dofMap, const std::array<double, RigidBodyModes::MODE_COUNT>& amplitudes,
                       std::span<double> valuesG, std::span<const std::int32_t> gridRows,
-                      std::span<const std::uint8_t> isHeld = {});
+                      std::span<const std::uint8_t> isHeld = {}, std::span<const double> entityModes = {},
+                      std::span<const base::DofIndex> entityDofs = {});
 
 // Φᵀ·v about the basic origin, point by point without the g × 6 modes (RigidBodyModes' convention: the forces along the
 // basic axes, then the moments about them; a load vector's resultant): F = Σ R·f_cd, M = Σ x × R·f_cd + R·m_cd over the

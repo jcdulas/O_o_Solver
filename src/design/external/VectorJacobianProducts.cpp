@@ -1027,8 +1027,8 @@ public:
         for (const detail::HessianBlocks::Block& block : hessian.blocks())
             if (block.field != detail::HessianBlocks::NO_FIELD)
             {
-                const std::size_t other = block.otherField == detail::HessianBlocks::NO_FIELD ? block.field
-                                                                                           : block.otherField;
+                const std::size_t other =
+                    block.otherField == detail::HessianBlocks::NO_FIELD ? block.field : block.otherField;
                 fieldTerms[{block.field, other}] += block.fieldTerm;
                 if (other != block.field)
                     fieldTerms[{other, block.field}] += block.fieldTerm;
@@ -1192,10 +1192,9 @@ public:
             if (fields[r].gradient.empty() || affected.of(r).empty())
                 continue;
             const DesignRelation& relation = m_in.model->relations()[r];
-            const bool isDerived = m_in.targets->derivedProperties().groupOf(r).has_value() ||
-                                   m_in.targets->hasDerivedMaterial(r);
-            const bool isPlainCell =
-                isDirectFieldTarget(relation, (*m_in.targets)[r]) && !isDerived;
+            const bool isDerived =
+                m_in.targets->derivedProperties().groupOf(r).has_value() || m_in.targets->hasDerivedMaterial(r);
+            const bool isPlainCell = isDirectFieldTarget(relation, (*m_in.targets)[r]) && !isDerived;
             if (relation.form != RelationForm::Linear)
             {
                 result.reason = base::concatenate({"the relation ", relation.label(),
@@ -1282,7 +1281,8 @@ public:
             }
         }
         // Keep one field's subcases together so their displacement-independent slopes are built once.
-        std::stable_sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b)
+        std::stable_sort(entries.begin(), entries.end(),
+                         [](const Entry& a, const Entry& b)
                          {
                              if (a.element != b.element)
                                  return a.element < b.element;
@@ -1666,9 +1666,9 @@ public:
     // The applied-load contribution to the element's Lagrangian curvature: lambda^T P_pq.
     // Fixed geometry makes P independent of displacement, so there is no extra displacement/field block.
     [[nodiscard]] std::optional<double> loadCurvatureOf(const ElementRef& element, const detail::SubcaseState& state,
-                                                       const elements::DesignedField& first,
-                                                       const elements::DesignedField& second,
-                                                       std::span<const double> adjoint) const
+                                                        const elements::DesignedField& first,
+                                                        const elements::DesignedField& second,
+                                                        std::span<const double> adjoint) const
     {
         const auto& batch = m_set.batches()[element.batch];
         const auto& family = *batch.family;
@@ -1700,8 +1700,7 @@ public:
     // the piece's copy of the displacements for the recoveries at unit displacements of a family without slopes;
     // `parts` what the element's blocks of its other subcases formed already.
     [[nodiscard]] std::string hessianBlockOf(const ElementRef& element, std::size_t subcase,
-                                             const std::vector<std::size_t>& jobs,
-                                             std::size_t field,
+                                             const std::vector<std::size_t>& jobs, std::size_t field,
                                              const std::map<ItemKey, double>& weightOf,
                                              const std::vector<double>& adjoint, const SectionMember* section,
                                              std::optional<base::BudgetedBuffer<double>>& copy, ElementParts& parts,
@@ -1726,13 +1725,13 @@ public:
             return designed.empty() ? std::string()
                                     : base::concatenate({" in ", designed.front().card, " ", designed.front().column});
         };
-        const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(m_dofMap.gridCount());
         const auto scratch = [&]
         {
             if (!copy)
                 copy.emplace(m_budget, gSize(), "Hessian blocks scratch displacements");
             std::copy(state.displacements.data(), state.displacements.data() + gSize(), copy->data());
-            return ScratchDisplacements{copy->span().first(gridValues), copy->span().subspan(gridValues)};
+            return ScratchDisplacements::ofGSet(copy->span(), static_cast<std::size_t>(m_dofMap.gridCount()),
+                                                static_cast<std::size_t>(m_dofMap.scalarCount()), &m_dofMap.entities());
         };
         // The DOFs of the block: the union of those of its parts, in the order met (the element's own order).
         std::vector<elements::ElementDof> dofs; // bounded by the element's DOFs
@@ -1816,9 +1815,8 @@ public:
             for (std::size_t k = 0; k < job.keys.size(); ++k)
                 if (const auto found = weightOf.find(job.keys[k]); found != weightOf.end())
                     itemWeights[k] = found->second;
-            const std::optional<ItemSecondOrder> items =
-                job.function->secondOrder(view, state.nodal(m_dofMap, job.element), itemWeights,
-                                           designed, scratch, &parts.slopes);
+            const std::optional<ItemSecondOrder> items = job.function->secondOrder(
+                view, state.nodal(m_dofMap, job.element), itemWeights, designed, scratch, &parts.slopes);
             if (!items)
                 return base::concatenate({"the weighted items of ", name(), " have no closed second derivatives",
                                           inField(), " in this version"});
@@ -1917,9 +1915,8 @@ public:
     // The off-diagonal field term of one element's Lagrangian. The displacement and field/displacement terms
     // are already in its diagonal blocks; this block stores only A_pq = A_qp.
     [[nodiscard]] std::string hessianFieldCouplingOf(const ElementRef& element, std::size_t subcase,
-                                                     const std::vector<std::size_t>& jobs,
-                                                     std::size_t first, std::size_t second,
-                                                     const std::map<ItemKey, double>& weightOf,
+                                                     const std::vector<std::size_t>& jobs, std::size_t first,
+                                                     std::size_t second, const std::map<ItemKey, double>& weightOf,
                                                      const std::vector<double>& adjoint, const SectionMember* section,
                                                      detail::HessianBlocks::Block& block) const
     {
@@ -1936,8 +1933,8 @@ public:
         const auto unavailable = [&]
         {
             return base::concatenate({view.card(), " ", std::to_string(view.elementId(element.row)),
-                                       " has no closed mixed derivative in ", a.card, " ", a.column, " and ",
-                                       b.card, " ", b.column});
+                                      " has no closed mixed derivative in ", a.card, " ", a.column, " and ", b.card,
+                                      " ", b.column});
         };
         block.subcase = subcase;
         block.field = first;

@@ -3,6 +3,7 @@
 #include "oos/assembly/assemble/MassAssembler.hpp"
 #include "oos/assembly/assemble/NonStructuralMassShares.hpp"
 #include "oos/assembly/assemble/ParamLookup.hpp"
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/constraints/SpcSet.hpp"
 #include "oos/assembly/loads/LoadVectorBuilder.hpp"
 #include "oos/assembly/relief/InertiaRelief.hpp"
@@ -371,7 +372,9 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
 
     // 1. The checks, the model, the subcases with their methods and outputs.
     base::ProgressCounter* progress = beginStage(m_options.monitor, "connectivity", 1);
-    const AnalysisModel model(snapshot, AnalysisKind::Modes, budget, pool, cancellation, sink);
+    AnalysisModelOptions modelOptions;
+    modelOptions.index = m_options.snapshotIndex;
+    const AnalysisModel model(snapshot, AnalysisKind::Modes, budget, pool, cancellation, sink, modelOptions);
     if (progress != nullptr)
         progress->advance();
     const assembly::DofMap& dofMap = model.dofMap();
@@ -478,7 +481,10 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
             subcase.load.reset();
             subcase.dropInitialStrains();
             condensedSubcases.push_back(subcase);
-            spcSets.emplace_back(constraints, snapshot.findLoads(), dofMap, subcase.spc, std::nullopt, budget, sink);
+            // With the supports the element formulation derives on its edges and faces (none for most).
+            spcSets.push_back(assembly::withFormulationSupports(
+                assembly::SpcSet(constraints, snapshot.findLoads(), dofMap, subcase.spc, std::nullopt, budget, sink),
+                dofMap, model.formulation(), model.layoutKind(), budget, sink));
             solvedIndices.push_back(s);
             modalPlans.push_back(subcases[s].plan);
         }

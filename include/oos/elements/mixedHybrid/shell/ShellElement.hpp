@@ -44,6 +44,11 @@ namespace oos::elements::mixedHybrid
 // spreads the diagonal of M_σ over many decades on elongated elements). K_membrane = Iᵀ (∫ Rᵀ Ā R) I with Ā = A − B
 // D⁻¹ Bᵀ and I the Regge interpolation of the membrane strain of the displacement; K_shear = ∫ γᵀ H γ.
 //
+// A membrane-only section on the surface of the grid points (sectionCarriesMoments false; spec section 4.1, not in the
+// reference) has no moments and no transverse shear: K = K_membrane with Ā = A, the pairing and M_σ⁻¹ are zero (the
+// moments of the recovery are zero), and its shear and edge rotation unknowns carry no stiffness (the model holds
+// those no other element stiffens). A bending-only section has A = B = 0: K_membrane and C vanish.
+//
 // The three reference constants of the membrane and moment spaces are replaced by the constant states of the element's
 // frame (PointGeometry::phi), and the three constant interior functionals of the Regge interpolation by the work of the
 // three constant membrane forces, unless `mapReferenceConstants` (document 34 of the reference, section 4.3). On an
@@ -112,6 +117,12 @@ using TangentialStrainAtEdge = std::function<double(std::size_t, std::size_t)>;
 [[nodiscard]] Vector reggeFunctionals(const ShellReferenceElement& re, std::span<const PointGeometry> geometries,
                                       const CovariantStrainAtPoint& volume, const TangentialStrainAtEdge& edge,
                                       bool mapReferenceConstants);
+
+// A point of the map of a shell whose Jacobian is at most this fraction of the largest makes the map not invertible
+// (buildShellElement refuses the element with SHELL_MAP_NOT_INVERTIBLE).
+inline constexpr double SHELL_JACOBIAN_RATIO = 1e-10;
+inline constexpr const char* SHELL_MAP_NOT_INVERTIBLE =
+    "the map of the element is not invertible (its Jacobian vanishes inside)";
 
 // Builds the element: stiffness (symmetric), the mass when asked
 //   M = ∫ (I0 uᵀu + I1 (uᵀβ + βᵀu) + I2 βᵀβ) dA,

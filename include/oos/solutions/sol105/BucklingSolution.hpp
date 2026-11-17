@@ -5,6 +5,7 @@
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/base/threading/CancellationToken.hpp"
 #include "oos/base/threading/ThreadPool.hpp"
+#include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/input/snapshot/ModelSnapshot.hpp"
 #include "oos/linalg/dense/DenseMatrix.hpp"
 #include "oos/linalg/eigen/BlockLanczos.hpp"
@@ -53,6 +54,10 @@ struct BucklingOptions
     // displacements). The units to recover for the buckling shapes (nothing: those an output reaches), the condensation
     // cache (not owned), the name of the model in its entries, the design stamps.
     std::shared_ptr<const reduction::CondensationPlan> condensation;
+    // The index of the snapshot the condensation planner made (CondensationPlanner::analysisModel, sharedIndex), taken
+    // by the analysis model in place of a new one with what it computed once (AnalysisModelOptions::index); null: a
+    // new index.
+    std::shared_ptr<const elements::SnapshotIndex> snapshotIndex;
     std::optional<std::vector<std::int64_t>> recoveredUnits;
     reduction::CondensationCache* cache = nullptr;
     std::string cacheModelTag;

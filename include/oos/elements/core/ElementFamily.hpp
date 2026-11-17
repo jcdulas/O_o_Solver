@@ -1,6 +1,7 @@
 #pragma once
 
 #include "oos/base/diagnostics/DiagnosticSink.hpp"
+#include "oos/base/errors/InternalError.hpp"
 #include "oos/elements/core/DesignFieldUse.hpp"
 #include "oos/elements/core/ElementBatchView.hpp"
 #include "oos/elements/core/ElementDof.hpp"
@@ -181,11 +182,13 @@ struct ElementLoadContext
 //
 // With `slots` (the streamed path: the displacements of some points only, a region's), `grid` holds six
 // values per grid slot and `scalar` one per scalar slot, a point row's slot given by `slots` (−1: a point the caller
-// did not give, which no element recovered reads).
+// did not give, which no element recovered reads); `entity` holds the values of the entities the region gives, each
+// entity's DOFs in a block of their own at the offset `slots` gives (−1: an entity the caller did not give).
 struct DisplacementSlots
 {
-    std::span<const std::int32_t> gridSlots;   // per grid point row of the model
-    std::span<const std::int32_t> scalarSlots; // per scalar point row of the model
+    std::span<const std::int32_t> gridSlots;     // per grid point row of the model
+    std::span<const std::int32_t> scalarSlots;   // per scalar point row of the model
+    std::span<const std::int64_t> entityOffsets; // per entity row of the layout (empty: no entity)
 };
 struct NodalDisplacements
 {
@@ -196,8 +199,9 @@ struct NodalDisplacements
     // Optional line loads for recovery, with batch row indices. Families select the loads of each recovered row.
     // They change the affine part of a linear output; its displacement slopes keep the ordinary output layout.
     std::span<const ElementLineLoad> lineLoads{};
-    // The values of the entities of the formulation (EntityLayout::totalDofCount() values, in the layout's order), and
-    // the layout; empty and null for a model without entities. The streamed path, which has none, never sets them.
+    // The values of the entities of the formulation (EntityLayout::totalDofCount() values, in the layout's order; with
+    // `slots`, the blocks of the entities the region gives, at DisplacementSlots::entityOffsets), and the layout; empty
+    // and null for a model without entities.
     std::span<const double> entity{};
     const EntityLayout* entityLayout = nullptr; // not owned
 
@@ -217,7 +221,18 @@ struct NodalDisplacements
     [[nodiscard]] double valueAt(const ElementDof& dof) const
     {
         if (dof.kind == input::PointKind::Entity)
-            return entity[static_cast<std::size_t>(entityLayout->dofOffset(dof.row)) + dof.component];
+        {
+            // The displacements of a model with entities are made by ofGSet, with the layout; without it, the entity
+            // values were left out (a bug of the caller, not a zero displacement).
+            OOS_ASSERT(entityLayout != nullptr);
+            const std::int64_t first = slots != nullptr && !slots->entityOffsets.empty()
+                                           ? slots->entityOffsets[static_cast<std::size_t>(dof.row)]
+                                           : entityLayout->dofOffset(dof.row);
+            OOS_ASSERT(first >= 0);
+            const std::size_t at = static_cast<std::size_t>(first) + static_cast<std::size_t>(dof.component);
+            OOS_ASSERT(at < entity.size());
+            return entity[at];
+        }
         if (dof.kind == input::PointKind::Scalar)
             return scalar[slotOf(dof)];
         return grid[slotOf(dof) * 6 + static_cast<std::size_t>(dof.component) - 1];
@@ -281,6 +296,18 @@ public:
     // Appends the mass matrix of each element of the range to `block` (an element without mass appends nothing).
     virtual void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                              ElementMatrixBlock& block) const;
+    // The volume of each element of the range into `volumes` (one value per row of the range, in row order): the
+    // volume its mass is the density times, for a family that computes it from its geometry. False when the family
+    // gives none (the default): assembly::ElementVolumes then reads it from the element's lumped mass at unit density,
+    // which holds for an element whose rigid translation is that of its grid points alone.
+    [[nodiscard]] virtual bool computeVolumes(const ElementBatchView& view, ElementRange range,
+                                              std::span<double> volumes) const
+    {
+        static_cast<void>(view);
+        static_cast<void>(range);
+        static_cast<void>(volumes);
+        return false;
+    }
 
     // The columns of an output kind, in the order recover() fills them; empty for a kind the element does not give.
     [[nodiscard]] virtual std::vector<std::string> outputColumns(ElementOutput output) const;
@@ -486,6 +513,15 @@ public:
     virtual bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
                                                       const DesignedField& field, const NodalDisplacements& preload,
                                                       ElementMatrixBlock& block) const;
+    // The gradient of φᵀ·K_d(u)·φ with respect to the preload displacements u of the element of batch row `row`, φ the
+    // displacements `shape` (the g set, as a preload is given): K_d is linear in u, so entry k is φᵀ·K_d(e_k)·φ, e_k
+    // the unit displacement of the element's DOF k; the temperatures, a term of K_d that does not depend on u, are
+    // left out. Appended to `block` on the DOFs computeDifferentialStiffness gives the element (the derivative of a
+    // buckling factor through its preload). False when the family has no such product (the default): the caller
+    // then forms K_d of each unit displacement.
+    virtual bool differentialStiffnessPreloadGradient(const ElementBatchView& view, std::int64_t row,
+                                                      const NodalDisplacements& shape,
+                                                      ElementVectorBlock& block) const;
     // Mixed field curvature of K_d at a fixed mechanical preload. Its displacement dependence remains linear;
     // the buckling Hessian adds both preload tangents separately. False means the formula is unavailable.
     virtual bool differentialStiffnessFieldMixedDerivative(const ElementBatchView& view, std::int64_t row,

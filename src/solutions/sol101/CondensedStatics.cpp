@@ -4,6 +4,7 @@
 #include "oos/assembly/assemble/NonStructuralMassShares.hpp"
 #include "oos/assembly/assemble/ParamLookup.hpp"
 #include "oos/assembly/constraints/FastenerConstraints.hpp"
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/constraints/GlueConstraints.hpp"
 #include "oos/assembly/constraints/MpcEquations.hpp"
 #include "oos/assembly/constraints/RigidElimination.hpp"
@@ -323,16 +324,6 @@ bool isSameNumbering(std::span<const base::DofIndex> modelDofOfLocal, const redu
     return true;
 }
 
-// The names of a unit's equations for the diagnostics of its factorisations (FactorOptions::equationNamer).
-linalg::EquationNamer equationNamerOf(const reduction::UnitSystem* system)
-{
-    return [system](std::int32_t equation)
-    {
-        const reduction::UnitDofLabel label = system->labelOf(system->localDofOfEquation(equation));
-        return base::GridComponent{label.id, label.component};
-    };
-}
-
 // The families of a component (a unit, or the interface) with the rows that load it.
 struct FamilyFlags
 {
@@ -383,20 +374,16 @@ reduction::UnitLoadBasis chooseBasis(const StaticLoadCases& cases, const std::ve
     return reduction::UnitLoadBasis::choose(described, caseCount, budget, pool);
 }
 
-// The node of a point of the model (grid rows, then scalar points), or nothing.
+// The node of a point of the model (grid rows, then scalar points, then the nodes of the entities), or nothing.
 std::optional<std::int32_t> nodeOfPoint(const assembly::DofMap& dofMap, base::EntityId nodeId)
 {
-    const std::optional<input::PointRef> point = dofMap.points().find(nodeId);
-    if (!point)
-        return std::nullopt;
-    return point->kind == input::PointKind::Grid ? point->row : dofMap.gridCount() + point->row;
+    return dofMap.findNode(nodeId);
 }
 
-// The DOFs of a node of the model: six for a grid point, one for a scalar point.
+// The DOFs of a node of the model: six for a grid point, one for a scalar point, up to six for an entity node.
 std::int64_t dofCountOfNode(const assembly::DofMap& dofMap, std::int32_t node)
 {
-    constexpr std::int64_t GRID_DOFS = 6;
-    return node < dofMap.gridCount() ? GRID_DOFS : 1;
+    return dofMap.dofsOfNode(node).count;
 }
 
 // The nonzero g-set entries of one basis vector: its DOFs, loads and enforced values.
@@ -464,6 +451,8 @@ struct CondensedStatics::Units
     std::shared_ptr<assembly::NonStructuralMassShares> shares;
     assembly::MassAssemblyOptions massOptions;
     base::BudgetedBuffer<std::uint8_t> isHeldEverywhere;
+    // The rigid-body motions on the entity DOFs of the element formulation (UnitModel::entityRigidModes).
+    std::vector<double> entityRigidModes;
     // What every unit's equations, factorisation and cache key share.
     reduction::UnitModel unitModel;
     linalg::FactorOptions unitFactorOptions;
@@ -605,7 +594,6 @@ CondensedStatics::CondensedStatics(const Inputs& inputs, base::MemoryBudget& bud
         throw std::invalid_argument(
             "CondensedStatics: the inputs need the snapshot, the analysis model, the plan, the load builder, the "
             "kernels, and one SPC set and output plan per subcase");
-    elements::refuseMixedHybridOn(*inputs.snapshot, "the condensed path");
     if (inputs.cache != nullptr)
         m_cacheSession.emplace(inputs.cache->openSession(inputs.cacheModelTag));
     for (const StaticSubcase& subcase : inputs.subcases)
@@ -636,8 +624,8 @@ void CondensedStatics::condenseUnits(const Inputs& inputs, base::MemoryBudget& b
     std::vector<StaticSubcase> solvedSubcases; // bounded by the subcases
     for (const std::size_t s : inputs.solved)
         solvedSubcases.push_back(inputs.subcases[s]);
-    units.common =
-        std::make_unique<CommonConstraints>(CommonConstraints::of(snapshot, dofMap, solvedSubcases, budget, sink));
+    units.common = std::make_unique<CommonConstraints>(CommonConstraints::of(
+        snapshot, dofMap, solvedSubcases, budget, sink, model.connectivity().usedComponents()));
     const CommonConstraints& common = *units.common;
     units.isHeldEverywhere = base::BudgetedBuffer<std::uint8_t>(budget, gSize, "condensed DOFs held everywhere");
     for (std::size_t dof = 0; dof < gSize; ++dof)
@@ -652,13 +640,14 @@ void CondensedStatics::condenseUnits(const Inputs& inputs, base::MemoryBudget& b
         snapshot.hasTable(input::TableRole::FastenerPiercings) ? &snapshot.fastenerPiercings() : nullptr;
     units.commonMpc = std::make_unique<assembly::MpcEquations>(constraints, dofMap, common.commonMpcSet(),
                                                                common.commonMpcCards, budget, sink);
-    units.fasteners = std::make_unique<assembly::FastenerConstraints>(piercings, dofMap, budget, sink);
+    const elements::FormulationModel* formulation = dofMap.formulation();
+    units.fasteners = std::make_unique<assembly::FastenerConstraints>(piercings, dofMap, budget, sink, formulation);
     std::vector<base::DofIndex> heldEverywhere; // bounded by the constrained DOFs
     for (std::size_t dof = 0; dof < gSize; ++dof)
         if (units.isHeldEverywhere[dof] != 0)
             heldEverywhere.push_back(static_cast<base::DofIndex>(dof));
     const assembly::GlueContext glueContext{
-        rigidElements, units.commonMpc.get(), units.fasteners.get(), heldEverywhere, {}};
+        rigidElements, units.commonMpc.get(), units.fasteners.get(), heldEverywhere, {}, formulation};
     units.commonGlue = std::make_unique<assembly::GlueConstraints>(
         snapshot, common.commonContact, solvedSubcases.empty() ? 1 : solvedSubcases.front().label, dofMap, glueContext,
         budget, sink);
@@ -710,7 +699,7 @@ void CondensedStatics::condenseUnits(const Inputs& inputs, base::MemoryBudget& b
                                         matrix.begin() + static_cast<std::ptrdiff_t>((i + 1) * dofs.size()),
                                         [](double value) { return value == 0.0; });
                         if (!isZero)
-                            reachedPoints.push_back(dofMap.pointIdOf(dofMap.dofOf(dofs[i])));
+                            reachedPoints.push_back(dofMap.nodeIdOf(dofMap.nodeDofOf(dofs[i]).node));
                     }
                 }
             }
@@ -744,10 +733,14 @@ void CondensedStatics::condenseUnits(const Inputs& inputs, base::MemoryBudget& b
     }
     for (const std::size_t index : planned.condensedUnits())
     {
-        const std::span<const base::EntityId> promoted = planned.promotedPoints(index);
-        if (promoted.empty())
+        // The entity nodes an interface element reaches (a fastener reading a pierced shell's unknowns) are not in the
+        // connection tables, which name grid points: their promotion is the rule, not reported.
+        std::vector<std::int32_t> list; // bounded by the unit's points
+        for (const base::EntityId nodeId : planned.promotedPoints(index))
+            if (nodeId > 0)
+                list.push_back(nodeId);
+        if (list.empty())
             continue;
-        const std::vector<std::int32_t> list(promoted.begin(), promoted.end());
         sink.report(problem("boundary-promoted", "UNIT",
                             static_cast<base::EntityId>(inputs.plan->units()[index].unitId),
                             base::concatenate({"unit ", std::to_string(inputs.plan->units()[index].unitId),
@@ -760,9 +753,9 @@ void CondensedStatics::condenseUnits(const Inputs& inputs, base::MemoryBudget& b
     // The units' Gm: its diagnostics are those of the full path's (a cycle, a DOF dependent twice), reported by the
     // constraint sets; here a problem only stops the condensation early.
     base::DiagnosticSink relationSink;
-    units.unitRelations = std::make_shared<assembly::RigidElimination>(rigidElements, units.commonMpc.get(), dofMap,
-                                                                       budget, relationSink, units.fasteners.get(),
-                                                                       units.commonGlue.get(), planned.unitRowFilter());
+    units.unitRelations = std::make_shared<assembly::RigidElimination>(
+        rigidElements, units.commonMpc.get(), dofMap, budget, relationSink, units.fasteners.get(),
+        units.commonGlue.get(), planned.unitRowFilter(), common.formulationRelations.get());
     if (relationSink.hasErrors())
     {
         for (const base::Diagnostic& diagnostic : relationSink.diagnostics())
@@ -782,6 +775,8 @@ void CondensedStatics::condenseUnits(const Inputs& inputs, base::MemoryBudget& b
     unitModel.massOptions = units.massOptions;
     unitModel.singularity = assembly::SingularityOptions::fromParams(params, std::nullopt, sink);
     unitModel.keepsMass = inputs.isCraigBampton;
+    units.entityRigidModes = assembly::entityRigidModes(dofMap);
+    unitModel.entityRigidModes = units.entityRigidModes;
     const reduction::SpiderWeights weights(*units.unitRelations, dofMap, budget);
     for (const std::size_t index : planned.condensedUnits())
     {
@@ -881,7 +876,8 @@ void CondensedStatics::condenseUnits(const Inputs& inputs, base::MemoryBudget& b
                     const base::DofIndex dof = description.dofOfRow[static_cast<std::size_t>(row)];
                     return units.isHeldEverywhere[static_cast<std::size_t>(dof)] != 0 &&
                            isUnitDependent[static_cast<std::size_t>(dof)] == 0 &&
-                           std::find(unitPoints.begin(), unitPoints.end(), dofMap.pointIdOf(dof)) != unitPoints.end();
+                           std::find(unitPoints.begin(), unitPoints.end(),
+                                     dofMap.nodeIdOf(dofMap.nodeDofOf(dof).node)) != unitPoints.end();
                 }
                 // Distributed: the unit's elements, or a PointsPressureLoad face with a point inside it.
                 const StaticLoadCases::DistributedRowPlace& place = description.places[static_cast<std::size_t>(row)];
@@ -1572,7 +1568,7 @@ void CondensedStatics::condenseInWaves(const Inputs& inputs, base::MemoryBudget&
                     for (std::size_t local = 0; local < unit.modelDofOfLocal.size(); ++local)
                         unit.patternLoads(local, unit.loadPatternCount + mode) = system.inertialLoads()(local, mode);
             unit.factorOptions = unitFactorOptions;
-            unit.factorOptions.equationNamer = equationNamerOf(unit.system.get());
+            unit.factorOptions.equationNamer = reduction::equationNamerOf(unit.system.get(), &dofMap);
             CondensedUnitRecord& record = m_record.units[u];
             if (!hits[w])
             {
@@ -1845,7 +1841,8 @@ void CondensedStatics::condenseInWaves(const Inputs& inputs, base::MemoryBudget&
                 unit.condensation->releaseInteriorFactor();
                 unit.lightSystem = std::make_shared<const reduction::UnitSystem>(units.unitModel, unit.description,
                                                                                  system.boundaryData(budget), budget);
-                unit.condensation->rebindSystem(unit.lightSystem, equationNamerOf(unit.lightSystem.get()));
+                unit.condensation->rebindSystem(unit.lightSystem,
+                                                reduction::equationNamerOf(unit.lightSystem.get(), &dofMap));
                 record.isEquationReleased = true;
                 unit.system = unit.lightSystem; // the last holder of the equations: released here
             }
@@ -1890,6 +1887,14 @@ void CondensedStatics::decideRecoveredUnits(const Inputs& inputs)
 {
     Units& units = *m_units;
     const assembly::DofMap& dofMap = inputs.model->dofMap();
+    // The element formulation fills the excluded rotations of a grid point from every shell there: every unit is
+    // recovered (docs/mixed-hybrid-formulation-spec.md section 5.11).
+    if (dofMap.formulation() != nullptr)
+    {
+        for (CondensedUnit& unit : units.units)
+            unit.isRecovered = true;
+        return;
+    }
     // The units of the elements of the section and cut loads, whatever recover= and the outputs say.
     const auto recoverSectionUnits = [&]
     {
@@ -2111,7 +2116,8 @@ void CondensedStatics::keepSet(const GroupInputs& group, std::unique_ptr<const r
                                std::unique_ptr<const assembly::RigidElimination> gm,
                                base::BudgetedBuffer<std::uint8_t> isConstrained,
                                std::vector<std::shared_ptr<const reduction::ExternalUnitAssembly>> placements,
-                               base::MemoryBudget& budget, std::shared_ptr<const CondensedRelief> relief)
+                               base::MemoryBudget& budget, std::shared_ptr<const CondensedRelief> relief,
+                               std::shared_ptr<const assembly::FormulationConstraints> formulation)
 {
     const Inputs& inputs = m_inputs;
     const AnalysisModel& model = *inputs.model;
@@ -2171,6 +2177,7 @@ void CondensedStatics::keepSet(const GroupInputs& group, std::unique_ptr<const r
     for (const std::size_t s : group.cases)
         parts.subcases.push_back(inputs.subcases[s].label);
     parts.relief = std::move(relief);
+    parts.formulation = std::move(formulation);
     m_keptSets.push_back(std::make_shared<const CondensedFactorisedSet>(std::move(parts)));
 }
 
@@ -2297,9 +2304,10 @@ bool CondensedStatics::recoversInSequence() const noexcept
                        [](const CondensedUnit& unit) { return unit.isRecovered; });
 }
 
-std::uint64_t CondensedStatics::unitByUnitBytes(std::size_t caseCount) const noexcept
+std::uint64_t CondensedStatics::unitByUnitBytes(std::size_t caseCount) const
 {
-    std::uint64_t values = 0;
+    listUnitOutputs();
+    std::uint64_t values = static_cast<std::uint64_t>(m_keptDofs.size()) * caseCount;
     for (const CondensedUnit& unit : m_units->units)
         if (unit.isRecovered)
             values += (static_cast<std::uint64_t>(unit.system->heldDofs().size()) + 1) * caseCount;
@@ -2317,7 +2325,8 @@ void CondensedStatics::listUnitOutputs() const
     for (std::size_t u = 0; u < units.units.size(); ++u)
         positionOfPlanUnit[units.units[u].planIndex] = u;
     m_unitOutputs.assign(units.units.size(), UnitOutputs{});
-    for (std::int32_t node = 0; node < dofMap.nodeCount(); ++node)
+    // The grid and scalar points (the nodes of the entities of an element formulation are no points of the tables).
+    for (std::int32_t node = 0; node < dofMap.firstEntityNode(); ++node)
     {
         const base::EntityId nodeId =
             node < dofMap.gridCount() ? dofMap.gridId(node) : dofMap.scalarId(node - dofMap.gridCount());
@@ -2349,7 +2358,78 @@ void CondensedStatics::listUnitOutputs() const
                 !std::binary_search(recoveredElements.begin(), recoveredElements.end(), elementId))
                 m_interfaceElements.push_back(elementId);
     std::sort(m_interfaceElements.begin(), m_interfaceElements.end());
+    if (dofMap.formulation() != nullptr)
+        listKeptDofs(positionOfPlanUnit);
     m_isUnitOutputsListed = true;
+}
+
+void CondensedStatics::listKeptDofs(std::span<const std::size_t> positionOfPlanUnit) const
+{
+    // The element formulation fills the excluded rotation of a grid point from every shell there and makes the stress
+    // of a grid point of solids the mean over every solid there: at a grid point of the interface they may lie in
+    // several units. When the units are recovered unit by unit the cases' vectors hold the interface's values only;
+    // they then take, from each unit, the values of the interior DOFs of its elements at the interface's grid points.
+    const Units& units = *m_units;
+    const assembly::DofMap& dofMap = m_inputs.model->dofMap();
+    const reduction::PlannedUnits& planned = *units.planned;
+    std::vector<std::pair<base::EntityId, std::size_t>> unitOfElement; // bounded by the recovered units' elements
+    for (std::size_t u = 0; u < units.units.size(); ++u)
+        if (units.units[u].isRecovered)
+            for (const base::EntityId elementId : units.units[u].description.elementIds)
+                unitOfElement.emplace_back(elementId, u);
+    std::sort(unitOfElement.begin(), unitOfElement.end());
+    const auto isInteriorTo = [&](std::int32_t node, std::size_t u)
+    {
+        const std::optional<std::size_t> owner = planned.unitOfInteriorNode(node);
+        return owner && *owner < positionOfPlanUnit.size() && positionOfPlanUnit[*owner] == u;
+    };
+    std::vector<std::uint8_t> isKept(static_cast<std::size_t>(dofMap.gSetSize()), 0); // the g set, once
+    const assembly::ElementConnectivity& connectivity = m_inputs.model->connectivity();
+    const linalg::NodeGroupList groups = connectivity.groups();
+    const std::span<const std::int32_t> groupElements = connectivity.groupElementIds();
+    for (std::size_t g = 0; g < groups.groupCount(); ++g)
+    {
+        const auto elementId = static_cast<base::EntityId>(groupElements[g]);
+        const auto found = std::lower_bound(unitOfElement.begin(), unitOfElement.end(),
+                                            std::make_pair(elementId, std::size_t{0}));
+        if (found == unitOfElement.end() || found->first != elementId)
+            continue;
+        const std::size_t u = found->second;
+        const std::span<const std::int32_t> nodes = groups.group(g);
+        const bool touchesInterface = std::any_of(nodes.begin(), nodes.end(), [&](std::int32_t node)
+                                                  { return node < dofMap.gridCount() && !isInteriorTo(node, u); });
+        if (!touchesInterface)
+            continue;
+        m_interfaceLayerElements.push_back(groupElements[g]);
+        for (const std::int32_t node : nodes)
+        {
+            if (!isInteriorTo(node, u))
+                continue;
+            const assembly::DofMap::NodeDofs dofs = dofMap.dofsOfNode(node);
+            for (int k = 0; k < dofs.count; ++k)
+                isKept[static_cast<std::size_t>(dofs.first + k)] = 1;
+        }
+    }
+    std::sort(m_interfaceLayerElements.begin(), m_interfaceLayerElements.end());
+    m_interfaceLayerElements.erase(std::unique(m_interfaceLayerElements.begin(), m_interfaceLayerElements.end()),
+                                   m_interfaceLayerElements.end());
+    for (std::size_t dof = 0; dof < isKept.size(); ++dof)
+        if (isKept[dof] != 0)
+            m_keptDofs.push_back(static_cast<base::DofIndex>(dof));
+    for (std::size_t u = 0; u < units.units.size(); ++u)
+    {
+        const CondensedUnit& unit = units.units[u];
+        if (!unit.isRecovered)
+            continue;
+        for (std::size_t local = 0; local < unit.modelDofOfLocal.size(); ++local)
+        {
+            const base::DofIndex dof = unit.modelDofOfLocal[local];
+            if (dof < 0 || unit.isInteriorLocal[local] == 0 || isKept[static_cast<std::size_t>(dof)] == 0)
+                continue;
+            const auto row = std::lower_bound(m_keptDofs.begin(), m_keptDofs.end(), dof) - m_keptDofs.begin();
+            m_unitOutputs[u].kept.emplace_back(local, static_cast<std::size_t>(row));
+        }
+    }
 }
 
 namespace
@@ -2385,6 +2465,20 @@ output::OutputPlan CondensedStatics::interfaceOutputPlanOf(const output::OutputP
     restrictRequest(filtered, output::OutputKind::Displacement, m_interfacePoints);
     for (const output::OutputKind kind : ELEMENT_TABLE_KINDS)
         restrictRequest(filtered, kind, m_interfaceElements);
+    // The grid point stresses of the solids at the interface's grid points: the means over the solids the plan takes
+    // there, those of the units included (the cases' vectors hold their values: listKeptDofs).
+    if (m_inputs.model->dofMap().formulation() != nullptr)
+    {
+        auto scope = std::make_shared<output::GridPointStressScope>();
+        scope->gridIds.assign(m_interfacePoints.begin(), m_interfacePoints.end());
+        std::vector<std::int32_t> elements = m_interfaceElements; // bounded by the model's elements
+        elements.insert(elements.end(), m_interfaceLayerElements.begin(), m_interfaceLayerElements.end());
+        std::sort(elements.begin(), elements.end());
+        const output::OutputRequestPlan& stress = plan.of(output::OutputKind::Stress);
+        std::erase_if(elements, [&](std::int32_t id) { return !stress.takes(id); });
+        scope->elements = std::move(elements);
+        filtered.setGridPointScope(std::move(scope));
+    }
     return filtered;
 }
 
@@ -2406,6 +2500,13 @@ output::OutputPlan CondensedStatics::unitOutputPlanOf(const output::OutputPlan& 
     restrictRequest(filtered, output::OutputKind::Displacement, m_unitOutputs[unit].interiorPoints);
     for (const output::OutputKind kind : ELEMENT_TABLE_KINDS)
         restrictRequest(filtered, kind, m_unitOutputs[unit].elements);
+    // The grid point stresses of the solids at its interior grid points only, where every solid is the unit's.
+    if (m_inputs.model->dofMap().formulation() != nullptr)
+    {
+        auto scope = std::make_shared<output::GridPointStressScope>();
+        scope->gridIds.assign(m_unitOutputs[unit].interiorPoints.begin(), m_unitOutputs[unit].interiorPoints.end());
+        filtered.setGridPointScope(std::move(scope));
+    }
     return filtered;
 }
 
@@ -2448,6 +2549,41 @@ output::OutputPlan CondensedStatics::unitOnlyOutputPlanOf(const output::OutputPl
 
 namespace
 {
+
+// The element formulation's constraints of a set, as the full path makes them (ConstrainedSystem): the model's
+// relations eliminated a first time to know what they make dependent or read, then its ties, observer relations and
+// excluded DOFs (`spc` holds its derived supports: assembly::withFormulationSupports); null without an element
+// formulation. `externalUnits`: those of the analysis (null: none), whose K* may act on any component of its contour
+// grid points.
+std::unique_ptr<assembly::FormulationConstraints> formulationConstraintsOf(
+    const input::ModelSnapshot& snapshot, const AnalysisModel& model, const input::RigidTable* rigidElements,
+    const assembly::MpcEquations& mpc, const assembly::FastenerConstraints* fasteners,
+    const assembly::GlueConstraints& glue, const assembly::SpcSet& spc, base::MemoryBudget& budget,
+    base::DiagnosticSink& sink, const ExternalUnitPath* externalUnits = nullptr)
+{
+    const assembly::DofMap& dofMap = model.dofMap();
+    const elements::FormulationModel* formulation = dofMap.formulation();
+    if (formulation == nullptr)
+        return nullptr;
+    base::DiagnosticSink firstPass;
+    const assembly::RigidElimination userRelations(rigidElements, &mpc, dofMap, budget, firstPass, fasteners, &glue);
+    assembly::UsedElsewhere usedElsewhere;
+    usedElsewhere.flags.assign(static_cast<std::size_t>(dofMap.gSetSize()), 0);
+    usedElsewhere.markConcentratedLoads(snapshot, dofMap);
+    usedElsewhere.markStiffened(model.connectivity().usedComponents(), dofMap);
+    usedElsewhere.markIndependentTerms(userRelations);
+    if (externalUnits != nullptr)
+    {
+        const linalg::NodeGroupList couplings = externalUnits->couplings();
+        for (std::size_t g = 0; g < couplings.groupCount(); ++g)
+            for (const std::int32_t node : couplings.group(g))
+                if (node < dofMap.gridCount())
+                    for (int component = 1; component <= 6; ++component)
+                        usedElsewhere.flags[static_cast<std::size_t>(dofMap.gridDof(node, component))] = 1;
+    }
+    return std::make_unique<assembly::FormulationConstraints>(*formulation, dofMap.layoutKind(), dofMap, spc,
+                                                              usedElsewhere, userRelations, sink);
+}
 
 // The g-set element forces Σ_e K_e·u_e of the elements not excluded (sorted IDs), in batch and row order.
 void addElementForces(const assembly::ElementSet& set, const assembly::DofMap& dofMap,
@@ -2513,12 +2649,22 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
     const input::RigidTable* rigidElements =
         snapshot.hasTable(input::TableRole::RigidElements) ? &snapshot.rigidElements() : nullptr;
     const assembly::MpcEquations mpc(constraints, dofMap, group.selection.mpc, budget, sink);
-    const assembly::GlueContext glueContext{rigidElements, &mpc, units.fasteners.get(), spc.sbDofs(), spc.sgDofs()};
+    const elements::FormulationModel* formulation = dofMap.formulation();
+    const assembly::GlueContext glueContext{rigidElements, &mpc,         units.fasteners.get(),
+                                            spc.sbDofs(),  spc.sgDofs(), formulation};
     const assembly::GlueConstraints glue(snapshot, group.selection.contact, group.selection.subcase, dofMap,
                                          glueContext, budget, sink);
+    // The element formulation's constraints of the set, as the full path makes them (shared with a kept set).
+    const std::shared_ptr<const assembly::FormulationConstraints> formulationConstraints = formulationConstraintsOf(
+        snapshot, model, rigidElements, mpc, units.fasteners.get(), glue, spc, budget, sink, inputs.externalUnits);
+    const assembly::FormulationRelations* formulationRows =
+        formulationConstraints != nullptr ? &formulationConstraints->relations() : nullptr;
+    const std::span<const base::DofIndex> excludedDofs =
+        formulationConstraints != nullptr ? formulationConstraints->excludedDofs() : std::span<const base::DofIndex>{};
     // On the heap: a kept set (Inputs::keepsSystems) takes it.
-    auto fullGmOwner = std::make_unique<const assembly::RigidElimination>(rigidElements, &mpc, dofMap, budget, sink,
-                                                                          units.fasteners.get(), &glue);
+    auto fullGmOwner = std::make_unique<const assembly::RigidElimination>(
+        rigidElements, &mpc, dofMap, budget, sink, units.fasteners.get(), &glue, assembly::ConstraintRowFilter{},
+        formulationRows);
     const assembly::RigidElimination& fullGm = *fullGmOwner;
     // The interior DOFs of the external units join the permanent constraints (as on the full path: ConstrainedSystem).
     std::vector<base::DofIndex> permanentDofs; // bounded by the constrained DOFs and the zones
@@ -2531,7 +2677,8 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
     const std::span<const base::DofIndex> permanent =
         inputs.externalUnits != nullptr ? std::span<const base::DofIndex>(permanentDofs) : spc.sgDofs();
     const assembly::DofSets sets(
-        dofMap, assembly::DofSetInputs{fullGm.mDofs(), spc.sbDofs(), permanent, {}, group.supports, {}}, budget, sink);
+        dofMap, assembly::DofSetInputs{fullGm.mDofs(), spc.sbDofs(), permanent, {}, group.supports, excludedDofs},
+        budget, sink);
     if (inputs.externalUnits != nullptr && group.relief == assembly::InertiaReliefMode::OnSupports)
         sink.report(problem("inertia-relief-external-unit", "PARAM InertiaRelief", group.selection.subcase,
                             "inertia relief with external units is not supported on the condensed path of this "
@@ -2545,7 +2692,8 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
     stopOnErrors(sink, "the constraints");
     base::DiagnosticSink interfaceSink; // the same rows as fullGm's: its diagnostics are reported once
     const assembly::RigidElimination interfaceGm(rigidElements, &mpc, dofMap, budget, interfaceSink,
-                                                 units.fasteners.get(), &glue, units.planned->interfaceRowFilter());
+                                                 units.fasteners.get(), &glue, units.planned->interfaceRowFilter(),
+                                                 formulationRows);
     const bool hasRelief = group.relief == assembly::InertiaReliefMode::OnSupports && !group.supports.empty();
     // The interface handed over, or its solve replaced by the caller's values.
     const bool isGivenSolve = group.boundaryMode != reduction::BoundarySolveMode::Solve;
@@ -2610,7 +2758,9 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
     interfaceInputs.units = interfaceUnits;
     interfaceInputs.spiders = units.spiders;
     interfaceInputs.relations = &interfaceGm;
+    interfaceInputs.resolvedRelations = &fullGm;
     interfaceInputs.modelSets = &sets;
+    interfaceInputs.entityRigidModes = units.entityRigidModes;
     if (isConditioned)
         interfaceInputs.conditionedSupports = heldSupports;
     interfaceInputs.singularity = group.singularity;
@@ -2972,7 +3122,7 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
                 if (unit.modelDofOfLocal[static_cast<std::size_t>(local)] >= 0)
                     heldDofs[static_cast<std::size_t>(unit.modelDofOfLocal[static_cast<std::size_t>(local)])] = 1;
         keepSet(group, std::move(interfaceOwner), std::move(fullGmOwner), std::move(heldDofs), std::move(placements),
-                budget, std::move(relief));
+                budget, std::move(relief), formulationConstraints);
         m_solvedCaseCount += caseCount;
         m_record.memory.measuredPeakBytes = budget.peak();
         m_record.memory.keptFactorBytes = m_memory->retention.keptBytes();
@@ -3395,7 +3545,7 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
                     {"CondensedStatics: unit ", std::to_string(unit.unitId),
                      ": its equations built again for its recovery number its DOFs otherwise than its condensation's "
                      "(an internal error: report it)"}));
-            unit.condensation->rebindSystem(equations, equationNamerOf(equations.get()));
+            unit.condensation->rebindSystem(equations, reduction::equationNamerOf(equations.get(), &dofMap));
             unit.system = std::move(equations);
             ++record.rebuildCount;
         }
@@ -3448,7 +3598,8 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
             unit.condensation->releaseInteriorFactor();
         if (unit.lightSystem && unit.system != unit.lightSystem)
         {
-            unit.condensation->rebindSystem(unit.lightSystem, equationNamerOf(unit.lightSystem.get()));
+            unit.condensation->rebindSystem(unit.lightSystem,
+                                            reduction::equationNamerOf(unit.lightSystem.get(), &dofMap));
             unit.system = unit.lightSystem;
         }
     };
@@ -3584,6 +3735,9 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
         for (const std::int64_t local : unit.system->heldDofs())
             if (unit.modelDofOfLocal[static_cast<std::size_t>(local)] >= 0)
                 isConstrained[static_cast<std::size_t>(unit.modelDofOfLocal[static_cast<std::size_t>(local)])] = 1;
+    // The formulation's excluded DOFs are held without being supports: no reaction is reported for them.
+    for (const base::DofIndex dof : excludedDofs)
+        isConstrained[static_cast<std::size_t>(dof)] = 0;
     // The DOFs whose SPC force a batch adds to (the interface's held DOFs, the recovered units'): set to zero at the
     // start of each batch, the others never written.
     std::vector<base::DofIndex> reactionDofs; // bounded by the held DOFs
@@ -3756,12 +3910,23 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
     // reactions of the DOFs it holds and its residual work are kept per case, and the batches add them to the cases'
     // SPC forces and EPSILON where they added their own, in the order of the units: the same bits. The units one after
     // the other, each with every thread when its factorisation fits.
+    // With an element formulation, the excluded rotations of a grid point are filled from every shell there and the
+    // stress of a grid point of solids is the mean over every solid there, which may lie in several units: each unit
+    // fills those of its interior points in its own displacements, and keeps for the cases the values of its interior
+    // DOFs that its elements at the interface's grid points have (listKeptDofs); the cases' vectors take them before
+    // their excluded rotations are filled (docs/mixed-hybrid-formulation-spec.md section 5.11).
     const bool isUnitByUnit =
         isSequential && static_cast<bool>(group.visitUnit) &&
         std::any_of(units.units.begin(), units.units.end(), [](const CondensedUnit& unit) { return unit.isRecovered; });
     setRecordKept.isUnitByUnit = isUnitByUnit;
     std::vector<linalg::DenseMatrix> keptReactions(units.units.size()); // per recovered unit: held DOFs × cases
     std::vector<base::BudgetedBuffer<double>> keptResidualWork(units.units.size()); // per recovered unit: per case
+    if (isUnitByUnit)
+        listUnitOutputs();
+    // The kept interior values (m_keptDofs × cases), with an element formulation.
+    const bool keepsValues = isUnitByUnit && formulationConstraints != nullptr;
+    linalg::DenseMatrix keptValues(budget, keepsValues ? m_keptDofs.size() : 0, keepsValues ? caseCount : 0,
+                                   "condensed unit by unit kept interior values");
     if (isUnitByUnit)
     {
         // The gauge of the FreeBodySupport DOFs of each case (conditioned supports): −C·u_r from the interface's
@@ -3802,6 +3967,7 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
         {
             std::vector<std::int64_t> boundaryRowOfLocal; // its row of boundaryRows, −1: none
             std::vector<std::int32_t> gridRows;           // the grid points it moves with the gauge
+            std::vector<base::DofIndex> entityDofs;       // and the DOFs of the entities of an element formulation
             linalg::DenseMatrix boundaryRows;             // its rows of the boundary basis solutions
             linalg::DenseMatrix boundaryValues;           // their values in a batch's cases
             linalg::DenseMatrix displacements;            // its local DOFs in a batch's cases
@@ -3859,6 +4025,8 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
                         continue;
                     if (const std::int32_t node = dofMap.nodeDofOf(dof).node; node < dofMap.gridCount())
                         part.gridRows.push_back(node);
+                    else if (dof >= dofMap.firstEntityDof())
+                        part.entityDofs.push_back(dof);
                     if (unit.isInteriorLocal[local] != 0)
                         continue;
                     if (const std::optional<std::int64_t> interfaceLocal = interface.localDofOf(dof))
@@ -3972,10 +4140,20 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
                             amplitudes[a] = gauge(a, first + c);
                         assembly::addRigidMotionAt(dofMap, amplitudes,
                                                    std::span<double>(&unitDisplacements(0, c), gSize), part.gridRows,
-                                                   isConstrained.span());
+                                                   isConstrained.span(), units.entityRigidModes, part.entityDofs);
                         for (const base::DofIndex dof : group.supports)
                             unitDisplacements(static_cast<std::size_t>(dof), c) = 0.0;
                     }
+                    // The element formulation: the values the cases keep, then the excluded rotations of the unit's
+                    // points (those of its interior points exact: every shell there is the unit's).
+                    if (formulationConstraints != nullptr)
+                        for (std::size_t c = 0; c < count; ++c)
+                        {
+                            for (const auto& [local, row] : m_unitOutputs[u].kept)
+                                keptValues(row, first + c) = unitDisplacements(
+                                    static_cast<std::size_t>(unit.modelDofOfLocal[local]), c);
+                            formulationConstraints->fillExcluded(std::span<double>(&unitDisplacements(0, c), gSize));
+                        }
                     part.displacements = linalg::DenseMatrix();
                     GroupInputs::UnitCases unitCases;
                     unitCases.unit = u;
@@ -4278,10 +4456,21 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
                     amplitudes[a] -= reliefFit[j * RIGID_BODY_MODE_COUNT + a] * atSupport;
             }
             assembly::addRigidMotion(dofMap, amplitudes, std::span<double>(&batchDisplacements(0, c), gSize),
-                                     isConstrained.span());
+                                     isConstrained.span(), units.entityRigidModes);
             // The FreeBodySupport DOFs, flagged held, at rest: D_r = I, so u_r − u_r (the full path's exact zero).
             for (const base::DofIndex dof : group.supports)
                 batchDisplacements(static_cast<std::size_t>(dof), c) = 0.0;
+        }
+
+        // The element formulation (every unit recovered): the excluded rotations filled from the solution (recovered
+        // unit by unit, with the interior values of the units' elements at the interface's grid points: listKeptDofs),
+        // and the reactions of its derived supports carried to their grid points (the full path's, StaticSolution).
+        for (std::size_t c = 0; formulationConstraints != nullptr && c < count; ++c)
+        {
+            for (std::size_t row = 0; row < keptValues.rows(); ++row)
+                batchDisplacements(static_cast<std::size_t>(m_keptDofs[row]), c) = keptValues(row, first + c);
+            formulationConstraints->fillExcluded(std::span<double>(&batchDisplacements(0, c), gSize));
+            spc.carryDerivedReactions(std::span<double>(&batchSpcForces(0, c), gSize));
         }
 
         // The displacements of every case of the batch at once, for the element tables recovered by blocks
@@ -4369,7 +4558,10 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
                                     const output::StiffnessRecovery::UnitRow& b) { return a.node < b.node; });
                 if (needsMpcForces)
                 {
-                    mpcGm.computeMpcForces(elementForces.span(), allLoads, mpcForces.span());
+                    // The formulation's relations are no card of the model: left out of the forces reported.
+                    mpcGm.computeMpcForces(elementForces.span(), allLoads, mpcForces.span(),
+                                           mpcGm.hasFormulationRows() ? assembly::RigidElimination::Rows::OfCards
+                                                                      : assembly::RigidElimination::Rows::All);
                     isMpcForcesZero = false;
                 }
             }
@@ -4434,7 +4626,7 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
             relief->accelerations = accelerations;
         }
         keepSet(group, std::move(interfaceOwner), std::move(fullGmOwner), std::move(isConstrained),
-                std::move(placements), budget, std::move(relief));
+                std::move(placements), budget, std::move(relief), formulationConstraints);
     }
     m_solvedCaseCount += caseCount;
     CondensedMemoryRecord& memory = m_record.memory;
@@ -4647,27 +4839,40 @@ CondensedStatics::EigenGroup CondensedStatics::solveEigenGroup(const EigenGroupI
     const input::RigidTable* rigidElements =
         snapshot.hasTable(input::TableRole::RigidElements) ? &snapshot.rigidElements() : nullptr;
     const assembly::MpcEquations mpc(constraints, dofMap, group.selection.mpc, budget, sink);
-    const assembly::GlueContext glueContext{rigidElements, &mpc, units.fasteners.get(), spc.sbDofs(), spc.sgDofs()};
+    const assembly::GlueContext glueContext{rigidElements, &mpc,         units.fasteners.get(),
+                                            spc.sbDofs(),  spc.sgDofs(), dofMap.formulation()};
     const assembly::GlueConstraints glue(snapshot, group.selection.contact, group.selection.subcase, dofMap,
                                          glueContext, budget, sink);
-    const assembly::RigidElimination fullGm(rigidElements, &mpc, dofMap, budget, sink, units.fasteners.get(), &glue);
+    // The element formulation's constraints of the set (its relations, the excluded DOFs filled in the eigenvectors).
+    std::unique_ptr<assembly::FormulationConstraints> formulationConstraints =
+        formulationConstraintsOf(snapshot, model, rigidElements, mpc, units.fasteners.get(), glue, spc, budget, sink);
+    const assembly::FormulationRelations* formulationRows =
+        formulationConstraints != nullptr ? &formulationConstraints->relations() : nullptr;
+    const std::span<const base::DofIndex> excludedDofs =
+        formulationConstraints != nullptr ? formulationConstraints->excludedDofs() : std::span<const base::DofIndex>{};
+    const assembly::RigidElimination fullGm(rigidElements, &mpc, dofMap, budget, sink, units.fasteners.get(), &glue,
+                                            assembly::ConstraintRowFilter{}, formulationRows);
     const assembly::DofSets sets(
-        dofMap, assembly::DofSetInputs{fullGm.mDofs(), spc.sbDofs(), spc.sgDofs(), {}, group.supports, {}}, budget,
-        sink);
+        dofMap, assembly::DofSetInputs{fullGm.mDofs(), spc.sbDofs(), spc.sgDofs(), {}, group.supports, excludedDofs},
+        budget, sink);
     stopOnErrors(sink, "the constraints");
     base::DiagnosticSink interfaceSink; // the same rows as fullGm's: its diagnostics are reported once
     const assembly::RigidElimination interfaceGm(rigidElements, &mpc, dofMap, budget, interfaceSink,
-                                                 units.fasteners.get(), &glue, units.planned->interfaceRowFilter());
+                                                 units.fasteners.get(), &glue, units.planned->interfaceRowFilter(),
+                                                 formulationRows);
 
-    // The preload of a buckling analysis on the g set (six values per grid point row, then the scalar points).
-    const std::size_t gridValues = 6 * static_cast<std::size_t>(dofMap.gridCount());
-    const elements::NodalDisplacements preload{
-        inputs.preload.empty() ? inputs.preload : inputs.preload.first(gridValues),
-        inputs.preload.empty() ? inputs.preload : inputs.preload.subspan(gridValues), inputs.temperatures};
+    // The preload of a buckling analysis on the g set (six values per grid point row, the scalar points, then the
+    // entities of the formulation).
     if (inputs.isBuckling && inputs.preload.size() != static_cast<std::size_t>(dofMap.gSetSize()))
         throw std::invalid_argument(base::concatenate(
             {"CondensedStatics::solveEigenGroup: a buckling solve needs the g-set preload (",
              std::to_string(dofMap.gSetSize()), " values), found ", std::to_string(inputs.preload.size())}));
+    elements::NodalDisplacements preload;
+    if (!inputs.preload.empty())
+        preload =
+            elements::NodalDisplacements::ofGSet(inputs.preload, static_cast<std::size_t>(dofMap.gridCount()),
+                                                 static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
+    preload.temperatures = inputs.temperatures;
 
     // Each unit's part of the second matrix on its boundary DOFs then its modal coordinates.
     std::vector<linalg::DenseMatrix> seconds(units.units.size()); // bounded by the units
@@ -4732,6 +4937,7 @@ CondensedStatics::EigenGroup CondensedStatics::solveEigenGroup(const EigenGroupI
     interfaceInputs.units = interfaceUnits;
     interfaceInputs.spiders = units.spiders;
     interfaceInputs.relations = &interfaceGm;
+    interfaceInputs.resolvedRelations = &fullGm;
     interfaceInputs.modelSets = &sets;
     interfaceInputs.singularity = group.singularity;
     interfaceInputs.pivotPolicy = group.pivotPolicy;
@@ -4744,6 +4950,7 @@ CondensedStatics::EigenGroup CondensedStatics::solveEigenGroup(const EigenGroupI
     EigenGroup result;
     result.interface =
         std::make_unique<reduction::InterfaceProblem>(interfaceInputs, kernels, budget, in.pool, in.cancellation);
+    result.formulation = std::move(formulationConstraints);
     seconds.clear(); // copied into the interface's second matrix
     const reduction::InterfaceProblem& interface = *result.interface;
     result.equationCount = interface.equationCount();
@@ -4928,6 +5135,15 @@ CondensedStatics::ModeVectors CondensedStatics::recoverModes(const EigenGroup& g
         if (!unit.isFactorKept)
             unit.condensation->releaseInteriorFactor();
     }
+    // The excluded rotations of the element formulation, from every shell at their grid points (every unit is
+    // recovered then: decideRecoveredUnits).
+    if (group.formulation != nullptr)
+    {
+        for (std::size_t m = 0; m < modes; ++m)
+            group.formulation->fillExcluded(std::span<double>(&result.vectors(0, m), gSize));
+        for (const base::DofIndex dof : group.formulation->excludedDofs())
+            result.isKnown[static_cast<std::size_t>(dof)] = 1;
+    }
     finish();
     return result;
 }
@@ -4941,6 +5157,7 @@ struct CondensedStatics::GroupConstraints
     std::unique_ptr<assembly::MpcEquations> mpc;
     assembly::GlueContext glueContext; // GlueConstraints reads it; its spans view the caller's SpcSet
     std::unique_ptr<assembly::GlueConstraints> glue;
+    std::unique_ptr<assembly::FormulationConstraints> formulation; // null without an element formulation
     std::unique_ptr<assembly::RigidElimination> fullGm;
     std::unique_ptr<assembly::DofSets> sets;
     std::unique_ptr<assembly::RigidElimination> interfaceGm;
@@ -4967,20 +5184,29 @@ CondensedStatics::LoadGroup CondensedStatics::prepareLoadGroup(const GroupInputs
     auto held = std::make_shared<GroupConstraints>();
     held->supports = group.supports;
     held->mpc = std::make_unique<assembly::MpcEquations>(constraints, dofMap, group.selection.mpc, budget, sink);
-    held->glueContext =
-        assembly::GlueContext{rigidElements, held->mpc.get(), units.fasteners.get(), spc.sbDofs(), spc.sgDofs()};
+    held->glueContext = assembly::GlueContext{rigidElements, held->mpc.get(), units.fasteners.get(),
+                                              spc.sbDofs(),  spc.sgDofs(),    dofMap.formulation()};
     held->glue = std::make_unique<assembly::GlueConstraints>(snapshot, group.selection.contact, group.selection.subcase,
                                                              dofMap, held->glueContext, budget, sink);
+    // The element formulation's constraints of the set (its relations, the excluded DOFs filled by solveLoads).
+    held->formulation = formulationConstraintsOf(snapshot, model, rigidElements, *held->mpc, units.fasteners.get(),
+                                                 *held->glue, spc, budget, sink);
+    const assembly::FormulationRelations* formulationRows =
+        held->formulation != nullptr ? &held->formulation->relations() : nullptr;
+    const std::span<const base::DofIndex> excludedDofs =
+        held->formulation != nullptr ? held->formulation->excludedDofs() : std::span<const base::DofIndex>{};
     held->fullGm = std::make_unique<assembly::RigidElimination>(rigidElements, held->mpc.get(), dofMap, budget, sink,
-                                                                units.fasteners.get(), held->glue.get());
+                                                                units.fasteners.get(), held->glue.get(),
+                                                                assembly::ConstraintRowFilter{}, formulationRows);
     held->sets = std::make_unique<assembly::DofSets>(
-        dofMap, assembly::DofSetInputs{held->fullGm->mDofs(), spc.sbDofs(), spc.sgDofs(), {}, held->supports, {}},
+        dofMap,
+        assembly::DofSetInputs{held->fullGm->mDofs(), spc.sbDofs(), spc.sgDofs(), {}, held->supports, excludedDofs},
         budget, sink);
     stopOnErrors(sink, "the constraints");
     base::DiagnosticSink interfaceSink; // the same rows as fullGm's: its diagnostics are reported once
     held->interfaceGm = std::make_unique<assembly::RigidElimination>(
         rigidElements, held->mpc.get(), dofMap, budget, interfaceSink, units.fasteners.get(), held->glue.get(),
-        units.planned->interfaceRowFilter());
+        units.planned->interfaceRowFilter(), formulationRows);
 
     std::vector<reduction::InterfaceUnit> interfaceUnits; // bounded by the units
     for (const CondensedUnit& unit : units.units)
@@ -4994,6 +5220,7 @@ CondensedStatics::LoadGroup CondensedStatics::prepareLoadGroup(const GroupInputs
     interfaceInputs.units = interfaceUnits;
     interfaceInputs.spiders = units.spiders;
     interfaceInputs.relations = held->interfaceGm.get();
+    interfaceInputs.resolvedRelations = held->fullGm.get();
     interfaceInputs.modelSets = held->sets.get();
     interfaceInputs.singularity = group.singularity;
     interfaceInputs.pivotPolicy = group.pivotPolicy;
@@ -5076,7 +5303,8 @@ void CondensedStatics::solveLoads(const LoadGroup& group, linalg::ConstDenseMatr
         for (std::size_t c = 0; c < columns; ++c)
         {
             const double value = loadsG(dof, c);
-            if (value == 0.0)
+            // A load on a DOF a unit holds in every subcase goes to its support, as on the full path.
+            if (value == 0.0 || (!localDof && group.isConstrained[dof] != 0))
                 continue;
             if (!localDof)
             {
@@ -5186,6 +5414,11 @@ void CondensedStatics::solveLoads(const LoadGroup& group, linalg::ConstDenseMatr
         if (!unit.isFactorKept)
             unit.condensation->releaseInteriorFactor();
     }
+    // The excluded rotations of the element formulation, from every shell at their grid points (every unit is
+    // recovered then: decideRecoveredUnits).
+    if (group.constraints != nullptr && group.constraints->formulation != nullptr)
+        for (std::size_t c = 0; c < columns; ++c)
+            group.constraints->formulation->fillExcluded(std::span<double>(&displacementsG(0, c), gSize));
 }
 
 void CondensedStatics::addInertialLoads(const LoadGroup& group, std::span<const double> acceleration,

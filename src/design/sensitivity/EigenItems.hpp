@@ -11,6 +11,7 @@
 #include "oos/design/responses/ResponseDefinitions.hpp"
 #include "oos/design/responses/ResponseValues.hpp"
 #include "oos/design/sensitivity/DesignGradients.hpp"
+#include "oos/design/sensitivity/FieldPerturbation.hpp"
 #include "oos/design/sensitivity/ElementDerivatives.hpp"
 #include "oos/design/sensitivity/PseudoLoads.hpp"
 #include "oos/design/sensitivity/ResponseLinearisation.hpp"
@@ -18,13 +19,17 @@
 #include "oos/elements/core/ElementFamily.hpp"
 #include "oos/input/tables/ParamTable.hpp"
 #include "oos/linalg/dense/DenseMatrix.hpp"
+#include "oos/solutions/common/AnalysisModel.hpp"
+#include "oos/solutions/common/ConstrainedSystem.hpp"
 #include "oos/solutions/sol103/ModesSolution.hpp"
 #include "oos/solutions/sol105/BucklingSolution.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <utility>
@@ -86,6 +91,10 @@ public:
         const input::ParamTable* params = nullptr; // the design point's PARAMs (COUPMASS, WTMASS of the MODES subcases)
         std::size_t variableCount = 0;
         base::MemoryBudget* budget = nullptr;
+        // The design point's snapshot and the pool, for the constraints of the solves under a shape that moves the
+        // relations of an element formulation (addFormulationShapeTerms).
+        const input::ModelSnapshot* snapshot = nullptr;
+        base::ThreadPool* pool = nullptr;
     };
 
     explicit EigenItems(const Inputs& inputs);
@@ -106,8 +115,10 @@ public:
     // Groups the roots of the items into clusters; call once every item is added.
     void formClusters();
 
-    // The preload displacements (and temperatures) of a static subcase, for the differential stiffness at fixed u.
-    void setPreload(std::int32_t subcase, const elements::NodalDisplacements& preload);
+    // The preload displacements (and temperatures) of a static subcase, for the differential stiffness at fixed u, and
+    // the same displacements on the g set (the static solution's, which must outlive the items).
+    void setPreload(std::int32_t subcase, const elements::NodalDisplacements& preload,
+                    std::span<const double> displacementsG);
     // The weights c = λ²·∇_u(φᵀ·K_d(u)·φ) of the LAMA items whose cluster has one mode (the others take their preload
     // part by preloadTerms()), on the g set, by item.
     [[nodiscard]] std::vector<std::pair<ItemKey, SparseVector>> bucklingWeights() const;
@@ -138,6 +149,17 @@ public:
     // Φᵀ·K_d(du_j)·Φ. Returns the solves made.
     std::int64_t addPreloadTerms(std::int32_t preloadSubcase, const SensitivitySystem& system, const PseudoLoads& loads,
                                  std::size_t subcase);
+
+    // A shape (designed quantity `quantity`, its perturbation and the formulation model of each side) that moves the
+    // relations of an element formulation (its ties and observer relations, functions of the positions: u = T(v)·u_n).
+    // The roots of the reduced problem then change with T too: with D_a = ∂(T·φ_a,n)/∂v at fixed φ_a,n
+    // (dependentDerivative), the projection of the cluster along the quantity takes
+    //     D_aᵀ·R_b + D_bᵀ·R_a,   R = (K − λ·M)·φ (vibration), (K + λ·K_d)·φ (buckling),
+    // the derivative of φ_nᵀ·Tᵀ·A·T·φ_n beyond φᵀ·∂A·φ (R is the force of the relations on the mode: zero off their
+    // dependent DOFs); and the Rayleigh parts of a single vibration root 2·D·K·φ and 2·D·M·φ. The constraints of each
+    // solve (its constraint set with the formulation's, Kgg, Mgg or K_d) are made at the first shape.
+    void addFormulationShapeTerms(std::size_t quantity, const FieldPerturbation& perturbation,
+                                  const std::array<const elements::FormulationModel*, FIELD_SIDE_COUNT>& models);
 
     // The explicit parts of the items, appended to `linearised` (sparse rows over the independent variables):
     // `quantities` the designed quantities with d(v)/dx (the fields, then the shapes, as PseudoLoads indexes them).
@@ -190,6 +212,13 @@ private:
     void addProjection(const Cluster& cluster, std::span<const base::DofIndex> dofs, std::span<const double> matrix,
                        double factor, std::vector<double>& target) const;
     [[nodiscard]] std::vector<base::DofIndex> dofsOf(std::span<const elements::ElementDof> dofs) const;
+    // The share of the element of batch row `row` in the weights of the LAMA items (bucklingWeights) from its
+    // family's product differentialStiffnessPreloadGradient, `shapes` the items' columns as displacements; false
+    // (nothing added) when the family has none.
+    bool addProductWeights(const elements::ElementFamily& family, const elements::ElementBatchView& view,
+                           std::int64_t row, std::span<const Item* const> items,
+                           std::span<const elements::NodalDisplacements> shapes,
+                           std::vector<std::vector<std::pair<base::DofIndex, double>>>& weights) const;
     // Projects one element's derivatives on every cluster: Φᵀ·(dK − λ·dM)·Φ (vibration) or Φᵀ·(dK + λ·dK_d)·Φ
     // (buckling) added to targetOf(cluster), and the strain and kinetic energy rates of the single vibration roots
     // given to energiesOf(cluster, strain, kinetic) when it is set.
@@ -199,11 +228,26 @@ private:
                         const ElementMatrixDerivative& stiffness, const MassOf& massOf,
                         const DifferentialOf& differentialOf, const TargetOf& targetOf, const EnergiesOf& energiesOf);
 
+    // The constraints of a solve for addFormulationShapeTerms: its analysis model and constraint set, and per mode
+    // column K·φ and M·φ (vibration) or K_d·φ (buckling) on the g set; no system when the formulation has no relation
+    // in that set.
+    struct SolveConstraints
+    {
+        std::unique_ptr<solutions::AnalysisModel> model;
+        std::unique_ptr<solutions::ConstrainedSystem> system;
+        std::map<std::size_t, std::pair<std::vector<double>, std::vector<double>>> products;
+    };
+    [[nodiscard]] SolveConstraints& constraintsOf(std::size_t solve);
+    // φ of a mode on the g set, normalised.
+    [[nodiscard]] std::vector<double> normalisedShape(const Solve& solve, std::size_t mode) const;
+
     Inputs m_in;
     std::vector<Solve> m_solves;
     std::vector<Item> m_items;
     std::vector<Cluster> m_clusters;
     std::map<std::int32_t, elements::NodalDisplacements> m_preloads;
+    std::map<std::int32_t, std::span<const double>> m_preloadVectors;
+    std::map<std::size_t, SolveConstraints> m_solveConstraints; // by solve
     bool m_hasModal = false;
     bool m_hasBuckling = false;
 };

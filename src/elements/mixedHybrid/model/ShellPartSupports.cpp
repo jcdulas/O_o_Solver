@@ -37,6 +37,47 @@ SpaceVector basisVector(std::size_t c)
     return e;
 }
 
+// Two directions held at the two grids of an edge are one when they are parallel within this (1 − |cosine|).
+constexpr double PARALLEL_TOLERANCE = 1e-10;
+
+// The axes a grid holds in its translations (`first` 0) or its rotations (`first` 3): the basic axes of its flags and
+// its directions that are no basic axis.
+std::vector<SpaceVector> heldAxesOf(const ShellGridSupport& support, std::size_t first)
+{
+    std::vector<SpaceVector> axes;
+    for (std::size_t c = 0; c < 3; ++c)
+        if (support.held[first + c])
+            axes.push_back(basisVector(c));
+    for (const ShellSkewAxis& axis : support.skewAxes)
+        if (axis.component >= first && axis.component < first + 3)
+            axes.push_back(axis.direction);
+    return axes;
+}
+
+// v is in the span of `axes` (unit vectors): what is left of it once its parts along them are taken off vanishes.
+bool inSpanOf(const SpaceVector& v, const std::vector<SpaceVector>& axes)
+{
+    std::vector<SpaceVector> basis; // orthonormal, at most three
+    for (const SpaceVector& axis : axes)
+    {
+        SpaceVector rest = axis;
+        for (const SpaceVector& q : basis)
+            rest = sub3(rest, scl3(q, dot3(rest, q)));
+        if (norm3(rest) > INDEPENDENT_DIRECTION)
+            basis.push_back(unit3(rest));
+    }
+    SpaceVector rest = v;
+    for (const SpaceVector& q : basis)
+        rest = sub3(rest, scl3(q, dot3(rest, q)));
+    return dot3(rest, rest) < SPAN_TOLERANCE_SQUARED;
+}
+
+bool hasSkewRotation(const ShellGridSupport& support)
+{
+    return std::any_of(support.skewAxes.begin(), support.skewAxes.end(),
+                       [](const ShellSkewAxis& axis) { return axis.component >= 3; });
+}
+
 // The terms of a row kept: those whose magnitude exceeds `threshold` times the largest (every one that is not zero
 // with a zero threshold), by increasing unknown.
 std::vector<ShellPartTerm> keptTerms(const std::map<std::size_t, double>& row, double threshold)
@@ -114,13 +155,30 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
     {
         if (support.grid >= ng)
             continue;
+        ShellGridSupport& merged = supportOf[support.grid];
         for (std::size_t c = 0; c < 6; ++c)
             if (support.held[c])
             {
-                supportOf[support.grid].held[c] = true;
-                supportOf[support.grid].values[c] = support.values[c];
+                merged.held[c] = true;
+                merged.values[c] = support.values[c];
             }
+        if (support.skewAxes.empty())
+            continue;
+        // a grid that holds directions off the basic axes gives its held translation and rotation as whole vectors
+        merged.values = support.values;
+        merged.skewAxes.insert(merged.skewAxes.end(), support.skewAxes.begin(), support.skewAxes.end());
     }
+    for (const ShellGridSupport& support : grids)
+        if (support.grid < ng && support.followsRelation)
+            supportOf[support.grid].followsRelation = true;
+    // the grids of the outline of the shells: those of an edge that one shell has
+    std::vector<bool> isOnOutline(ng, false);
+    for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
+        if (m_topology.edgeElements[e].size() == 1)
+        {
+            isOnOutline[m_topology.edges[e].lower] = true;
+            isOnOutline[m_topology.edges[e].higher] = true;
+        }
     const auto value = [&](std::size_t g, std::size_t c)
     { return supportOf[g].held[c] ? supportOf[g].values[c] : 0.0; };
 
@@ -144,15 +202,36 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
             hold(m_shells[ie].dofs[3 * re.h1Count + i], 0.0, {});
     }
 
-    // the supports along the external edges
+    // the supports along the edges whose two grids hold a component. The reference reads the external edges only and
+    // states the others on the edges; the model files state supports at grid points only, so an edge inside the shells
+    // is read too (as an external one) when one of its grids is inside them: a line of supports across a plate holds
+    // the plate along it. An inner edge between two grids of the outline is not: the diagonal of a triangle at a
+    // corner or the edge across a strip one element wide joins two supported sides, and holding it would hold the
+    // shell between them. Two grids that follow a relation of the model (a rigid element) move the edge between them
+    // wherever it is.
+    constexpr std::size_t READ_AS_EXTERNAL = 1;
     for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
     {
         const std::size_t ga = m_topology.edges[e].lower;
         const std::size_t gb = m_topology.edges[e].higher;
-        const EdgeSupport held = edgeHeld({}, m_topology.edges[e], m_topology.edgeElements[e].size(),
-                                          supportOf[ga].held, supportOf[gb].held, true);
-        if (held == EdgeSupport{})
+        const bool isExternal = m_topology.edgeElements[e].size() == 1;
+        const bool followsRelation = supportOf[ga].followsRelation && supportOf[gb].followsRelation;
+        if (!isExternal && !followsRelation && isOnOutline[ga] && isOnOutline[gb])
             continue;
+        const EdgeSupport held =
+            edgeHeld({}, m_topology.edges[e], READ_AS_EXTERNAL, supportOf[ga].held, supportOf[gb].held, true);
+        // the directions off the basic axes: the edge reads them when both its grids hold some
+        const bool hasSkew = !supportOf[ga].skewAxes.empty() && !supportOf[gb].skewAxes.empty();
+        if (held == EdgeSupport{} && !hasSkew)
+            continue;
+        // with rotations held off the basic axes, the spans of the held rotation axes replace the flags of the basic
+        // ones (the same tests when the axes are basic)
+        const bool skewRotations = hasSkew && (hasSkewRotation(supportOf[ga]) || hasSkewRotation(supportOf[gb]));
+        const std::vector<SpaceVector> rotationAxesA = heldAxesOf(supportOf[ga], 3);
+        const std::vector<SpaceVector> rotationAxesB = heldAxesOf(supportOf[gb], 3);
+        const std::vector<SpaceVector> translationAxesA = heldAxesOf(supportOf[ga], 0);
+        const std::vector<SpaceVector> translationAxesB = heldAxesOf(supportOf[gb], 0);
+        const bool bothTurn = !rotationAxesA.empty() && !rotationAxesB.empty();
         const std::size_t ie = m_topology.edgeElements[e].front();
         const ShellElementData el = element(ie);
         const ShellReferenceElement& re = referenceElement(el.cornerCount);
@@ -175,13 +254,30 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
             rod.ub[c] = value(gb, c);
             rod.ta[c] = held.rotations[c] ? value(ga, 3 + c) : 0.0;
             rod.tb[c] = held.rotations[c] ? value(gb, 3 + c) : 0.0;
+            if (skewRotations && bothTurn)
+            {
+                rod.ta[c] = supportOf[ga].values[3 + c];
+                rod.tb[c] = supportOf[gb].values[3 + c];
+            }
         }
-        // the directions across the edge whose slope a held rotation fixes: t × e_c
-        for (std::size_t c = 0; c < 3; ++c)
+        // the directions across the edge whose slope a held rotation fixes: t × e_c (t × r for each rotation axis r
+        // both grids hold, when they are off the basic axes)
+        std::vector<SpaceVector> turning;
+        if (!skewRotations)
         {
-            if (!held.rotations[c])
-                continue;
-            SpaceVector v = cross3(rod.tangent, basisVector(c));
+            for (std::size_t c = 0; c < 3; ++c)
+                if (held.rotations[c])
+                    turning.push_back(basisVector(c));
+        }
+        else
+        {
+            for (const SpaceVector& axis : rotationAxesA)
+                if (inSpanOf(axis, rotationAxesB))
+                    turning.push_back(axis);
+        }
+        for (const SpaceVector& axis : turning)
+        {
+            SpaceVector v = cross3(rod.tangent, axis);
             for (const SpaceVector& q : rod.controlled)
                 v = sub3(v, scl3(q, dot3(v, q)));
             if (norm3(v) > INDEPENDENT_DIRECTION)
@@ -200,6 +296,8 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
         std::vector<std::array<std::array<SpaceVector, 2>, 3>> traceByTranslation(k - 1);
         std::vector<std::array<std::array<SpaceVector, 2>, 3>> traceByRotation(k - 1);
         std::vector<std::array<SpaceVector, 2>> rotationByRotation(p + 1);
+        // [l][end]: the moment l of the function of the chord that is 1 at the grid `end` and 0 at the other
+        std::vector<std::array<double, 2>> linearMoments(k - 1, std::array<double, 2>{});
         for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
         {
             const PointGeometry g = edgeGeometry(def, re.h1Count, kk, gi);
@@ -211,6 +309,8 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
             for (std::size_t l = 0; l + 1 < k; ++l)
             {
                 const double f = re.edgeWeights[gi] * legendreValue(l, 2.0 * te - 1.0) * we;
+                linearMoments[l][0] += f * (1.0 - sc);
+                linearMoments[l][1] += f * sc;
                 for (std::size_t c = 0; c < 3; ++c)
                 {
                     traceMoments[l][c] += f * uv[c];
@@ -249,8 +349,10 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                     for (std::size_t cp = 0; cp < 3; ++cp)
                         if (supportOf[ends[end]].held[cp] && traceByTranslation[l][c][end][cp] != 0.0)
                             carried.push_back({ends[end], cp, traceByTranslation[l][c][end][cp]});
+                    // (off the basic axes, every component: the caller keeps those the grid holds)
                     for (std::size_t cp = 0; cp < 3; ++cp)
-                        if (held.rotations[cp] && traceByRotation[l][c][end][cp] != 0.0)
+                        if ((held.rotations[cp] || (skewRotations && bothTurn)) &&
+                            traceByRotation[l][c][end][cp] != 0.0)
                             carried.push_back({ends[end], 3 + cp, traceByRotation[l][c][end][cp]});
                 }
                 hold(first + 3 * l + c, traceMoments[l][c], std::move(carried));
@@ -267,11 +369,19 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
             const auto tv = referenceEdgePointAndDirection(el.cornerCount, kk, re.edgeParameters[gi]).second;
             const SpaceVector t = unit3(add3(scl3(g.a[0], tv[0]), scl3(g.a[1], tv[1])));
             const SpaceVector mu = cross3(t, g.nu);
-            rotationHeld = rotationHeld && inHeldSpan(t, held.rotations);
-            shearHeld = shearHeld && inHeldSpan(mu, held.rotations);
-            normalHeld = normalHeld && inHeldSpan(g.nu, held.translations);
+            if (!hasSkew)
+            {
+                rotationHeld = rotationHeld && inHeldSpan(t, held.rotations);
+                shearHeld = shearHeld && inHeldSpan(mu, held.rotations);
+                normalHeld = normalHeld && inHeldSpan(g.nu, held.translations);
+                continue;
+            }
+            rotationHeld = rotationHeld && inSpanOf(t, rotationAxesA) && inSpanOf(t, rotationAxesB);
+            shearHeld = shearHeld && inSpanOf(mu, rotationAxesA) && inSpanOf(mu, rotationAxesB);
+            normalHeld = normalHeld && inSpanOf(g.nu, translationAxesA) && inSpanOf(g.nu, translationAxesB);
         }
-        const bool anyRotation = held.rotations[0] || held.rotations[1] || held.rotations[2];
+        const bool anyRotation =
+            hasSkew ? bothTurn : (held.rotations[0] || held.rotations[1] || held.rotations[2]);
         if (rotationHeld && anyRotation)
             for (std::size_t l = 0; l <= p; ++l)
             {
@@ -280,7 +390,7 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                 std::vector<ShellGridTerm> carried;
                 for (std::size_t end = 0; end < 2; ++end)
                     for (std::size_t cp = 0; cp < 3; ++cp)
-                        if (held.rotations[cp] && rotationByRotation[l][end][cp] != 0.0)
+                        if ((held.rotations[cp] || skewRotations) && rotationByRotation[l][end][cp] != 0.0)
                             carried.push_back({ends[end], 3 + cp, scale * rotationByRotation[l][end][cp]});
                 hold(first + edgeRotationDof(l), scale * rotationMoments[l], std::move(carried));
             }
@@ -294,6 +404,48 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                                     ": rotation across the edge held with the normal displacement free: not "
                                     "represented");
         }
+        if (!hasSkew)
+            continue;
+        // the translations held along a direction d off the basic axes, the same at both grids: the trace of the
+        // displacement along d is that of the chord, Σ_c d_c q_(l, c) = m_l(a) (u_a · d) + m_l(b) (u_b · d) for each
+        // moment l (m_l the moments of the two linear functions of the chord, u · d the held component of the grid)
+        bool differs = false;
+        for (const ShellSkewAxis& axisA : supportOf[ga].skewAxes)
+        {
+            if (axisA.component >= 3)
+                continue;
+            // the same direction at the other grid; the same component along another direction there is a
+            // displacement system that turns along the edge, which the edge does not carry
+            const ShellSkewAxis* partner = nullptr;
+            bool turns = false;
+            for (const ShellSkewAxis& axisB : supportOf[gb].skewAxes)
+            {
+                if (axisB.component >= 3)
+                    continue;
+                if (std::fabs(dot3(axisA.direction, axisB.direction)) >= 1.0 - PARALLEL_TOLERANCE)
+                    partner = &axisB;
+                else
+                    turns = turns || axisB.component == axisA.component;
+            }
+            if (partner == nullptr)
+            {
+                differs = differs || turns;
+                continue;
+            }
+            const double sign = dot3(axisA.direction, partner->direction) < 0.0 ? -1.0 : 1.0;
+            for (std::size_t l = 0; l + 1 < k; ++l)
+            {
+                ShellSupportRow row;
+                for (std::size_t c = 0; c < 3; ++c)
+                    if (axisA.direction[c] != 0.0)
+                        row.unknowns.push_back({first + 3 * l + c, axisA.direction[c]});
+                row.grids.push_back({ga, axisA.component, -linearMoments[l][0]});
+                row.grids.push_back({gb, partner->component, -sign * linearMoments[l][1]});
+                out.rows.push_back(std::move(row));
+            }
+        }
+        if (differs)
+            ++out.uncarriedEdges;
     }
 
     // the rotations held with a value at grids of shells without line elements: they act only through the edges that
@@ -338,9 +490,44 @@ std::vector<ShellPartTerm> ShellPart::meanRotationRow(std::size_t grid, std::siz
     return meanRotationRows(grid, relativeThreshold)[component];
 }
 
+std::vector<std::pair<std::size_t, std::size_t>> ShellPart::rotationShellsAt(std::size_t grid) const
+{
+    std::vector<std::pair<std::size_t, std::size_t>> at = shellsAt(grid);
+    const bool anyMoments =
+        std::any_of(at.begin(), at.end(), [&](const auto& shell) { return carriesMoments(shell.first); });
+    if (anyMoments)
+        std::erase_if(at, [&](const auto& shell) { return !carriesMoments(shell.first); });
+    return at;
+}
+
+std::optional<SpaceVector> ShellPart::commonNormalAt(std::size_t grid) const
+{
+    // Two normals are one when they differ by less than a degree (the kink the geometry report names).
+    const double sameNormal = std::cos(1.0 * 3.14159265358979323846 / 180.0);
+    const std::vector<std::pair<std::size_t, std::size_t>> at = rotationShellsAt(grid);
+    SpaceVector first{};
+    SpaceVector sum{};
+    for (std::size_t i = 0; i < at.size(); ++i)
+    {
+        const ShellElementData el = element(at[i].first);
+        const ReferencePoint x = referenceCorner(el.cornerCount, at[i].second);
+        SpaceVector nu = geometryAt(referenceElement(el.cornerCount), el.definition(), x[0], x[1]).nu;
+        if (i == 0)
+            first = nu;
+        // the side a shell's normal points to is its numbering's: the normals are compared up to their sign
+        const double cosine = dot3(nu, first);
+        if (std::fabs(cosine) < sameNormal)
+            return std::nullopt;
+        sum = add3(sum, scl3(nu, cosine < 0.0 ? -1.0 : 1.0));
+    }
+    if (at.empty())
+        return std::nullopt;
+    return unit3(sum);
+}
+
 std::array<std::vector<ShellPartTerm>, 3> ShellPart::meanRotationRows(std::size_t grid, double relativeThreshold) const
 {
-    const std::vector<std::pair<std::size_t, std::size_t>> at = shellsAt(grid);
+    const std::vector<std::pair<std::size_t, std::size_t>> at = rotationShellsAt(grid);
     if (at.empty())
         return {};
     const double count = static_cast<double>(at.size());
@@ -451,6 +638,36 @@ std::vector<ShellDisplacementRows> ShellPart::displacementRowsAt(
                 at.rows[c].push_back({unknown, coefficient});
         out.push_back(std::move(at));
     }
+    return out;
+}
+
+ShellPart::PointRows ShellPart::pointRows(std::size_t shell, double xi, double eta) const
+{
+    const ShellElementData& el = m_shells[shell];
+    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const ShellElementDefinition def = el.definition();
+    const std::vector<ReferenceJet> h = h1At(re, def, xi, eta);
+    const Matrix rotation = rotationRowsOf(re, def, xi, eta);
+    std::array<std::map<std::size_t, double>, 6> rows;
+    PointRows out;
+    for (std::size_t i = 0; i < re.h1Count; ++i)
+    {
+        const double v = h[i][0];
+        for (std::size_t c = 0; c < 3; ++c)
+            out.point[c] += v * el.mapCoefficients[i][c];
+        if (v == 0.0)
+            continue;
+        for (std::size_t c = 0; c < 3; ++c)
+            rows[c][el.dofs[3 * i + c]] += el.signs[3 * i + c] * v;
+    }
+    for (std::size_t r = 0; r < 3; ++r)
+        for (std::size_t i = 0; i < rotation.columns(); ++i)
+            if (rotation(r, i) != 0.0)
+                rows[3 + r][el.dofs[i]] += el.signs[i] * rotation(r, i);
+    for (std::size_t r = 0; r < 6; ++r)
+        for (const auto& [unknown, coefficient] : rows[r])
+            if (coefficient != 0.0)
+                out.rows[r].push_back({unknown, coefficient});
     return out;
 }
 

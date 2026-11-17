@@ -319,7 +319,7 @@ void SpcSet::carryDerivedReactions(std::span<double> supportForcesG) const noexc
     for (const DerivedSupportDof& support : m_arrays->derived)
     {
         double& reaction = supportForcesG[static_cast<std::size_t>(support.dof)];
-        for (const ConstraintTerm& term : support.carriedTo)
+        for (const ConstraintTerm& term : support.reactionTo)
             supportForcesG[static_cast<std::size_t>(term.dof)] += term.coefficient * reaction;
         reaction = 0.0;
     }

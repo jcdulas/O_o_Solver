@@ -10,6 +10,8 @@
 #include "oos/output/arrays/ElementResultTable.hpp"
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -32,6 +34,22 @@ struct ElementKindSelection
     [[nodiscard]] bool selectsSameAs(const ElementKindSelection& other) const;
 };
 
+// The rows of the table of the stresses at the grid points of the solids of an element formulation (one row per grid
+// point, the mean over its solids; docs/mixed-hybrid-formulation-spec.md section 10.3) when a recovery makes those of
+// some grid points only: the condensed path recovering its units unit by unit makes the rows of a unit's interior
+// points with that unit, and those of the interface's points from the cases' vectors, which then hold the values of
+// the solids around them (CondensedStatics::unitOutputPlanOf, interfaceOutputPlanOf).
+struct GridPointStressScope
+{
+    // The grid point IDs that take a row (sorted).
+    std::vector<std::int32_t> gridIds;
+    // The elements whose stresses enter the means (sorted IDs; the solids among them count), in place of those the
+    // stress selection takes; when not given, those it takes.
+    std::optional<std::vector<std::int32_t>> elements;
+
+    [[nodiscard]] bool operator==(const GridPointStressScope& other) const = default;
+};
+
 // The element tables a subcase asks for: one selection per kind, the strain form (FIBER: the strains
 // at the fibres; otherwise STRCUR, the membrane strains and curvatures, for the shells that give both) and the stress
 // column of the shells (MAXS, the default: the maximum shear (σ1 − σ2)/2 in place of the von Mises stress the families
@@ -43,6 +61,9 @@ struct ElementOutputSelection
     ElementKindSelection forces;
     bool isStrainAtFibres = false;
     bool isMaximumShear = false;
+    // The rows of the grid point stress table of the solids of an element formulation; null: every grid point of the
+    // solids the stress selection takes.
+    std::shared_ptr<const GridPointStressScope> gridPointScope;
 
     // Whether the two make the same tables (the same kinds, elements, places and forms).
     [[nodiscard]] bool selectsSameAs(const ElementOutputSelection& other) const;
@@ -59,7 +80,8 @@ struct CaseLoads
 
 // The elements a build recovers and where it reads their displacements (the streamed path: the elements of
 // a region, with the displacements of its points only): per batch of the set the ranges of its rows (sorted,
-// disjoint; none: the batch is left out), and the displacements' rows, six per grid slot then one per scalar slot
+// disjoint; none: the batch is left out), and the displacements' rows, six per grid slot, then one per scalar slot,
+// then the values of the entities of an element formulation the region gives, each entity's block at its offset
 // (elements::DisplacementSlots).
 struct RecoveryWindow
 {
@@ -67,6 +89,12 @@ struct RecoveryWindow
     elements::DisplacementSlots slots;
     std::size_t gridSlotCount = 0;
     std::size_t scalarSlotCount = 0;
+    std::size_t entityValueCount = 0;
+
+    [[nodiscard]] std::size_t rowCount() const noexcept
+    {
+        return 6 * gridSlotCount + scalarSlotCount + entityValueCount;
+    }
 };
 
 // Makes the element result tables of the data contract from the displacements of a subcase: every batch of the
@@ -145,8 +173,8 @@ public:
     // none). The cases share `selection`. `vectorisedCases`: how many cases the caller recovers with buildCases in all
     // (every case of the run it could, not only those of the block); a kind of a family whose
     // vectorisedRecoveryMinCases is reached is vectorised, so that the bits of a case do not depend on the block it
-    // comes in. Throws std::invalid_argument when the shapes disagree; MemoryBudgetError; OperationCancelledError
-    // between batches.
+    // comes in (never in a model with the entities of a formulation: its elements may read them). Throws
+    // std::invalid_argument when the shapes disagree; MemoryBudgetError; OperationCancelledError between batches.
     void buildCases(std::span<const std::int32_t> subcases, linalg::ConstDenseMatrixView displacementsG,
                     std::size_t vectorisedCases, base::MemoryBudget& budget,
                     std::span<std::vector<ElementResultTable>> tables, base::ThreadPool* pool = nullptr,
@@ -161,6 +189,14 @@ public:
                      std::span<std::vector<ElementResultTable>> tables, base::ThreadPool* pool = nullptr,
                      const base::CancellationToken* cancellation = nullptr,
                      const ElementOutputSelection* selection = nullptr) const;
+
+    // The table of the stresses at the grid points of the solids of an element formulation (the means over its
+    // solids the selection takes: "SolidGridPoints", docs/mixed-hybrid-formulation-spec.md section 10.3) from the
+    // displacements of the whole g set, appended to `tables`: what build() adds to a case's tables, for the streamed
+    // path, whose windows hold the solids of a region only. Nothing without such solids or stress request.
+    void buildGridPointStresses(std::int32_t subcase, std::span<const double> displacementsG,
+                                base::MemoryBudget& budget, std::vector<ElementResultTable>& tables,
+                                const ElementOutputSelection* selection = nullptr) const;
 
 private:
     void buildCasesIn(std::span<const std::int32_t> subcases, linalg::ConstDenseMatrixView displacements,

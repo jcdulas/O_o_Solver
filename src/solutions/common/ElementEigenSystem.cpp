@@ -21,7 +21,10 @@ ElementEigenSystem::ElementEigenSystem(const Inputs& inputs, base::MemoryBudget&
         ConstrainedSystemOptions systemOptions;
         systemOptions.diagonalBlocks = [&](const assembly::RigidElimination& gm, const assembly::DofSets&)
         {
-            diagonals.emplace(StreamedFront::nodeDiagonals(model, gm, budget, inputs.pool, inputs.cancellation));
+            const base::BudgetedBuffer<double> entityRigidRows =
+                StreamedFront::entityRigidRowsOf(model.dofMap(), budget);
+            diagonals.emplace(StreamedFront::nodeDiagonals(model, gm, entityRigidRows.span(), budget, inputs.pool,
+                                                           inputs.cancellation));
             return std::move(diagonals->blocks);
         };
         m_system = std::make_unique<ConstrainedSystem>(model, inputs.selection, budget, inputs.pool,

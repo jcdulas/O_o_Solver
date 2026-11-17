@@ -47,25 +47,37 @@ std::variant<Section, std::string> mixedSectionOf(const elements::ShellSection& 
         return std::string(
             "expected a ShellProp with a bending material in MixedHybridFormulation, found the "
             "plane-strain option (MID2 = -1); give a bending material");
-    if (!section.hasMembrane || !section.hasBending)
+    if (!section.hasMembrane && !section.hasBending)
         return std::string(
-                   "expected a shell section with both a membrane (MID1) and a bending (MID2) material in "
-                   "MixedHybridFormulation, found ") +
-               (section.hasMembrane ? "no bending material" : "no membrane material") +
-               "; give both (membrane-only and bending-only sections come in a later version)";
+            "expected a shell section with a membrane (MID1) or a bending (MID2) material in "
+            "MixedHybridFormulation, found neither; give at least one");
     const double t = section.isLaminate() ? section.laminate->thickness : section.thickness;
     if (!(t > 0.0))
         return std::string("expected a positive thickness T of the shell property in MixedHybridFormulation, found ") +
                std::to_string(t);
 
     Section result;
+    result.parts = !section.hasBending    ? SectionParts::MembraneOnly
+                   : !section.hasMembrane ? SectionParts::BendingOnly
+                                          : SectionParts::MembraneAndBending;
     result.referenceThickness = t;
-    result.a = toMatrix33(section.membraneMatrix, t);
-    result.b = toMatrix33(section.couplingStiffness(t), 1.0);
-    result.d = toMatrix33(section.bendingStiffness(t), 1.0);
-    const double meanMembrane = (result.a[0][0] + result.a[1][1] + result.a[2][2]) / 3.0;
-    if (const std::optional<Matrix22> h = shearStiffnessPerThickness(section, result.kirchhoffRatio * meanMembrane / t))
-        result.h = Matrix22{{{(*h)[0][0] * t, (*h)[0][1] * t}, {(*h)[1][0] * t, (*h)[1][1] * t}}};
+    if (section.hasMembrane)
+        result.a = toMatrix33(section.membraneMatrix, t);
+    if (section.hasMembrane && section.hasBending)
+        result.b = toMatrix33(section.couplingStiffness(t), 1.0);
+    if (section.hasBending)
+        result.d = toMatrix33(section.bendingStiffness(t), 1.0);
+    // The transverse shear of a section that bends; a membrane alone has none. The Kirchhoff limit is measured on the
+    // membrane stiffness, or on 12 D / t² (that of a homogeneous plate) for a bending-only section.
+    if (section.hasBending)
+    {
+        double reference = (result.a[0][0] + result.a[1][1] + result.a[2][2]) / 3.0;
+        if (!section.hasMembrane)
+            reference = 12.0 * (result.d[0][0] + result.d[1][1] + result.d[2][2]) / (3.0 * t * t);
+        if (const std::optional<Matrix22> h =
+                shearStiffnessPerThickness(section, result.kirchhoffRatio * reference / t))
+            result.h = Matrix22{{{(*h)[0][0] * t, (*h)[0][1] * t}, {(*h)[1][0] * t, (*h)[1][1] * t}}};
+    }
 
     // The inertia about the reference plane: from the plies of a laminate, ρ T and ρ T³ / 12 for a ShellProp.
     result.nonStructuralMass = section.nonStructuralMass;
@@ -93,6 +105,12 @@ std::variant<Section, std::string> mixedSectionOf(const elements::ShellSection& 
         result.i1 = 0.0;
         result.i2 = section.density * t * t * t / 12.0;
     }
+    // A membrane alone carries its mass as a surface mass: no rotary inertia of its own.
+    if (result.parts == SectionParts::MembraneOnly)
+    {
+        result.i1 = 0.0;
+        result.i2 = 0.0;
+    }
 
     // The thermal resultants per unit mean temperature change and per unit gradient, at the reference thickness.
     const ThermalResultants perDegree = section.thermalResultants(1.0, 0.0, t);
@@ -100,6 +118,15 @@ std::variant<Section, std::string> mixedSectionOf(const elements::ShellSection& 
     result.thermalA = toVoigt3(perDegree.force);
     result.thermalB = toVoigt3(perDegree.moment);
     result.thermalD = toVoigt3(perGradient.moment);
+    // A part the section lacks has no thermal resultant (the membrane alone: the force of a rise; the bending alone:
+    // the moments).
+    if (result.parts == SectionParts::MembraneOnly)
+    {
+        result.thermalB = {};
+        result.thermalD = {};
+    }
+    else if (result.parts == SectionParts::BendingOnly)
+        result.thermalA = {};
     return result;
 }
 

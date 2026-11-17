@@ -74,15 +74,74 @@ PointJacobian jacobianAt(const VolumeGeometry& geometry, const SolidPoint& r)
     return out;
 }
 
+// Values (index 0) and derivatives (index 1 + k) at the points of a rule of the n functions that `evaluate` gives at a
+// reference point: points × n each. tabulateReference gives the derivatives d/dr_k along the reference coordinates,
+// toBasicGradients turns them into the gradients d/dx_m in the basic axes.
+// Reference: volume::tabulate
+using Tabulation = std::array<Matrix, 4>;
+
+template <class Evaluate>
+Tabulation tabulateReference(std::span<const VolumeRulePoint> rule, std::size_t n, const Evaluate& evaluate)
+{
+    const std::size_t count = rule.size();
+    Tabulation out{Matrix(count, n), Matrix(count, n), Matrix(count, n), Matrix(count, n)};
+    for (std::size_t g = 0; g < count; ++g)
+    {
+        const SolidPoint& r = rule[g].point;
+        const std::vector<DualNumber> a =
+            evaluate(DualPoint{DualNumber::variable(r[0], 0), DualNumber::variable(r[1], 1), DualNumber(r[2])});
+        const std::vector<DualNumber> b =
+            evaluate(DualPoint{DualNumber(r[0]), DualNumber(r[1]), DualNumber::variable(r[2], 0)});
+        for (std::size_t j = 0; j < n; ++j)
+        {
+            out[0](g, j) = a[j].value;
+            out[1](g, j) = a[j].derivatives[0];
+            out[2](g, j) = a[j].derivatives[1];
+            out[3](g, j) = b[j].derivatives[0];
+        }
+    }
+    return out;
+}
+
+// The gradient d f / d x_m = Σ_k (d f / d r_k)(d r_k / d x_m) of every function at every point, in place.
+void toBasicGradients(Tabulation& tabulation, const std::vector<base::Mat3>& inverseJacobians)
+{
+    for (std::size_t g = 0; g < inverseJacobians.size(); ++g)
+    {
+        const base::Mat3& inverse = inverseJacobians[g];
+        for (std::size_t j = 0; j < tabulation[0].columns(); ++j)
+        {
+            const std::array<double, 3> dr{tabulation[1](g, j), tabulation[2](g, j), tabulation[3](g, j)};
+            for (std::size_t m = 0; m < COMPONENTS; ++m)
+                tabulation[1 + m](g, j) = dr[0] * inverse(0, m) + dr[1] * inverse(1, m) + dr[2] * inverse(2, m);
+        }
+    }
+}
+
+// The points of the rule on the element from the tabulation of its functions along the reference coordinates (before
+// toBasicGradients): X(r) = Σ_j N_j(r) X_j and J(m, k) = Σ_j (d N_j / d r_k) X_j(m), the sums that
+// VolumeGeometry::at makes, in the same order (so the same values as jacobianAt, without evaluating the functions
+// again).
 // Reference: volume::points
-SolidResult<RulePoints> rulePoints(const VolumeGeometry& geometry, std::size_t n)
+SolidResult<RulePoints> rulePoints(const VolumeGeometry& geometry, std::span<const VolumeRulePoint> rule,
+                                   const Tabulation& functions)
 {
     const std::string name = shapeName(geometry.shape);
     RulePoints points;
     double first = 0.0;
-    for (const VolumeRulePoint& rule : volumeRule(geometry.shape, n))
+    for (std::size_t g = 0; g < rule.size(); ++g)
     {
-        const PointJacobian jacobian = jacobianAt(geometry, rule.point);
+        PointJacobian jacobian;
+        for (std::size_t j = 0; j < functions[0].columns(); ++j)
+            for (std::size_t m = 0; m < COMPONENTS; ++m)
+            {
+                const double c = geometry.coordinate(j, m);
+                if (c == 0.0)
+                    continue;
+                jacobian.position[m] += functions[0](g, j) * c;
+                for (std::size_t k = 0; k < COMPONENTS; ++k)
+                    jacobian.derivatives(m, k) += functions[1 + k](g, j) * c;
+            }
         const double det = base::determinant(jacobian.derivatives);
         if (!(std::fabs(det) > 0.0))
             return SolidResult<RulePoints>::refused("flat " + name);
@@ -91,42 +150,13 @@ SolidResult<RulePoints> rulePoints(const VolumeGeometry& geometry, std::size_t n
         if (det * first < 0.0)
             return SolidResult<RulePoints>::refused(
                 name + ": the element folds (its corners in a wrong order, or its edges curved too far)");
-        points.reference.push_back(rule.point);
-        points.weights.push_back(rule.weight * std::fabs(det));
+        points.reference.push_back(rule[g].point);
+        points.weights.push_back(rule[g].weight * std::fabs(det));
         points.positions.push_back(jacobian.position);
         points.inverseJacobians.push_back(base::inverse(jacobian.derivatives));
-        points.volume += rule.weight * std::fabs(det);
+        points.volume += rule[g].weight * std::fabs(det);
     }
     return points;
-}
-
-// Values (index 0) and gradients in the basic axes (index 1 + m: d/dx_m) at the points of the rule of the n functions
-// that `evaluate` gives at a reference point: points × n each. The gradient is Σ_k (d f / d r_k)(d r_k / d x_m).
-// Reference: volume::tabulate
-using Tabulation = std::array<Matrix, 4>;
-
-template <class Evaluate>
-Tabulation tabulate(const RulePoints& points, std::size_t n, const Evaluate& evaluate)
-{
-    const std::size_t count = points.reference.size();
-    Tabulation out{Matrix(count, n), Matrix(count, n), Matrix(count, n), Matrix(count, n)};
-    for (std::size_t g = 0; g < count; ++g)
-    {
-        const SolidPoint& r = points.reference[g];
-        const std::vector<DualNumber> a =
-            evaluate(DualPoint{DualNumber::variable(r[0], 0), DualNumber::variable(r[1], 1), DualNumber(r[2])});
-        const std::vector<DualNumber> b =
-            evaluate(DualPoint{DualNumber(r[0]), DualNumber(r[1]), DualNumber::variable(r[2], 0)});
-        const base::Mat3& inverse = points.inverseJacobians[g];
-        for (std::size_t j = 0; j < n; ++j)
-        {
-            out[0](g, j) = a[j].value;
-            const std::array<double, 3> dr{a[j].derivatives[0], a[j].derivatives[1], b[j].derivatives[0]};
-            for (std::size_t m = 0; m < COMPONENTS; ++m)
-                out[1 + m](g, j) = dr[0] * inverse(0, m) + dr[1] * inverse(1, m) + dr[2] * inverse(2, m);
-        }
-    }
-    return out;
 }
 
 // The scalar fields of the element at the points of its rule: its functions and its bubbles, values and gradients.
@@ -141,27 +171,38 @@ struct Fields
 };
 
 // Reference: volume::fields
+// PERFORMANCE: the functions N = B·C are tabulated as four matrix products, B the basis of the space of degree p and
+// its derivatives at the points (two evaluations with dual numbers per point), C their coefficients on it
+// (VolumeGeometry::functionCoefficients): the sums VolumeGeometry::functions makes, in the same order. The Jacobian is
+// made from their derivatives (rulePoints) instead of evaluating them again through VolumeGeometry::at. The same
+// values. Measured: a kernel of a hexahedron of degree 4 (512 points), native, 51 → 39 ms; of a tetrahedron 9.2 →
+// 6.5 ms.
 SolidResult<Fields> tabulateFields(const VolumeGeometry& geometry, std::size_t d, std::size_t n)
 {
-    SolidResult<RulePoints> points = rulePoints(geometry, n);
-    if (!points.ok())
-        return SolidResult<Fields>::refused(points.refusal());
     const VolumeShape shape = geometry.shape;
+    const std::vector<VolumeRulePoint> rule = volumeRule(shape, n);
     Fields fields;
-    fields.points = std::move(points.value());
     fields.functionCount = geometry.functionCount();
     fields.bubbleFunctionCount = volumeSpaceDimension(shape, d - 1);
-    fields.functions =
-        tabulate(fields.points, fields.functionCount, [&](const DualPoint& r) { return geometry.functions(r); });
-    fields.bubbles = tabulate(fields.points, fields.bubbleFunctionCount,
-                              [&](const DualPoint& r)
-                              {
-                                  const DualNumber factor = volumeBubble(shape, r);
-                                  std::vector<DualNumber> values = volumeSpace(shape, d - 1, r);
-                                  for (DualNumber& value : values)
-                                      value = value * factor;
-                                  return values;
-                              });
+    const Tabulation basis = tabulateReference(rule, geometry.functionCoefficients.rows(), [&](const DualPoint& r)
+                                               { return volumeSpace(shape, geometry.traceDegree, r); });
+    for (std::size_t i = 0; i < basis.size(); ++i)
+        fields.functions[i] = basis[i] * geometry.functionCoefficients;
+    SolidResult<RulePoints> points = rulePoints(geometry, rule, fields.functions);
+    if (!points.ok())
+        return SolidResult<Fields>::refused(points.refusal());
+    fields.points = std::move(points.value());
+    toBasicGradients(fields.functions, fields.points.inverseJacobians);
+    fields.bubbles = tabulateReference(rule, fields.bubbleFunctionCount,
+                                       [&](const DualPoint& r)
+                                       {
+                                           const DualNumber factor = volumeBubble(shape, r);
+                                           std::vector<DualNumber> values = volumeSpace(shape, d - 1, r);
+                                           for (DualNumber& value : values)
+                                               value = value * factor;
+                                           return values;
+                                       });
+    toBasicGradients(fields.bubbles, fields.points.inverseJacobians);
     return fields;
 }
 
@@ -598,6 +639,21 @@ SolidResult<VolumeKernel> VolumeKernel::build(const VolumeGeometry& geometry, st
     return kernel;
 }
 
+SolidResult<VolumeKernel> VolumeKernel::withMass(double density) const
+{
+    SolidResult<Fields> tabulated = tabulateFields(m_geometry, m_stressDegree, m_pointsPerDirection);
+    if (!tabulated.ok())
+        return SolidResult<VolumeKernel>::refused(tabulated.refusal());
+    const Fields& fields = tabulated.value();
+    // the steps of build() with the mass, on the same fields and the same T
+    const Matrix values = sideBySide(fields.functions[0], fields.bubbles[0]);
+    const Matrix massMatrix = fieldMass(values, fields.points.weights, density);
+    const Matrix reducedColumns = reduceColumns(massMatrix, m_parameterCount, m_bubbleOperator);
+    VolumeKernel out = *this;
+    out.m_mass = symmetricPart(reduceRows(reducedColumns, m_parameterCount, m_bubbleOperator));
+    return out;
+}
+
 Vector VolumeKernel::stressCoefficients(std::span<const double> q, std::span<const std::size_t> loadIndices) const
 {
     Vector beta = m_stressOperator * q;
@@ -687,6 +743,55 @@ SolidResult<Matrix> VolumeKernel::geometric(std::span<const double> beta) const
                 full(COMPONENTS * i + c, COMPONENTS * j + c) = scalarG(i, j);
     const Matrix reduced = reduceColumns(full, nq, m_bubbleOperator);
     return symmetricPart(reduceRows(reduced, nq, m_bubbleOperator));
+}
+
+SolidResult<Vector> VolumeKernel::geometricGradient(std::span<const double> phi) const
+{
+    OOS_ASSERT(phi.size() >= m_parameterCount);
+    SolidResult<Fields> tabulated = tabulateFields(m_geometry, m_stressDegree, m_pointsPerDirection);
+    if (!tabulated.ok())
+        return SolidResult<Vector>::refused(tabulated.refusal());
+    const Fields& fields = tabulated.value();
+    const RulePoints& points = fields.points;
+    const std::size_t count = points.reference.size();
+    const std::size_t scalars = fields.functionCount + fields.bubbleFunctionCount;
+    // ψ = [I; T] φ: the parameters, then the bubbles they carry (as in geometric()).
+    Vector psi(phi.begin(), phi.begin() + static_cast<std::ptrdiff_t>(m_parameterCount));
+    const Vector bubbles = m_bubbleOperator * phi.first(m_parameterCount);
+    psi.insert(psi.end(), bubbles.begin(), bubbles.end());
+    // the gradients of the scalar fields, functions then bubbles
+    std::array<Matrix, COMPONENTS> gradient;
+    for (std::size_t a = 0; a < COMPONENTS; ++a)
+        gradient[a] = sideBySide(fields.functions[1 + a], fields.bubbles[1 + a]);
+    // d[c][a] at each point: ∂ψ_c/∂x_a = Σ_i N_i,a ψ[3i + c].
+    std::array<std::array<Vector, COMPONENTS>, COMPONENTS> d;
+    for (std::size_t c = 0; c < COMPONENTS; ++c)
+    {
+        Vector component(scalars);
+        for (std::size_t i = 0; i < scalars; ++i)
+            component[i] = psi[COMPONENTS * i + c];
+        for (std::size_t a = 0; a < COMPONENTS; ++a)
+            d[c][a] = gradient[a] * component;
+    }
+    // φᵀ K_g(β) φ = Σ_g w_g Σ_ab σ_ab(g) Σ_c d[c][a] d[c][b], σ_v(g) = Σ_i β[v N + i] y_i(g) (stressAt): its derivative
+    // with respect to β[v N + i] is Σ_g w_g y_i(g) Σ_{(a,b) of v} Σ_c d[c][a] d[c][b].
+    const std::size_t n = volumeSpaceDimension(m_geometry.shape, m_stressDegree);
+    Vector onStresses(STRESS_COMPONENTS * n, 0.0);
+    for (std::size_t g = 0; g < count; ++g)
+    {
+        Vector y = volumeSpace(m_geometry.shape, m_stressDegree, points.reference[g]);
+        solveLower(m_stressGramFactor, y);
+        VoigtVector products{};
+        for (std::size_t a = 0; a < COMPONENTS; ++a)
+            for (std::size_t b = 0; b < COMPONENTS; ++b)
+                for (std::size_t c = 0; c < COMPONENTS; ++c)
+                    products[VOIGT_INDEX[a][b]] += d[c][a][g] * d[c][b][g];
+        for (std::size_t v = 0; v < STRESS_COMPONENTS; ++v)
+            for (std::size_t i = 0; i < n; ++i)
+                onStresses[v * n + i] += points.weights[g] * products[v] * y[i];
+    }
+    // β = stressOperator q (the particular stresses of the loads do not depend on q).
+    return transposeTimes(m_stressOperator, onStresses);
 }
 
 std::optional<std::size_t> VolumeKernel::faceOf(std::span<const std::size_t> corners) const

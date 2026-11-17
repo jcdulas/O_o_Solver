@@ -2,6 +2,7 @@
 
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/math/MatN.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/elements/core/MatrixKernels.hpp"
 
 #include <algorithm>
@@ -61,9 +62,10 @@ std::variant<std::vector<double>, std::string> weightsOf(std::span<const Pierced
         largest = std::max(largest, grid.shapeValue);
     }
     if (!(std::abs(sum - 1.0) <= PIERCING_WEIGHT_SUM_TOLERANCE))
-        return base::concatenate({"expected the shape functions of the pierced element at the piercing point to sum to "
-                                  "1, found ",
-                                  std::to_string(sum), "; the piercing table does not hold an interpolation"});
+        return base::concatenate(
+            {"expected the shape functions of the pierced element at the piercing point to sum to "
+             "1, found ",
+             std::to_string(sum), "; the piercing table does not hold an interpolation"});
     std::vector<double> weights; // one per grid point of the element (at most 8)
     for (const PiercedGrid& grid : grids)
         weights.push_back(std::max(grid.shapeValue, PIERCING_WEIGHT_FLOOR * largest));
@@ -99,8 +101,9 @@ std::variant<PiercingMap, std::string> interpolatePiercing(base::Vec3 piercingPo
         characteristicLength += base::norm(grid.position - piercingPoint);
     characteristicLength /= static_cast<double>(grids.size());
     if (!(characteristicLength > 0.0))
-        return std::string("expected the grid points of the pierced element around the piercing point, found them all "
-                           "on it");
+        return std::string(
+            "expected the grid points of the pierced element around the piercing point, found them all "
+            "on it");
     std::vector<base::MatN<3, UNKNOWNS>> rows(grids.size());
     base::MatN<UNKNOWNS> normal;
     for (std::size_t i = 0; i < grids.size(); ++i)
@@ -115,8 +118,9 @@ std::variant<PiercingMap, std::string> interpolatePiercing(base::Vec3 piercingPo
         normal = normal + weights[i] * (rows[i].transposed() * rows[i]);
     }
     if (smallestRelativePivot(normal) <= PIERCING_PIVOT_TOLERANCE)
-        return std::string("expected grid points of the pierced element that fix the rotation of the piercing point, "
-                           "found them collinear or coincident");
+        return std::string(
+            "expected grid points of the pierced element that fix the rotation of the piercing point, "
+            "found them collinear or coincident");
 
     // Grid i contributes G_i = A'⁻¹·B'_iᵀ·w_i on its translations in basic, R_i·u_i; the rotations unscaled after.
     PiercingMap map;
@@ -166,6 +170,69 @@ std::variant<SideInterpolation, std::string> interpolateSide(const input::Fasten
         return std::move(*problem);
     side.map = std::move(std::get<PiercingMap>(map));
     return side;
+}
+
+SideMotion sideMotionOf(const SideInterpolation& side)
+{
+    SideMotion motion;
+    motion.point = side.point;
+    for (const std::int32_t gridRow : side.gridRows)
+        for (int c = 1; c <= 6; ++c)
+            motion.dofs.push_back(ElementDof::grid(gridRow, c));
+    const std::size_t n = motion.dofs.size();
+    motion.map.assign(6 * n, 0.0);
+    for (std::size_t i = 0; i < 6; ++i)
+        for (std::size_t j = 0; j < n; ++j)
+            motion.map[i * n + j] = side.map.at(i, j);
+    return motion;
+}
+
+std::variant<SideMotion, std::string> resolveSideMotion(const input::FastenerPiercingTable& table,
+                                                        input::PiercingRows rows, const SideGridLookup& findGrid,
+                                                        const FormulationModel* formulation)
+{
+    if (formulation != nullptr && !rows.isEmpty() && table.elementIds()[static_cast<std::size_t>(rows.first)] != 0)
+    {
+        const std::int64_t row = rows.first;
+        const std::span<const double> xyz = table.piercingPoints()[row];
+        const base::Vec3 point{xyz[0], xyz[1], xyz[2]};
+        const std::span<const std::int32_t> ids = table.grids()[row];
+        std::vector<std::int32_t> gridRows; // the grid points of one element (at most 8)
+        for (const std::int32_t id : ids)
+        {
+            const std::optional<SideGrid> grid = findGrid(id);
+            if (!grid)
+                return base::concatenate({"expected grid point ", std::to_string(id),
+                                          " of the pierced element in the model, found none; the piercing table does "
+                                          "not come from the same model: take the snapshot again"});
+            gridRows.push_back(grid->row);
+        }
+        const std::optional<FormulationModel::PointMotion> motion = formulation->shellPointMotion(
+            table.elementIds()[static_cast<std::size_t>(row)], gridRows, table.weights()[row], point);
+        if (motion)
+        {
+            SideMotion side;
+            side.point = point;
+            // the DOFs in the order the rows first name them
+            for (const std::vector<FormulationRelationTerm>& terms : motion->rows)
+                for (const FormulationRelationTerm& term : terms)
+                    if (std::find(side.dofs.begin(), side.dofs.end(), term.dof) == side.dofs.end())
+                        side.dofs.push_back(term.dof);
+            const std::size_t n = side.dofs.size();
+            side.map.assign(6 * n, 0.0);
+            for (std::size_t i = 0; i < 6; ++i)
+                for (const FormulationRelationTerm& term : motion->rows[i])
+                {
+                    const auto at = std::find(side.dofs.begin(), side.dofs.end(), term.dof) - side.dofs.begin();
+                    side.map[i * n + static_cast<std::size_t>(at)] += term.coefficient;
+                }
+            return side;
+        }
+    }
+    std::variant<SideInterpolation, std::string> interpolation = interpolateSide(table, rows, findGrid);
+    if (auto* problem = std::get_if<std::string>(&interpolation))
+        return std::move(*problem);
+    return sideMotionOf(std::get<SideInterpolation>(interpolation));
 }
 
 } // namespace oos::elements

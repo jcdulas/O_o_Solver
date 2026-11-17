@@ -22,35 +22,11 @@ constexpr double GRADIENT_STEP = 1e-5;
 // The relative tolerance with which a distance through the thickness is found in a ply.
 constexpr double PLY_TOLERANCE = 1e-12;
 
-Matrix abdMatrix(const SectionPoint& point)
-{
-    Matrix m(6, 6);
-    for (std::size_t i = 0; i < 3; ++i)
-    {
-        for (std::size_t j = 0; j < 3; ++j)
-        {
-            m(i, j) = point.a[i][j];
-            m(i, 3 + j) = point.b[i][j];
-            m(3 + i, j) = point.b[j][i];
-            m(3 + i, 3 + j) = point.d[i][j];
-        }
-    }
-    return m;
-}
-
-Matrix inverseAbd(const SectionPoint& point)
-{
-    std::optional<Matrix> inv = inverse(abdMatrix(point));
-    if (!inv)
-        throw base::InternalError("singular membrane-bending section");
-    return std::move(*inv);
-}
-
 } // namespace
 
 std::array<std::array<double, 8>, 8> sectionCompliance(const SectionPoint& point)
 {
-    const Matrix mi = inverseAbd(point);
+    const Matrix mi = membraneBendingCompliance(point);
     const Matrix22& h = point.h;
     const double det = h[0][0] * h[1][1] - h[1][0] * h[0][1];
     if (det == 0.0)
@@ -200,7 +176,7 @@ std::pair<std::array<double, 2>, std::array<double, 2>> transverseShear(
     const std::array<double, 8> vp = at(0.0, h);
     const std::array<double, 8> vm = at(0.0, -h);
     // the gradients of (N, M) along e1 and e2, then those of the strains (ε0, κ)
-    const Matrix inv = inverseAbd(sp);
+    const Matrix inv = membraneBendingCompliance(sp);
     std::array<Vector, 2> de;
     for (std::size_t i = 0; i < 2; ++i)
     {

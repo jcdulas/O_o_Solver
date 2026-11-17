@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <utility>
 
 namespace oos::elements::mixedHybrid
@@ -116,6 +117,23 @@ bool ShellPart::checkInput()
                        "degenerate element: its corner grids are not distinct points of a surface");
             readable = false;
         }
+    }
+    // Coincident shells (the same corner grids: two properties laid over one surface) would put two shells on one side
+    // of their edges, where the reading of the surface, the supports along the edges and the continuity of the shear
+    // across them count one shell per side (spec section 4.1).
+    std::map<std::vector<std::size_t>, std::size_t> firstWithCorners;
+    for (std::size_t ie = 0; ie < m_input.shells.size(); ++ie)
+    {
+        const std::span<const std::size_t> corners = m_input.shells[ie].corners.view();
+        std::vector<std::size_t> key(corners.begin(), corners.end());
+        std::sort(key.begin(), key.end());
+        const auto [first, inserted] = firstWithCorners.emplace(std::move(key), ie);
+        if (!inserted)
+            addProblem(ShellPartProblem::Subject::Shell, ie,
+                       "expected shells on distinct corner grids, found the corner grids of element " +
+                           std::to_string(m_input.shells[first->second].elementId) +
+                           ": coincident shells are not supported; give one shell property with both parts (a "
+                           "membrane and a bending material) instead of two shells");
     }
     for (const std::size_t ie : m_input.rawElements)
         if (ie >= m_input.shells.size())
@@ -418,9 +436,17 @@ std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, 
 {
     const ShellPartShell& input = m_input.shells[shell];
     const std::size_t nv = input.corners.count;
-    // a singular section: no bending stiffness, or a thickness that is not positive at a corner
-    if (!inverse33(input.section.d))
+    // a singular section: no stiffness in the part it gives (the bending, or the membrane of a membrane-only one), or a
+    // thickness that is not positive at a corner
+    if (input.section.parts == SectionParts::MembraneOnly)
+    {
+        if (!inverse33(input.section.a))
+            return std::string("singular section: its membrane matrix A is singular");
+    }
+    else if (!inverse33(input.section.d))
+    {
         return std::string("singular section: it has no bending stiffness (its matrix D is singular)");
+    }
     const std::array<double, 4>& thickness = m_shells[shell].section.thickness();
     const std::array<std::size_t, 4> cornerSlot =
         nv == 3 ? std::array<std::size_t, 4>{0, 1, 3, 3} : std::array<std::size_t, 4>{0, 1, 2, 3};
@@ -433,19 +459,34 @@ std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, 
     // an element that turns too much: the frame of its constant states is carried from the normal of its corners by
     // the minimal rotation, which needs the normal to stay within 90° of it
     const SpaceVector zAxis = unit3(cross3(data.axes[0], data.axes[1]));
+    std::vector<double> jacobians(re.points.size());
     for (std::size_t q = 0; q < re.points.size(); ++q)
-        if (!(dot3(zAxis, volumeGeometry(def, re.h1Count, q).nu) > 0.0))
+    {
+        const PointGeometry g = volumeGeometry(def, re.h1Count, q);
+        if (!(dot3(zAxis, g.nu) > 0.0))
             return std::string(
                 "the element turns too much: its normal turns by 90 degrees or more from the normal "
                 "of its corners");
+        jacobians[q] = g.j;
+    }
     if (!withMatrices)
+    {
+        // The refusal of buildShellElement that reads the geometry alone, for the check without the matrices.
+        const double largest = *std::max_element(jacobians.begin(), jacobians.end());
+        for (const double j : jacobians)
+            if (!(j > SHELL_JACOBIAN_RATIO * largest))
+                return "degenerate element: " + std::string(SHELL_MAP_NOT_INVERTIBLE);
         return data;
+    }
     std::variant<ShellElementMatrices, std::string> matrices = buildShellElement(re, def, withMass);
     if (const std::string* message = std::get_if<std::string>(&matrices))
         return "degenerate element: " + *message;
     data.matrices = std::get<ShellElementMatrices>(std::move(matrices));
     return data;
 }
+
+// About what a shell of degree 4 with its matrices takes in the part (elementRefusal: whether one more fits).
+constexpr std::size_t KEPT_ELEMENT_BYTES = std::size_t{1} << 19;
 
 std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::size_t shell) const
 {
@@ -496,10 +537,28 @@ std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::
 
 std::optional<std::string> ShellPart::elementRefusal(std::size_t shell) const
 {
-    std::variant<ShellElementData, std::string> built = elementWithMatrices(shell, false);
+    // An element the part has no room to keep is checked without its matrices, which take most of its build and
+    // would be built again for the stiffness: its section and its geometry are checked here, and what only its
+    // matrices show (a block that is not positive definite) is refused when they are built.
+    bool isKept = false;
+    bool hasRoom = false;
+    {
+        const std::lock_guard<std::mutex> lock(m_cache->mutex);
+        isKept = shell < m_cache->elements.size() && m_cache->elements[shell] != nullptr;
+        hasRoom = m_cache->bytes + KEPT_ELEMENT_BYTES <= m_input.matrixCacheBytes;
+    }
+    // A part that keeps no element (matrixCacheBytes 0: the checks of the kernels) builds every one.
+    const bool withMatrices = m_input.matrixCacheBytes == 0 || isKept || hasRoom;
+    std::variant<ShellElementData, std::string> built =
+        withMatrices ? elementWithMatrices(shell, false) : build(shell, false, false);
     if (std::string* message = std::get_if<std::string>(&built))
         return std::move(*message);
     return std::nullopt;
+}
+
+bool ShellPart::carriesMoments(std::size_t shell) const
+{
+    return sectionCarriesMoments(m_input.shells[shell].section.parts, m_shells[shell].offset);
 }
 
 std::span<const std::size_t> ShellPart::localUnknowns(std::size_t shell) const
@@ -572,7 +631,13 @@ std::vector<EdgeGeometry> ShellPart::geometryReport() const
         const PointGeometry geometry = geometryAt(re, def, uv[0], uv[1]);
         return EdgeSurfacePoint{geometry.x, geometry.nu};
     };
-    return mixedHybrid::geometryReport(m_reading, m_topology, tau, point);
+    std::vector<EdgeGeometry> report = mixedHybrid::geometryReport(m_reading, m_topology, tau, point);
+    // the edges whose curve a mid-side grid gives (applyMidsideGrids): the report follows the edges of the topology
+    for (const ShellPartShell& shell : m_input.shells)
+        for (std::size_t k = 0; k < shell.corners.count; ++k)
+            if (shell.midside[k] >= 0)
+                report[m_topology.indexOf(shell.corners.at(k), shell.corners.at(k + 1))].given = true;
+    return report;
 }
 
 } // namespace oos::elements::mixedHybrid

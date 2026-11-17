@@ -38,9 +38,9 @@ constexpr std::uint8_t ELIMINATED = 1;
 constexpr std::int32_t NO_SPIDER = -1;
 constexpr std::size_t RIGID_BODY_MODE_COUNT = 6;
 // The elements whose matrices are computed in one block (as the model's assembly, RANGE_ELEMENTS): the block is a work
-// buffer of std::vector, bounded by this count times the largest element matrix (a ShellQuad4's 24 × 24: 9 MB for 2048),
-// never by the unit (a run of 800 000 consecutive ShellQuad4 would hold 3.7 GB outside the budget). The sums
-// are made element by element in the same order whatever the runs: the same bits.
+// buffer of std::vector, bounded by this count times the largest element matrix (a ShellQuad4's 24 × 24: 9 MB for
+// 2048), never by the unit (a run of 800 000 consecutive ShellQuad4 would hold 3.7 GB outside the budget). The sums are
+// made element by element in the same order whatever the runs: the same bits.
 constexpr std::size_t ELEMENTS_PER_RUN = 2048;
 // buildGraph keeps the element stiffness matrices for assemble() while they take at most this fraction of the memory
 // left (1/8), as the full path's ElementMatrixStore keeps a share of the budget: beyond it, assemble() computes them
@@ -136,7 +136,7 @@ struct UnitSystem::KeptStiffness
 
 UnitSystem::UnitSystem(const UnitModel& model, const UnitDescription& description, base::MemoryBudget& budget,
                        base::ThreadPool* pool)
-    : m_unitId(description.unitId), m_dofMap(model.dofMap)
+    : m_unitId(description.unitId), m_dofMap(model.dofMap), m_entityRigidModes(model.entityRigidModes)
 {
     if (model.elements == nullptr || model.dofMap == nullptr || model.elementIndex == nullptr ||
         model.unitRelations == nullptr)
@@ -175,7 +175,7 @@ void UnitSystem::buildStiffness(const UnitModel& model, const UnitDescription& d
 
 UnitSystem::UnitSystem(const UnitModel& model, const UnitDescription& description, const WithoutMass& withoutMass,
                        base::MemoryBudget& budget, base::ThreadPool* pool)
-    : m_unitId(description.unitId), m_dofMap(model.dofMap)
+    : m_unitId(description.unitId), m_dofMap(model.dofMap), m_entityRigidModes(model.entityRigidModes)
 {
     if (model.elements == nullptr || model.dofMap == nullptr || model.elementIndex == nullptr ||
         model.unitRelations == nullptr)
@@ -197,7 +197,10 @@ UnitSystem::UnitSystem(const UnitModel& model, const UnitDescription& descriptio
 
 UnitSystem::UnitSystem(const UnitModel& model, const UnitDescription& description, base::MemoryBudget& budget,
                        base::ThreadPool* pool, StiffnessOnly)
-    : m_unitId(description.unitId), m_dofMap(model.dofMap), m_hasEquations(false)
+    : m_unitId(description.unitId),
+      m_dofMap(model.dofMap),
+      m_entityRigidModes(model.entityRigidModes),
+      m_hasEquations(false)
 {
     if (model.elements == nullptr || model.dofMap == nullptr || model.elementIndex == nullptr ||
         model.unitRelations == nullptr)
@@ -315,7 +318,10 @@ void UnitSystem::findHeldCouplings(base::MemoryBudget& budget)
 
 UnitSystem::UnitSystem(const UnitModel& model, const UnitDescription& description, const UnitBoundaryData& data,
                        base::MemoryBudget& budget)
-    : m_unitId(description.unitId), m_dofMap(model.dofMap), m_hasEquations(false)
+    : m_unitId(description.unitId),
+      m_dofMap(model.dofMap),
+      m_entityRigidModes(model.entityRigidModes),
+      m_hasEquations(false)
 {
     if (model.dofMap == nullptr || model.unitRelations == nullptr)
         throw std::invalid_argument(base::concatenate(
@@ -546,8 +552,13 @@ std::int32_t UnitSystem::pointOfLocalDof(std::int64_t localDof) const noexcept
 
 base::DofIndex UnitSystem::modelDofOfNode(std::int32_t modelNode, int component) const noexcept
 {
-    return modelNode < m_dofMap->gridCount() ? m_dofMap->gridDof(modelNode, component + 1)
-                                             : m_dofMap->scalarDof(modelNode - m_dofMap->gridCount());
+    return m_dofMap->dofsOfNode(modelNode).first + component;
+}
+
+bool UnitSystem::isEntityPoint(std::size_t point) const noexcept
+{
+    const std::int32_t node = m_modelNodes[point];
+    return node != GENERATED_POINT && m_dofMap->isEntityNode(node);
 }
 
 std::optional<base::DofIndex> UnitSystem::modelDofOf(std::int64_t localDof) const noexcept
@@ -564,7 +575,7 @@ base::EntityId UnitSystem::pointIdOf(std::int32_t localPoint) const noexcept
     const std::int32_t node = m_modelNodes[static_cast<std::size_t>(localPoint)];
     if (node == GENERATED_POINT)
         return m_fastenerPoints[static_cast<std::size_t>(localPoint) - m_sortedModelNodes.size()].id;
-    return node < m_dofMap->gridCount() ? m_dofMap->gridId(node) : m_dofMap->scalarId(node - m_dofMap->gridCount());
+    return m_dofMap->nodeIdOf(node);
 }
 
 UnitDofLabel UnitSystem::labelOf(std::int64_t localDof) const noexcept
@@ -580,6 +591,9 @@ UnitDofLabel UnitSystem::labelOf(std::int64_t localDof) const noexcept
     }
     if (node < m_dofMap->gridCount())
         return {UnitPointKind::Grid, m_dofMap->gridId(node), FastenerSide::None,
+                static_cast<std::uint8_t>(component + 1)};
+    if (m_dofMap->isEntityNode(node))
+        return {UnitPointKind::EntityNode, m_dofMap->nodeIdOf(node), FastenerSide::None,
                 static_cast<std::uint8_t>(component + 1)};
     return {UnitPointKind::Scalar, m_dofMap->scalarId(node - m_dofMap->gridCount()), FastenerSide::None, 0};
 }
@@ -613,13 +627,13 @@ base::BudgetedBuffer<std::int32_t> unitPointNodes(const assembly::DofMap& dofMap
     base::BudgetedBuffer<std::int32_t> nodes(budget, description.nodeIds.size(), "unit points");
     for (std::size_t k = 0; k < description.nodeIds.size(); ++k)
     {
-        const std::optional<input::PointRef> point = dofMap.points().find(description.nodeIds[k]);
-        if (!point)
+        const std::optional<std::int32_t> node = dofMap.findNode(description.nodeIds[k]);
+        if (!node)
             throw std::invalid_argument(base::concatenate(
                 {"UnitSystem (", unitText(description.unitId), "): point ", std::to_string(description.nodeIds[k]),
-                 " is not a grid or scalar point of the model; the unit and the model must come "
+                 " is not a grid or scalar point (or an entity node) of the model; the unit and the model must come "
                  "from one snapshot"}));
-        nodes[k] = point->kind == input::PointKind::Grid ? point->row : dofMap.gridCount() + point->row;
+        nodes[k] = *node;
     }
     std::sort(nodes.data(), nodes.data() + nodes.size());
     if (std::adjacent_find(nodes.data(), nodes.data() + nodes.size()) != nodes.data() + nodes.size())
@@ -635,20 +649,16 @@ base::BudgetedBuffer<base::DofIndex> unitLocalModelDofs(const assembly::DofMap& 
     const base::BudgetedBuffer<std::int32_t> nodes = unitPointNodes(dofMap, description, budget);
     std::size_t count = 0;
     for (const std::int32_t node : nodes.span())
-        count += node < dofMap.gridCount() ? GRID_DOF_COUNT : 1;
+        count += static_cast<std::size_t>(dofMap.dofsOfNode(node).count);
     for (const UnitSpider& spider : description.spiders)
         count += spider.relation.referenceDofs.empty() ? GRID_DOF_COUNT : 0;
     base::BudgetedBuffer<base::DofIndex> dofs(budget, count, "unit local DOFs");
     std::size_t next = 0;
     for (const std::int32_t node : nodes.span())
     {
-        if (node >= dofMap.gridCount())
-        {
-            dofs[next++] = dofMap.scalarDof(node - dofMap.gridCount());
-            continue;
-        }
-        for (int c = 0; c < GRID_DOF_COUNT; ++c)
-            dofs[next++] = dofMap.gridDof(node, c + 1);
+        const assembly::DofMap::NodeDofs nodeDofs = dofMap.dofsOfNode(node);
+        for (int c = 0; c < nodeDofs.count; ++c)
+            dofs[next++] = nodeDofs.first + c;
     }
     for (; next < count; ++next)
         dofs[next] = -1;
@@ -658,8 +668,6 @@ base::BudgetedBuffer<base::DofIndex> unitLocalModelDofs(const assembly::DofMap& 
 void UnitSystem::numberPoints(const UnitModel& model, const UnitDescription& description, base::MemoryBudget& budget)
 {
     const assembly::DofMap& dofMap = *model.dofMap;
-    const auto nodeOf = [&](const input::PointRef& point)
-    { return point.kind == input::PointKind::Grid ? point.row : dofMap.gridCount() + point.row; };
     // The unit's points in the order of their nodes in the model, then one point per generated fastener point.
     base::BudgetedBuffer<std::int32_t> nodes = unitPointNodes(dofMap, description, budget);
     std::size_t generated = 0;
@@ -675,9 +683,9 @@ void UnitSystem::numberPoints(const UnitModel& model, const UnitDescription& des
     {
         const std::int32_t node = m_sortedModelNodes[p];
         m_modelNodes[p] = node;
-        const bool isGrid = node < dofMap.gridCount();
-        m_pointDofCounts[p] = isGrid ? GRID_DOF_COUNT : 1;
-        m_positions[p] = isGrid ? dofMap.positionInBasic(node) : base::Vec3{};
+        const bool isScalar = node >= dofMap.gridCount() && !dofMap.isEntityNode(node);
+        m_pointDofCounts[p] = static_cast<std::uint8_t>(dofMap.dofsOfNode(node).count);
+        m_positions[p] = isScalar ? base::Vec3{} : dofMap.nodePosition(node);
     }
     std::size_t next = m_sortedModelNodes.size();
     for (const UnitSpider& spider : description.spiders)
@@ -696,8 +704,8 @@ void UnitSystem::numberPoints(const UnitModel& model, const UnitDescription& des
     m_isBoundaryPoint = base::BudgetedBuffer<std::uint8_t>(budget, pointTotal, "unit boundary points");
     for (const base::EntityId nodeId : description.boundaryNodeIds)
     {
-        const std::optional<input::PointRef> point = dofMap.points().find(nodeId);
-        const std::optional<std::int32_t> local = point ? localPointOf(nodeOf(*point)) : std::nullopt;
+        const std::optional<std::int32_t> node = dofMap.findNode(nodeId);
+        const std::optional<std::int32_t> local = node ? localPointOf(*node) : std::nullopt;
         if (!local)
             throw std::invalid_argument(
                 base::concatenate({"UnitSystem (", unitText(m_unitId), "): boundary point ", std::to_string(nodeId),
@@ -1134,7 +1142,7 @@ void UnitSystem::buildGraph(const UnitModel& model, const UnitDescription& descr
     // A scalar point takes the position of a grid point it is coupled to (FsetOrdering does the same).
     for (std::size_t p = 0; p < m_sortedModelNodes.size(); ++p)
     {
-        if (m_sortedModelNodes[p] < dofMap.gridCount())
+        if (m_sortedModelNodes[p] < dofMap.gridCount() || dofMap.isEntityNode(m_sortedModelNodes[p]))
             continue;
         for (const std::int32_t neighbour : m_graph.neighbours(static_cast<std::int32_t>(p)))
             if (m_modelNodes[static_cast<std::size_t>(neighbour)] != GENERATED_POINT &&
@@ -1237,6 +1245,18 @@ linalg::DenseMatrix UnitSystem::makeRigidBodyModes(base::MemoryBudget& budget) c
     {
         const std::int32_t node = m_modelNodes[p];
         const bool isGenerated = node == GENERATED_POINT;
+        if (isEntityPoint(p))
+        {
+            // An entity's DOFs take the formulation's rigid-body fields (spec section 5.7).
+            const auto entityDofs = static_cast<std::size_t>(m_dofMap->gSetSize() - m_dofMap->firstEntityDof());
+            const auto entityDof =
+                static_cast<std::size_t>(m_dofMap->dofsOfNode(node).first - m_dofMap->firstEntityDof());
+            const auto first = static_cast<std::size_t>(m_firstDof[p]);
+            for (std::size_t mode = 0; mode < RIGID_BODY_MODE_COUNT && !m_entityRigidModes.empty(); ++mode)
+                for (std::size_t k = 0; k < m_pointDofCounts[p]; ++k)
+                    modes(first + k, mode) = m_entityRigidModes[mode * entityDofs + entityDof + k];
+            continue;
+        }
         if (!isGenerated && node >= m_dofMap->gridCount())
             continue; // a scalar point does not move with the body
         // RigidBodyModes' motion about the basic origin: u = t + θ × x, written in the point's displacement system
@@ -1395,7 +1415,8 @@ void UnitSystem::constrainSingularities(const UnitModel& model, base::MemoryBudg
             if (role == UnitDofRole::Interior || role == UnitDofRole::Absent || role == UnitDofRole::Boundary)
                 largest = std::max(largest, std::abs(diagonal[static_cast<std::size_t>(c + count * c)]));
         }
-        if (count != GRID_DOF_COUNT || m_isBoundaryPoint[p] == BOUNDARY)
+        // The entities are left out (spec section 5.8: the formulation holds what no element stiffens).
+        if (count != GRID_DOF_COUNT || m_isBoundaryPoint[p] == BOUNDARY || isEntityPoint(p))
             continue;
         for (std::size_t half = 0; half < 2; ++half)
         {
@@ -1424,7 +1445,7 @@ void UnitSystem::constrainSingularities(const UnitModel& model, base::MemoryBudg
     {
         const auto p = static_cast<std::size_t>(point);
         if (m_modelNodes[p] == GENERATED_POINT || m_pointDofCounts[p] != 1 || m_isBoundaryPoint[p] == BOUNDARY ||
-            !isChecked(m_firstDof[p]))
+            isEntityPoint(p) || !isChecked(m_firstDof[p]))
             continue;
         const double diagonal = m_stiffness->blockValues(m_pattern->columnBegin(point))[0];
         if (diagonal <= options.pivotZeroThreshold * largest)
@@ -1998,6 +2019,20 @@ linalg::SymmetricCsc UnitSystem::differentialStiffness(const UnitModel& model, c
     m_relations.eliminate(pattern, m_firstDof.span(), m_graph, blocks.values(), budget);
     transformSpiders(pattern, blocks.values());
     return linalg::SymmetricCsc::fromBlocks(blocks, m_selection, budget, pool);
+}
+
+linalg::EquationNamer equationNamerOf(const UnitSystem* system, const assembly::DofMap* dofMap)
+{
+    return [system, dofMap](std::int32_t equation)
+    {
+        const std::int64_t local = system->localDofOfEquation(equation);
+        const UnitDofLabel label = system->labelOf(local);
+        base::GridComponent name{label.id, label.component, {}};
+        if (label.kind == UnitPointKind::EntityNode)
+            if (const std::optional<base::DofIndex> dof = system->modelDofOf(local))
+                name = {0, static_cast<int>(dofMap->labelOf(*dof).component) + 1, dofMap->describe(*dof)};
+        return name;
+    };
 }
 
 } // namespace oos::reduction

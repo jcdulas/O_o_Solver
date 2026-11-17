@@ -1,6 +1,7 @@
 #include "oos/assembly/assemble/ElementSet.hpp"
 
 #include "oos/base/threading/ParallelFor.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 
 #include <algorithm>
 
@@ -11,10 +12,12 @@ ElementSet::ElementSet(const elements::SnapshotIndex& index, const elements::Ele
                        const elements::EntityLayout* entities)
     : m_index(&index)
 {
+    const elements::FormulationModel* formulation =
+        entities != nullptr ? elements::formulationModelOf(index, registry) : nullptr;
     for (const input::ElementBatch& batch : index.snapshot().elementBatches())
     {
         if (const elements::ElementFamily* family = registry.find(batch.card()))
-            m_batches.push_back({family, elements::ElementBatchView(batch, index, entities)});
+            m_batches.push_back({family, elements::ElementBatchView(batch, index, entities, formulation)});
     }
 }
 

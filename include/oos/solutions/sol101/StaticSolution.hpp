@@ -8,6 +8,7 @@
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/base/threading/CancellationToken.hpp"
 #include "oos/base/threading/ThreadPool.hpp"
+#include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/input/snapshot/ModelSnapshot.hpp"
 #include "oos/linalg/kernels/KernelKind.hpp"
 #include "oos/output/arrays/ElementResultBuilder.hpp"
@@ -132,6 +133,10 @@ struct StaticOptions
     // of the units, made on the same snapshot (solutions::CondensationPlanner); null (the default) for the full path. A
     // plan that condenses no unit is the full path.
     std::shared_ptr<const reduction::CondensationPlan> condensation;
+    // The index of the snapshot that the model of the plan used (CondensationPlanner::analysisModel().sharedIndex()),
+    // so that the analysis takes what it computed once (the model of an element formulation and its kernels) instead
+    // of computing it again; null: a new index (AnalysisModelOptions::index).
+    std::shared_ptr<const elements::SnapshotIndex> snapshotIndex;
     // With a plan: whether the condensed units a design point drives (a non-empty design stamp, designStamps) are
     // recovered whatever the outputs ask (their pseudo-loads read the displacements of their elements), and
     // condensed units recovered beside those the outputs ask for (their IDs, as a DesignProblem asks for them).

@@ -10,16 +10,18 @@ namespace oos::design::detail
 {
 
 RecoveredFieldCurvature::RecoveredFieldCurvature(const solutions::AnalysisModel& model,
-                                         std::shared_ptr<const input::ModelSnapshot> snapshot,
-                                         base::MemoryBudget& budget)
-    : m_model(model), m_snapshot(std::move(snapshot)), m_budget(budget),
+                                                 std::shared_ptr<const input::ModelSnapshot> snapshot,
+                                                 base::MemoryBudget& budget)
+    : m_model(model),
+      m_snapshot(std::move(snapshot)),
+      m_budget(budget),
       m_weights(budget, static_cast<std::size_t>(model.dofMap().gSetSize()), "recovered field curvature weights")
 {
     std::fill(m_weights.span().begin(), m_weights.span().end(), 0.0);
 }
 
 bool RecoveredFieldCurvature::prepare(std::span<const WeightedRecoveredField> fields,
-                                  std::span<const RecoveredFieldTarget> targets, std::span<const double> shape)
+                                      std::span<const RecoveredFieldTarget> targets, std::span<const double> shape)
 {
     for (const auto& field : fields)
         if (!add(field, targets, shape))
@@ -34,7 +36,7 @@ bool RecoveredFieldCurvature::prepare(std::span<const WeightedRecoveredField> fi
 }
 
 bool RecoveredFieldCurvature::add(const WeightedRecoveredField& field, std::span<const RecoveredFieldTarget> targets,
-                             std::span<const double> shape)
+                                  std::span<const double> shape)
 {
     if (field.response->definition().type == ResponseType::Displacement)
     {
@@ -45,35 +47,39 @@ bool RecoveredFieldCurvature::add(const WeightedRecoveredField& field, std::span
         return true;
     }
     const auto& elements = field.response->elementTargets();
-    const auto target = std::find_if(elements.begin(), elements.end(), [&](const auto& candidate)
-                                     { return candidate.elementId == field.label.entity; });
+    const auto target = std::find_if(elements.begin(), elements.end(),
+                                     [&](const auto& candidate) { return candidate.elementId == field.label.entity; });
     if (target == elements.end())
         return false;
-    const auto location = std::find_if(target->items.begin(), target->items.end(), [&](const auto& candidate)
-                                       { return candidate.first == field.label.component; });
+    const auto location = std::find_if(target->items.begin(), target->items.end(),
+                                       [&](const auto& candidate) { return candidate.first == field.label.component; });
     if (location == target->items.end())
         return false;
     for (std::size_t batch = 0; batch < m_model.elementSet().batches().size(); ++batch)
         if (m_model.elementSet().batches()[batch].view.card() == target->card)
-            return addRecovery(field, {batch, target->row},
+            return addRecovery(
+                field, {batch, target->row},
                 {field.response->definition().type, field.label.component, location->second, field.label.layer},
                 targets, shape);
     return false;
 }
 
 bool RecoveredFieldCurvature::addRecovery(const WeightedRecoveredField& field, const ElementRef& element,
-                                      const ElementItemSpec& spec, std::span<const RecoveredFieldTarget> targets,
-                                      std::span<const double> shape)
+                                          const ElementItemSpec& spec, std::span<const RecoveredFieldTarget> targets,
+                                          std::span<const double> shape)
 {
     const auto& batch = m_model.elementSet().batches()[element.batch];
     const ElementItemFunction function(*batch.family, element.row, {spec});
-    const auto grid = static_cast<std::size_t>(m_model.dofMap().gridCount()) * 6;
-    const elements::NodalDisplacements displacements{shape.first(grid), shape.subspan(grid), nullptr};
+    const assembly::DofMap& dofMap = m_model.dofMap();
+    const elements::NodalDisplacements displacements =
+        elements::NodalDisplacements::ofGSet(shape, static_cast<std::size_t>(dofMap.gridCount()),
+                                             static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
     base::BudgetedBuffer<double> copy(m_budget, shape.size(), "recovered field curvature recovery scratch");
     const auto scratch = [&]
     {
         std::copy(shape.begin(), shape.end(), copy.data());
-        return ScratchDisplacements{copy.span().first(grid), copy.span().subspan(grid)};
+        return ScratchDisplacements::ofGSet(copy.span(), static_cast<std::size_t>(dofMap.gridCount()),
+                                            static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
     };
     const auto slopes = function.slopes(batch.view, m_snapshot, displacements, scratch, m_budget);
     if (!slopes)
@@ -116,7 +122,7 @@ bool RecoveredFieldCurvature::addRecovery(const WeightedRecoveredField& field, c
 }
 
 void RecoveredFieldCurvature::weightRate(std::span<const double> shapeRate, std::span<const double> fieldMoves,
-                                     std::span<double> into) const
+                                         std::span<double> into) const
 {
     std::fill(into.begin(), into.end(), 0.0);
     for (const auto& block : m_displacements)
@@ -132,7 +138,7 @@ void RecoveredFieldCurvature::weightRate(std::span<const double> shapeRate, std:
 }
 
 void RecoveredFieldCurvature::addExplicitRate(std::span<const double> shapeRate, std::span<const double> fieldMoves,
-                                          std::span<double> into) const
+                                              std::span<double> into) const
 {
     for (const auto& block : m_mixed)
         for (std::size_t i = 0; i < block.dofs.size(); ++i)

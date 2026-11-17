@@ -1,6 +1,6 @@
 #include "ModalItems.hpp"
-#include "ModalSystem.hpp"
 
+#include "ModalSystem.hpp"
 #include "oos/assembly/assemble/MassAssembler.hpp"
 #include "oos/base/errors/OptimisationError.hpp"
 #include "oos/linalg/eigen/BorderedEigenSystem.hpp"
@@ -46,8 +46,9 @@ std::span<const double> ModalItems::shapeOf(const Mode& mode) const
 
 elements::NodalDisplacements ModalItems::nodal(std::span<const double> vector) const
 {
-    const auto grid = static_cast<std::size_t>(m_in.dofMap->gridCount()) * 6;
-    return {vector.first(grid), vector.subspan(grid), nullptr};
+    const assembly::DofMap& dofMap = *m_in.dofMap;
+    return elements::NodalDisplacements::ofGSet(vector, static_cast<std::size_t>(dofMap.gridCount()),
+                                                static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
 }
 
 void ModalItems::add(const ItemKey& key, const DesignResp1Response& response, const ResponseItem& label, double value)
@@ -65,12 +66,13 @@ void ModalItems::add(const ItemKey& key, const DesignResp1Response& response, co
     if (column >= roots.size())
         throw base::OptimisationError("modal field response names a mode outside the extracted roots");
     for (std::size_t other = 0; other < roots.size(); ++other)
-        if (other != column && std::abs(roots[other] - roots[column]) <=
-            REPEATED_ROOT_TOLERANCE * std::max({std::abs(roots[other]), std::abs(roots[column]), 1e-12}))
+        if (other != column &&
+            std::abs(roots[other] - roots[column]) <=
+                REPEATED_ROOT_TOLERANCE * std::max({std::abs(roots[other]), std::abs(roots[column]), 1e-12}))
             throw base::OptimisationError(
                 "an individual modal field derivative is not unique at a repeated eigenvalue");
-    auto found = std::find_if(m_modes.begin(), m_modes.end(), [&](const Mode& mode)
-                              { return mode.solve == solve && mode.column == column; });
+    auto found = std::find_if(m_modes.begin(), m_modes.end(),
+                              [&](const Mode& mode) { return mode.solve == solve && mode.column == column; });
     if (found == m_modes.end())
     {
         m_modes.push_back({solve, column, {}, 1.0});
@@ -95,8 +97,8 @@ void ModalItems::add(const ItemKey& key, const DesignResp1Response& response, co
                 item.element = ElementRef{batch, target->row};
                 const std::vector<ElementItemSpec> specs{
                     {response.definition().type, label.component, location->second, label.layer}};
-                item.function = std::make_unique<ElementItemFunction>(*m_in.set->batches()[batch].family,
-                                                                      target->row, specs);
+                item.function =
+                    std::make_unique<ElementItemFunction>(*m_in.set->batches()[batch].family, target->row, specs);
                 break;
             }
         if (!item.function)
@@ -172,12 +174,17 @@ void ModalItems::prepare()
                 {
                     const auto& view = m_in.set->batches()[item.element->batch].view;
                     base::BudgetedBuffer<double> scratch(budget, g, "modal field recovery scratch");
-                    const auto slopes = item.function->slopes(view, m_in.snapshot, nodal(shape), [&]
+                    const auto slopes = item.function->slopes(
+                        view, m_in.snapshot, nodal(shape),
+                        [&]
                         {
                             std::copy(shape.begin(), shape.end(), scratch.data());
-                            const auto grid = static_cast<std::size_t>(model.dofMap().gridCount()) * 6;
-                            return ScratchDisplacements{scratch.span().first(grid), scratch.span().subspan(grid)};
-                        }, budget);
+                            const assembly::DofMap& dofMap = model.dofMap();
+                            return ScratchDisplacements::ofGSet(
+                                scratch.span(), static_cast<std::size_t>(dofMap.gridCount()),
+                                static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
+                        },
+                        budget);
                     if (!slopes)
                         throw base::OptimisationError("modal field recovery does not give displacement derivatives");
                     checkValue(slopes->values.front(), item.value);

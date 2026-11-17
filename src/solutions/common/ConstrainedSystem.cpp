@@ -36,7 +36,8 @@ ConstrainedSystem::ConstrainedSystem(const AnalysisModel& model, const Constrain
         snapshot.hasTable(input::TableRole::FastenerPiercings) ? &snapshot.fastenerPiercings() : nullptr;
 
     m_mpc = std::make_unique<assembly::MpcEquations>(constraints, dofMap, selection.mpc, budget, sink);
-    m_fasteners = std::make_unique<assembly::FastenerConstraints>(fastenerPiercings, dofMap, budget, sink);
+    m_fasteners =
+        std::make_unique<assembly::FastenerConstraints>(fastenerPiercings, dofMap, budget, sink, model.formulation());
     if (options.spc != nullptr)
     {
         m_spc = options.spc;
@@ -49,8 +50,8 @@ ConstrainedSystem::ConstrainedSystem(const AnalysisModel& model, const Constrain
         m_spc = m_ownSpc.get();
     }
     // The glue leaves out the grid points the other constraints hold or make dependent: built after them.
-    const assembly::GlueContext glueContext{rigidElements, m_mpc.get(), m_fasteners.get(), m_spc->sbDofs(),
-                                            m_spc->sgDofs()};
+    const assembly::GlueContext glueContext{rigidElements,   m_mpc.get(),     m_fasteners.get(),
+                                            m_spc->sbDofs(), m_spc->sgDofs(), model.formulation()};
     m_glue = std::make_unique<assembly::GlueConstraints>(snapshot, selection.contact, selection.subcase, dofMap,
                                                          glueContext, budget, sink);
     // With an element formulation that has relations of its own, the model's relations are eliminated a first time
@@ -67,10 +68,17 @@ ConstrainedSystem::ConstrainedSystem(const AnalysisModel& model, const Constrain
         assembly::UsedElsewhere usedElsewhere;
         usedElsewhere.flags.assign(static_cast<std::size_t>(dofMap.gSetSize()), 0);
         usedElsewhere.markConcentratedLoads(snapshot, dofMap);
-        usedElsewhere.markStiffened(model.connectivity().stiffenedComponents(), dofMap);
+        usedElsewhere.markStiffened(model.connectivity().usedComponents(), dofMap);
         usedElsewhere.markIndependentTerms(*m_gm);
-        m_formulation = std::make_unique<assembly::FormulationConstraints>(*formulation, model.layoutKind(), dofMap,
-                                                                           *m_spc, usedElsewhere, *m_gm, sink);
+        // The grid points the dense K* of an external unit couples: its matrix may act on any of their components.
+        const linalg::NodeGroupList& couplings = options.extraCouplings;
+        for (std::size_t g = 0; g < couplings.groupCount(); ++g)
+            for (const std::int32_t node : couplings.group(g))
+                if (node < dofMap.gridCount())
+                    for (int component = 1; component <= 6; ++component)
+                        usedElsewhere.flags[static_cast<std::size_t>(dofMap.gridDof(node, component))] = 1;
+        m_formulation = std::make_shared<const assembly::FormulationConstraints>(
+            *formulation, model.layoutKind(), dofMap, *m_spc, usedElsewhere, *m_gm, sink);
         m_excludedDofs.assign(m_formulation->excludedDofs().begin(), m_formulation->excludedDofs().end());
         m_gm = std::make_shared<assembly::RigidElimination>(
             rigidElements, m_mpc.get(), dofMap, budget, sink, m_fasteners.get(), m_glue.get(),
@@ -97,8 +105,15 @@ ConstrainedSystem::ConstrainedSystem(const AnalysisModel& model, const Constrain
 
     const assembly::MsetCouplings couplings(model.connectivity().groups(), *m_gm, dofMap, budget);
     std::vector<linalg::NodeGroupList> groupLists{model.connectivity().groups(), couplings.groups()};
+    // The dense blocks of the external units and superelements couple their nodes as an element does, and through the
+    // relations of their dependent DOFs (an observer relation of the element formulation at a contour grid point).
+    std::optional<assembly::MsetCouplings> extraMsetCouplings;
     if (options.extraCouplings.groupCount() > 0)
+    {
         groupLists.push_back(options.extraCouplings);
+        extraMsetCouplings.emplace(options.extraCouplings, *m_gm, dofMap, budget);
+        groupLists.push_back(extraMsetCouplings->groups());
+    }
     m_graph = std::make_unique<linalg::NodeGraph>(dofMap.nodeCount(), groupLists, budget, pool);
     std::optional<assembly::NodeDiagonalBlockSet> givenBlocks;
     if (options.diagonalBlocks)

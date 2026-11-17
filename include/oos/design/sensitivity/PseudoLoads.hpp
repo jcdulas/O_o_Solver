@@ -74,6 +74,10 @@ public:
     void addAppliedLoad(std::size_t field, std::size_t subcase, std::span<const base::DofIndex> dofs,
                         std::span<const double> values);
     void addDenseLoad(std::size_t field, std::size_t subcase, std::span<const double> valuesG);
+    // A term of q_rs on the g set (`valuesG`) that is no load part (not taken by loadPartOf, appliedLoadPartOf nor
+    // addCombination): what a shape adds through the relations of an element formulation, −K·∂u/∂v|u_n + ∂Cᵀ·λ
+    // (SensitivityComputation), the caller giving a SUBCOM its terms' sum.
+    void addConstraintLoad(std::size_t field, std::size_t subcase, std::span<const double> valuesG);
     // Compresses the vectors of a field: call once its elements are all added.
     void finish(std::size_t field);
     // A SUBCOM: adds Σ a_k times the load parts of its terms (subcase, a_k) to the field's pseudo-load of

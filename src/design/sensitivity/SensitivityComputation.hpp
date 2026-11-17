@@ -6,6 +6,7 @@
 // included by the sources of the design module only.
 
 #include "EigenItems.hpp"
+#include "FormulationShape.hpp"
 #include "ModalItems.hpp"
 #include "TrimItems.hpp"
 #include "oos/assembly/assemble/ElementSet.hpp"
@@ -39,7 +40,9 @@
 #include "oos/design/sensitivity/ShapeElements.hpp"
 #include "oos/design/sensitivity/StaticSensitivity.hpp"
 #include "oos/design/sensitivity/ValueCheck.hpp"
+#include "oos/elements/core/ElementFormulation.hpp"
 #include "oos/elements/core/ElementRegistry.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/output/arrays/NodalResultTable.hpp"
 #include "oos/output/sections/CutLoads.hpp"
@@ -181,12 +184,12 @@ struct SubcaseState
     [[nodiscard]] bool isCombination() const noexcept { return subcase.isCombination; }
 
     [[nodiscard]] elements::NodalDisplacements nodal(const assembly::DofMap& dofMap,
-                                                    std::optional<ElementRef> element = std::nullopt) const
+                                                     std::optional<ElementRef> element = std::nullopt) const
     {
-        const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(dofMap.gridCount());
-        const std::span<const double> all = displacements.span();
-        elements::NodalDisplacements result{all.first(gridValues), all.subspan(gridValues),
-                                             temperatures ? &temperatures->temperatures() : nullptr};
+        elements::NodalDisplacements result =
+            elements::NodalDisplacements::ofGSet(displacements.span(), static_cast<std::size_t>(dofMap.gridCount()),
+                                                 static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
+        result.temperatures = temperatures ? &temperatures->temperatures() : nullptr;
         if (element)
             if (const auto found = elementLoads.find(*element); found != elementLoads.end())
                 result.lineLoads = found->second.second;
@@ -394,8 +397,12 @@ public:
           m_registry(elements::ElementRegistry::forModel(*inputs.overlaid)),
           m_replaced(replacedElementsOf(inputs.results, m_registry)),
           m_index(*inputs.overlaid, budget),
-          m_set(m_index, m_replaced ? m_replaced->registry() : m_registry),
-          m_dofMap(inputs.overlaid->nodes(), m_index.points()),
+          // The element formulation's entities of a static analysis (docs/mixed-hybrid-formulation-spec.md section
+          // 5.2), on which the analysis solved.
+          m_formulation(elements::formulationModelOf(m_index, m_registry)),
+          m_set(m_index, m_replaced ? m_replaced->registry() : m_registry,
+                m_formulation != nullptr ? &m_formulation->layout(elements::EntityLayout::Kind::Static) : nullptr),
+          m_dofMap(inputs.overlaid->nodes(), m_index.points(), m_formulation, elements::EntityLayout::Kind::Static),
           m_variableCount(inputs.model->independentCount()),
           m_quantities(quantitiesOf(*inputs.design))
     {
@@ -404,10 +411,10 @@ public:
             m_eigen = std::make_unique<EigenItems>(EigenItems::Inputs{
                 inputs.modes, inputs.buckling, &m_dofMap, &m_set,
                 inputs.overlaid->hasTable(input::TableRole::Params) ? &inputs.overlaid->params() : nullptr,
-                m_variableCount, &budget});
+                m_variableCount, &budget, inputs.overlaid.get(), inputs.pool});
         if (inputs.modes != nullptr)
-            m_modal = std::make_unique<ModalItems>(ModalItems::Inputs{
-                inputs.overlaid, inputs.modes, &m_set, &m_dofMap, inputs.kernel, inputs.pool, &budget});
+            m_modal = std::make_unique<ModalItems>(ModalItems::Inputs{inputs.overlaid, inputs.modes, &m_set, &m_dofMap,
+                                                                      inputs.kernel, inputs.pool, &budget});
         // The items of the SAERO subcases (TrimItems), on the trim's linearisation.
         if (inputs.trim != nullptr)
             m_trim = std::make_unique<TrimItems>(TrimItems::Inputs{
@@ -660,8 +667,7 @@ protected:
                 // A SUBCOM: no load and no constraint set of its own; its displacements, its terms and its group
                 // once every subcase is read (prepareCombinations). Its own temperatures recover its items.
                 state.subcase.load.reset();
-                state.temperatures =
-                    solutions::initialStrainsOf(snapshot, m_index.points(), subcase, m_budget, sink);
+                state.temperatures = solutions::initialStrainsOf(snapshot, m_index.points(), subcase, m_budget, sink);
                 state.group = NO_GROUP;
                 m_subcaseIndex[subcase.label] = m_subcases.size();
                 m_subcases.push_back(std::move(state));
@@ -1175,6 +1181,197 @@ protected:
     }
 
     [[nodiscard]] SubcaseState& stateOf(std::int32_t subcase) { return m_subcases[m_subcaseIndex.at(subcase)]; }
+    // A shape that moves the elements of an element formulation (MixedHybridFormulation): its relations (ties and
+    // observer relations, u_m = Σ c_mj(v)·u_j: C(v)·u = 0) and the fill of its excluded DOFs (u_x = W(v)·u) are
+    // functions of the positions. With K·u + Cᵀ·μ = P (μ = −λ, λ the forces of the relations, RigidElimination) their
+    // derivative at fixed u_n gives, per subcase s (docs/mixed-hybrid-formulation-spec.md section 5.15):
+    // - D_s = ∂u/∂v at fixed u_n: on a dependent DOF D_m = Σ (∂c_mj/∂v)·u_j + Σ c_mj·D_j (the chains of the relations
+    //   followed to their end), on an excluded DOF D_x = W·D + (∂W/∂v)·u, zero elsewhere;
+    // - the pseudo-load −K·D_s − (∂C/∂v)ᵀ·μ = −K·D_s − Σ_m λ_m·(∂c_mj/∂v) at the DOFs j (PseudoLoads::
+    //   addConstraintLoad): the reduced equations of du_n are Tᵀ·K·T·du_n = Tᵀ·(q − K·D − ∂Cᵀ·μ), du = T·du_n + D;
+    // - the explicit part w·D_s of every item of the subcase (its weights before the excluded ones are moved);
+    // - for an SPC force item, whose explicit part reads the pseudo-load (−w·q), its share of the term above given
+    //   back; for a compliance (weights scale·K·u, not scale·P), −scale·(K·u − P)·D_s.
+    // The derivatives by differences over the perturbation's sides, each side's formulation model giving the rows
+    // (FormulationConstraints::relationsOn, fillExcludedOn).
+    // What a shape adds in one subcase through the relations of an element formulation (addFormulationShapeTerms):
+    // D_s = ∂u/∂v at fixed u_n, the pseudo-load L_s = −K·D_s − (∂C/∂v)ᵀ·μ, and K·u − P; g-set vectors.
+    struct FormulationShapeTerms
+    {
+        std::vector<double> d;
+        std::vector<double> load;
+        std::vector<double> residual;
+    };
+
+    void addFormulationShapeTerms(std::size_t q, const FieldValue& quantity, const FieldPerturbation& perturbation,
+                                  const std::vector<ElementRef>& reached)
+    {
+        const bool reachesFormulation =
+            std::any_of(reached.begin(), reached.end(), [&](const ElementRef& element)
+                        { return m_set.batches()[element.batch].view.formulation() != nullptr; });
+        if (!reachesFormulation)
+            return;
+        const std::array<const elements::FormulationModel*, FIELD_SIDE_COUNT> models =
+            sideFormulationModels(perturbation);
+        if (m_eigen)
+            m_eigen->addFormulationShapeTerms(q, perturbation, models);
+        const std::size_t size = gSize();
+        // Per subcase (empty: nothing of the formulation moves there).
+        std::vector<FormulationShapeTerms> terms(m_subcases.size());
+        const input::ParamTable* params =
+            m_in.overlaid->hasTable(input::TableRole::Params) ? &m_in.overlaid->params() : nullptr;
+        for (std::size_t s = 0; s < m_subcases.size(); ++s)
+        {
+            const SubcaseState& state = m_subcases[s];
+            if (state.isCombination() || state.isAeroelastic || state.group == NO_GROUP)
+                continue;
+            const SensitivitySystem& system = *m_systems[state.group];
+            const assembly::FormulationConstraints* formulation = system.formulation();
+            if (formulation == nullptr || (formulation->relations().empty() && formulation->excludedDofs().empty()))
+                continue;
+            terms[s] = formulationTermsOf(state, system, *formulation, perturbation, models, params);
+        }
+        // A SUBCOM: the sums of its terms' (each linear in its displacements and loads).
+        for (std::size_t s = 0; s < m_subcases.size(); ++s)
+        {
+            const SubcaseState& state = m_subcases[s];
+            if (!state.isCombination())
+                continue;
+            for (const auto& [term, coefficient] : state.terms)
+            {
+                if (terms[term].d.empty())
+                    continue;
+                if (terms[s].d.empty())
+                    terms[s] = FormulationShapeTerms{std::vector<double>(size, 0.0), std::vector<double>(size, 0.0),
+                                                     std::vector<double>(size, 0.0)};
+                for (std::size_t g = 0; g < size; ++g)
+                {
+                    terms[s].d[g] += coefficient * terms[term].d[g];
+                    terms[s].load[g] += coefficient * terms[term].load[g];
+                    terms[s].residual[g] += coefficient * terms[term].residual[g];
+                }
+            }
+        }
+        for (std::size_t s = 0; s < m_subcases.size(); ++s)
+        {
+            const FormulationShapeTerms& made = terms[s];
+            if (made.d.empty())
+                continue;
+            m_pseudoLoads->addConstraintLoad(q, s, made.load);
+            const std::int32_t label = m_subcases[s].subcase.label;
+            for (std::size_t r = 0; r < m_linearised.items.size(); ++r)
+                for (std::size_t i = 0; i < m_linearised.items[r].size(); ++i)
+                {
+                    const ItemLinearisation& item = m_linearised.items[r][i];
+                    if (item.isWanted && item.subcase == label && !item.weights.empty())
+                        addExplicit(ItemKey{r, i}, quantity, dotSparse(item.weights, made.d));
+                }
+            for (const SpcItem& item : m_spcItems)
+                if (item.subcase == s)
+                    addExplicit(item.key, quantity, dotSparse(item.w, made.load));
+            for (const SelfAdjointItem& item : m_selfAdjointItems)
+                if (item.subcase == s)
+                {
+                    double product = 0.0;
+                    for (std::size_t g = 0; g < size; ++g)
+                        product += made.residual[g] * made.d[g];
+                    addExplicit(item.key, quantity, -item.scale * product);
+                }
+        }
+    }
+
+    // addFormulationShapeTerms for one subcase that is no SUBCOM: D_s, the pseudo-load L_s = −K·D_s + E_s and
+    // K·u − P.
+    FormulationShapeTerms formulationTermsOf(
+        const SubcaseState& state, const SensitivitySystem& system, const assembly::FormulationConstraints& formulation,
+        const FieldPerturbation& perturbation,
+        const std::array<const elements::FormulationModel*, FIELD_SIDE_COUNT>& models, const input::ParamTable* params)
+    {
+        const std::size_t size = gSize();
+        const std::span<const double> u = state.displacements.span();
+        const assembly::RigidElimination& gm = system.gm();
+        base::DiagnosticSink sink;
+        const std::array<assembly::FormulationRelations, FIELD_SIDE_COUNT> sides =
+            sideRelations(formulation, models, sink);
+        const assembly::FormulationRelations& base = formulation.relations();
+        // D on the dependent DOFs.
+        FormulationShapeTerms made{dependentDerivative(gm, base, sides, perturbation, u),
+                                   std::vector<double>(size, 0.0), std::vector<double>(size, 0.0)};
+        std::vector<double>& d = made.d;
+        std::vector<std::size_t> rowOf(base.rowCount(), SIZE_MAX); // the row of Gm of each formulation row
+        for (std::size_t k = 0; k < base.rowCount(); ++k)
+            if (const std::optional<std::size_t> row = gm.findRow(base.dependentDof(k)))
+                rowOf[k] = *row;
+        // D on the excluded DOFs: W·D + (∂W/∂v)·u.
+        const std::span<const base::DofIndex> excluded = formulation.excludedDofs();
+        if (!excluded.empty())
+        {
+            std::vector<double> filled = d;
+            formulation.fillExcluded(filled);
+            std::array<std::vector<double>, FIELD_SIDE_COUNT> fills;
+            for (std::size_t side = 0; side < FIELD_SIDE_COUNT; ++side)
+            {
+                fills[side].assign(u.begin(), u.end());
+                formulation.fillExcludedOn(*models[side], fills[side]);
+            }
+            for (const base::DofIndex dof : excluded)
+            {
+                const auto x = static_cast<std::size_t>(dof);
+                d[x] = filled[x] + perturbation.derivative(fills[0][x], fills[1][x], fills[2][x], fills[3][x]);
+            }
+        }
+        // K·u − P (the forces of the relations on the dependent DOFs) and λ, the multiplier of each row of Gm.
+        std::vector<double> ku(size, 0.0);
+        system.kgg().multiply(u, ku);
+        std::vector<double> loads(size, 0.0);
+        if (state.subcase.load)
+        {
+            std::unique_ptr<linalg::BlockSparseMatrix> mass;
+            if (m_loads->needsMass(*state.subcase.load))
+            {
+                mass = std::make_unique<linalg::BlockSparseMatrix>(system.pattern(), m_budget,
+                                                                   "sensitivity formulation shape mass");
+                const assembly::NonStructuralMassShares shares(m_set, state.subcase.nonStructuralMass, m_budget, sink);
+                assembly::MassAssembler(m_set, m_dofMap, shares,
+                                        assembly::MassAssemblyOptions::fromParams(params, state.subcase.label, sink))
+                    .assemble(*mass, m_in.pool);
+            }
+            m_loads->addLoads(*state.subcase.load, mass.get(), loads, m_budget, sink);
+        }
+        if (state.temperatures)
+            m_loads->addThermalLoads(state.temperatures->temperatures(), loads);
+        for (std::size_t g = 0; g < size; ++g)
+            made.residual[g] = ku[g] - loads[g];
+        std::vector<double> multipliers(gm.rowCount(), 0.0);
+        for (std::size_t i = 0; i < gm.rowCount(); ++i)
+            multipliers[i] = made.residual[static_cast<std::size_t>(gm.mDofs()[i])];
+        for (const std::int64_t parent : gm.chainOrder())
+            for (const assembly::ConstraintTerm& term : gm.relationTerms(static_cast<std::size_t>(parent)))
+                if (const std::optional<std::size_t> child = gm.findRow(term.dof))
+                    multipliers[*child] += term.coefficient * multipliers[static_cast<std::size_t>(parent)];
+        // E = −Σ_m λ_m·∂c_mj/∂v at the DOFs j, by differences of the sides' −Σ_m λ_m·c_mj.
+        std::array<std::vector<double>, FIELD_SIDE_COUNT> forces;
+        for (std::size_t side = 0; side < FIELD_SIDE_COUNT; ++side)
+        {
+            forces[side].assign(size, 0.0);
+            for (std::size_t k = 0; k < base.rowCount(); ++k)
+                if (rowOf[k] != SIZE_MAX)
+                    for (const assembly::ConstraintTerm& term : sides[side].row(k))
+                        forces[side][static_cast<std::size_t>(term.dof)] -= multipliers[rowOf[k]] * term.coefficient;
+        }
+        perturbation.derivatives(forces[0], forces[1], forces[2], forces[3], made.load);
+        // L = E − K·D.
+        std::vector<double> kd(size, 0.0);
+        system.kgg().multiply(d, kd);
+        for (std::size_t g = 0; g < size; ++g)
+            made.load[g] -= kd[g];
+        if (sink.hasErrors())
+            throw base::OptimisationError(base::concatenate(
+                {"the sensitivities of a shape in subcase ", std::to_string(state.subcase.label),
+                 ": the loads of the subcase: ", base::formatDiagnostic(sink.diagnostics().front())}));
+        return made;
+    }
+
     [[nodiscard]] const SensitivitySystem& systemOf(const SubcaseState& state) const
     {
         if (state.isAeroelastic)
@@ -2146,19 +2343,19 @@ protected:
                              JobCounts& counts)
     {
         const elements::ElementBatchView& view = m_set.batches()[job.element.batch].view;
-        const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(m_dofMap.gridCount());
         std::vector<SparseVector> weights(job.keys.size());
-        // PERFORMANCE: the slopes of a recovery are its matrix, made once with the element's formulation (a ShellQuad4's
-        // plate built once for its 24 DOFs), where the differences recovered the element two to eight times per DOF;
-        // exact, so the items linear in u have their weights to round-off and a von Mises its chain rule.
-        // Measured: the element derivatives of a design point, slopes against differences.
+        // PERFORMANCE: the slopes of a recovery are its matrix, made once with the element's formulation (a
+        // ShellQuad4's plate built once for its 24 DOFs), where the differences recovered the element two to eight
+        // times per DOF; exact, so the items linear in u have their weights to round-off and a von Mises its chain
+        // rule. Measured: the element derivatives of a design point, slopes against differences.
         if (m_options.elementDerivatives == ElementDerivativeMethod::Analytic)
             if (std::optional<ItemSlopes> slopes = job.function->slopes(
                     view, m_in.overlaid, state.nodal(m_dofMap, job.element),
                     [&]
                     {
-                        const std::span<double> copy = perturbedOf();
-                        return ScratchDisplacements{copy.first(gridValues), copy.subspan(gridValues)};
+                        return ScratchDisplacements::ofGSet(
+                            perturbedOf(), static_cast<std::size_t>(m_dofMap.gridCount()),
+                            static_cast<std::size_t>(m_dofMap.scalarCount()), &m_dofMap.entities());
                     },
                     m_budget))
             {
@@ -2178,8 +2375,12 @@ protected:
             }
         const std::span<double> perturbed = perturbedOf();
         auto displacements = state.nodal(m_dofMap, job.element);
-        displacements.grid = perturbed.first(gridValues);
-        displacements.scalar = perturbed.subspan(gridValues);
+        const elements::NodalDisplacements perturbedParts = elements::NodalDisplacements::ofGSet(
+            perturbed, static_cast<std::size_t>(m_dofMap.gridCount()), static_cast<std::size_t>(m_dofMap.scalarCount()),
+            &m_dofMap.entities());
+        displacements.grid = perturbedParts.grid;
+        displacements.scalar = perturbedParts.scalar;
+        displacements.entity = perturbedParts.entity;
         std::vector<ItemForm> forms; // bounded by the job's items
         job.baseValues = job.function->values(view, m_in.overlaid, displacements, m_budget, &forms);
         // ∂r/∂u_e by central differences on each DOF of the element, the others fixed.
@@ -2836,17 +3037,19 @@ protected:
                         });
                 if (m_trim)
                     m_trim->addElement(q, family, batch.view.elementId(element.row), use, terms.stiffness,
-                        [&](const elements::MassOptions& options)
-                        {
-                            const ElementMatrices matrices{family, batch.view, element.row, designed, differences};
-                            DerivativeCounts counts;
-                            auto mass = massDerivativeOf(matrices, options, counts);
-                            m_report.analyticDerivatives += counts.analytic;
-                            m_report.elementDerivatives += counts.differenced;
-                            return mass;
-                        });
+                                       [&](const elements::MassOptions& options)
+                                       {
+                                           const ElementMatrices matrices{family, batch.view, element.row, designed,
+                                                                          differences};
+                                           DerivativeCounts counts;
+                                           auto mass = massDerivativeOf(matrices, options, counts);
+                                           m_report.analyticDerivatives += counts.analytic;
+                                           m_report.elementDerivatives += counts.differenced;
+                                           return mass;
+                                       });
                 if (m_modal && !m_modal->isEmpty())
-                    m_modal->addElement(q, element, use, terms.stiffness,
+                    m_modal->addElement(
+                        q, element, use, terms.stiffness,
                         [&](const elements::MassOptions& options)
                         {
                             const ElementMatrices matrices{family, batch.view, element.row, designed, differences};
@@ -2855,7 +3058,8 @@ protected:
                             m_report.analyticDerivatives += counts.analytic;
                             m_report.elementDerivatives += counts.differenced;
                             return mass;
-                        }, designed, perturbation);
+                        },
+                        designed, perturbation);
             }
         }
         if (m_trim)
@@ -2876,6 +3080,9 @@ protected:
             if (turnsLoads && m_subcases[s].hasConcentratedLoads)
                 addLoadDifference(q, s, perturbation.get(), assembly::LoadFamily::Concentrated, *subcase.load, params);
         }
+        // A shape that moves the relations and the excluded DOFs of an element formulation.
+        if (isShape)
+            addFormulationShapeTerms(q, quantity, perturbation.get(), elements);
         m_pseudoLoads->finish(q);
         // The SUBCOMs' pseudo-loads: their stiffness terms (above) and their terms' load parts.
         for (std::size_t s = 0; s < m_subcases.size(); ++s)
@@ -3397,7 +3604,8 @@ protected:
                             result.dofs.push_back(dof);
                             result.values.push_back(block.values(k)[i]);
                         }
-                        else result.values[static_cast<std::size_t>(found - result.dofs.begin())] += block.values(k)[i];
+                        else
+                            result.values[static_cast<std::size_t>(found - result.dofs.begin())] += block.values(k)[i];
                     }
                 return result;
             }
@@ -3481,7 +3689,7 @@ protected:
             return;
         m_eigen->formClusters();
         for (const SubcaseState& state : m_subcases)
-            m_eigen->setPreload(state.subcase.label, state.nodal(m_dofMap));
+            m_eigen->setPreload(state.subcase.label, state.nodal(m_dofMap), state.displacements.span());
         for (auto& [key, weights] : m_eigen->bucklingWeights())
             m_linearised.at(key).weights = std::move(weights);
         m_report.eigenvalueItems = static_cast<std::int64_t>(m_eigen->itemCount());
@@ -3823,8 +4031,8 @@ protected:
                 const assembly::MassAssemblyOptions options =
                     assembly::MassAssemblyOptions::fromParams(params, m_subcases[subcase].subcase.label, sink);
                 linalg::BlockSparseMatrix mass(systemOf(m_subcases[subcase]).pattern(), m_budget, "sensitivity mass");
-                const assembly::NonStructuralMassShares shares(
-                    set, m_subcases[subcase].subcase.nonStructuralMass, m_budget, sink);
+                const assembly::NonStructuralMassShares shares(set, m_subcases[subcase].subcase.nonStructuralMass,
+                                                               m_budget, sink);
                 assembly::MassAssembler(set, sideMap, shares, options).assemble(mass, m_in.pool);
                 builder.addFamilyLoads(loadSet, family, &mass, loads.span(), m_budget, sink);
             }
@@ -4118,6 +4326,7 @@ protected:
     // The elements the analysis' external units replace (null without one), before the set built on their families.
     std::unique_ptr<reduction::ReplacedElements> m_replaced;
     elements::SnapshotIndex m_index;
+    const elements::FormulationModel* m_formulation; // lives in m_index; null without an element formulation
     assembly::ElementSet m_set;
     assembly::DofMap m_dofMap;
     std::size_t m_variableCount;

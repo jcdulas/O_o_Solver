@@ -2,6 +2,7 @@
 
 #include "oos/base/math/Vec3.hpp"
 #include "oos/elements/core/ElementMatrixBlock.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 
 #include <algorithm>
 #include <array>
@@ -115,8 +116,13 @@ void addFrameBases(const base::ContractReader& reader, const char* name,
 // The node table rows of the grid points whose positions each element of a batch reads (ShapeElements.hpp), sorted
 // and distinct, for the elements of rows [first, last).
 void collectGeometryRows(const assembly::AssemblyBatch& batch, std::int64_t first, std::int64_t last,
-                         std::vector<std::vector<std::int32_t>>& rows)
+                         std::vector<std::vector<std::int32_t>>& rows, std::vector<std::vector<std::int32_t>>& read)
 {
+    // An element formulation that reads the geometry of the elements around an element (MixedHybridFormulation: the
+    // normals at its grid points, the curves of its edges) makes it read their grid points too.
+    if (const elements::FormulationModel* formulation = batch.view.formulation())
+        for (std::int64_t row = first; row < last; ++row)
+            read[static_cast<std::size_t>(row)] = formulation->readGridRows(batch.view.card(), row);
     const elements::FacetSet facets = batch.family->facets();
     elements::ElementMatrixBlock block;
     if (facets.has(elements::Facet::Stiffness))
@@ -190,19 +196,24 @@ ShapeElements::ShapeElements(const DesignModel& model, const FieldTargets& targe
     for (std::size_t b = 0; b < bases.size(); ++b)
         smallest[b] = std::min(smallest[b], derived.smallestSize(b));
     std::vector<std::vector<std::int32_t>> rows; // per element of a batch: bounded by the batch's elements
+    std::vector<std::vector<std::int32_t>> read; // the grid points the formulation reads around each element
     for (std::size_t b = 0; b < set.batches().size(); ++b)
     {
         const assembly::AssemblyBatch& batch = set.batches()[b];
         const std::int64_t count = batch.view.rowCount();
         rows.assign(static_cast<std::size_t>(count), {});
+        read.assign(static_cast<std::size_t>(count), {});
         for (std::int64_t first = 0; first < count; first += ELEMENTS_PER_CALL)
-            collectGeometryRows(batch, first, std::min(count, first + ELEMENTS_PER_CALL), rows);
+            collectGeometryRows(batch, first, std::min(count, first + ELEMENTS_PER_CALL), rows, read);
         const std::vector<BasisSet> framed = frameBasesOf(batch, basesOfSystem, basesOfProperty);
         for (std::int64_t row = 0; row < count; ++row)
         {
             const std::vector<std::int32_t>& element = rows[static_cast<std::size_t>(row)];
             std::set<std::size_t> reaching = framed[static_cast<std::size_t>(row)];
-            for (const std::int32_t gridRow : element)
+            std::vector<std::int32_t> reachingRows = element;
+            reachingRows.insert(reachingRows.end(), read[static_cast<std::size_t>(row)].begin(),
+                                read[static_cast<std::size_t>(row)].end());
+            for (const std::int32_t gridRow : reachingRows)
             {
                 const auto found = std::lower_bound(movedRows.begin(), movedRows.end(), gridRow);
                 if (found != movedRows.end() && *found == gridRow)

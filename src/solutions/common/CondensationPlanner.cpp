@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <bit>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -141,15 +142,70 @@ std::vector<reduction::MpcSetAlias> mpcSetAliases(const input::ConstraintTable* 
     return aliases;
 }
 
+// The relation of the plan graph a row of Gm belongs to: a rigid element or a fastener by its element ID, an MPC
+// equation by the SID of its card, the glue of one glued point, the formulation's relation of one dependent node.
+reduction::RelationKey relationKeyOf(const assembly::RigidElimination& gm, std::size_t i,
+                                     const assembly::DofMap& dofMap,
+                                     const std::map<base::DofIndex, base::EntityId>& mpcCardOfDependent)
+{
+    const assembly::ConstraintSource source = gm.sourceOf(i);
+    const std::int32_t node = dofMap.nodeDofOf(gm.mDofs()[i]).node;
+    if (isGlueSource(source))
+        return reduction::glueRelationKey(dofMap.gridId(node));
+    if (source == assembly::ConstraintSource::Formulation)
+        return reduction::formulationRelationKey(dofMap.nodeIdOf(node));
+    if (source == assembly::ConstraintSource::Mpc)
+        return reduction::RelationKey{true, mpcCardOfDependent.at(gm.mDofs()[i])};
+    return reduction::RelationKey{false, gm.sourceIdOf(i)};
+}
+
+// The entity nodes of each element (from the groups of the connectivity, which are the nodes of its matrices), and
+// the entity nodes in `varying`; null without entities.
+std::shared_ptr<const reduction::ElementEntityNodes> elementEntityNodesOf(const assembly::DofMap& dofMap,
+                                                                          const assembly::ElementConnectivity& elements,
+                                                                          std::vector<std::int32_t> varying)
+{
+    if (!dofMap.hasEntities())
+        return nullptr;
+    const linalg::NodeGroupList groups = elements.groups();
+    const std::span<const std::int32_t> elementIds = elements.groupElementIds();
+    std::vector<std::pair<base::EntityId, std::size_t>> order; // (element, group), bounded by the groups
+    for (std::size_t g = 0; g < groups.groupCount(); ++g)
+        order.emplace_back(elementIds[g], g);
+    std::sort(order.begin(), order.end());
+    auto table = std::make_shared<reduction::ElementEntityNodes>();
+    table->offsets.push_back(0);
+    for (std::size_t k = 0; k < order.size();)
+    {
+        const base::EntityId elementId = order[k].first;
+        const std::size_t first = table->nodes.size();
+        for (; k < order.size() && order[k].first == elementId; ++k)
+            for (const std::int32_t node : groups.group(order[k].second))
+                if (dofMap.isEntityNode(node))
+                    table->nodes.push_back(node);
+        if (table->nodes.size() == first)
+            continue;
+        std::sort(table->nodes.begin() + static_cast<std::ptrdiff_t>(first), table->nodes.end());
+        table->nodes.erase(std::unique(table->nodes.begin() + static_cast<std::ptrdiff_t>(first), table->nodes.end()),
+                           table->nodes.end());
+        table->elementIds.push_back(elementId);
+        table->offsets.push_back(table->nodes.size());
+    }
+    std::sort(varying.begin(), varying.end());
+    varying.erase(std::unique(varying.begin(), varying.end()), varying.end());
+    table->varyingNodes = std::move(varying);
+    return table;
+}
+
 } // namespace
 
 CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, base::MemoryBudget& budget,
-                                         base::ThreadPool* pool, base::DiagnosticSink& sink)
+                                         base::ThreadPool* pool, base::DiagnosticSink& sink, AnalysisKind analysis)
     : m_snapshot(&snapshot), m_budget(&budget), m_pool(pool)
 {
-    elements::refuseMixedHybridOn(snapshot, "the condensation of components");
-    m_model = std::make_unique<AnalysisModel>(snapshot, AnalysisKind::Statics, budget, pool, nullptr, sink);
+    m_model = std::make_unique<AnalysisModel>(snapshot, analysis, budget, pool, nullptr, sink);
     const assembly::DofMap& dofMap = m_model->dofMap();
+    const elements::FormulationModel* formulation = dofMap.formulation();
     const input::ConstraintTable* constraints =
         snapshot.hasTable(input::TableRole::Spc) ? &snapshot.constraints() : nullptr;
 
@@ -161,7 +217,8 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
     // What every subcase shares (CommonConstraints): the subcases constraining each DOF, the MPC cards every subcase
     // selects and those that vary, one contact table for every subcase (TODO: the glue rows of subcases selecting
     // different tables in the connection system, as the varying MPC sets).
-    CommonConstraints common = CommonConstraints::of(snapshot, dofMap, subcases, budget, sink);
+    CommonConstraints common =
+        CommonConstraints::of(snapshot, dofMap, subcases, budget, sink, m_model->connectivity().usedComponents());
     const std::optional<base::EntityId> commonContact = common.commonContact;
     const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
     const base::BudgetedBuffer<std::int32_t>& constrainedCount = common.constrainedCount;
@@ -181,7 +238,7 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
         mpcCardOfDependent.emplace(mpc.dependentDof(i), mpc.sourceSetIdOf(i));
     const assembly::FastenerConstraints fasteners(
         snapshot.hasTable(input::TableRole::FastenerPiercings) ? &snapshot.fastenerPiercings() : nullptr, dofMap,
-        budget, sink);
+        budget, sink, formulation);
     // The glue of the common contact table; a component held in every subcase keeps its SPC (GlueConstraints), one
     // held in some subcases only is tied here (its point is a boundary point of its unit already).
     const input::RigidTable* rigidElements =
@@ -195,10 +252,12 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
     for (std::size_t dof = 0; dof < gSize; ++dof)
         if (constrainedCount[dof] == subcaseCount)
             heldEverywhere[nextHeld++] = static_cast<base::DofIndex>(dof);
-    const assembly::GlueContext glueContext{rigidElements, &mpc, &fasteners, heldEverywhere.span(), {}};
+    const assembly::GlueContext glueContext{rigidElements, &mpc, &fasteners, heldEverywhere.span(), {}, formulation};
     m_glue = std::make_unique<assembly::GlueConstraints>(
         snapshot, commonContact, subcases.empty() ? 1 : subcases.front().label, dofMap, glueContext, budget, sink);
-    const assembly::RigidElimination gm(rigidElements, &mpc, dofMap, budget, sink, &fasteners, m_glue.get());
+    // With the element formulation, its relations every subcase has (CommonConstraints).
+    const assembly::RigidElimination gm(rigidElements, &mpc, dofMap, budget, sink, &fasteners, m_glue.get(), {},
+                                        common.formulationRelations.get());
     stopOnErrors(sink, "the condensation plan");
     const assembly::MsetCouplings couplings(m_model->connectivity().groups(), gm, dofMap, budget);
     const std::vector<linalg::NodeGroupList> groupLists{m_model->connectivity().groups(), couplings.groups()};
@@ -213,19 +272,20 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
     base::BudgetedBuffer<std::uint8_t> isDependent(budget, gSize, "plan: dependent DOFs");
     for (const base::DofIndex dof : gm.mDofs())
         isDependent[static_cast<std::size_t>(dof)] = 1;
+    std::vector<std::int32_t> varyingEntityNodes; // the entity nodes constrained in some subcases only
     for (std::size_t node = 0; node < nodeCount; ++node)
     {
         const bool isGrid = node < static_cast<std::size_t>(dofMap.gridCount());
+        const bool isEntity = dofMap.isEntityNode(static_cast<std::int32_t>(node));
         const auto row = static_cast<std::int32_t>(isGrid ? node : node - static_cast<std::size_t>(dofMap.gridCount()));
-        m_nodeIds[node] = isGrid ? dofMap.gridId(row) : dofMap.scalarId(row);
-        const int dofCount = isGrid ? 6 : 1;
+        m_nodeIds[node] = dofMap.nodeIdOf(static_cast<std::int32_t>(node));
+        const assembly::DofMap::NodeDofs nodeDofs = dofMap.dofsOfNode(static_cast<std::int32_t>(node));
         std::int32_t unconstrained = 0;
         std::int32_t free = 0;
         bool isPartial = false;
-        for (int component = 0; component < dofCount; ++component)
+        for (int component = 0; component < nodeDofs.count; ++component)
         {
-            const auto dof =
-                static_cast<std::size_t>(isGrid ? dofMap.gridDof(row, component + 1) : dofMap.scalarDof(row));
+            const auto dof = static_cast<std::size_t>(nodeDofs.first + component);
             const std::int32_t count = constrainedCount[dof];
             if (count == subcaseCount)
                 continue;
@@ -235,8 +295,15 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
         }
         m_unconstrainedDofCounts[node] = unconstrained;
         m_freeDofCounts[node] = free;
-        if (isPartial)
+        if (isPartial && isEntity)
+            varyingEntityNodes.push_back(static_cast<std::int32_t>(node));
+        else if (isPartial)
             m_partiallyConstrainedNodes.push_back(m_nodeIds[node]);
+        if (isEntity)
+        {
+            m_positions[node] = dofMap.nodePosition(static_cast<std::int32_t>(node));
+            continue;
+        }
         // A scalar point takes the position of a grid point it is coupled to (FsetOrdering does the same).
         std::int32_t located = isGrid ? row : -1;
         if (!isGrid)
@@ -248,7 +315,20 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
                 }
         m_positions[node] = located >= 0 ? dofMap.positionInBasic(located) : base::Vec3{};
     }
+    // The nodes of the formulation's relations and excluded DOFs some subcases only have: boundary points.
+    for (const std::int32_t node : common.formulationVaryingNodes)
+    {
+        if (dofMap.isEntityNode(node))
+            varyingEntityNodes.push_back(node);
+        else
+            m_partiallyConstrainedNodes.push_back(m_nodeIds[static_cast<std::size_t>(node)]);
+    }
     std::sort(m_partiallyConstrainedNodes.begin(), m_partiallyConstrainedNodes.end());
+    m_partiallyConstrainedNodes.erase(
+        std::unique(m_partiallyConstrainedNodes.begin(), m_partiallyConstrainedNodes.end()),
+        m_partiallyConstrainedNodes.end());
+    const std::shared_ptr<const reduction::ElementEntityNodes> entityNodes =
+        elementEntityNodesOf(dofMap, m_model->connectivity(), std::move(varyingEntityNodes));
 
     if (snapshot.hasTable(input::TableRole::Supports))
     {
@@ -273,21 +353,38 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
         const auto dof = static_cast<std::size_t>(gm.mDofs()[i]);
         if (constrainedCount[dof] == subcaseCount)
             continue;
-        const assembly::ConstraintSource source = gm.sourceOf(i);
         const std::int32_t node = dofMap.nodeDofOf(gm.mDofs()[i]).node;
         // A glued point is a relation of its own: inside a unit or at the interface point by point. An MPC
         // equation is keyed by the SID of its MPC card, as the connection system names it.
-        reduction::RelationKey relation{source == assembly::ConstraintSource::Mpc, gm.sourceIdOf(i)};
-        if (isGlueSource(source))
-            relation = reduction::glueRelationKey(dofMap.gridId(node));
-        else if (relation.isMpc)
-            relation.id = mpcCardOfDependent.at(gm.mDofs()[i]);
+        const reduction::RelationKey relation = relationKeyOf(gm, i, dofMap, mpcCardOfDependent);
         reduction::DependentPoint& entry = dependents[{node, relation}];
         entry.node = node;
         entry.relation = relation;
         ++entry.dofCount;
         for (const assembly::ConstraintTerm& term : gm.row(i))
             entry.independentNodes.push_back(dofMap.nodeDofOf(term.dof).node);
+    }
+    // With chains, each row's own terms: a chain through the reference of a RigidInterpolation that plan() absorbs
+    // stops there (resolvedDependents).
+    if (gm.hasChains())
+    {
+        m_chainRows.reserve(gm.rowCount());
+        for (std::size_t i = 0; i < gm.rowCount(); ++i)
+        {
+            const base::DofIndex dof = gm.mDofs()[i];
+            const std::int32_t node = dofMap.nodeDofOf(dof).node;
+            const reduction::RelationKey relation = relationKeyOf(gm, i, dofMap, mpcCardOfDependent);
+            ChainRow row{dof,
+                         node,
+                         relation,
+                         constrainedCount[static_cast<std::size_t>(dof)] == subcaseCount,
+                         m_chainTerms.size(),
+                         0};
+            for (const assembly::ConstraintTerm& term : gm.relationTerms(i))
+                m_chainTerms.push_back(term.dof);
+            row.termEnd = m_chainTerms.size();
+            m_chainRows.push_back(row);
+        }
     }
     std::vector<reduction::DependentPoint> dependentList;
     dependentList.reserve(dependents.size());
@@ -298,9 +395,9 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
                                      entry.independentNodes.end());
         dependentList.push_back(std::move(entry));
     }
-    m_planGraph =
-        std::make_unique<reduction::PlanGraph>(*m_graph, m_nodeIds.span(), m_unconstrainedDofCounts.span(),
-                                               m_freeDofCounts.span(), m_positions.span(), std::move(dependentList));
+    m_planGraph = std::make_unique<reduction::PlanGraph>(*m_graph, m_nodeIds.span(), m_unconstrainedDofCounts.span(),
+                                                         m_freeDofCounts.span(), m_positions.span(),
+                                                         std::move(dependentList), entityNodes);
 
     // The spiders and the measurement of each relation on this model.
     const input::FastenerPiercingTable* piercings =
@@ -348,6 +445,75 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
 
 CondensationPlanner::~CondensationPlanner() = default;
 
+std::vector<reduction::DependentPoint> CondensationPlanner::resolvedDependents(
+    std::span<const reduction::FreedReference> freed) const
+{
+    std::vector<reduction::DependentPoint> result; // bounded by the dependent points
+    if (m_chainRows.empty())
+        return result;
+    // The rows of the freed references: their DOFs are unknowns of the unit (the reference of the change of basis), so
+    // a chain through them ends there.
+    std::set<std::pair<base::EntityId, base::EntityId>> freedKeys; // (reference point, element), bounded by freed
+    for (const reduction::FreedReference& reference : freed)
+        freedKeys.emplace(reference.nodeId, reference.elementId);
+    const auto isFreedRow = [&](const ChainRow& row)
+    {
+        return !row.relation.isMpc &&
+               freedKeys.count({m_nodeIds[static_cast<std::size_t>(row.node)], row.relation.id}) != 0;
+    };
+    std::map<base::DofIndex, std::size_t> rowOfDof; // bounded by the rows of Gm
+    for (std::size_t i = 0; i < m_chainRows.size(); ++i)
+        if (!isFreedRow(m_chainRows[i]))
+            rowOfDof.emplace(m_chainRows[i].dof, i);
+    // The nodes each row depends on, its own terms resolved through the rows that are not freed (Gm has no cycle:
+    // RigidElimination dropped them), memoized.
+    std::vector<std::optional<std::vector<std::int32_t>>> nodesOfRow(m_chainRows.size());
+    const std::function<const std::vector<std::int32_t>&(std::size_t)> resolve =
+        [&](std::size_t i) -> const std::vector<std::int32_t>&
+    {
+        if (nodesOfRow[i])
+            return *nodesOfRow[i];
+        std::vector<std::int32_t> nodes; // bounded by the terms of one chain
+        for (std::size_t t = m_chainRows[i].termBegin; t < m_chainRows[i].termEnd; ++t)
+        {
+            const base::DofIndex dof = m_chainTerms[t];
+            const auto found = rowOfDof.find(dof);
+            if (found == rowOfDof.end())
+            {
+                nodes.push_back(m_model->dofMap().nodeDofOf(dof).node);
+                continue;
+            }
+            const std::vector<std::int32_t>& further = resolve(found->second);
+            nodes.insert(nodes.end(), further.begin(), further.end());
+        }
+        std::sort(nodes.begin(), nodes.end());
+        nodes.erase(std::unique(nodes.begin(), nodes.end()), nodes.end());
+        nodesOfRow[i] = std::move(nodes);
+        return *nodesOfRow[i];
+    };
+    std::map<std::pair<std::int32_t, reduction::RelationKey>, reduction::DependentPoint> entries;
+    for (std::size_t i = 0; i < m_chainRows.size(); ++i)
+    {
+        const ChainRow& row = m_chainRows[i];
+        if (row.isHeldEverywhere)
+            continue;
+        reduction::DependentPoint& entry = entries[{row.node, row.relation}];
+        entry.node = row.node;
+        entry.relation = row.relation;
+        ++entry.dofCount;
+        const std::vector<std::int32_t>& nodes = resolve(i);
+        entry.independentNodes.insert(entry.independentNodes.end(), nodes.begin(), nodes.end());
+    }
+    for (auto& [key, entry] : entries)
+    {
+        std::sort(entry.independentNodes.begin(), entry.independentNodes.end());
+        entry.independentNodes.erase(std::unique(entry.independentNodes.begin(), entry.independentNodes.end()),
+                                     entry.independentNodes.end());
+        result.push_back(std::move(entry));
+    }
+    return result;
+}
+
 GlueUnitCheck CondensationPlanner::glueUnitCheck(const reduction::UnitSet& units) const
 {
     const assembly::DofMap& dofMap = m_model->dofMap();
@@ -388,7 +554,8 @@ reduction::CondensationPlan CondensationPlanner::plan(const reduction::UnitSet& 
     base::BudgetedBuffer<std::int32_t> freedCounts(*m_budget, freeCounts.size(), "plan: free DOFs, spiders absorbed");
     std::copy(freeCounts.begin(), freeCounts.end(), freedCounts.data());
     std::vector<reduction::DependentPoint> dependents; // bounded by the dependent points, as the planner's own
-    for (const reduction::DependentPoint& entry : m_planGraph->dependents())
+    const std::vector<reduction::DependentPoint> resolved = resolvedDependents(freed);
+    for (const reduction::DependentPoint& entry : m_chainRows.empty() ? m_planGraph->dependents() : resolved)
     {
         const base::EntityId nodeId = m_nodeIds[static_cast<std::size_t>(entry.node)];
         const std::pair<base::EntityId, base::EntityId> key{nodeId, entry.relation.id};
@@ -407,7 +574,7 @@ reduction::CondensationPlan CondensationPlanner::plan(const reduction::UnitSet& 
         dependents.push_back(entry);
     }
     const reduction::PlanGraph graph(*m_graph, m_nodeIds.span(), m_unconstrainedDofCounts.span(), freedCounts.span(),
-                                     m_positions.span(), std::move(dependents));
+                                     m_positions.span(), std::move(dependents), m_planGraph->sharedEntityNodes());
     return reduction::CondensationPlan(absorption, boundaries, graph, request, *m_budget, m_pool, &spiders,
                                        glue.interfaceRelations);
 }

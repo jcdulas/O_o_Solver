@@ -28,6 +28,8 @@ struct PieceGroups
     linalg::ContributionBlock stiffness;                           // the matrices kept, on the node DOFs
     std::vector<std::int64_t> stiffnessElements;                   // per kept matrix: its element in the stiffness list
     std::vector<std::pair<std::int32_t, std::uint8_t>> components; // (node, component bit) of the stiffness DOFs
+    // (node, component bit) of the DOFs a matrix of an element without stiffness acts on (the mass of a point mass)
+    std::vector<std::pair<std::int32_t, std::uint8_t>> massComponents;
 };
 
 } // namespace
@@ -72,6 +74,8 @@ ElementConnectivity::ElementConnectivity(const ElementSet& set, const DofMap& do
     offsets.push(0);
     m_stiffenedComponents = base::BudgetedBuffer<std::uint8_t>(budget, static_cast<std::size_t>(dofMap.nodeCount()),
                                                                "element stiffened components");
+    m_usedComponents = base::BudgetedBuffer<std::uint8_t>(budget, static_cast<std::size_t>(dofMap.nodeCount()),
+                                                          "element used components");
     std::vector<PieceGroups> wave(PIECES_PER_WAVE);
     for (std::size_t firstPiece = 0; firstPiece < pieceCount; firstPiece += PIECES_PER_WAVE)
     {
@@ -86,6 +90,7 @@ ElementConnectivity::ElementConnectivity(const ElementSet& set, const DofMap& do
             groups.elementIds.clear();
             groups.pointElements.clear();
             groups.components.clear();
+            groups.massComponents.clear();
             // Fresh containers: those of the last wave were moved into the store.
             groups.stiffness = linalg::ContributionBlock{};
             groups.stiffnessElements = {};
@@ -109,6 +114,25 @@ ElementConnectivity::ElementConnectivity(const ElementSet& set, const DofMap& do
                                     source.nodeOf(dof),
                                     static_cast<std::uint8_t>(
                                         1U << static_cast<unsigned>(source.nodeDofOf(dof).component)));
+                        if (!isStiffness)
+                        {
+                            // The DOFs the matrix of an element without stiffness acts on: the rows that are not
+                            // zero (a point mass without inertia nor offset leaves the rotations alone).
+                            const std::span<const elements::ElementDof> dofs = matrices.dofs(i);
+                            const std::span<const double> matrix = matrices.matrix(i);
+                            const std::size_t n = dofs.size();
+                            for (std::size_t r = 0; r < n && matrix.size() == n * n; ++r)
+                            {
+                                const std::span<const double> row = matrix.subspan(r * n, n);
+                                const bool isUsed =
+                                    std::any_of(row.begin(), row.end(), [](double value) { return value != 0.0; });
+                                if (isUsed)
+                                    groups.massComponents.emplace_back(
+                                        source.nodeOf(dofs[r]),
+                                        static_cast<std::uint8_t>(
+                                            1U << static_cast<unsigned>(source.nodeDofOf(dofs[r]).component)));
+                            }
+                        }
                         if (firstKept >= 0)
                         {
                             nodeDofs.clear();
@@ -147,7 +171,12 @@ ElementConnectivity::ElementConnectivity(const ElementSet& set, const DofMap& do
             elementIds.append(wave[p].elementIds);
             pointElements.append(wave[p].pointElements);
             for (const auto& [node, bit] : wave[p].components)
+            {
                 m_stiffenedComponents[static_cast<std::size_t>(node)] |= bit;
+                m_usedComponents[static_cast<std::size_t>(node)] |= bit;
+            }
+            for (const auto& [node, bit] : wave[p].massComponents)
+                m_usedComponents[static_cast<std::size_t>(node)] |= bit;
             for (const std::int64_t size : wave[p].sizes)
                 offsets.push(offsets.span().back() + size);
             if (stiffnessStore != nullptr && stiffnessStore->isKept())

@@ -2,6 +2,7 @@
 
 #include "oos/base/math/Mat3.hpp"
 #include "oos/base/math/Vec3.hpp"
+#include "oos/elements/core/ElementDof.hpp"
 #include "oos/input/tables/FastenerPiercingTable.hpp"
 
 #include <cstddef>
@@ -15,6 +16,8 @@
 
 namespace oos::elements
 {
+
+class FormulationModel;
 
 // One grid point of the shell element a fastener side pierces (the pierced element): its position and displacement
 // system in the basic system, and the shape function of the element at the piercing point.
@@ -105,7 +108,33 @@ struct SideInterpolation
 // families, assembly::FastenerConstraints and reduction::FastenerPiercing all call this, so that they tie a side to the
 // element it pierces by the same map. Returns the message of a problem instead: no row, a grid point the lookup does
 // not find, the problems of interpolatePiercing.
-[[nodiscard]] std::variant<SideInterpolation, std::string>
-interpolateSide(const input::FastenerPiercingTable& table, input::PiercingRows rows, const SideGridLookup& findGrid);
+[[nodiscard]] std::variant<SideInterpolation, std::string> interpolateSide(const input::FastenerPiercingTable& table,
+                                                                           input::PiercingRows rows,
+                                                                           const SideGridLookup& findGrid);
+
+// The motion of the piercing point P of one side as rows over DOFs of the model, (u_P, θ_P) = map·u(dofs) in the basic
+// system: over the six DOFs of each grid point of the pierced element (the RigidInterpolation of interpolateSide), or,
+// when the pierced shell is an element of a formulation with unknowns besides its grid points, over the DOFs of that
+// shell: the displacement and the rotation of its surface at P (FormulationModel::shellPointMotion,
+// docs/mixed-hybrid-formulation-spec.md section 5.10), its grid translations and the unknowns of its edges and
+// interior.
+struct SideMotion
+{
+    base::Vec3 point;
+    std::vector<ElementDof> dofs;
+    std::vector<double> map; // 6 rows of dofs.size(), row-major
+};
+
+// The motion of a side over the six DOFs of each grid point of SideInterpolation::gridRows.
+[[nodiscard]] SideMotion sideMotionOf(const SideInterpolation& side);
+
+// The motion of the side on rows `rows` of the table: through `formulation` when it has the pierced shell (null: no
+// such formulation), else through the grid points of the pierced element (interpolateSide). The element families,
+// assembly::FastenerConstraints and the glue of the fastener points call this, so that they tie a side alike. Returns
+// the message of a problem instead, as interpolateSide.
+[[nodiscard]] std::variant<SideMotion, std::string> resolveSideMotion(const input::FastenerPiercingTable& table,
+                                                                      input::PiercingRows rows,
+                                                                      const SideGridLookup& findGrid,
+                                                                      const FormulationModel* formulation);
 
 } // namespace oos::elements

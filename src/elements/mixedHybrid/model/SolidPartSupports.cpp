@@ -199,24 +199,120 @@ SolidDerivedSupport supportOf(const PatchFit& fit, std::size_t entity, std::size
 
 } // namespace
 
-std::vector<SolidDerivedSupport> SolidPart::deriveSupports(std::span<const SolidHeldComponent> held) const
+namespace
 {
+
+// Two held directions are one when they are parallel within this (1 − |cosine|).
+constexpr double PARALLEL_TOLERANCE = 1e-10;
+
+// The directions off the basic axes that every grid of `grids` holds (those of the first grid that each other grid
+// holds too, up to the sign), and whether a component of the first grid is held along another direction at another
+// grid (a displacement system that turns over the entity, which it does not carry).
+struct SharedDirections
+{
+    std::vector<SolidPoint> directions;
+    bool differ = false;
+};
+
+SharedDirections sharedDirectionsOf(const std::map<std::size_t, std::vector<SolidSkewAxis>>& skewAt,
+                                    std::span<const std::size_t> grids)
+{
+    SharedDirections shared;
+    const auto first = skewAt.find(grids.front());
+    if (first == skewAt.end())
+        return shared;
+    for (const std::size_t grid : grids)
+        if (skewAt.count(grid) == 0)
+            return shared;
+    for (const SolidSkewAxis& axis : first->second)
+    {
+        bool isShared = true;
+        for (const std::size_t grid : grids)
+        {
+            bool isHeldThere = false;
+            for (const SolidSkewAxis& other : skewAt.at(grid))
+            {
+                if (std::fabs(dot3(axis.direction, other.direction)) >= 1.0 - PARALLEL_TOLERANCE)
+                    isHeldThere = true;
+                else
+                    shared.differ = shared.differ || other.component == axis.component;
+            }
+            isShared = isShared && isHeldThere;
+        }
+        if (isShared)
+            shared.directions.push_back(axis.direction);
+    }
+    return shared;
+}
+
+// The rows that hold the functions of an entity (`functionCount` of them, three components each) along `direction`.
+void appendSkewRows(std::size_t entity, std::size_t functionCount, const SolidPoint& direction,
+                    std::vector<SolidSupportRow>& rows)
+{
+    for (std::size_t m = 0; m < functionCount; ++m)
+    {
+        SolidSupportRow row;
+        row.entity = entity;
+        for (std::size_t c = 0; c < 3; ++c)
+            if (direction[c] != 0.0)
+                row.dofs.emplace_back(3 * m + c, direction[c]);
+        rows.push_back(std::move(row));
+    }
+}
+
+} // namespace
+
+std::vector<SolidDerivedSupport> SolidPart::deriveSupports(std::span<const SolidHeldComponent> held,
+                                                           std::span<const SolidSkewAxis> skew,
+                                                           SolidSupportRows* rows) const
+{
+    // the directions off the basic axes: the functions of an edge or a face whose grids all hold one are held along it
+    if (rows != nullptr && !skew.empty())
+    {
+        std::map<std::size_t, std::vector<SolidSkewAxis>> skewAt;
+        for (const SolidSkewAxis& axis : skew)
+            skewAt[axis.grid].push_back(axis);
+        for (std::size_t e = 0; e < m_edges.size(); ++e)
+        {
+            const SolidPartEdge& edge = m_edges[e];
+            if (!m_edgeEntities[e] || !edge.onSkin || edge.follows)
+                continue;
+            const std::array<std::size_t, 2> grids{edge.grids.lower, edge.grids.higher};
+            const SharedDirections shared = sharedDirectionsOf(skewAt, grids);
+            for (const SolidPoint& direction : shared.directions)
+                appendSkewRows(*m_edgeEntities[e], edge.geometry.size(), direction, rows->rows);
+            rows->uncarried += shared.differ ? 1 : 0;
+        }
+        for (std::size_t f = 0; f < m_faces.size(); ++f)
+        {
+            const SolidPartFace& face = m_faces[f];
+            if (!m_faceEntities[f] || !face.onSkin() || face.follows)
+                continue;
+            const SharedDirections shared = sharedDirectionsOf(skewAt, face.view());
+            for (const SolidPoint& direction : shared.directions)
+                appendSkewRows(*m_faceEntities[f], face.geometry.size(), direction, rows->rows);
+            rows->uncarried += shared.differ ? 1 : 0;
+        }
+    }
+
     const std::span<const SolidPoint> x = m_input.gridPositions;
     HeldValues heldAt;
     for (const SolidHeldComponent& h : held)
         if (h.grid < x.size() && h.component < COMPONENTS)
             heldAt[h.grid][h.component] = h.value;
 
-    // the faces of the skin of each edge, by key
-    std::vector<std::vector<std::size_t>> skinFacesOfEdge(m_edges.size());
-    for (std::size_t f = 0; f < m_faces.size(); ++f)
-    {
-        const SolidPartFace& face = m_faces[f];
-        if (!face.onSkin())
-            continue;
-        for (std::size_t k = 0; k < face.count; ++k)
-            skinFacesOfEdge[m_edgeIndex.at(EdgeKey::of(face.grids[k], face.grids[(k + 1) % face.count]))].push_back(f);
-    }
+    // the faces of each edge, by key: those of the skin first (an edge of the skin takes its held values along a face
+    // of the skin when one holds them)
+    std::vector<std::vector<std::size_t>> facesOfEdge(m_edges.size());
+    for (const bool skin : {true, false})
+        for (std::size_t f = 0; f < m_faces.size(); ++f)
+        {
+            const SolidPartFace& face = m_faces[f];
+            if (face.onSkin() != skin)
+                continue;
+            for (std::size_t k = 0; k < face.count; ++k)
+                facesOfEdge[m_edgeIndex.at(EdgeKey::of(face.grids[k], face.grids[(k + 1) % face.count]))].push_back(f);
+        }
     const auto faceHolds = [&](std::size_t f, std::size_t c)
     {
         const std::span<const std::size_t> grids = m_faces[f].view();
@@ -257,7 +353,7 @@ std::vector<SolidDerivedSupport> SolidPart::deriveSupports(std::span<const Solid
         {
             if (!holds(heldAt, edge.grids.lower, c) || !holds(heldAt, edge.grids.higher, c))
                 continue;
-            const std::vector<std::size_t>& around = skinFacesOfEdge[e];
+            const std::vector<std::size_t>& around = facesOfEdge[e];
             const auto heldFace =
                 std::find_if(around.begin(), around.end(), [&](std::size_t f) { return faceHolds(f, c); });
             fits[c] = heldFace != around.end() ? &faceFit(*heldFace) : &edgeFit(e);

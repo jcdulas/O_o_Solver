@@ -95,6 +95,7 @@ StreamedFactorisation::StreamedFactorisation(const SymbolicFactor& symbolic, con
             {"StreamedFactorisation: the matrix has ", std::to_string(matrix.dimension()),
              " equations and the symbolic factor ", std::to_string(symbolic.dofCount()),
              "; factorise the matrix assembled on the graph and in the order of its symbolic analysis"}));
+    requireReferenceDiagonal(options.referenceDiagonal, matrix.dimension());
     // The factor's arrays, as MultifrontalDriver::allocateFactor makes them, but no panel array: the rows are the
     // symbolic ones (positive definite: no delayed pivot).
     const std::int32_t trailing = m_schedule.excludedTrailing();
@@ -578,7 +579,8 @@ void StreamedFactorisation::finishFirstRun()
         {
             const std::int32_t equation = m_symbolic.firstColumn(s) + k;
             const double pivot = m_pivots[static_cast<std::size_t>(equation)];
-            const double diagonal = matrixDiagonal(m_matrix, equation);
+            const double diagonal =
+                ratioTestDiagonal(m_options.referenceDiagonal, equation, matrixDiagonal(m_matrix, equation));
             const double ratio = diagonal / pivot;
             if (equationOfLargest < 0 || ratio > largestRatio)
             {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "oos/elements/mixedHybrid/core/Matrix.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellGeometry.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellSection.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellTypes.hpp"
@@ -62,16 +63,30 @@ struct SectionLaws
     Matrix22 h{};
 };
 
-// Throws InternalError when D is singular (a section without bending stiffness, which the element family refuses
-// before building an element).
+// A membrane-only section on the surface of the grid points (D = 0, spec section 4.1; not in the reference) has no
+// moments: D⁻¹ = 0, D⁻¹ Bᵀ = 0 and Ā = A. Throws InternalError when D is singular otherwise (a section without
+// bending stiffness, which the element family refuses before building an element).
 // Reference: tdnns/element.rs::laws
 [[nodiscard]] SectionLaws sectionLaws(const SectionPoint& point);
 
+// Whether a section carries moments about the surface of the grid points: every section but a membrane-only one
+// without offset. An offset membrane bends about that surface (B' = z0 A, D' = z0² A: the strain of the membrane is
+// e + z0 κ), and a bending-only section has D. Not in the reference (spec section 4.1).
+[[nodiscard]] bool sectionCarriesMoments(SectionParts parts, double offset);
+
+// The compliance of the membrane and bending part of a section point (6 × 6): [A B; Bᵀ D]⁻¹ for a section with both
+// parts (InternalError when it is singular); for a membrane-only or bending-only section, whose matrix is singular, a
+// generalised inverse C (M C M = M): with the scaling S = diag(1/√M_ii) (0 where M_ii = 0) and the eigenpairs
+// (λ_k, v_k) of S M S, C = S (Σ_{λ_k > 1e-10 λ_max} v_k v_kᵀ / λ_k) S. On a block-diagonal section (no offset) it is
+// the inverse of the block given and zero elsewhere: the strains of the part a section lacks are zero; on an offset
+// membrane it gives one of the strains (e, κ) of the same e + z0 κ.
+[[nodiscard]] Matrix membraneBendingCompliance(const SectionPoint& point);
+
 // The free strains (e0, κ0) of the section for the temperatures (T0, T1), local Voigt with engineering shear:
-// (e0, κ0') = [A B; Bᵀ D]⁻¹ (N_T, M_T), and κ0 = κ0' + the part of the free expansion on a curved surface,
-// (e0 · K + (e0 · K)ᵀ) in tensor components, K the curvature (a uniform rise of an unrestrained curved shell is a
-// homothety without stress; document 34 of the reference, section 2.3). Throws InternalError when the section is
-// singular.
+// (e0, κ0') = [A B; Bᵀ D]⁻¹ (N_T, M_T) (membraneBendingCompliance), and κ0 = κ0' + the part of the free expansion on
+// a curved surface, (e0 · K + (e0 · K)ᵀ) in tensor components, K the curvature (a uniform rise of an unrestrained
+// curved shell is a homothety without stress; document 34 of the reference, section 2.3). Throws InternalError when
+// the section is singular.
 // Reference: tdnns/element.rs::free_strains
 [[nodiscard]] std::pair<Voigt3, Voigt3> freeStrains(const SectionPoint& point, const Matrix22& curvature,
                                                     const std::array<double, 2>& temperatures);

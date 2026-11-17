@@ -18,8 +18,9 @@ DifferentialMatrixRates::DifferentialMatrixRates(const solutions::AnalysisModel&
 
 elements::NodalDisplacements DifferentialMatrixRates::nodal(std::span<const double> vector) const
 {
-    const auto grid = static_cast<std::size_t>(m_model.dofMap().gridCount()) * 6;
-    return {vector.first(grid), vector.subspan(grid), nullptr};
+    const assembly::DofMap& dofMap = m_model.dofMap();
+    return elements::NodalDisplacements::ofGSet(vector, static_cast<std::size_t>(dofMap.gridCount()),
+                                                static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
 }
 
 bool DifferentialMatrixRates::isActive(const RecoveredFieldTarget& target) const
@@ -38,14 +39,14 @@ bool DifferentialMatrixRates::prepare(std::span<const double> preload) const
         const auto& batch = m_model.elementSet().batches()[target.element.batch];
         elements::ElementMatrixBlock first;
         if (!batch.family->differentialStiffnessFieldDerivative(batch.view, target.element.row, target.field,
-                                                               nodal(preload), first))
+                                                                nodal(preload), first))
             return false;
         for (const auto index : m_byElement.at(target.element))
             if (const auto& other = m_targets[index]; isActive(other))
             {
                 elements::ElementMatrixBlock mixed;
                 if (!batch.family->differentialStiffnessFieldMixedDerivative(
-                    batch.view, target.element.row, target.field, other.field, nodal(preload), mixed))
+                        batch.view, target.element.row, target.field, other.field, nodal(preload), mixed))
                     return false;
             }
     }
@@ -61,8 +62,9 @@ void DifferentialMatrixRates::action(const elements::ElementMatrixBlock& matrice
         const auto matrix = matrices.matrix(k);
         for (std::size_t i = 0; i < dofs.size(); ++i)
             for (std::size_t j = 0; j < dofs.size(); ++j)
-                into[static_cast<std::size_t>(m_model.dofMap().dofOf(dofs[i]))] += factor *
-                    matrix[i * dofs.size() + j] * vector[static_cast<std::size_t>(m_model.dofMap().dofOf(dofs[j]))];
+                into[static_cast<std::size_t>(m_model.dofMap().dofOf(dofs[i]))] +=
+                    factor * matrix[i * dofs.size() + j] *
+                    vector[static_cast<std::size_t>(m_model.dofMap().dofOf(dofs[j]))];
     }
 }
 
@@ -80,7 +82,7 @@ void DifferentialMatrixRates::addPreload(std::span<const double> preload, std::s
 }
 
 void DifferentialMatrixRates::addField(std::size_t quantity, std::span<const double> preload,
-                                      std::span<const double> vector, std::span<double> into, double factor) const
+                                       std::span<const double> vector, std::span<double> into, double factor) const
 {
     if (factor == 0.0)
         return;
@@ -93,7 +95,7 @@ void DifferentialMatrixRates::addField(std::size_t quantity, std::span<const dou
             const auto& batch = m_model.elementSet().batches()[target.element.batch];
             elements::ElementMatrixBlock matrix;
             if (!batch.family->differentialStiffnessFieldDerivative(batch.view, target.element.row, target.field,
-                                                                   nodal(preload), matrix))
+                                                                    nodal(preload), matrix))
                 throw base::InternalError("a checked differential matrix field rate became unavailable");
             action(matrix, factor, vector, into);
         }
@@ -124,7 +126,7 @@ void DifferentialMatrixRates::addMixed(std::size_t quantity, std::span<const dou
             {
                 elements::ElementMatrixBlock matrix;
                 if (!batch.family->differentialStiffnessFieldMixedDerivative(
-                    batch.view, target.element.row, target.field, other.field, nodal(preload), matrix))
+                        batch.view, target.element.row, target.field, other.field, nodal(preload), matrix))
                     throw base::InternalError("a checked differential matrix mixed field rate became unavailable");
                 action(matrix, moves[other.quantity], vector, into);
             }

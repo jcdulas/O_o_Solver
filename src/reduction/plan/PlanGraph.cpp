@@ -9,15 +9,26 @@
 namespace oos::reduction
 {
 
+std::span<const std::int32_t> ElementEntityNodes::of(base::EntityId elementId) const noexcept
+{
+    const auto found = std::lower_bound(elementIds.begin(), elementIds.end(), elementId);
+    if (found == elementIds.end() || *found != elementId)
+        return {};
+    const auto k = static_cast<std::size_t>(found - elementIds.begin());
+    return {nodes.data() + offsets[k], offsets[k + 1] - offsets[k]};
+}
+
 PlanGraph::PlanGraph(const linalg::NodeGraph& graph, std::span<const base::EntityId> nodeIds,
                      std::span<const std::int32_t> unconstrainedDofCounts, std::span<const std::int32_t> freeDofCounts,
-                     std::span<const base::Vec3> positions, std::vector<DependentPoint> dependents)
+                     std::span<const base::Vec3> positions, std::vector<DependentPoint> dependents,
+                     std::shared_ptr<const ElementEntityNodes> entityNodes)
     : m_graph(&graph),
       m_nodeIds(nodeIds),
       m_unconstrainedDofCounts(unconstrainedDofCounts),
       m_freeDofCounts(freeDofCounts),
       m_positions(positions),
-      m_dependents(std::move(dependents))
+      m_dependents(std::move(dependents)),
+      m_entityNodes(std::move(entityNodes))
 {
     const auto count = static_cast<std::size_t>(graph.nodeCount());
     if (nodeIds.size() != count || unconstrainedDofCounts.size() != count || freeDofCounts.size() != count ||

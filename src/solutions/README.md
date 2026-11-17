@@ -114,7 +114,9 @@ The PARAMs read in addition: CoupledMass and WeightToMass for the mass of the mo
   subcases only puts its point on its unit's boundary; an MultiPointConstr set some subcases do not select stays in the connection
   system), Gm of the rigid elements, the fasteners and the MultiPointConstr set of every subcase, the node graph with the m-set
   couplings, the FreeBodySupport points; then `plan()` runs the connection system, the cluster absorption, the boundaries and
-  the plan (src/reduction/README.md).
+  the plan (src/reduction/README.md). Its analysis model's index (`analysisModel().sharedIndex()`) goes to the static
+  solution (`StaticOptions::snapshotIndex`), which takes it in place of a new one with what it computed once: the model
+  of an element formulation and the kernels of its elements.
 - `common/GlueUnitCheck`: the glued points whose equations join units (their face's corners in another unit), handed
   by `plan()` to the plan as interface relations; the glue of the BCONTACT every subcase selects is in the planner's
   Gm, one relation per glued point (`reduction::glueRelationKey`).
@@ -123,7 +125,9 @@ The PARAMs read in addition: CoupledMass and WeightToMass for the mass of the mo
 
 - `common/AnalysisPath`: `Full` or `Condensed`, in `StaticResults::path`.
 - `common/CommonConstraints`: what every subcase shares, as the planner and the condensed path both need it: the MultiPointConstr
-  cards common to all subcases, the glued contact of every subcase, the DOFs held in every subcase.
+  cards common to all subcases, the glued contact of every subcase, the DOFs held in every subcase; with an element
+  formulation, its constraints of each selection (derived supports and excluded DOFs counted with the supports, the
+  relations every subcase has, the nodes of those that vary: docs/mixed-hybrid-formulation-spec.md section 5.11).
 - `sol101/StaticLoadCases`: its family descriptions (`familyDescription`: cases, load sets, the DOF of each compact
   row, the element and face of a distributed row) and basis vectors (`familyVector`), kept for the condensed path
   (`Inputs::keepsFamilies`).
@@ -225,7 +229,9 @@ basis vector given to the unit's load source and replaced by its f* on the conto
 `applyToBasisVector`; the written-precision tolerance's exact cases too), the outputs of the interior points and of the replaced
 elements left out of the plans (ESE dropped, with the warning `external-unit-strain-energy`), per case u_a, f* and
 K*·u_a − f* recorded (`StaticResults::externalUnits`) with a GPFORCE row `UNIT` per contour point (−K*·u_a) and the resultant of
-K*·u_a in the SinglePointConstr force resultant. The condensed path refuses external units; `checkExternalUnits` runs the
+K*·u_a in the SinglePointConstr force resultant. With an element formulation the entities only replaced elements act on
+are held, and a zone whose contour cuts an edge or a face of the formulation is refused
+(`external-unit-formulation-contour`). The condensed path refuses external units; `checkExternalUnits` runs the
 resolution and the checks without an analysis.
 
 ## Superelements written in the deck
@@ -249,7 +255,26 @@ superelements of the external matrix file type, one level upstream of the residu
 `TrimSolution` reads its structure through a `TrimStructure` (`FullStructure`: the l-set factor; `CondensedStructure`:
 `CondensedStatics::prepareLoadGroup`, the interface problem of a constraint set with its supports held, and
 `solveLoads`, loads at the interface points plus rigid-body accelerations by the units' condensed inertial patterns).
-The plan keeps the spline nodes on the boundaries (`trimRetainedPoints`).
+The plan keeps the spline nodes on the boundaries (`trimRetainedPoints`). A load on a DOF a unit holds in every subcase
+goes to its support, as on the full path.
+
+## The element formulation on every path
+
+`MixedHybridFormulation` takes every path (docs/mixed-hybrid-formulation-spec.md sections 5.11 to 5.15). The condensed
+constraint sets (statics, eigenvalue groups, load groups) build the formulation's constraints as the full path does
+(`CondensedStatics::formulationConstraintsOf`), the planner numbers the entities of the analysis it plans for
+(`CondensationPlanner` with the analysis kind: the modal layout for modes), and the planner's snapshot index goes to the
+analysis (`StaticOptions`, `ModesOptions`, `BucklingOptions` and `TrimOptions::snapshotIndex`). The SPC sets of every
+solution take the derived supports (`assembly::withFormulationSupports`). The dense blocks of the external units and
+superelements couple their nodes through the relations of their dependent DOFs (`ConstrainedSystem`) and make the
+rotations of the shell grid points they act on observer relations. The residual structure of a superelement run takes
+the rotation of a boundary point that a part's shells determine and none of its elements acts on from the part's
+recovery, so that its table gives the structure's value there (`copyDeterminedStatics`, `copyDeterminedModes`). The
+condensed statics recovered unit by unit keeps, per case, the interior values of the units' elements at the
+interface's grid points (`CondensedStatics::listKeptDofs`): the excluded rotations and the grid point stresses of the
+solids there are those of the batches. A kept
+constraint set carries the formulation's constraints (`FactorisedSet::formulation`,
+`CondensedFactorisedSet::formulation`) for the sensitivities.
 
 ## Robustness
 

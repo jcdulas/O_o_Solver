@@ -26,7 +26,8 @@ struct AssemblyBatch
 // in the order of the snapshot (the order of the sums of the assembly). A batch whose card has no family
 // is left out: the support catalog of the run refuses it before any assembly.
 //
-// The views carry the entities of the analysis (EntityLayout, those its DofMap numbers; null: none).
+// The views carry the entities of the analysis (EntityLayout, those its DofMap numbers; null: none) and, with them,
+// the model of their formulation (elements::formulationModelOf).
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: borrows the index (and through it the snapshot), the
 // registry and the layout, which must outlive it.

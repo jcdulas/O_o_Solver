@@ -3,6 +3,7 @@
 #include "oos/elements/mixedHybrid/shell/ShellTypes.hpp"
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <vector>
@@ -34,10 +35,21 @@ namespace oos::elements::mixedHybrid
 // Thread-safety: plain value types; every function is pure. ShellSection is immutable once built and may be read from
 // several threads.
 
+// The parts of the section law a shell property gives (docs/mixed-hybrid-formulation-spec.md section 4.1; not in the
+// reference): both, the membrane alone (no bending material: B = D = 0, no transverse shear) or the bending alone (no
+// membrane material: A = B = 0).
+enum class SectionParts : std::uint8_t
+{
+    MembraneAndBending,
+    MembraneOnly,
+    BendingOnly
+};
+
 // The section at one point, in the local tangent frame (e1, e2) of the surface.
 // Reference: section.rs::SectionPoint
 struct SectionPoint
 {
+    SectionParts parts = SectionParts::MembraneAndBending;
     Matrix33 a{};
     Matrix33 b{};
     Matrix33 d{};
@@ -112,9 +124,10 @@ struct ShearDistribution
 };
 
 // A section in its material axes at the reference thickness.
-// Reference: section.rs::Section
+// Reference: section.rs::Section (the parts are not in the reference: it takes both)
 struct Section
 {
+    SectionParts parts = SectionParts::MembraneAndBending;
     Matrix33 a{};
     Matrix33 b{};
     Matrix33 d{};
@@ -135,7 +148,8 @@ struct Section
     // The distribution of the transverse shear stress through each layer, empty when the section has no transverse
     // shear flexibility.
     std::vector<PlyShear> shear;
-    // (shear stiffness used in the Kirchhoff limit) / (mean membrane stiffness).
+    // (shear stiffness used in the Kirchhoff limit) / (mean membrane stiffness); a section without membrane stiffness
+    // takes the membrane stiffness 12 D / t² of its bending (that of a homogeneous plate).
     double kirchhoffRatio = 1e4;
 
     // A homogeneous isotropic section of one material: A = Q t, D = Q t³ / 12, H = k G t (k the shear factor),

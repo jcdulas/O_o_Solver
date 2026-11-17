@@ -55,6 +55,9 @@ public:
         // whose s set D is zero on (the solved sets before the conditioned supports). Null without relief.
         const assembly::RigidElimination* gm = nullptr;
         const assembly::DofSets* reliefSets = nullptr;
+        // The rigid-body motions on the entity DOFs of an element formulation (entityRigidRowsOf; empty: none), which
+        // the support motions of inertia relief and the GravityLoad accelerations take there.
+        std::span<const double> entityRigidRows;
         // The refinement of a relieved solution: equations × columns subtracted from the
         // right-hand sides of the equations at their own supernodes (K·û, so that the solve gives the correction of
         // the residual P'_l − K·û). Empty: none.
@@ -120,9 +123,19 @@ public:
         base::BudgetedBuffer<float> diagonalOfDof;
         double largestRigidForce = 0.0;
     };
+    // The nodes of the entities of an element formulation have no block (they do not enter the singularity processor:
+    // docs/mixed-hybrid-formulation-spec.md section 5.8), their DOFs a diagonal; their rigid-body motions are
+    // `entityRigidRows` (entityRigidRowsOf).
     [[nodiscard]] static NodeDiagonals nodeDiagonals(const AnalysisModel& model, const assembly::RigidElimination& gm,
+                                                     std::span<const double> entityRigidRows,
                                                      base::MemoryBudget& budget, base::ThreadPool* pool,
                                                      const base::CancellationToken* cancellation);
+    // The rigid-body motions about the basic origin on the entity DOFs of the element formulation of `dofMap`, 6 values
+    // per entity DOF in the order of its layout (translations along the basic axes, then rotations about them): the
+    // formulation's fields of the six motions (as assembly::RigidBodyModes takes them,
+    // docs/mixed-hybrid-formulation-spec.md section 5.7). Empty without entities.
+    [[nodiscard]] static base::BudgetedBuffer<double> entityRigidRowsOf(const assembly::DofMap& dofMap,
+                                                                        base::MemoryBudget& budget);
 
 private:
     Inputs m_inputs;

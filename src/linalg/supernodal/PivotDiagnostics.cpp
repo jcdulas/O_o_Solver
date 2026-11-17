@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <stdexcept>
 #include <utility>
 
 namespace oos::linalg
@@ -20,11 +21,24 @@ std::string formatRatio(double value)
 
 } // namespace
 
+void requireReferenceDiagonal(std::span<const double> referenceDiagonal, std::int64_t equationCount)
+{
+    if (referenceDiagonal.empty() || static_cast<std::int64_t>(referenceDiagonal.size()) == equationCount)
+        return;
+    throw std::invalid_argument(base::concatenate(
+        {"factorisation: the reference diagonal of the ratio test has ", std::to_string(referenceDiagonal.size()),
+         " values and the matrix ", std::to_string(equationCount),
+         " equations; give one value per equation (NO_REFERENCE_DIAGONAL where the matrix diagonal is kept) or "
+         "none"}));
+}
+
 std::string describeEquation(const EquationNamer& namer, std::int32_t equation)
 {
     if (!namer)
         return std::string("equation ").append(std::to_string(equation));
     const base::GridComponent dof = namer(equation);
+    if (!dof.name.empty())
+        return dof.name;
     if (dof.component == 0)
         return std::string("scalar point ").append(std::to_string(dof.grid));
     return std::string("grid ")

@@ -188,6 +188,18 @@ std::optional<input::CoordinateFrame> frameOf(const input::ModelSnapshot& snapsh
     return std::nullopt;
 }
 
+// The displacements of a g-set vector as the element families read them: the grid points, the scalar points, then the
+// entities of the formulation (their elements read them).
+elements::NodalDisplacements nodalOf(const assembly::DofMap& dofMap, std::span<const double> displacementsG,
+                                     const elements::ElementTemperatures* temperatures)
+{
+    elements::NodalDisplacements nodal =
+        elements::NodalDisplacements::ofGSet(displacementsG, static_cast<std::size_t>(dofMap.gridCount()),
+                                             static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
+    nodal.temperatures = temperatures;
+    return nodal;
+}
+
 } // namespace
 
 std::optional<SectionFamily> sectionFamilyOf(std::string_view card) noexcept
@@ -312,14 +324,13 @@ void SectionLoads::resolve(const input::ModelSnapshot& snapshot, base::Diagnosti
             const std::string card = std::string(batches[batch].view.card());
             if (!memberFamily)
             {
-                refuse(sectionProblem(
-                    definition, "section-element-type",
-                    base::concatenate(
-                        {"names ", card, " ", std::to_string(member.elementId),
-                         ", an element type no section takes; a section holds shells "
-                         "(ShellQuad4, ShellQuad4Drilling, ShellQuad8, ShellTria3, ShellTria3Drilling, ShellTria6), Bar2, "
-                         "Beam2 or rods (Rod2, Rod2InlineSection, Tube2)"}),
-                    card, member.elementId));
+                refuse(sectionProblem(definition, "section-element-type",
+                                      base::concatenate({"names ", card, " ", std::to_string(member.elementId),
+                                                         ", an element type no section takes; a section holds shells "
+                                                         "(ShellQuad4, ShellQuad4Drilling, ShellQuad8, ShellTria3, "
+                                                         "ShellTria3Drilling, ShellTria6), Bar2, "
+                                                         "Beam2 or rods (Rod2, Rod2InlineSection, Tube2)"}),
+                                      card, member.elementId));
                 continue;
             }
             if (family && *family != *memberFamily)
@@ -579,9 +590,7 @@ void SectionLoads::evaluateSection(std::size_t s, const assembly::ElementSet& se
             base::concatenate({"SectionLoads::evaluateSection: expected ", std::to_string(gSize), " displacements and ",
                                std::to_string(count), " values, found ", std::to_string(displacementsG.size()), " and ",
                                std::to_string(out.size())}));
-    const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(m_dofMap->gridCount());
-    const elements::NodalDisplacements nodal{displacementsG.first(gridValues), displacementsG.subspan(gridValues),
-                                             temperatures};
+    const elements::NodalDisplacements nodal = nodalOf(*m_dofMap, displacementsG, temperatures);
     const std::vector<Transform> transforms = memberCoefficients(s, set);
     std::fill(out.begin(), out.end(), 0.0);
     std::array<double, MAX_SECTION_COMPONENTS> forces{};
@@ -613,9 +622,7 @@ bool SectionLoads::sectionFieldRates(std::size_t s, const assembly::ElementSet& 
             base::concatenate({"SectionLoads::sectionFieldRates: expected ", std::to_string(gSize),
                                " displacements and ", std::to_string(count), " values, found ",
                                std::to_string(displacementsG.size()), " and ", std::to_string(out.size())}));
-    const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(m_dofMap->gridCount());
-    const elements::NodalDisplacements nodal{displacementsG.first(gridValues), displacementsG.subspan(gridValues),
-                                             temperatures};
+    const elements::NodalDisplacements nodal = nodalOf(*m_dofMap, displacementsG, temperatures);
     std::fill(out.begin(), out.end(), 0.0);
     std::vector<Transform> transforms; // made at the first member reached
     std::array<double, MAX_SECTION_COMPONENTS> rates{};
@@ -662,7 +669,6 @@ const SparseRows& SectionLoads::displacementRows(base::MemoryBudget& budget, bas
     if (m_rowsBuilt)
         return m_rows;
     const auto gSize = static_cast<std::size_t>(m_dofMap->gSetSize());
-    const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(m_dofMap->gridCount());
     // The entries before they are merged per DOF: at most components × the DOFs of the members, reserved first.
     std::uint64_t bound = 0;
     for (const Section& section : m_sections)
@@ -678,8 +684,7 @@ const SparseRows& SectionLoads::displacementRows(base::MemoryBudget& budget, bas
         {
             base::BudgetedBuffer<double> unit(budget, gSize, "section unit displacements");
             std::fill(unit.data(), unit.data() + gSize, 0.0);
-            const elements::NodalDisplacements nodal{unit.span().first(gridValues), unit.span().subspan(gridValues),
-                                                     nullptr};
+            const elements::NodalDisplacements nodal = nodalOf(*m_dofMap, unit.span(), nullptr);
             elements::ElementMatrixBlock stiffness;
             std::vector<elements::ElementDof> unitDofs;               // bounded by an element
             std::vector<elements::ElementResultBlock> unitRecoveries; // one per DOF of an element

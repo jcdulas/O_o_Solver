@@ -1,6 +1,7 @@
 #include "oos/design/sensitivity/FieldPerturbation.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/input/snapshot/ColumnOverlay.hpp"
 
 #include <algorithm>
@@ -70,7 +71,9 @@ FieldPerturbation::Side FieldPerturbation::makeSide(const std::shared_ptr<const 
     Side side;
     side.snapshot = std::make_shared<const input::ModelSnapshot>(overlay.applyTo(*base, base));
     side.index = std::make_shared<const elements::SnapshotIndex>(*side.snapshot, budget);
-    side.set = std::make_shared<const assembly::ElementSet>(*side.index, registry);
+    side.set = std::make_shared<const assembly::ElementSet>(
+        *side.index, registry,
+        elements::formulationEntitiesOf(*side.index, registry, elements::EntityLayout::Kind::Static));
     return side;
 }
 
@@ -149,7 +152,7 @@ FieldPerturbation::FieldPerturbation(const std::shared_ptr<const input::ModelSna
     m_width = sides[0] - sides[1];
     m_halfWidth = sides[2] - sides[3];
     const bool isDerived = targets != nullptr && (targets->derivedProperties().groupOf(relation).has_value() ||
-                                                 targets->hasDerivedMaterial(relation));
+                                                  targets->hasDerivedMaterial(relation));
     if (isDerived && pointFields.size() <= relation)
         throw std::invalid_argument(
             "FieldPerturbation: a field of a designed laminate or section needs the field "
@@ -176,7 +179,9 @@ FieldPerturbation::FieldPerturbation(const std::shared_ptr<const input::ModelSna
         Side& side = m_sides[k];
         side.snapshot = std::make_shared<const input::ModelSnapshot>(overlay.applyTo(*point, point));
         side.index = std::make_shared<const elements::SnapshotIndex>(*side.snapshot, pointIndex);
-        side.set = std::make_shared<const assembly::ElementSet>(*side.index, registry);
+        side.set = std::make_shared<const assembly::ElementSet>(
+            *side.index, registry,
+            elements::formulationEntitiesOf(*side.index, registry, elements::EntityLayout::Kind::Static));
     }
 }
 
@@ -214,7 +219,9 @@ FieldPerturbation::FieldPerturbation(const std::shared_ptr<const input::ModelSna
         Side& side = m_sides[k];
         side.snapshot = std::make_shared<const input::ModelSnapshot>(overlays[k].applyTo(*point, point));
         side.index = std::make_shared<const elements::SnapshotIndex>(*side.snapshot, pointIndex);
-        side.set = std::make_shared<const assembly::ElementSet>(*side.index, registry);
+        side.set = std::make_shared<const assembly::ElementSet>(
+            *side.index, registry,
+            elements::formulationEntitiesOf(*side.index, registry, elements::EntityLayout::Kind::Static));
     }
 }
 

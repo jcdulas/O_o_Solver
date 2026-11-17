@@ -57,6 +57,29 @@ node wasm/test/run.mjs --test-name-pattern="analytic (bar sizing|beam)"
 The timing report records the tested revision's local execution. Use representative models to assess larger
 optimization workloads; the small derivative fixtures verify formulas and interactions.
 
+## Validation of the mixed hybrid formulation
+
+The benchmarks of `MixedHybridFormulation` against closed forms and classical values
+([specification](mixed-hybrid-formulation-spec.md), sections 13.3 and 13.6) are a separate suite without a time
+limit, in [wasm/test/validation](../wasm/test/validation):
+
+```bash
+node --test wasm/test/validation/*.test.mjs
+```
+
+| File | Main checks |
+| --- | --- |
+| `shell-statics` | Plates, the Scordelis-Lo roof, the pinched cylinder and hemisphere, the twisted beam, folded sections, laminates, offsets, pressure vessels, thermal loads, patch tests and invariance |
+| `shell-dynamics` | Frequencies of plates, cylinders and rings, buckling of plates and cylinders, inertia relief, stiffened panels, masses, springs and moments at grid points of shells |
+| `lines` | Frames, trusses, shear deformation, tapered beams, offsets, pin flags, distributed and thermal loads, frequencies and buckling of beams |
+| `solids` | Patch tests, beams, thick cylinders and spheres, every load, anisotropy, near incompressibility, frequencies and buckling, for the four shapes with and without mid-side nodes |
+| `mixed-meshes` | Shells on faces of solids, fins, lines along edges of solids and of shells |
+| `assemblies` | Three assemblies through every path (full, condensed, streamed), equilibrium of the tables, invariance, determinism, robustness of the input |
+
+The cases that do not meet their criterion are listed with their reason in `known-limits.mjs` and reported as "todo":
+no criterion is loosened. `node wasm/test/helpers/untimed.mjs [suite ...] [--match text]` runs the cases of the fast
+suite without its watchdog, for a machine busy with something else.
+
 ## Coverage domains
 
 Numerical values and model sizes are unbounded, so no finite suite can enumerate every possible input. The suite

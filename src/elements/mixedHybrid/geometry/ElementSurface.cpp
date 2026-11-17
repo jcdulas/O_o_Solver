@@ -242,6 +242,59 @@ std::vector<EdgeMoments> edgeMoments(const MeshReadingInput& input, const Topolo
     return out;
 }
 
+Vector3 edgeEndTangent(const MeshReadingInput& input, const Topology& topology, std::size_t from, std::size_t to)
+{
+    const Vector3 halfChord = scl3(sub3(input.grids[to], input.grids[from]), 0.5);
+    return add3(halfChord, scl3(topology.bulges[topology.indexOf(from, to)], 2.0));
+}
+
+double outlineTurn(const MeshReadingInput& input, const Topology& topology, std::size_t edge)
+{
+    if (topology.edgeElements[edge].size() != 1)
+        return 0.0;
+    const Vector3& n = topology.normals[topology.edgeElements[edge].front()];
+    const EdgeKey grids = topology.edges[edge];
+    // the angle at grid `from` between the curve and the chord, in the plane of the shell
+    const auto turnAt = [&](std::size_t from, std::size_t to)
+    {
+        const Vector3 u = unit3(sub3(input.grids[to], input.grids[from]));
+        const Vector3 across = cross3(n, u);
+        const double length = norm3(across);
+        // an edge along the normal of its own shell has no direction across it in the plane of the shell
+        if (!(length > 0.0))
+            return 0.0;
+        const Vector3 t = edgeEndTangent(input, topology, from, to);
+        return std::atan2(std::abs(dot3(t, across)) / length, dot3(t, u));
+    };
+    return std::fmax(turnAt(grids.lower, grids.higher), turnAt(grids.higher, grids.lower));
+}
+
+double cornerSine(const MeshReadingInput& input, const Topology& topology, std::size_t element, std::size_t corner)
+{
+    const ShellCorners& shell = input.shells[element];
+    const std::size_t grid = shell.at(corner);
+    const Vector3 next = edgeEndTangent(input, topology, grid, shell.at(corner + 1));
+    const Vector3 previous = edgeEndTangent(input, topology, grid, shell.at(corner + shell.count - 1));
+    const double lengths = norm3(next) * norm3(previous);
+    if (!(lengths > 0.0))
+        return 0.0;
+    return dot3(cross3(next, previous), topology.normals[element]) / lengths;
+}
+
+std::vector<DegenerateCorner> degenerateCorners(const MeshReadingInput& input, const Topology& topology)
+{
+    std::vector<DegenerateCorner> out;
+    for (std::size_t ie = 0; ie < input.shells.size(); ++ie)
+        for (std::size_t k = 0; k < input.shells[ie].count; ++k)
+        {
+            const double sine = cornerSine(input, topology, ie, k);
+            // a sine that is not a number (grids that coincide) is degenerate too
+            if (!(sine > DEGENERATE_CORNER_SINE))
+                out.push_back({ie, k, sine});
+        }
+    return out;
+}
+
 std::vector<EdgeGeometry> geometryReport(const MeshReadingInput& input, const Topology& topology,
                                          std::span<const double> tau, const EdgeSurfaceEvaluator& point)
 {
@@ -279,7 +332,7 @@ std::vector<EdgeGeometry> geometryReport(const MeshReadingInput& input, const To
                     }
         }
         out.push_back({edge, owners.size(), topology.isRaw(edge.lower, edge.higher),
-                       input.isSharp(edge.lower, edge.higher), kink});
+                       input.isSharp(edge.lower, edge.higher), kink, outlineTurn(input, topology, e), false});
     }
     return out;
 }

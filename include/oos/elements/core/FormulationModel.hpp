@@ -35,6 +35,9 @@ struct HeldGridComponent
     std::int32_t gridRow = 0;
     int component = 1;
     double value = 0.0;
+    // The component is not held by a support: a relation of the model makes it dependent (a rigid element), and the
+    // edges read it as they read a held one (assembly::FormulationConstraints).
+    bool followsRelation = false;
 };
 
 // A support of an entity DOF that the formulation derives from the supports of the grid points (an edge whose two
@@ -90,9 +93,36 @@ public:
     virtual void fillDeterminedComponents(EntityLayout::Kind kind, const NodalDisplacements& displacements,
                                           const std::function<void(std::int32_t, int, double)>& write) const = 0;
 
+    // The unit normal that the shells of the formulation share at the grid point of node table row `gridRow`, in its CD
+    // system (section 5.6): a rotation about it is the rotation of the membrane field in its plane, which a support
+    // of a rotation of that grid point does not hold (as the drilling rotation of a shell without drilling stiffness).
+    // Empty when the grid point is no corner of shells or when its shells meet at an angle. None by default.
+    [[nodiscard]] virtual std::optional<base::Vec3> commonShellNormal(std::int32_t gridRow) const
+    {
+        static_cast<void>(gridRow);
+        return std::nullopt;
+    }
+
+    // The edges of the shells of the formulation, each as the node table rows of its two grid points, appended to
+    // `edges`. None by default.
+    virtual void shellEdges(std::vector<std::array<std::int32_t, 2>>& edges) const { static_cast<void>(edges); }
+
     // The supports of entity DOFs derived from the grid components `held` (section 5.6).
     virtual void deriveSupports(EntityLayout::Kind kind, std::span<const HeldGridComponent> held,
                                 std::vector<DerivedSupport>& supports, base::DiagnosticSink& sink) const = 0;
+
+    // What the grid components `held` hold along a direction that is no component of the unknowns of an edge or a
+    // face (a translation held in a displacement system turned from the basic one, the same direction at every grid
+    // point of the edge or face: a plane of symmetry that is not along the basic axes), section 5.6: each row is a
+    // constraint Σ terms = 0 on entity DOFs and on the held grid components, appended to `rows`. They are no support
+    // of one DOF: the constraints eliminate them as relations (assembly::FormulationConstraints). None by default.
+    virtual void supportRows(EntityLayout::Kind kind, std::span<const HeldGridComponent> held,
+                             std::vector<std::vector<FormulationRelationTerm>>& rows) const
+    {
+        static_cast<void>(kind);
+        static_cast<void>(held);
+        static_cast<void>(rows);
+    }
 
     // The values on the entity DOFs (layout(kind) order, EntityLayout::totalDofCount() values) of the affine
     // displacement u(x) = b + A·x in the basic system, the rotation unknowns taken from the skew part of A (section
@@ -119,9 +149,86 @@ public:
         std::int64_t batchRow = 0;
         double sign = 1.0;
     };
+    // The IDs of the elements whose matrices act on the entity of row `row` of layout(kind), increasing: the element of
+    // an interior or of a line end, the elements that have every grid point of an edge or a face. Empty by default.
+    [[nodiscard]] virtual std::vector<std::int32_t> entityElements(EntityLayout::Kind kind, std::int32_t row) const
+    {
+        static_cast<void>(kind);
+        static_cast<void>(row);
+        return {};
+    }
+
+    // The grid points (node table rows) of the entity of row `row` of layout(kind): the two of an edge, those of a
+    // face, the corners of the element of an interior, the ends of the line of a line end. The forces on the entity's
+    // DOFs are reported at them (assembly::EntityForceCarry). Empty by default.
+    [[nodiscard]] virtual std::vector<std::int32_t> entityGridRows(EntityLayout::Kind kind, std::int32_t row) const
+    {
+        static_cast<void>(kind);
+        static_cast<void>(row);
+        return {};
+    }
+
+    // The grid points (node table rows, increasing) whose positions the matrices of the element of card `card` at
+    // batch row `batchRow` read beyond its own: those of the elements around it whose geometry the formulation reads
+    // (describeSurroundings' two rings). Empty by default, and for an element the formulation does not have.
+    [[nodiscard]] virtual std::vector<std::int32_t> readGridRows(std::string_view card, std::int64_t batchRow) const
+    {
+        static_cast<void>(card);
+        static_cast<void>(batchRow);
+        return {};
+    }
+
+    // What the matrices of the elements at the grid points `gridRows` (node table rows) read around them beyond their
+    // own cards, grid points and relations: the geometry the formulation reads from the neighbouring elements, given to
+    // `mix` as numbers in a fixed order. The condensation cache mixes them into the key of a unit
+    // (reduction::unitInputStamp), so that an edit beside a unit, which the unit's own stamps do not see, condenses it
+    // again. Nothing by default: the elements of ClassicFormulation read their own cards and grid points only.
+    virtual void describeSurroundings(std::span<const std::int32_t> gridRows,
+                                      const std::function<void(double)>& mix) const
+    {
+        static_cast<void>(gridRows);
+        static_cast<void>(mix);
+    }
+
     [[nodiscard]] virtual std::optional<FormulationFace> faceOf(std::span<const std::int32_t> gridRows) const
     {
         static_cast<void>(gridRows);
+        return std::nullopt;
+    }
+
+    // The motion of a point of an element of the formulation as rows on its DOFs (section 5.10): the translations
+    // (rows 0 to 2) and the rotations (rows 3 to 5) of the point in the basic system; the grid components in their CD
+    // systems, the entity DOFs as they are.
+    struct PointMotion
+    {
+        std::array<std::vector<FormulationRelationTerm>, 6> rows;
+    };
+    // The motion of the point `point` (basic) of the shell of ID `elementId` that a fastener or a weld pierces:
+    // `gridRows` (node table rows) and `shapeValues` are grid points of its card and their shape functions at the
+    // point, as the fastener piercing table gives them, which place the point on the shell. The translations are those
+    // of the motion of the shell there carried rigidly to `point` (u + θ × (point − X), X the point of its surface).
+    // Empty when the formulation has no such shell or a grid point is not one of its own: the grid points of the
+    // element then carry the point (elements/fasteners/PiercingInterpolation). None by default.
+    [[nodiscard]] virtual std::optional<PointMotion> shellPointMotion(std::int32_t elementId,
+                                                                      std::span<const std::int32_t> gridRows,
+                                                                      std::span<const double> shapeValues,
+                                                                      const base::Vec3& point) const
+    {
+        static_cast<void>(elementId);
+        static_cast<void>(gridRows);
+        static_cast<void>(shapeValues);
+        static_cast<void>(point);
+        return std::nullopt;
+    }
+    // The translations (rows 0 to 2; the rotations empty) of a point of a face of an element of the formulation (a
+    // shell, or a face of a solid) given by the grid points of the face (node table rows: its corners, then its
+    // mid-side points, −1 for an absent one) and their shape functions at the point: the primary face of a glued
+    // contact. Empty when no element of the formulation has that face. None by default.
+    [[nodiscard]] virtual std::optional<PointMotion> facePointMotion(std::span<const std::int32_t> faceGridRows,
+                                                                     std::span<const double> shapeValues) const
+    {
+        static_cast<void>(faceGridRows);
+        static_cast<void>(shapeValues);
         return std::nullopt;
     }
 
@@ -139,5 +246,10 @@ public:
 // The formulation model of the snapshot of `index` in the formulation `registry` chose, or null when the formulation
 // has no unknowns outside the grid points (every formulation but MixedHybridFormulation). Built on the first call.
 [[nodiscard]] const FormulationModel* formulationModelOf(const SnapshotIndex& index, const ElementRegistry& registry);
+
+// The entities that formulation numbers for an analysis of `kind` (FormulationModel::layout), or null without one:
+// what the element set and the DOF map of an analysis take (assembly::ElementSet, assembly::DofMap).
+[[nodiscard]] const EntityLayout* formulationEntitiesOf(const SnapshotIndex& index, const ElementRegistry& registry,
+                                                        EntityLayout::Kind kind);
 
 } // namespace oos::elements

@@ -1,6 +1,7 @@
 #include "oos/solutions/sol101/StreamedOutputs.hpp"
 
 #include "oos/assembly/assemble/ElementSet.hpp"
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/dofs/DofMap.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/errors/InternalError.hpp"
@@ -152,6 +153,31 @@ StreamedOutputs::StreamedOutputs(const Inputs& inputs, base::MemoryBudget& budge
                             output::GridPointForceTable::FIXED_ROW_NAMES.end());
         m_contributions.resize(m_columns);
     }
+    m_entityOffsets = base::BudgetedBuffer<std::int64_t>(budget, static_cast<std::size_t>(dofMap.entities().count()),
+                                                         "streamed outputs: window entities", base::FOR_OVERWRITE);
+    std::fill_n(m_entityOffsets.data(), m_entityOffsets.size(), -1);
+    m_keepsWhole = keepsWholeVectors(dofMap, *inputs.plan, m_isBasis);
+    if (m_keepsWhole)
+        m_whole = linalg::DenseMatrix(budget, static_cast<std::size_t>(dofMap.gSetSize()), m_columns,
+                                      "streamed outputs: the whole displacements of the vectors");
+}
+
+bool StreamedOutputs::keepsWholeVectors(const assembly::DofMap& dofMap, const output::OutputPlan& plan, bool isBasis)
+{
+    if (isBasis || !dofMap.hasEntities())
+        return false;
+    const output::ElementOutputSelection selection = output::elementSelectionOf(plan);
+    return plan.of(output::OutputKind::Displacement).isRequested || selection.stress.isRequested ||
+           selection.strain.isRequested || selection.forces.isRequested;
+}
+
+std::uint64_t StreamedOutputs::wholeVectorBytes(const assembly::DofMap& dofMap, const output::OutputPlan& plan,
+                                                bool isBasis, std::size_t columns)
+{
+    if (!keepsWholeVectors(dofMap, plan, isBasis))
+        return 0;
+    // The vectors, and one case's g-set displacements while the grid point stresses are made.
+    return (static_cast<std::uint64_t>(columns) + 1) * static_cast<std::uint64_t>(dofMap.gSetSize()) * sizeof(double);
 }
 
 std::shared_ptr<KeptStreamedBasis> StreamedOutputs::takeBasis()
@@ -293,22 +319,24 @@ void StreamedOutputs::take(std::int32_t supernode, linalg::ConstDenseMatrixView 
                 m_forceRowsOfBatch[place.batch].push_back({place.row, place.row + 1});
         }
     }
-    else if (m_hasStress)
+    else if (m_hasStress || m_keepsWhole)
     {
+        // The elements recovered; with the whole vectors, every element (its values make those of the whole g set).
         const output::ElementOutputSelection selection = output::elementSelectionOf(*m_inputs.plan);
         for (const std::int32_t element : elements.elementsAt(supernode))
         {
             const StreamedElements::Place place = elements.placeOf(element);
             const assembly::AssemblyBatch& batch = batches[place.batch];
-            if (!batch.family->facets().has(elements::Facet::Recovery))
-                continue;
             const std::int32_t elementId = batch.view.elementId(place.row);
-            if (!selection.stress.takes(elementId) && !selection.strain.takes(elementId) &&
-                !selection.forces.takes(elementId))
+            const bool isRecovered = m_hasStress && batch.family->facets().has(elements::Facet::Recovery) &&
+                                     (selection.stress.takes(elementId) || selection.strain.takes(elementId) ||
+                                      selection.forces.takes(elementId));
+            if (!isRecovered && !m_keepsWhole)
                 continue;
             for (const std::int32_t node : elements.nodesOf(element))
                 addNode(node, supernode, columnValues, rowValues);
-            m_rowsOfBatch[place.batch].push_back({place.row, place.row + 1});
+            if (isRecovered)
+                m_rowsOfBatch[place.batch].push_back({place.row, place.row + 1});
         }
     }
     if (m_asksDisplacements)
@@ -340,21 +368,7 @@ void StreamedOutputs::flush()
     // rest exactly; the element tables are made from the displacements as solved on the conditioned supports, whose
     // element results do not depend on the FreeBodySupport DOFs (the gauge's rigid motion would add its round-off to
     // the stiff elements: 1e-6 of the forces of fasteners 1e8 times the skins between two FreeBodySupport points).
-    std::vector<std::array<double, 6>> amplitudes; // per vector (bounded by the basis); empty without FreeBodySupport
-    if (!m_inputs.supports.empty())
-    {
-        const std::array<double, 36>& c = *m_inputs.supportCoefficients;
-        const std::size_t r = m_inputs.supports.size();
-        amplitudes.assign(m_columns, {});
-        for (std::size_t b = 0; b < m_columns; ++b)
-            for (std::size_t mode = 0; mode < 6; ++mode)
-            {
-                double sum = 0.0;
-                for (std::size_t j = 0; j < r; ++j)
-                    sum += c[6 * j + mode] * m_supportValues[j][b];
-                amplitudes[b][mode] = sum;
-            }
-    }
+    const std::vector<std::array<double, 6>> amplitudes = gaugeAmplitudes(); // per vector (bounded by the basis)
     // The gauge's motion of a slot's DOF d for the amplitudes `a`.
     const auto gaugeMotion = [&](std::int32_t node, std::size_t d, const std::array<double, 6>& a)
     {
@@ -376,21 +390,41 @@ void StreamedOutputs::flush()
                            });
     };
 
-    // The slots of the window: the grid points, then the scalar points.
+    // The slots of the window: the grid points, then the scalar points, then the blocks of the entities of an element
+    // formulation (an entity's block made when its first node comes: an element brings every node of its entities).
     std::span<std::int32_t> gridSlots = m_gridSlots.span();
     std::span<std::int32_t> scalarSlots = m_scalarSlots.span();
     std::size_t gridCount = 0;
     std::size_t scalarCount = 0;
+    std::size_t entityValueCount = 0;
     for (const std::int32_t node : m_slotNodes)
     {
-        if (node < dofMap.gridCount())
+        if (dofMap.isEntityNode(node))
+        {
+            const std::int32_t entity = dofMap.labelOf(dofMap.dofsOfNode(node).first).row;
+            if (m_entityOffsets[static_cast<std::size_t>(entity)] < 0)
+            {
+                m_entityOffsets[static_cast<std::size_t>(entity)] = static_cast<std::int64_t>(entityValueCount);
+                entityValueCount += static_cast<std::size_t>(dofMap.entities().dofCount(entity));
+                m_windowEntities.push_back(entity);
+            }
+        }
+        else if (node < dofMap.gridCount())
             gridSlots[static_cast<std::size_t>(node)] = static_cast<std::int32_t>(gridCount++);
         else
             scalarSlots[static_cast<std::size_t>(node - dofMap.gridCount())] = static_cast<std::int32_t>(scalarCount++);
     }
-    const std::size_t rows = 6 * gridCount + scalarCount;
+    const std::size_t rows = 6 * gridCount + scalarCount + entityValueCount;
     const auto rowOfSlotDof = [&](std::int32_t node, std::size_t d) -> std::size_t
     {
+        if (dofMap.isEntityNode(node))
+        {
+            const assembly::DofLabel label =
+                dofMap.labelOf(dofMap.dofsOfNode(node).first + static_cast<base::DofIndex>(d));
+            return 6 * gridCount + scalarCount +
+                   static_cast<std::size_t>(m_entityOffsets[static_cast<std::size_t>(label.row)]) +
+                   static_cast<std::size_t>(label.component);
+        }
         if (node < dofMap.gridCount())
             return 6 * static_cast<std::size_t>(gridSlots[static_cast<std::size_t>(node)]) + d;
         return 6 * gridCount +
@@ -408,8 +442,27 @@ void StreamedOutputs::flush()
     window.slots.scalarSlots = scalarSlots;
     window.gridSlotCount = gridCount;
     window.scalarSlotCount = scalarCount;
+    if (entityValueCount > 0)
+    {
+        window.slots.entityOffsets = m_entityOffsets.span();
+        window.entityValueCount = entityValueCount;
+    }
     std::sort(m_points.begin(), m_points.end());
     m_points.erase(std::unique(m_points.begin(), m_points.end()), m_points.end());
+    // The whole vectors: the chunk's values on their g-set DOFs (a node that comes in several chunks has the same
+    // values in each), its output points' rows made at finish().
+    if (m_keepsWhole)
+    {
+        for (std::size_t slot = 0; slot < m_slotNodes.size(); ++slot)
+        {
+            const assembly::DofMap::NodeDofs nodeDofs = dofMap.dofsOfNode(m_slotNodes[slot]);
+            const auto first = static_cast<std::size_t>(m_valueOffset[slot]);
+            for (std::size_t d = 0; d < static_cast<std::size_t>(nodeDofs.count); ++d)
+                for (std::size_t b = 0; b < m_columns; ++b)
+                    m_whole(static_cast<std::size_t>(nodeDofs.first) + d, b) = m_values[first + d * m_columns + b];
+        }
+        m_wholePoints.insert(m_wholePoints.end(), m_points.begin(), m_points.end());
+    }
     const output::OutputRequestPlan& displacement = m_inputs.plan->of(output::OutputKind::Displacement);
     const output::ElementOutputSelection selection = output::elementSelectionOf(*m_inputs.plan);
 
@@ -423,7 +476,7 @@ void StreamedOutputs::flush()
         {
             const std::int32_t node = m_slotNodes[slot];
             const auto first = static_cast<std::size_t>(m_valueOffset[slot]);
-            const std::size_t dofCount = node < dofMap.gridCount() ? 6 : 1;
+            const auto dofCount = static_cast<std::size_t>(dofMap.dofsOfNode(node).count);
             for (std::size_t d = 0; d < dofCount; ++d)
                 for (std::size_t b = 0; b < m_columns; ++b)
                     vectors(rowOfSlotDof(node, d), b) = m_values[first + d * m_columns + b];
@@ -483,7 +536,7 @@ void StreamedOutputs::flush()
             {
                 const std::int32_t node = m_slotNodes[slot];
                 const auto first = static_cast<std::size_t>(m_valueOffset[slot]);
-                const std::size_t dofCount = node < dofMap.gridCount() ? 6 : 1;
+                const auto dofCount = static_cast<std::size_t>(dofMap.dofsOfNode(node).count);
                 for (std::size_t d = 0; d < dofCount; ++d)
                 {
                     const std::size_t row = rowOfSlotDof(node, d);
@@ -511,8 +564,8 @@ void StreamedOutputs::flush()
         else
             for (std::size_t piece = 0; piece < pieces; ++piece)
                 combine(piece);
-        // The displacement rows of the chunk's points.
-        if (m_asksDisplacements)
+        // The displacement rows of the chunk's points (with the whole vectors: at finish()).
+        if (m_asksDisplacements && !m_keepsWhole)
             for (std::size_t c = 0; c < count; ++c)
             {
                 std::vector<std::int32_t> taken; // bounded by the chunk's points
@@ -578,11 +631,16 @@ void StreamedOutputs::flush()
     for (const std::int32_t node : m_slotNodes)
     {
         m_slotOfNode[static_cast<std::size_t>(node)] = -1;
+        if (dofMap.isEntityNode(node))
+            continue;
         if (node < dofMap.gridCount())
             gridSlots[static_cast<std::size_t>(node)] = -1;
         else
             scalarSlots[static_cast<std::size_t>(node - dofMap.gridCount())] = -1;
     }
+    for (const std::int32_t entity : m_windowEntities)
+        m_entityOffsets[static_cast<std::size_t>(entity)] = -1;
+    m_windowEntities.clear();
     m_slotNodes.clear();
     m_values.clear();
     m_values.shrink_to_fit();
@@ -595,9 +653,129 @@ void StreamedOutputs::flush()
     m_points.clear();
 }
 
+std::vector<std::array<double, 6>> StreamedOutputs::gaugeAmplitudes() const
+{
+    std::vector<std::array<double, 6>> amplitudes; // per vector (bounded by the basis)
+    if (m_inputs.supports.empty())
+        return amplitudes;
+    const std::array<double, 36>& c = *m_inputs.supportCoefficients;
+    const std::size_t r = m_inputs.supports.size();
+    amplitudes.assign(m_columns, {});
+    for (std::size_t b = 0; b < m_columns; ++b)
+        for (std::size_t mode = 0; mode < 6; ++mode)
+        {
+            double sum = 0.0;
+            for (std::size_t j = 0; j < r; ++j)
+                sum += c[6 * j + mode] * m_supportValues[j][b];
+            amplitudes[b][mode] = sum;
+        }
+    return amplitudes;
+}
+
+void StreamedOutputs::finishWholeVectors()
+{
+    const StreamedElements& elements = *m_inputs.elements;
+    const assembly::DofMap& dofMap = elements.model().dofMap();
+    const linalg::DenseMatrix& alpha = *m_inputs.coefficients;
+    const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
+    // The excluded DOFs of the element formulation, from every element on the whole vectors (as the full path fills
+    // them after its solve: a linear map, so on the vectors as on their combinations).
+    if (m_inputs.formulation != nullptr)
+        for (std::size_t b = 0; b < m_columns; ++b)
+            m_inputs.formulation->fillExcluded(std::span<double>(&m_whole(0, b), gSize));
+    const std::vector<std::array<double, 6>> amplitudes = gaugeAmplitudes();
+    const output::OutputRequestPlan& displacement = m_inputs.plan->of(output::OutputKind::Displacement);
+    const output::ElementOutputSelection selection = output::elementSelectionOf(*m_inputs.plan);
+    std::sort(m_wholePoints.begin(), m_wholePoints.end());
+    m_wholePoints.erase(std::unique(m_wholePoints.begin(), m_wholePoints.end()), m_wholePoints.end());
+    std::vector<std::int32_t> taken; // the output points asked for, bounded by the points
+    for (const std::int32_t node : m_wholePoints)
+    {
+        const base::EntityId id = dofMap.nodeIdOf(node);
+        if (displacement.isAll || std::binary_search(displacement.members.begin(), displacement.members.end(), id))
+            taken.push_back(node);
+    }
+    base::BudgetedBuffer<double> caseValues(m_budget, selection.stress.isRequested ? gSize : 0,
+                                            "streamed outputs: a case's whole displacements");
+    for (std::size_t c = 0; c < m_caseCount; ++c)
+    {
+        // u_c = Σ_b α(b, c)·u_b, each sum in the order of b from zero (as flush combines the chunks' rows).
+        const auto valueOf = [&](base::DofIndex dof)
+        {
+            double sum = 0.0;
+            for (std::size_t b = 0; b < m_columns; ++b)
+                sum += alpha(b, c) * m_whole(static_cast<std::size_t>(dof), b);
+            return sum;
+        };
+        if (m_asksDisplacements && !taken.empty())
+        {
+            std::array<double, 6> caseAmplitudes{}; // Σ_b α(b, c)·C·u_r,b
+            for (std::size_t b = 0; b < amplitudes.size(); ++b)
+                for (std::size_t mode = 0; mode < 6; ++mode)
+                    caseAmplitudes[mode] += alpha(b, c) * amplitudes[b][mode];
+            output::NodalResultTable table;
+            table.kind = "displacements";
+            table.subcase = m_inputs.caseLabels[c];
+            table.ids = base::BudgetedBuffer<std::int32_t>(m_budget, taken.size(), "displacement ids");
+            table.pointTypes = base::BudgetedBuffer<std::int8_t>(m_budget, taken.size(), "displacement types");
+            table.values = base::BudgetedBuffer<double>(m_budget, taken.size() * 6, "displacement values");
+            for (std::size_t k = 0; k < taken.size(); ++k)
+            {
+                const std::int32_t node = taken[k];
+                const bool isGrid = node < dofMap.gridCount();
+                table.ids[k] = static_cast<std::int32_t>(dofMap.nodeIdOf(node));
+                table.pointTypes[k] =
+                    static_cast<std::int8_t>(isGrid ? output::PointType::Grid : output::PointType::Scalar);
+                const assembly::DofMap::NodeDofs nodeDofs = dofMap.dofsOfNode(node);
+                for (int d = 0; d < nodeDofs.count; ++d)
+                {
+                    const base::DofIndex dof = nodeDofs.first + d;
+                    double value = valueOf(dof);
+                    if (!amplitudes.empty())
+                    {
+                        // The gauge of the FreeBodySupport DOFs: their own rows at rest exactly.
+                        const bool isSupport = std::find(m_inputs.supports.begin(), m_inputs.supports.end(), dof) !=
+                                               m_inputs.supports.end();
+                        const std::array<double, 6> row = m_inputs.gaugeRowOf(dof);
+                        double motion = 0.0;
+                        for (std::size_t mode = 0; mode < 6; ++mode)
+                            motion += row[mode] * caseAmplitudes[mode];
+                        value = isSupport ? 0.0 : value - motion;
+                    }
+                    table.values[6 * k + static_cast<std::size_t>(d)] = value;
+                }
+            }
+            if (m_inputs.envelopes != nullptr)
+                m_inputs.envelopes->offer(table);
+            if (m_inputs.keepsCaseTables || m_inputs.envelopes == nullptr || !m_inputs.envelopes->takes(table.kind))
+                m_nodal[c].push_back(std::move(table));
+        }
+        // The stresses at the grid points of the solids of the formulation, from the displacements as solved (the
+        // element tables' gauge).
+        if (selection.stress.isRequested)
+        {
+            for (std::size_t dof = 0; dof < gSize; ++dof)
+                caseValues[dof] = valueOf(static_cast<base::DofIndex>(dof));
+            std::vector<output::ElementResultTable> tables;
+            m_inputs.builder->buildGridPointStresses(m_inputs.caseLabels[c], caseValues.span(), m_budget, tables,
+                                                     &selection);
+            for (output::ElementResultTable& table : tables)
+            {
+                if (m_inputs.envelopes != nullptr)
+                    m_inputs.envelopes->offer(table);
+                if (m_inputs.keepsCaseTables || m_inputs.envelopes == nullptr || !m_inputs.envelopes->takes(table.kind))
+                    m_element[c].push_back(std::move(table));
+            }
+        }
+    }
+    m_whole = linalg::DenseMatrix();
+}
+
 void StreamedOutputs::finish()
 {
     flush();
+    if (m_keepsWhole)
+        finishWholeVectors();
     if (m_isBasis)
     {
         // The grid point forces of every vector at the fixed rows' nodes: the contributions by node (the order of the

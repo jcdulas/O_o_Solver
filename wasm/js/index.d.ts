@@ -31,6 +31,71 @@ export interface ModelOptions {
   elementFormulation?: string;
   // Mandatory for a model with shells or solids in MixedHybridFormulation.
   formulationGeometry?: FormulationGeometry;
+  // Also take the component tables of the reader, which a condensed static analysis reads.
+  condensation?: boolean;
+}
+
+// The units a condensed analysis condenses: the components of the reader. "recommended": every unit but those
+// whose condensed stiffness would cost more than their interior; an array: these unit IDs.
+export type CondensedUnits = "all" | "recommended" | "none" | number[];
+export type CondensationSettings = CondensedUnits | {
+  units: CondensedUnits;
+  fullUnits?: number[];     // kept full whatever `units` says
+  retainedNodes?: number[]; // grid points kept on the boundary of their unit
+  modeCount?: number;       // modes and buckling: fixed-interface modes per unit; 0: those below a cut-off
+  memoryMode?: "auto" | "speed" | "low_memory"; // statics: what the analysis keeps in memory (same results)
+  cache?: CondensationCache; // units found in it are not condensed again
+  cacheModelTag?: string;    // the name of the model in the entries stored
+};
+
+// An external unit of a static analysis given by its matrices: the zone whose elements it replaces, and K* (and M*) of
+// the zone on its contour, one row and column per label [grid, component], column by column.
+export interface ExternalUnitSettings {
+  zone: { id: number; name?: string; elements: number[]; boundary: { grid: number; components?: string }[] };
+  labels: [number, number][];
+  stiffness: number[] | Float64Array;
+  mass?: number[] | Float64Array;
+}
+
+// A condensation cache in memory (OosSolver.condensationCache).
+export interface CondensationCache {
+  statistics(): { memoryHits: number; diskHits: number; misses: number; stores: number; refusedStores: number;
+                  evictions: number; missCauses: Record<string, number> };
+  delete(): void;
+}
+
+// What the condensed path did.
+export interface CondensationSummary {
+  condensedUnits: number[];
+  fullUnits: number[];
+  interfaceDofs: number; // the DOFs of the interface problem, as the plan estimates them
+  note: string;          // why the plan differs from the request (a model of one unit and no connection), or ""
+  // Statics: whether a constraint set recovered its units unit by unit (each unit's recovery made once for every case;
+  // with memoryMode "low_memory", envelopes and keepsCaseTables false).
+  unitByUnit: boolean;
+}
+
+// An envelope asked of a static analysis: a table kind ("displacements", "singlePointConstrForces",
+// "multiPointConstrForces", "appliedLoads", "stress", "strain", "forces", "strainEnergy"), a quantity (a component of
+// its tables, or "magnitude" for a nodal one) and the extreme kept.
+export interface EnvelopeSpec {
+  kind: string;
+  quantity: string;
+  mode: "max" | "min" | "absMax";
+}
+
+// The envelope of one table: per row the extreme over the load cases and the subcase that gives it.
+export interface EnvelopeTable {
+  kind: string;
+  elementType: string; // "" for a nodal table
+  quantity: string;
+  mode: string;
+  ids: Int32Array;
+  nodeIds: Int32Array;
+  layers: Int32Array;
+  positions: Float64Array; // empty unless the tables have stations
+  values: Float64Array;
+  cases: Int32Array;
 }
 
 export interface Diagnostic {
@@ -88,7 +153,10 @@ export interface GridPointForceTable {
   subcase: number;
   analysis: string;
   // The row names: "appliedLoad", "singlePointConstrForce", "multiPointConstrForce", "total", then the result element
-  // types of the elements ("ShellQuad4") and "condensedUnit" (a condensed component on its boundary).
+  // types of the elements ("ShellQuad4"), "condensedUnit" (a condensed component on its boundary) and
+  // "elementFormulation" (MixedHybridFormulation: the forces of the formulation's own relations at the grid point).
+  // In MixedHybridFormulation the forces on the unknowns of the edges, faces and interiors are carried to the grid
+  // points of their entities with their resultant: the rows of a grid point sum to zero as in ClassicFormulation.
   names: string[];
   nodeIds: Int32Array;
   elementIds: Int32Array;
@@ -110,8 +178,11 @@ export interface AnalysisResult {
   elementTables: ElementTable[];
   gridPointForces: GridPointForceTable[];
   eigenvalues: EigenvalueTable[];
+  envelopes: EnvelopeTable[]; // statics: those settings.envelopes asks for
   diagnostics: Diagnostic[];
   aeroelastic: AeroelasticResult | null;
+  // A static analysis asked to condense: what its plan decided; null otherwise.
+  condensation: CondensationSummary | null;
 }
 
 export interface StabilityDerivative {
@@ -188,10 +259,23 @@ export declare class OosSolver {
   // `options.formulationGeometry` gives its geometry declarations (grid point and element IDs).
   modelFromReader(oor: unknown, deck: unknown, options?: ModelOptions): Model;
   createOptimization(model: Model, declarations?: OptimizationDeclarations, settings?: OptimizationSettings): OptimizationProblem;
+  // `modelOptions`: those of modelFromReader (a model in MixedHybridFormulation: elementFormulation and
+  // formulationGeometry).
   optimizationFromReader(oor: unknown, deck: unknown, declarations?: OptimizationDeclarations,
-    settings?: OptimizationSettings): OptimizationProblem;
+    settings?: OptimizationSettings, modelOptions?: ModelOptions): OptimizationProblem;
 
   checkSupport(model: Model, analysis?: Analysis): SupportCheck;
   run(model: Model, analysis?: Analysis,
-      settings?: { subcases?: number[]; memoryBytes?: number; threads?: number }): AnalysisResult;
+      settings?: { subcases?: number[]; memoryBytes?: number; threads?: number;
+                   condensation?: CondensationSettings; streamed?: boolean;
+                   externalUnits?: ExternalUnitSettings[];
+                   // statics: envelopes over the load cases, and whether the per-case tables of their kinds are kept
+                   envelopes?: EnvelopeSpec[]; keepsCaseTables?: boolean }): AnalysisResult;
+  condensationCache(options?: { memoryBytes?: number }): CondensationCache;
+  // The residual structure with superelements upstream of it (statics or modes).
+  runSuperelements(residual: Model, parts: { id: number; model: Model; boundary: [number, number][] }[],
+                   analysis?: "statics" | "modes",
+                   settings?: { subcases?: number[]; memoryBytes?: number; threads?: number }):
+    { superelements: { id: number; nodalTables: unknown[]; elementTables: unknown[]; eigenvalues: unknown[] }[];
+      diagnostics: Diagnostic[] };
 }

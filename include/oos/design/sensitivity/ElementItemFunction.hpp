@@ -6,6 +6,7 @@
 #include "oos/elements/core/ElementBatchView.hpp"
 #include "oos/elements/core/ElementDof.hpp"
 #include "oos/elements/core/ElementFamily.hpp"
+#include "oos/elements/core/EntityLayout.hpp"
 #include "oos/input/snapshot/ModelSnapshot.hpp"
 
 #include <array>
@@ -53,12 +54,44 @@ struct ItemForm
     double scale = 1.0;
 };
 
-// A writable copy of the model's displacements (six per grid point row, then the scalar points), for the recoveries at
-// unit displacements of ElementItemFunction::slopes.
+// A writable copy of the model's displacements in the DofMap's order (six per grid point row, then the scalar points,
+// then the entities of an element formulation), for the recoveries at unit displacements of
+// ElementItemFunction::slopes.
 struct ScratchDisplacements
 {
     std::span<double> grid;
     std::span<double> scalar;
+    std::span<double> entity;                             // empty without entities
+    const elements::EntityLayout* entityLayout = nullptr; // null without entities
+
+    // The parts of a g-set vector of `gridCount` grid points and `scalarCount` scalar points, then the entities of
+    // `layout` (null: none), as elements::NodalDisplacements::ofGSet splits them.
+    [[nodiscard]] static ScratchDisplacements ofGSet(std::span<double> values, std::size_t gridCount,
+                                                     std::size_t scalarCount, const elements::EntityLayout* layout)
+    {
+        return {values.first(6 * gridCount), values.subspan(6 * gridCount, scalarCount),
+                values.subspan(6 * gridCount + scalarCount), layout};
+    }
+    // The value of one DOF, writable.
+    [[nodiscard]] double& at(const elements::ElementDof& dof) const
+    {
+        if (dof.kind == input::PointKind::Entity)
+            return entity[static_cast<std::size_t>(entityLayout->dofOffset(dof.row)) +
+                          static_cast<std::size_t>(dof.component)];
+        if (dof.kind == input::PointKind::Scalar)
+            return scalar[static_cast<std::size_t>(dof.row)];
+        return grid[static_cast<std::size_t>(dof.row) * 6 + static_cast<std::size_t>(dof.component) - 1];
+    }
+    // The displacements they hold, as the facets read them (no temperature).
+    [[nodiscard]] elements::NodalDisplacements nodal() const
+    {
+        elements::NodalDisplacements displacements;
+        displacements.grid = grid;
+        displacements.scalar = scalar;
+        displacements.entity = entity;
+        displacements.entityLayout = entityLayout;
+        return displacements;
+    }
 };
 
 // The values of an element's items and their derivatives with respect to the DOFs of the element, from the slopes of

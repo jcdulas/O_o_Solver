@@ -21,8 +21,13 @@ namespace oos::elements::mixedHybrid
 // The reference thickness is T (the laminate's thickness for a laminate); the element interpolates its corner
 // thicknesses.
 //
-// Returns the message of a section the formulation does not take yet instead: a membrane-only or bending-only
-// property (MID2 or MID1 blank, section 15 decision 8: phase 6), the plane-strain option (MID2 = −1).
+// A membrane-only property (MID2 blank, or a laminate's membrane option) gives SectionParts::MembraneOnly with
+// B = D = 0, no transverse shear, the thermal force alone and no rotary inertia (I1 = I2 = 0); a bending-only one (MID1
+// blank, or a laminate's bending option) SectionParts::BendingOnly with A = B = 0 and the thermal moments alone, its
+// Kirchhoff limit measured on 12 D / t² (spec section 4.1).
+//
+// Returns the message of a section the formulation does not take instead: no membrane nor bending material, the
+// plane-strain option (MID2 = −1), a thickness that is not positive.
 [[nodiscard]] std::variant<Section, std::string> mixedSectionOf(const elements::ShellSection& section);
 
 } // namespace oos::elements::mixedHybrid

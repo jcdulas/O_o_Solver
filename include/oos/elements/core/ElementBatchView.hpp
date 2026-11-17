@@ -16,6 +16,8 @@
 namespace oos::elements
 {
 
+class FormulationModel;
+
 // One element batch of a snapshot (all the elements of one card type), with what its element family reads besides
 // the batch's own columns: the grid point positions in the basic system and the rotations of their displacement
 // systems, the property and material tables, and the lookups of SnapshotIndex. The family reads the card's fields
@@ -25,24 +27,28 @@ namespace oos::elements
 // rows.
 //
 // A view of a formulation with entities (the mixed hybrid formulation: EntityLayout) carries the layout of the
-// analysis, the one its DofMap numbers, so that the family emits its matrices over those entities; null for every
-// other formulation. A family that needs it and finds none reports it in check().
+// analysis, the one its DofMap numbers, so that the family emits its matrices over those entities, and the model of
+// that formulation, which the elements of other cards that read a point of its elements ask (a fastener piercing one
+// of its shells: FormulationModel::shellPointMotion); both null for every other formulation. A family that needs
+// them and finds none reports it in check().
 //
-// Thread-safety: immutable; concurrent reads are safe. Ownership: borrows the snapshot, the batch, the index and the
-// layout, which must outlive it.
+// Thread-safety: immutable; concurrent reads are safe. Ownership: borrows the snapshot, the batch, the index, the
+// layout and the formulation model, which must outlive it.
 class ElementBatchView
 {
 public:
     // Precondition: `batch` belongs to the snapshot of `index`.
     ElementBatchView(const input::ElementBatch& batch, const SnapshotIndex& index,
-                     const EntityLayout* entities = nullptr) noexcept
-        : m_batch(&batch), m_index(&index), m_entities(entities)
+                     const EntityLayout* entities = nullptr, const FormulationModel* formulation = nullptr) noexcept
+        : m_batch(&batch), m_index(&index), m_entities(entities), m_formulation(formulation)
     {
     }
 
     [[nodiscard]] const input::ElementBatch& batch() const noexcept { return *m_batch; }
     // The entities of the analysis (null without).
     [[nodiscard]] const EntityLayout* entities() const noexcept { return m_entities; }
+    // The model of the formulation whose entities these are (null without).
+    [[nodiscard]] const FormulationModel* formulation() const noexcept { return m_formulation; }
     [[nodiscard]] const SnapshotIndex& index() const noexcept { return *m_index; }
     [[nodiscard]] const input::ModelSnapshot& snapshot() const noexcept { return m_index->snapshot(); }
     [[nodiscard]] const std::string& card() const noexcept { return m_batch->card(); }
@@ -89,6 +95,7 @@ private:
     const input::ElementBatch* m_batch;
     const SnapshotIndex* m_index;
     const EntityLayout* m_entities;
+    const FormulationModel* m_formulation;
 };
 
 } // namespace oos::elements

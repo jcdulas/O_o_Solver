@@ -148,6 +148,7 @@ MultifrontalDriver::MultifrontalDriver(const SymbolicFactor& symbolic, const Sym
             {"supernodal factorisation: the matrix has ", std::to_string(matrix.dimension()),
              " equations and the symbolic factor ", std::to_string(symbolic.dofCount()),
              "; factorise the matrix assembled on the graph and in the order of its symbolic analysis"}));
+    requireReferenceDiagonal(options.referenceDiagonal, matrix.dimension());
     const auto count = static_cast<std::size_t>(symbolic.supernodeCount());
     m_status = base::BudgetedBuffer<Status>(budget, count, "factorisation: supernode status");
     m_zeroPivotAt = base::BudgetedBuffer<std::int32_t>(budget, count, "factorisation: zero pivots");
@@ -727,9 +728,11 @@ void MultifrontalDriver::finish(SupernodalFactor& factor)
             ++(pivot > 0.0 ? inertia.positive : pivot < 0.0 ? inertia.negative : inertia.zero);
             if (m_options.pivoting == PivotingMode::PositiveDefinite)
             {
-                // The ratio a_jj / d_j that PARAM MAXRATIO bounds.
+                // The ratio a_jj / d_j that PARAM MAXRATIO bounds (a_jj the reference of the equation when the options
+                // give one).
                 const std::int32_t equation = panel.rows[k];
-                const double diagonal = matrixDiagonal(*m_matrix, equation);
+                const double diagonal =
+                    ratioTestDiagonal(m_options.referenceDiagonal, equation, matrixDiagonal(*m_matrix, equation));
                 const double ratio = diagonal / pivot;
                 if (equationOfLargest < 0 || ratio > largestRatio)
                 {

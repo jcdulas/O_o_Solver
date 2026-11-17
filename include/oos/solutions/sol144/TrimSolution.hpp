@@ -10,6 +10,7 @@
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/base/threading/CancellationToken.hpp"
 #include "oos/base/threading/ThreadPool.hpp"
+#include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/input/snapshot/ModelSnapshot.hpp"
 #include "oos/linalg/kernels/KernelKind.hpp"
 #include "oos/output/arrays/ResultArrays.hpp"
@@ -61,6 +62,10 @@ struct TrimOptions
     // asked for, and those of the elements of a MonitorNodeForceSum3); the condensation cache and the name of the model
     // in its entries.
     std::shared_ptr<const reduction::CondensationPlan> condensation;
+    // The index of the snapshot the condensation planner made (CondensationPlanner::analysisModel, sharedIndex), taken
+    // by the analysis model in place of a new one with what it computed once (AnalysisModelOptions::index); null: a
+    // new index.
+    std::shared_ptr<const elements::SnapshotIndex> snapshotIndex;
     std::optional<std::vector<std::int64_t>> recoveredUnits;
     reduction::CondensationCache* cache = nullptr;
     std::string cacheModelTag;

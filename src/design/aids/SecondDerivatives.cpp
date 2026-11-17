@@ -4,6 +4,7 @@
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/elements/core/ElementMatrixBlock.hpp"
 #include "oos/elements/core/ElementVectorBlock.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/linalg/dense/DenseMatrix.hpp"
 
 #include <algorithm>
@@ -498,9 +499,11 @@ private:
     [[nodiscard]] elements::NodalDisplacements nodalOf(std::span<const double> w,
                                                        const detail::SubcaseState& state) const
     {
-        const auto gridValues = static_cast<std::size_t>(6) * static_cast<std::size_t>(m_dofMap.gridCount());
-        return {w.first(gridValues), w.subspan(gridValues),
-                state.temperatures ? &state.temperatures->temperatures() : nullptr};
+        elements::NodalDisplacements displacements = elements::NodalDisplacements::ofGSet(
+            w, static_cast<std::size_t>(m_dofMap.gridCount()), static_cast<std::size_t>(m_dofMap.scalarCount()),
+            &m_dofMap.entities());
+        displacements.temperatures = state.temperatures ? &state.temperatures->temperatures() : nullptr;
+        return displacements;
     }
 
     [[nodiscard]] std::span<const double> displacementsOf(const HessianItem& item) const
@@ -620,7 +623,9 @@ private:
         const DesignPoint point = m_problem.designPoint(x);
         state.snapshot = m_problem.overlaySnapshot(point);
         state.index = std::make_unique<elements::SnapshotIndex>(*state.snapshot, m_budget);
-        state.set = std::make_unique<assembly::ElementSet>(*state.index, m_registry);
+        state.set = std::make_unique<assembly::ElementSet>(
+            *state.index, m_registry,
+            elements::formulationEntitiesOf(*state.index, m_registry, elements::EntityLayout::Kind::Static));
         ++m_designPoints;
         elements::ElementMatrixBlock block;
         for (const ElementRef& element : m_reached)

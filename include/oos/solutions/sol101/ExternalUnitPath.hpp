@@ -198,12 +198,20 @@ private:
     };
 
     void resolve(const Inputs& inputs, base::MemoryBudget& budget, base::DiagnosticSink& sink);
+    // The element formulation (docs/mixed-hybrid-formulation-spec.md section 5.9): the entities that only replaced
+    // elements act on held (m_heldEntityDofs, m_heldDofs), an entity that a replaced and a kept element share (an edge
+    // or a face across the contour of a zone) refused: the plugin's matrices act on grid points only.
+    void holdReplacedEntities(const elements::FormulationModel& formulation, const Inputs& inputs,
+                              base::DiagnosticSink& sink);
 
     const assembly::DofMap* m_dofMap = nullptr;
     std::vector<StaticSubcase> m_subcases;
-    std::vector<Unit> m_units;                   // bounded by the plugins
-    std::vector<base::EntityId> m_replaced;      // bounded by the zones
-    std::vector<base::DofIndex> m_heldDofs;      // bounded by the zones
+    std::vector<Unit> m_units;              // bounded by the plugins
+    std::vector<base::EntityId> m_replaced; // bounded by the zones
+    std::vector<base::DofIndex> m_heldDofs; // bounded by the zones
+    // The entity DOFs of the element formulation that only replaced elements act on (held, in m_heldDofs too),
+    // sorted; bounded by the zones.
+    std::vector<base::DofIndex> m_heldEntityDofs;
     std::vector<std::int32_t> m_interiorNodes;   // sorted; bounded by the zones
     std::vector<std::int64_t> m_groupOffsets{0}; // couplings()
     std::vector<std::int32_t> m_groupNodes;      // couplings()

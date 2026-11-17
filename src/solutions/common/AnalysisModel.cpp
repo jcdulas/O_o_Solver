@@ -3,6 +3,8 @@
 #include "oos/base/threading/Stopwatch.hpp"
 #include "oos/solutions/common/RunChecks.hpp"
 
+#include <stdexcept>
+
 namespace oos::solutions
 {
 
@@ -46,7 +48,11 @@ AnalysisModel::AnalysisModel(const input::ModelSnapshot& snapshot, AnalysisKind 
 {
     base::Stopwatch watch;
     reportSupport(snapshot, m_registry, analysis, sink);
-    m_index = std::make_shared<elements::SnapshotIndex>(snapshot, budget);
+    if (options.index != nullptr && &options.index->snapshot() != &snapshot)
+        throw std::invalid_argument(
+            "AnalysisModel: the index given indexes another snapshot; give the index of a model of the same snapshot");
+    m_index =
+        options.index != nullptr ? options.index : std::make_shared<const elements::SnapshotIndex>(snapshot, budget);
     // A formulation with unknowns on edges, faces and interiors: the entities of this kind of analysis, which the
     // element views carry and the DOF map numbers.
     m_layoutKind =

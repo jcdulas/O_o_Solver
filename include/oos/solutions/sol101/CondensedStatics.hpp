@@ -1,5 +1,6 @@
 #pragma once
 
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/constraints/SpcSet.hpp"
 #include "oos/assembly/loads/LoadBasis.hpp"
 #include "oos/assembly/loads/LoadFamily.hpp"
@@ -555,8 +556,10 @@ public:
     [[nodiscard]] bool recoversInSequence() const noexcept;
     // The bytes a set of `caseCount` cases keeps while its units are recovered unit by unit: the reactions of the DOFs
     // the recovered units hold and their residual work, per case (the SPC forces and EPSILON of each case add them in
-    // the order of the units, after the units are recovered).
-    [[nodiscard]] std::uint64_t unitByUnitBytes(std::size_t caseCount) const noexcept;
+    // the order of the units, after the units are recovered), and with an element formulation the values of the
+    // interior DOFs of the recovered units that the cases' own recovery reads (the DOFs of the elements of a unit at
+    // the interface's grid points: the excluded rotations and the solids' grid point stresses there).
+    [[nodiscard]] std::uint64_t unitByUnitBytes(std::size_t caseCount) const;
     // `plan` (an output plan of outputPlanOf) without the interior points and the elements of the recovered units,
     // whose rows each recovered unit gives (unitOutputPlanOf): what the cases' own visit recovers in a set taken unit
     // by unit.
@@ -716,6 +719,8 @@ public:
         std::int64_t equationCount = 0;
         // Per g-set DOF: whether it is in the full path's analysis set (f) of the constraint set.
         base::BudgetedBuffer<std::uint8_t> isAnalysisSet;
+        // The element formulation's constraints of the set (null without one): recoverModes fills the excluded DOFs.
+        std::unique_ptr<assembly::FormulationConstraints> formulation;
     };
     // The pencil of the constraint set on the interface: K (the units' K* and K_qq, the interface elements, the
     // relations and constraints of the full path's sets, AUTOSPC on the summed boundary blocks, as solveGroup), and
@@ -862,12 +867,17 @@ private:
     // The interior points and elements of each recovered unit, and the points and elements of none
     // (interfaceOutputPlanOf), listed once at the first call.
     void listUnitOutputs() const;
+    // With an element formulation, after the interior points of the units are listed: m_keptDofs,
+    // m_interfaceLayerElements and each unit's kept DOFs (`positionOfPlanUnit`: a plan unit's position among the
+    // condensed units, SIZE_MAX for none).
+    void listKeptDofs(std::span<const std::size_t> positionOfPlanUnit) const;
     // The constraint set kept with its interface problem, its Gm, its held DOFs and its external units, the
     // units shared by the sets (made at the first).
     void keepSet(const GroupInputs& group, std::unique_ptr<const reduction::InterfaceProblem> interface,
                  std::unique_ptr<const assembly::RigidElimination> gm, base::BudgetedBuffer<std::uint8_t> isConstrained,
                  std::vector<std::shared_ptr<const reduction::ExternalUnitAssembly>> placements,
-                 base::MemoryBudget& budget, std::shared_ptr<const CondensedRelief> relief = nullptr);
+                 base::MemoryBudget& budget, std::shared_ptr<const CondensedRelief> relief = nullptr,
+                 std::shared_ptr<const assembly::FormulationConstraints> formulation = nullptr);
 
     Inputs m_inputs;
     std::optional<reduction::CondensationCache::Session> m_cacheSession;
@@ -884,15 +894,22 @@ private:
     std::shared_ptr<const KeptCondensedUnits> m_keptUnits;
     std::vector<std::shared_ptr<const CondensedFactorisedSet>> m_keptSets;
     // listUnitOutputs: per condensed unit, its interior points and its elements (sorted; empty for a unit not
-    // recovered); the points and elements of no recovered unit (sorted).
+    // recovered), and its local DOFs whose values the cases keep (`kept`: the local DOF and its row of m_keptDofs); the
+    // points and elements of no recovered unit (sorted).
     struct UnitOutputs
     {
         std::vector<base::EntityId> interiorPoints;
         std::vector<base::EntityId> elements;
+        std::vector<std::pair<std::size_t, std::size_t>> kept;
     };
     mutable std::vector<UnitOutputs> m_unitOutputs;
     mutable std::vector<base::EntityId> m_interfacePoints;
     mutable std::vector<base::EntityId> m_interfaceElements;
+    // With an element formulation: the interior DOFs of the recovered units that the cases' own recovery reads when
+    // the units are recovered unit by unit (sorted), and the elements of the recovered units that have a grid point of
+    // the interface (sorted IDs).
+    mutable std::vector<base::DofIndex> m_keptDofs;
+    mutable std::vector<base::EntityId> m_interfaceLayerElements;
     mutable bool m_isUnitOutputsListed = false;
     std::vector<InterfaceExport> m_interfaceExports; // GroupInputs::exportsInterface
 };

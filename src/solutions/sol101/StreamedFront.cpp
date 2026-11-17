@@ -1,7 +1,6 @@
 #include "oos/solutions/sol101/StreamedFront.hpp"
 
 #include "../common/ElementPasses.hpp"
-
 #include "oos/assembly/assemble/ElementSet.hpp"
 #include "oos/assembly/dofs/DofMap.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
@@ -51,6 +50,25 @@ std::array<double, 6> rigidRowOf(const assembly::DofMap& dofMap, const elements:
     return row;
 }
 
+// The rigid-body motions of one g-set DOF about the basic origin: rigidRowOf for a grid point's, the row of
+// `entityRigidRows` (StreamedFront::entityRigidRowsOf) for an entity's, zero for a scalar point's.
+std::array<double, 6> rigidRowOfDof(const assembly::DofMap& dofMap, std::span<const double> entityRigidRows,
+                                    base::DofIndex dof)
+{
+    std::array<double, 6> row{};
+    if (dof >= dofMap.firstEntityDof())
+    {
+        const auto first = 6 * static_cast<std::size_t>(dof - dofMap.firstEntityDof());
+        if (first + 6 <= entityRigidRows.size())
+            std::copy_n(entityRigidRows.begin() + static_cast<std::ptrdiff_t>(first), 6, row.begin());
+        return row;
+    }
+    const linalg::NodeDof nodeDof = dofMap.nodeDofOf(dof);
+    if (nodeDof.node >= dofMap.gridCount())
+        return row;
+    return rigidRowOf(dofMap, elements::ElementDof::grid(nodeDof.node, nodeDof.component + 1));
+}
+
 // The row of the support motions of inertia relief at one g-set DOF before C (the full path's D = Φ·C): Φ on a free
 // independent DOF, zero on a held one (the s set of the relief's sets), Σ coefficient·row of its Gm terms on a
 // dependent one (u_m = Gm·u_n).
@@ -63,11 +81,7 @@ std::array<double, 6> reliefRowAt(const StreamedFront::Inputs& inputs, const ele
     {
         if (inputs.reliefSets->contains(assembly::DofSet::S, independent))
             return;
-        const linalg::NodeDof nodeDof = dofMap.nodeDofOf(independent);
-        if (nodeDof.node >= dofMap.gridCount())
-            return;
-        const std::array<double, 6> phi =
-            rigidRowOf(dofMap, elements::ElementDof::grid(nodeDof.node, nodeDof.component + 1));
+        const std::array<double, 6> phi = rigidRowOfDof(dofMap, inputs.entityRigidRows, independent);
         for (std::size_t mode = 0; mode < 6; ++mode)
             row[mode] += coefficient * phi[mode];
     };
@@ -146,7 +160,8 @@ void massLoads(const StreamedFront::Inputs& inputs, std::span<const elements::El
     loads.assign(n * columns, 0.0);
     const std::span<const std::array<double, 3>> gravity = inputs.loads->accelerations();
     const std::span<const std::array<double, 6>> relief = inputs.loads->reliefAmplitudes();
-    // Per DOF: the CD components of the basic axes (zero for a rotation or a scalar point) and the relief's row.
+    // Per DOF: the CD components of the basic axes (zero for a rotation or a scalar point; on an entity DOF the
+    // formulation's field of the uniform translation along each axis) and the relief's row.
     std::vector<std::array<double, 3>> axes(n); // bounded by the element
     std::vector<std::array<double, 6>> rows(n); // bounded by the element
     for (std::size_t j = 0; j < n; ++j)
@@ -154,6 +169,14 @@ void massLoads(const StreamedFront::Inputs& inputs, std::span<const elements::El
         const elements::ElementDof& dof = dofs[j];
         if (dof.kind == input::PointKind::Scalar)
             continue;
+        if (dof.kind == input::PointKind::Entity)
+        {
+            const std::array<double, 6> rigid = rigidRowOfDof(dofMap, inputs.entityRigidRows, dofMap.dofOf(dof));
+            std::copy_n(rigid.begin(), 3, axes[j].begin());
+            if (!relief.empty())
+                rows[j] = reliefRowAt(inputs, dof);
+            continue;
+        }
         const auto c = static_cast<std::size_t>(dof.component - 1);
         if (c < 3)
         {
@@ -266,10 +289,47 @@ linalg::DenseMatrix StreamedFront::loadsAt(std::span<const base::DofIndex> dofs,
 std::array<double, 6> StreamedFront::reliefRowOf(base::DofIndex dof) const
 {
     const assembly::DofMap& dofMap = m_inputs.model->dofMap();
+    if (dof >= dofMap.firstEntityDof())
+    {
+        const assembly::DofLabel label = dofMap.labelOf(dof);
+        return reliefRowAt(m_inputs, elements::ElementDof::entity(label.row, static_cast<int>(label.component)));
+    }
     const linalg::NodeDof nodeDof = dofMap.nodeDofOf(dof);
     if (nodeDof.node >= dofMap.gridCount())
         return {};
     return reliefRowAt(m_inputs, elements::ElementDof::grid(nodeDof.node, nodeDof.component + 1));
+}
+
+base::BudgetedBuffer<double> StreamedFront::entityRigidRowsOf(const assembly::DofMap& dofMap,
+                                                              base::MemoryBudget& budget)
+{
+    const elements::FormulationModel* formulation = dofMap.formulation();
+    if (formulation == nullptr || !dofMap.hasEntities())
+        return {};
+    const auto count = static_cast<std::size_t>(dofMap.entities().totalDofCount());
+    base::BudgetedBuffer<double> rows(budget, 6 * count, "streamed entity rigid-body motions");
+    std::vector<double> field(count); // bounded by the entity DOFs
+    for (std::size_t mode = 0; mode < 6; ++mode)
+    {
+        // u(x) = e_i for a translation, u(x) = e_j × x for a rotation about the basic origin (assembly::RigidBodyModes
+        // with its reference point at the origin).
+        base::Mat3 gradient{};
+        base::Vec3 translation{};
+        if (mode < 3)
+            translation[mode] = 1.0;
+        else
+        {
+            base::Vec3 axis{};
+            axis[mode - 3] = 1.0;
+            gradient =
+                base::matrixFromRows({0.0, -axis[2], axis[1]}, {axis[2], 0.0, -axis[0]}, {-axis[1], axis[0], 0.0});
+        }
+        std::fill(field.begin(), field.end(), 0.0);
+        formulation->affineField(dofMap.layoutKind(), gradient, translation, field);
+        for (std::size_t i = 0; i < count; ++i)
+            rows[6 * i + mode] = field[i];
+    }
+    return rows;
 }
 
 void StreamedFront::addTerms(linalg::FrontTerms& front)
@@ -642,6 +702,7 @@ void StreamedFront::multiplyStiffness(linalg::ConstDenseMatrixView solution,
 
 StreamedFront::NodeDiagonals StreamedFront::nodeDiagonals(const AnalysisModel& model,
                                                           const assembly::RigidElimination& gm,
+                                                          std::span<const double> entityRigidRows,
                                                           base::MemoryBudget& budget, base::ThreadPool* pool,
                                                           const base::CancellationToken* cancellation)
 {
@@ -650,12 +711,21 @@ StreamedFront::NodeDiagonals StreamedFront::nodeDiagonals(const AnalysisModel& m
     base::BudgetedBuffer<double> gridBlocks(budget, 18 * grids, "streamed node diagonal blocks");
     base::BudgetedBuffer<double> scalarDiagonals(budget, static_cast<std::size_t>(dofMap.scalarCount()),
                                                  "streamed node diagonal blocks");
+    // The diagonals of the entity DOFs of an element formulation (no block: no singularity processing).
+    base::BudgetedBuffer<double> entityDiagonals(budget, static_cast<std::size_t>(dofMap.entities().totalDofCount()),
+                                                 "streamed entity diagonals");
     // One element's contributions to the blocks: (the block's first value, 3 × 3 or 1 values).
+    enum class Target : std::uint8_t
+    {
+        GridBlock,
+        Scalar,
+        EntityDof
+    };
     struct Contribution
     {
         std::size_t offset = 0;
         std::array<double, 9> values{};
-        bool isScalar = false;
+        Target target = Target::GridBlock;
     };
     // PERFORMANCE: the elements' matrices made in pieces of a fixed size on the pool, their contributions summed in
     // element order after each wave: the same sums whatever the threads, the matrices off the calling thread.
@@ -734,12 +804,7 @@ StreamedFront::NodeDiagonals StreamedFront::nodeDiagonals(const AnalysisModel& m
                         // K_e·Φ on the n set: zero but round-off for an element that does not resist a rigid motion.
                         phiRows.assign(m, {});
                         for (std::size_t c = 0; c < m; ++c)
-                        {
-                            const linalg::NodeDof nodeDof = dofMap.nodeDofOf(nDofs[c]);
-                            if (nodeDof.node < dofMap.gridCount())
-                                phiRows[c] =
-                                    rigidRowOf(dofMap, elements::ElementDof::grid(nodeDof.node, nodeDof.component + 1));
-                        }
+                            phiRows[c] = rigidRowOfDof(dofMap, entityRigidRows, nDofs[c]);
                         for (std::size_t mode = 0; mode < 6; ++mode)
                             for (std::size_t a = 0; a < m; ++a)
                             {
@@ -755,10 +820,19 @@ StreamedFront::NodeDiagonals StreamedFront::nodeDiagonals(const AnalysisModel& m
                             std::size_t p1 = p0;
                             while (p1 < m && dofMap.nodeDofOf(nDofs[p1]).node == first.node)
                                 ++p1;
-                            if (first.node >= dofMap.gridCount())
+                            if (dofMap.isEntityNode(first.node))
+                                for (std::size_t a = p0; a < p1; ++a)
+                                {
+                                    Contribution entity;
+                                    entity.target = Target::EntityDof;
+                                    entity.offset = static_cast<std::size_t>(nDofs[a] - dofMap.firstEntityDof());
+                                    entity.values[0] = reduced[a * m + a];
+                                    piece.contributions.push_back(entity);
+                                }
+                            else if (first.node >= dofMap.gridCount())
                             {
                                 Contribution scalar;
-                                scalar.isScalar = true;
+                                scalar.target = Target::Scalar;
                                 scalar.offset = static_cast<std::size_t>(first.node - dofMap.gridCount());
                                 scalar.values[0] = reduced[p0 * m + p0];
                                 piece.contributions.push_back(scalar);
@@ -795,8 +869,10 @@ StreamedFront::NodeDiagonals StreamedFront::nodeDiagonals(const AnalysisModel& m
             largestRigidForce = std::max(largestRigidForce, pieces[p].rigidForce);
             for (const Contribution& contribution : pieces[p].contributions)
             {
-                if (contribution.isScalar)
+                if (contribution.target == Target::Scalar)
                     scalarDiagonals[contribution.offset] += contribution.values[0];
+                else if (contribution.target == Target::EntityDof)
+                    entityDiagonals[contribution.offset] += contribution.values[0];
                 else
                     for (std::size_t v = 0; v < 9; ++v)
                         gridBlocks[contribution.offset + v] += contribution.values[v];
@@ -817,6 +893,8 @@ StreamedFront::NodeDiagonals StreamedFront::nodeDiagonals(const AnalysisModel& m
     for (std::int32_t s = 0; s < dofMap.scalarCount(); ++s)
         diagonalOfDof[static_cast<std::size_t>(dofMap.scalarDof(s))] =
             static_cast<float>(scalarDiagonals[static_cast<std::size_t>(s)]);
+    for (std::size_t i = 0; i < entityDiagonals.size(); ++i)
+        diagonalOfDof[static_cast<std::size_t>(dofMap.firstEntityDof()) + i] = static_cast<float>(entityDiagonals[i]);
     NodeDiagonals diagonals{assembly::NodeDiagonalBlockSet(std::move(gridBlocks), std::move(scalarDiagonals), dofMap),
                             std::move(diagonalOfDof), largestRigidForce};
     return diagonals;

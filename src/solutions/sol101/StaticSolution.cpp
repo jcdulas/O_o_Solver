@@ -1,5 +1,6 @@
 #include "oos/solutions/sol101/StaticSolution.hpp"
 
+#include "oos/assembly/dofs/EntityForceCarry.hpp"
 #include "oos/assembly/assemble/MassAssembler.hpp"
 #include "oos/assembly/assemble/NonStructuralMassShares.hpp"
 #include "oos/assembly/assemble/ParamLookup.hpp"
@@ -319,6 +320,12 @@ struct CaseState
     const output::StiffnessRecovery::CondensedUnits* gridPointForceUnits = nullptr;
     std::array<double, 6> unrecoveredReactions{};
     std::span<const CondensedStatics::UnitBoundaryForces> unitForces; // their boundary forces
+    // With the element formulation, for the grid point forces (output::StiffnessRecovery::NodalState): the SPC set and
+    // the relations of the case's constraint set; a SUBCOM, which may combine several sets, has none and closes its
+    // balance with the formulation's row.
+    const assembly::SpcSet* spc = nullptr;
+    const assembly::RigidElimination* relations = nullptr;
+    bool isCombination = false;
 };
 
 // The cases of a constraint set whose element tables are recovered by blocks (ElementResultBuilder::buildCases): every
@@ -1086,8 +1093,6 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         throw std::invalid_argument(
             "StaticSolution: the thermal units of a load basis are kept on the full path only, not streamed nor "
             "condensed (a bug of the caller that asked it: report it)");
-    if (m_options.isStreamed)
-        elements::refuseMixedHybridOn(*m_snapshot, "the streamed path");
     std::vector<base::EntityId> excludedCases; // with keepsLoadBasis: the subcases left out (a thermal load)
 
     // 1. What the model asks for is supported, every element can be computed, the subcases and their output plans are
@@ -1119,10 +1124,10 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
     // The external units (ExternalUnitPath), made with the element set before the connectivity pass.
     std::unique_ptr<ExternalUnitPath> externalPath;
     AnalysisModelOptions modelOptions;
+    modelOptions.index = m_options.snapshotIndex;
     modelOptions.checkCases = [&](base::DiagnosticSink& caseSink)
     {
         subcases = staticSubcasesOf(snapshot, m_options.subcases, caseSink);
-        const bool isMixedHybrid = elements::ElementRegistry::forModel(snapshot).isMixedHybrid();
         for (const StaticSubcase& subcase : subcases)
         {
             plans.push_back(output::OutputPlan::forSubcase(snapshot, subcase.tableId, caseSink));
@@ -1140,14 +1145,6 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                     subcaseProblem(subcase.label, base::Severity::Warning, "output-not-produced",
                                    "ModalEffectiveMassOutput is an output of a real eigenvalue analysis (SOL 103): a "
                                    "static subcase does not produce it"));
-            // The balance of the grid point forces sums each element's forces at its grid points: the mixed hybrid
-            // elements also act on the unknowns of their edges, faces and interiors (spec section 5.9).
-            if (plans.back().of(output::OutputKind::GridPointForces).isRequested && isMixedHybrid)
-                caseSink.report(subcaseProblem(
-                    subcase.label, base::Severity::Error, "unsupported-output",
-                    "expected the grid point force balance of a model in ClassicFormulation, found a model in "
-                    "MixedHybridFormulation, whose elements also act on the unknowns of their edges, faces and "
-                    "interiors; remove the request of grid point forces"));
         }
         if (m_options.keepsLoadBasis)
         {
@@ -1710,6 +1707,12 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         results.timings.factorisation += watch.lap();
     }
 
+    // With an element formulation that has unknowns outside the grid points: the loads and the forces of the relations
+    // on those unknowns are reported at the grid points of their entities, as the support forces are (the tables name
+    // grid points only, and their rows then have the resultant of the loads).
+    std::optional<assembly::EntityForceCarry> entityCarry;
+    if (dofMap.hasEntities())
+        entityCarry.emplace(dofMap);
     // The tables, checks and envelopes of one case.
     // `vectorised`: the case's element tables made with the others of its block (ElementResultBuilder::buildCases),
     // or null for the per-case recovery.
@@ -1732,10 +1735,23 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             if (isKept(table.kind))
                 tables.nodal.push_back(std::move(table));
         };
+        // A table of forces of a model with entities: the vector with its entity part carried to the grid points.
+        const auto addForces = [&](output::OutputKind kind, std::span<const double> values)
+        {
+            if (!entityCarry || values.empty() || !plan.of(kind).isRequested)
+            {
+                addNodal(kind, values);
+                return;
+            }
+            base::BudgetedBuffer<double> carried(budget, values.size(), "forces carried to the grid points");
+            std::copy(values.begin(), values.end(), carried.data());
+            entityCarry->carry(carried.span());
+            addNodal(kind, carried.span());
+        };
         addNodal(output::OutputKind::Displacement, state.displacements);
-        addNodal(output::OutputKind::AppliedLoads, state.applied);
+        addForces(output::OutputKind::AppliedLoads, state.applied);
         addNodal(output::OutputKind::SpcForces, state.spcForces);
-        addNodal(output::OutputKind::MpcForces, state.mpcForces);
+        addForces(output::OutputKind::MpcForces, state.mpcForces);
 
         const std::unique_ptr<assembly::TemperatureField> temperatures =
             initialStrainsOf(snapshot, index.points(), subcase, budget, sink);
@@ -1768,6 +1784,9 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             nodal.temperatures = temperatureView;
             nodal.isMpcSplit = state.isMpcSplit;
             nodal.mpcRelationForces = state.mpcRelationForces.span();
+            nodal.spc = state.spc;
+            nodal.relations = state.relations;
+            nodal.closesWithFormulationRow = state.isCombination;
             const output::OutputRequestPlan& request = plan.of(output::OutputKind::GridPointForces);
             tables.gridPointForces.push_back(
                 state.gridPointForceUnits != nullptr
@@ -1855,9 +1874,11 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
     // cases' vectors, which hold every unit's (the applied loads, the SPC forces, the checks); so no MPC force, grid
     // point force, strain energy, MonitorNodeForceSum3, section, zone, SUBCOM term, kept displacements, thermal or line
     // load, external unit, cases with other plans, tables recovered case by case on request, nor what the units keep
-    // per case beyond a quarter of the memory left. When it holds, the envelopes' rows are defined from the whole
-    // tables of the first case's plan at rest (EnvelopeAccumulator::defineRows), so that the units' rows take their
-    // places: the rows, their order and their extremes of the cases recovered batch by batch, to the bit.
+    // per case beyond a quarter of the memory left (with an element formulation, the interior values the cases read
+    // at the interface's grid points: CondensedStatics::unitByUnitBytes). When it holds, the envelopes' rows are
+    // defined from the whole tables of the first case's plan at rest (EnvelopeAccumulator::defineRows), so that the
+    // units' rows take their places: the rows, their order and their extremes of the cases recovered batch by batch, to
+    // the bit.
     const auto takesUnitByUnit = [&](std::span<const std::size_t> group) -> bool
     {
         if (!condensed || !condensed->recoversInSequence() || m_options.keepsCaseTables || envelopes.isEmpty() ||
@@ -2317,6 +2338,8 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                     state.spcForces = result.spcForces;
                     state.mpcForces = result.mpcForces;
                     state.isConstrained = result.isConstrained;
+                    state.spc = groupInputs.spc;
+                    state.relations = result.mpcRelations;
                     takeRelationForces(state, s, result.mpcRelations);
                     if (subcases[s].load)
                         state.lineLoads = loadBuilder.lineLoadsOf(*subcases[s].load);
@@ -2454,6 +2477,8 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         solverOptions.pivotPolicy = pivotPolicyOf(params, paramSubcase, sink);
         solverOptions.cancellation = cancellation;
         solverOptions.structures = m_options.structures;
+        // The ratio test of the entity DOFs of an element formulation reads the stiffness of their own elements.
+        solverOptions.unreducedStiffness = &kgg;
         const auto lSetSize = static_cast<std::uint64_t>(factorSets.count(assembly::DofSet::L));
         solverOptions.progress = beginStage(m_options.monitor, "factorisation", lSetSize);
         std::unique_ptr<FsetSolver> factorised =
@@ -2959,6 +2984,8 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                 state.spcForces = column(SpcForces);
                 state.mpcForces = column(MpcForces);
                 state.isConstrained = isConstrained;
+                state.spc = &system.spc();
+                state.relations = &gm;
                 takeRelationForces(state, s, &gm);
                 if (subcases[s].load)
                     state.lineLoads = loadBuilder.lineLoadsOf(*subcases[s].load);
@@ -3065,6 +3092,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             parts.solveSets = system.sharedSolveSets();
             parts.pattern = system.sharedPattern();
             parts.kgg = system.sharedKgg();
+            parts.formulation = system.sharedFormulationConstraints();
             parts.solver = std::move(factorised);
             if (relief)
                 parts.relief = keptReliefOf(*relief, kgg, system.isConstrained(), rSet, loadCases.coefficients(),
@@ -3103,6 +3131,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         base::BudgetedBuffer<std::uint8_t> isConstrained(budget, gSize, "SUBCOM constrained DOFs");
         CaseState state;
         state.subcase = &subcase;
+        state.isCombination = true;
         state.plan = condensed ? &condensedPlans[s] : &plans[s];
         std::vector<output::StiffnessRecovery::UnitRow> unitRows;     // the condensed path: combined per point and unit
         std::vector<CondensedStatics::UnitBoundaryForces> unitForces; // the same: combined per unit

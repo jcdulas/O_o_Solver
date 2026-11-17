@@ -42,7 +42,7 @@ public:
     [[nodiscard]] std::string_view formulation() const noexcept override { return MIXED_HYBRID_FORMULATION; }
     [[nodiscard]] FacetSet facets() const noexcept override
     {
-        return {Facet::Stiffness, Facet::Mass, Facet::Loads, Facet::Differential, Facet::Recovery};
+        return {Facet::Stiffness, Facet::Mass, Facet::Loads, Facet::Differential, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] std::vector<std::string> propertyCards() const override { return m_classic->propertyCards(); }
     [[nodiscard]] std::vector<input::FieldRule> fieldRules() const override { return m_classic->fieldRules(); }
@@ -51,6 +51,10 @@ public:
     void computeStiffness(const ElementBatchView& view, ElementRange range, ElementMatrixBlock& block) const override;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                      ElementMatrixBlock& block) const override;
+    // The volume of the kernel of each solid (the sum of the weights of its rule, the Jacobian of the element in
+    // them): the kernels are those the stiffness keeps.
+    [[nodiscard]] bool computeVolumes(const ElementBatchView& view, ElementRange range,
+                                      std::span<double> volumes) const override;
 
     void checkPressureLoads(const ElementBatchView& view, std::span<const ElementPressure> pressures,
                             base::DiagnosticSink& sink) const override;
@@ -65,6 +69,9 @@ public:
     void checkDifferentialStiffness(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
     void computeDifferentialStiffness(const ElementBatchView& view, ElementRange range,
                                       const NodalDisplacements& preload, ElementMatrixBlock& block) const override;
+    bool differentialStiffnessPreloadGradient(const ElementBatchView& view, std::int64_t row,
+                                              const NodalDisplacements& shape,
+                                              ElementVectorBlock& block) const override;
 
     [[nodiscard]] std::vector<std::string> outputColumns(ElementOutput output) const override
     {

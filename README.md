@@ -6,8 +6,8 @@
 
 A linear finite element solver written in C++20 and compiled to WebAssembly for the web. It solves models supplied
 as typed table packages by O_o_Reader: linear statics (SOL 101), normal modes (SOL 103), linear buckling (SOL 105),
-static aeroelastic trim (SOL 144) and design evaluations driven by JavaScript. The C++ library also provides
-condensation of components.
+static aeroelastic trim (SOL 144) and design evaluations driven by JavaScript. A static analysis can condense the
+components of the model onto their boundaries (the condensed path), with the results of the full path.
 
 O_o_Reader loads native `.oos` models or `.ooh5` model archives, and the solver takes the reader's tables:
 
@@ -29,6 +29,17 @@ run.nodalTables[0];                                // { kind: "displacements", s
 run.elementTables;                                 // stress, strain, forces, by element type ("ShellQuad4")
 run.eigenvalues;                                   // modes and buckling: one table per subcase
 run.diagnostics;                                   // warnings, with the card and field they are about
+
+// The condensed path: the reader's component tables, then each component condensed onto its boundary.
+const parts = solver.modelFromReader(oor, deck, { condensation: true });
+solver.run(parts, "statics", { condensation: "all" }).condensation; // { condensedUnits, fullUnits, interfaceDofs }
+solver.run(parts, "modes", { condensation: { units: "all", modeCount: 40 } }); // Craig-Bampton; "buckling" too
+const cache = solver.condensationCache();          // units condensed once for the runs given it
+solver.run(parts, "statics", { condensation: { units: "all", cache, memoryMode: "low_memory" } });
+
+solver.run(model, "statics", { streamed: true });  // the full path without a factor of the whole model
+solver.run(model, "statics", { externalUnits: [{ zone, labels, stiffness }] }); // zones replaced by matrices
+solver.runSuperelements(residual, [{ id: 1, model: part, boundary: [[101, 101]] }], "statics");
 ```
 
 The interface and its diagnostics use the same neutral names as the model: card types such as `ShellQuad4`,
@@ -74,7 +85,8 @@ together, with `Parameter;ElementFormulation;MixedHybridFormulation` or
 `solver.modelFromReader(oor, model, { elementFormulation: "MixedHybridFormulation", formulationGeometry: {...} })`.
 Its shells and solids read their geometry from the mesh: the program declares where the surface is not smooth
 (`formulationGeometry`: raw edges, raw elements and sharp edges of the solids; an empty object says that every edge is
-smooth). See [docs/mixed-hybrid-formulation-spec.md](docs/mixed-hybrid-formulation-spec.md).
+smooth). It takes every path: full, condensed, streamed, external units, superelements and the design derivatives.
+See [docs/mixed-hybrid-formulation-spec.md](docs/mixed-hybrid-formulation-spec.md).
 
 ## Layout
 

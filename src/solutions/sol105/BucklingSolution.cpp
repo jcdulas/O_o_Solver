@@ -3,6 +3,7 @@
 #include "oos/assembly/assemble/DifferentialStiffnessAssembler.hpp"
 #include "oos/assembly/assemble/MassAssembler.hpp"
 #include "oos/assembly/assemble/NonStructuralMassShares.hpp"
+#include "oos/assembly/constraints/FormulationConstraints.hpp"
 #include "oos/assembly/constraints/SpcSet.hpp"
 #include "oos/assembly/loads/LoadVectorBuilder.hpp"
 #include "oos/assembly/loads/TemperatureField.hpp"
@@ -203,8 +204,11 @@ void solveCondensed(const CondensedBucklingContext& context)
         subcase.load.reset();
         subcase.dropInitialStrains();
         subcases.push_back(subcase);
-        spcSets.emplace_back(constraints, context.snapshot.findLoads(), dofMap, subcase.spc, std::nullopt, budget,
-                             sink);
+        // With the supports the element formulation derives on its edges and faces (none for most).
+        spcSets.push_back(assembly::withFormulationSupports(
+            assembly::SpcSet(constraints, context.snapshot.findLoads(), dofMap, subcase.spc, std::nullopt, budget,
+                             sink),
+            dofMap, context.model.formulation(), context.model.layoutKind(), budget, sink));
         solved.push_back(c);
         plans.push_back(context.cases[c].plan);
     }
@@ -355,7 +359,9 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
     base::DiagnosticSink sink;
 
     // The checks, the model, the differential stiffness of every element, the subcases.
-    const AnalysisModel model(snapshot, AnalysisKind::Buckling, budget, pool, cancellation, sink);
+    AnalysisModelOptions modelOptions;
+    modelOptions.index = m_options.snapshotIndex;
+    const AnalysisModel model(snapshot, AnalysisKind::Buckling, budget, pool, cancellation, sink, modelOptions);
     const assembly::DofMap& dofMap = model.dofMap();
     const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
     const assembly::DifferentialStiffnessAssembler differential(model.elementSet(), dofMap);
@@ -495,6 +501,7 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
             }
         staticOptions.recoveredUnits = everyUnit;
         staticOptions.cache = m_options.cache;
+        staticOptions.snapshotIndex = m_options.snapshotIndex;
         staticOptions.cacheModelTag = m_options.cacheModelTag;
         staticOptions.designStamps = m_options.designStamps;
     }

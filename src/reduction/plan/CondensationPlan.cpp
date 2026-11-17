@@ -6,6 +6,7 @@
 #include "oos/reduction/plan/BoundaryPromotion.hpp"
 
 #include <algorithm>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -88,6 +89,123 @@ std::vector<RelationKey> sharedDependentRelations(const ClusterAbsorption& absor
     return shared;
 }
 
+// The entity nodes of each unit (its elements' and those of the spiders absorbed into it) and those to put on its
+// boundary (docs/mixed-hybrid-formulation-spec.md section 5.11): an entity node another unit or an element of no unit
+// (a connection: a fastener that reads a pierced shell's unknowns) holds too, and a node whose constraints some
+// subcases only have. Empty without entities.
+struct UnitEntityNodes
+{
+    std::vector<std::vector<base::EntityId>> nodes;    // per unit of the absorption, sorted IDs
+    std::vector<std::vector<base::EntityId>> boundary; // per unit, sorted IDs
+};
+
+UnitEntityNodes unitEntityNodesOf(const ClusterAbsorption& absorption, const PlanGraph& graph,
+                                  const SpiderAbsorption* spiders)
+{
+    UnitEntityNodes result;
+    const ElementEntityNodes* table = graph.entityNodes();
+    const std::size_t unitCount = absorption.units().size();
+    result.nodes.resize(unitCount);
+    result.boundary.resize(unitCount);
+    if (table == nullptr)
+        return result;
+    std::vector<std::vector<std::int32_t>> nodesOf(unitCount); // the units' entity nodes, bounded by the model's
+    std::vector<std::uint8_t> isUnitElement(table->elementIds.size(), 0);
+    for (std::size_t index = 0; index < unitCount; ++index)
+    {
+        std::vector<base::EntityId> elements = absorption.units()[index].elementIds;
+        if (spiders != nullptr)
+        {
+            const std::span<const base::EntityId> absorbed = spiders->absorbedElementIds(index);
+            elements.insert(elements.end(), absorbed.begin(), absorbed.end());
+        }
+        for (const base::EntityId elementId : elements)
+        {
+            const auto found = std::lower_bound(table->elementIds.begin(), table->elementIds.end(), elementId);
+            if (found == table->elementIds.end() || *found != elementId)
+                continue;
+            isUnitElement[static_cast<std::size_t>(found - table->elementIds.begin())] = 1;
+            const std::span<const std::int32_t> nodes = table->of(elementId);
+            nodesOf[index].insert(nodesOf[index].end(), nodes.begin(), nodes.end());
+        }
+        std::sort(nodesOf[index].begin(), nodesOf[index].end());
+        nodesOf[index].erase(std::unique(nodesOf[index].begin(), nodesOf[index].end()), nodesOf[index].end());
+    }
+    // How many holders each entity node has: the units, and the elements of no unit (saturated at 2).
+    std::map<std::int32_t, std::uint8_t> holders; // bounded by the entity nodes
+    for (const std::vector<std::int32_t>& nodes : nodesOf)
+        for (const std::int32_t node : nodes)
+        {
+            std::uint8_t& count = holders[node];
+            count = static_cast<std::uint8_t>(std::min(2, count + 1));
+        }
+    for (std::size_t k = 0; k < table->elementIds.size(); ++k)
+        if (isUnitElement[k] == 0)
+            for (std::size_t j = table->offsets[k]; j < table->offsets[k + 1]; ++j)
+                holders[table->nodes[j]] = 2;
+    for (std::size_t index = 0; index < unitCount; ++index)
+        for (const std::int32_t node : nodesOf[index])
+        {
+            const base::EntityId nodeId = graph.nodeIds()[static_cast<std::size_t>(node)];
+            result.nodes[index].push_back(nodeId);
+            if (holders[node] > 1 || std::binary_search(table->varyingNodes.begin(), table->varyingNodes.end(), node))
+                result.boundary[index].push_back(nodeId);
+        }
+    for (std::size_t index = 0; index < unitCount; ++index)
+    {
+        std::sort(result.nodes[index].begin(), result.nodes[index].end());
+        std::sort(result.boundary[index].begin(), result.boundary[index].end());
+    }
+    return result;
+}
+
+// The relations of the element formulation eliminated inside a unit whose points are not all the unit's (a tie or an
+// observer relation across units that share grid points: element lists splitting a component), sorted: eliminated at
+// the interface, as sharedDependentRelations does for the dependent points two units hold.
+std::vector<RelationKey> formulationRelationsAcrossUnits(const ClusterAbsorption& absorption, const PlanGraph& graph,
+                                                         const UnitEntityNodes& entityNodes,
+                                                         std::span<const RelationKey> known)
+{
+    std::vector<RelationKey> across; // bounded by the dependent points
+    if (graph.entityNodes() == nullptr)
+        return across;
+    // The unit of each node a single unit holds; −1 for a node of no unit, −2 for a node several units hold.
+    constexpr std::int32_t NO_UNIT = -1;
+    constexpr std::int32_t SEVERAL_UNITS = -2;
+    std::vector<std::int32_t> unitOf(static_cast<std::size_t>(graph.graph().nodeCount()), NO_UNIT);
+    const auto hold = [&](base::EntityId nodeId, std::size_t index)
+    {
+        if (const std::optional<std::int32_t> node = graph.nodeOf(nodeId))
+        {
+            std::int32_t& unit = unitOf[static_cast<std::size_t>(*node)];
+            unit = unit == NO_UNIT || unit == static_cast<std::int32_t>(index) ? static_cast<std::int32_t>(index)
+                                                                               : SEVERAL_UNITS;
+        }
+    };
+    for (std::size_t index = 0; index < absorption.units().size(); ++index)
+    {
+        for (const base::EntityId nodeId : absorption.units()[index].nodeIds)
+            hold(nodeId, index);
+        for (const base::EntityId nodeId : entityNodes.nodes[index])
+            hold(nodeId, index);
+    }
+    for (const DependentPoint& entry : graph.dependents())
+    {
+        if (!entry.relation.isFormulation || std::binary_search(known.begin(), known.end(), entry.relation))
+            continue;
+        const std::int32_t unit = unitOf[static_cast<std::size_t>(entry.node)];
+        const bool isAcross =
+            unit < 0 || std::any_of(
+                            entry.independentNodes.begin(), entry.independentNodes.end(),
+                            [&](std::int32_t node) { return unitOf[static_cast<std::size_t>(node)] != unit; });
+        if (isAcross)
+            across.push_back(entry.relation);
+    }
+    std::sort(across.begin(), across.end());
+    across.erase(std::unique(across.begin(), across.end()), across.end());
+    return across;
+}
+
 } // namespace
 
 CondensationPlan::CondensationPlan(const ClusterAbsorption& absorption, const UnitBoundaries& boundaries,
@@ -135,12 +253,21 @@ CondensationPlan::CondensationPlan(const ClusterAbsorption& absorption, const Un
     std::sort(m_connections.relations.begin(), m_connections.relations.end());
     m_connections.relations.erase(std::unique(m_connections.relations.begin(), m_connections.relations.end()),
                                   m_connections.relations.end());
-    // The relations of a unit that make a point another unit holds dependent are eliminated at the interface too.
+    // The relations of a unit that make a point another unit holds dependent are eliminated at the interface too, and
+    // so are the formulation's relations whose points are not all one unit's.
     const std::vector<RelationKey> shared =
         sharedDependentRelations(absorption, graph, spiders, m_connections.relations, budget);
     if (!shared.empty())
     {
         m_connections.relations.insert(m_connections.relations.end(), shared.begin(), shared.end());
+        std::sort(m_connections.relations.begin(), m_connections.relations.end());
+    }
+    const UnitEntityNodes entityNodes = unitEntityNodesOf(absorption, graph, spiders);
+    const std::vector<RelationKey> across =
+        formulationRelationsAcrossUnits(absorption, graph, entityNodes, m_connections.relations);
+    if (!across.empty())
+    {
+        m_connections.relations.insert(m_connections.relations.end(), across.begin(), across.end());
         std::sort(m_connections.relations.begin(), m_connections.relations.end());
     }
     const std::span<const RelationKey> interfaceRelations = m_connections.relations;
@@ -167,6 +294,8 @@ CondensationPlan::CondensationPlan(const ClusterAbsorption& absorption, const Un
         unit.revision = spiders != nullptr ? spiders->revisionOf(index) : absorbed.revision;
         unit.elementIds = absorbed.elementIds;
         unit.nodeIds = absorbed.nodeIds;
+        // The entity nodes of its elements (the IDs of entity nodes are negative: they come first).
+        unit.nodeIds.insert(unit.nodeIds.begin(), entityNodes.nodes[index].begin(), entityNodes.nodes[index].end());
         if (spiders != nullptr)
         {
             // The absorbed RigidBodyStar and RigidInterpolation are elements of the unit, their reference points points
@@ -204,6 +333,8 @@ CondensationPlan::CondensationPlan(const ClusterAbsorption& absorption, const Un
         // Every point of a relation eliminated at the interface that the unit holds is on its boundary, named by
         // O_o_Reader or not (BoundaryPromotion::interfaceRelationPoints).
         std::vector<BoundaryNode> candidates(boundaries.at(index).begin(), boundaries.at(index).end());
+        for (const base::EntityId nodeId : entityNodes.boundary[index])
+            candidates.push_back(BoundaryNode{nodeId, static_cast<std::uint8_t>(BoundaryReason::SharedPoint)});
         for (const base::EntityId nodeId : unit.nodeIds)
             if (std::binary_search(relationPoints.begin(), relationPoints.end(), nodeId))
                 candidates.push_back(BoundaryNode{nodeId, static_cast<std::uint8_t>(BoundaryReason::Interface)});
@@ -241,6 +372,13 @@ CondensationPlan::CondensationPlan(const ClusterAbsorption& absorption, const Un
         unit.cost = UnitCostEstimate::estimate(graph, unit.nodeIds, boundaryIds, interfaceRelations, budget, pool);
         if (request.keepsFullWhereRecommended && unit.cost.isKeptFullRecommended)
             unit.decision = UnitDecision::Full;
+        // A unit whose every DOF is held or dependent has nothing to condense (UnitSystem refuses it): kept full.
+        if (unit.decision == UnitDecision::Condensed && unit.cost.interiorDofCount + unit.cost.boundaryDofCount == 0)
+        {
+            unit.decision = UnitDecision::Full;
+            m_note = base::concatenate({m_note, m_note.empty() ? "" : "; ", "unit ", std::to_string(unit.unitId),
+                                        " is kept full: every DOF of it is held or dependent, nothing to condense"});
+        }
         m_units.push_back(std::move(unit));
     }
 

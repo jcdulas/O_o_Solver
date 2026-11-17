@@ -232,6 +232,24 @@ void checkGeometric(oos::checks::CheckRunner& runner, const mh::VolumeGeometry& 
     const mh::Vector translation = rigidParameters(geometry, 0);
     runner.expect(mh::euclideanNorm(kg * translation) <= 1e-12 * mh::frobeniusNorm(kg),
                   what + ": no geometric work in a translation");
+    // The gradient of φᵀ K_g(β(q)) φ with respect to q: K_g is linear in β = S q, so φᵀ K_g(S q) φ = g · q for every q.
+    const std::size_t n = kernel.parameterCount();
+    mh::Vector phi(n);
+    mh::Vector q(n);
+    for (std::size_t k = 0; k < n; ++k)
+    {
+        phi[k] = std::sin(1.3 * static_cast<double>(k) + 0.4);
+        q[k] = 1e-3 * std::cos(0.7 * static_cast<double>(k) - 0.2);
+    }
+    const mh::SolidResult<mh::Vector> gradient = kernel.geometricGradient(phi);
+    const mh::SolidResult<mh::Matrix> atQ = kernel.geometric(kernel.stressCoefficients(q, {}));
+    runner.expect(gradient.ok() && atQ.ok(), what + ": geometric gradient");
+    if (!gradient.ok() || !atQ.ok())
+        return;
+    const double form = mh::dot(phi, atQ.value() * phi);
+    runner.expect(std::fabs(mh::dot(gradient.value(), q) - form) <= 1e-10 * std::fabs(form),
+                  what + ": geometric gradient " + std::to_string(mh::dot(gradient.value(), q)) + " expected " +
+                      std::to_string(form));
 }
 
 // The invariants of one element of degree 4: six zero eigenvalues exactly and no energy in the rigid motions, a

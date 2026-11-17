@@ -31,7 +31,10 @@ Where to start reading: `arrays/OutputPlan` (what a subcase asks for), then `arr
   `ShellQuad4` or `Bar2LoadStations`): element IDs, grid point of each place (0 for the centre), layer, positions
   along bars and beams, values (rows × the columns the element family names), in the element frames.
 - `GridPointForceTable`: the grid point forces of a subcase (appliedLoad, singlePointConstrForce, multiPointConstrForce,
-  one row per element, total), each grid point in equilibrium to round-off.
+  one row per element, total), each grid point in equilibrium to round-off. With the mixed hybrid formulation
+  (`StiffnessRecovery::gridPointForces`, docs/mixed-hybrid-formulation-spec.md section 10.1) the forces on the
+  unknowns of the edges, faces and interiors are carried to the grid points of their entities
+  (`assembly::EntityForceCarry`), and the forces of the formulation's own relations are a row `elementFormulation`.
 - `EigenvalueTable` and `ModalEffectiveMassTable`: the eigenvalues of a modal or buckling solution (extraction order,
   eigenvalue, radians, cycles, generalised mass and stiffness) and the modal effective masses (MEFFMASS). A nodal or
   element table of a mode carries its `step` (the mode number, 0 for a static table) and its `eigenvalue`.
@@ -58,7 +61,9 @@ Where to start reading: `arrays/OutputPlan` (what a subcase asks for), then `arr
   a Weld's stresses from its forces). The rows at rest are made once per set of temperatures. The kinds whose
   selections take the same elements are recovered together, each element resolved and formulated once. Every other
   kind is recovered case by case, as `build()` does. The solutions use it for the cases of the full path, the batches
-  of the condensed path and the modes.
+  of the condensed path and the modes. The vectorised recovery reads the grid and scalar points only: in a model with
+  the entities of a formulation (a fastener reads those of the shells it pierces), every kind is recovered case by
+  case.
 - `ResultCombination`: the results linear in the loads (displacements, constraint forces, applied loads) of the load
   cases as one matrix product of the results of the load basis and the coefficients, batch by batch, through the dense
   kernels (deterministic). The non-linear quantities and the element tables are recovered case by case from the

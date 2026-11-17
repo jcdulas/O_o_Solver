@@ -6,6 +6,7 @@
 
 #include <compare>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <utility>
@@ -20,9 +21,19 @@ struct RelationKey
 {
     bool isMpc = false;
     base::EntityId id = 0;
+    // A relation of the element formulation (a tie or an observer relation, assembly::FormulationRelations): one per
+    // dependent node, `id` its ID (assembly::DofMap::nodeIdOf), so that each is eliminated inside its unit or at the
+    // interface on its own (formulationRelationKey).
+    bool isFormulation = false;
 
     [[nodiscard]] auto operator<=>(const RelationKey&) const = default;
 };
+
+// The relation of the element formulation that makes DOFs of the node of this ID dependent.
+[[nodiscard]] constexpr RelationKey formulationRelationKey(base::EntityId dependentNodeId) noexcept
+{
+    return RelationKey{false, dependentNodeId, true};
+}
 
 // The relation of the glue equations of one glued grid point (glued contact: assembly::GlueConstraints, one
 // relation per glued point, a point being glued once): keyed by the point's ID made negative, −(1 + nodeId). Element,
@@ -35,7 +46,7 @@ struct RelationKey
 }
 [[nodiscard]] constexpr bool isGlueRelation(const RelationKey& key) noexcept
 {
-    return !key.isMpc && key.id < 0;
+    return !key.isMpc && !key.isFormulation && key.id < 0;
 }
 
 // The DOFs of a point that a relation makes dependent, and the points they depend on (the terms of their rows of Gm,
@@ -46,6 +57,22 @@ struct DependentPoint
     RelationKey relation;
     std::int32_t dofCount = 0;
     std::vector<std::int32_t> independentNodes; // sorted; bounded by the relation
+};
+
+// The nodes of the entities of each element of a formulation with entities (the edges, faces and interiors of the
+// mixed hybrid formulation, assembly::DofMap; docs/mixed-hybrid-formulation-spec.md section 5.11). The units of the
+// reader are made of elements and grid points: a unit takes the entity nodes of its elements, an entity node its
+// elements share with another unit or with a connection is on its boundary, and so is a node whose constraints some
+// subcases only have (`varyingNodes`: its derived supports, the formulation's relations or excluded DOFs on it).
+struct ElementEntityNodes
+{
+    std::vector<base::EntityId> elementIds; // sorted, distinct
+    std::vector<std::size_t> offsets;       // elementIds.size() + 1
+    std::vector<std::int32_t> nodes;        // each element's entity nodes, sorted
+    std::vector<std::int32_t> varyingNodes; // sorted
+
+    // The entity nodes of an element (none for an element of no entity).
+    [[nodiscard]] std::span<const std::int32_t> of(base::EntityId elementId) const noexcept;
 };
 
 // The structure the cost estimates are computed on, before any matrix is assembled (every large allocation is
@@ -69,9 +96,11 @@ public:
     // nodeIds, unconstrainedDofCounts, freeDofCounts and positions: one entry per node of `graph`; dependents sorted by
     // node then relation. Throws std::invalid_argument on a size mismatch, a DOF count outside [0, 6] or a free count
     // above the unconstrained one, an ID given twice, unsorted dependents.
+    // `entityNodes`: the entity nodes of the elements, null for a model without entities.
     PlanGraph(const linalg::NodeGraph& graph, std::span<const base::EntityId> nodeIds,
               std::span<const std::int32_t> unconstrainedDofCounts, std::span<const std::int32_t> freeDofCounts,
-              std::span<const base::Vec3> positions, std::vector<DependentPoint> dependents);
+              std::span<const base::Vec3> positions, std::vector<DependentPoint> dependents,
+              std::shared_ptr<const ElementEntityNodes> entityNodes = nullptr);
 
     [[nodiscard]] const linalg::NodeGraph& graph() const noexcept { return *m_graph; }
     [[nodiscard]] std::span<const base::EntityId> nodeIds() const noexcept { return m_nodeIds; }
@@ -90,8 +119,14 @@ public:
     // one of interfaceRelations (sorted: the relations of the connection system).
     [[nodiscard]] std::int32_t unitDofCount(std::int32_t node,
                                             std::span<const RelationKey> interfaceRelations) const noexcept;
-    // The node of a grid or scalar point ID, or nothing.
+    // The node of a grid or scalar point ID (or of an entity node's, assembly::DofMap::nodeIdOf), or nothing.
     [[nodiscard]] std::optional<std::int32_t> nodeOf(base::EntityId nodeId) const noexcept;
+    // The entity nodes of the elements (null without entities).
+    [[nodiscard]] const ElementEntityNodes* entityNodes() const noexcept { return m_entityNodes.get(); }
+    [[nodiscard]] const std::shared_ptr<const ElementEntityNodes>& sharedEntityNodes() const noexcept
+    {
+        return m_entityNodes;
+    }
 
 private:
     const linalg::NodeGraph* m_graph;
@@ -101,6 +136,7 @@ private:
     std::span<const base::Vec3> m_positions;
     std::vector<DependentPoint> m_dependents;
     std::vector<std::pair<base::EntityId, std::int32_t>> m_index; // (ID, node), sorted
+    std::shared_ptr<const ElementEntityNodes> m_entityNodes;
 };
 
 } // namespace oos::reduction

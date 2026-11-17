@@ -199,6 +199,30 @@ std::int32_t entityOfNode(const elements::EntityLayout& entities, std::int32_t e
 
 } // namespace
 
+base::EntityId DofMap::nodeIdOf(std::int32_t node) const noexcept
+{
+    if (node < m_gridCount)
+        return gridId(node);
+    if (node < firstEntityNode())
+        return scalarId(node - m_gridCount);
+    return entityNodeId(node - firstEntityNode());
+}
+
+std::optional<std::int32_t> DofMap::findNode(base::EntityId id) const noexcept
+{
+    if (id < 0)
+    {
+        const std::int32_t entityNode = -1 - id;
+        if (entityNode >= m_entities->nodeCount())
+            return std::nullopt;
+        return firstEntityNode() + entityNode;
+    }
+    const std::optional<input::PointRef> point = m_points->find(id);
+    if (!point)
+        return std::nullopt;
+    return point->kind == input::PointKind::Grid ? point->row : m_gridCount + point->row;
+}
+
 DofMap::NodeDofs DofMap::dofsOfNode(std::int32_t node) const noexcept
 {
     if (node < m_gridCount)

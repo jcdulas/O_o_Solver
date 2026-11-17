@@ -2,6 +2,7 @@
 
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/errors/OptimisationError.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/input/snapshot/ColumnOverlay.hpp"
 
 #include <array>
@@ -126,7 +127,9 @@ ColumnPerturbation::ColumnPerturbation(const std::shared_ptr<const input::ModelS
         Side& made = m_sides[side];
         made.snapshot = std::make_shared<const input::ModelSnapshot>(overlay[side].applyTo(*snapshot, snapshot));
         made.index = std::make_unique<elements::SnapshotIndex>(*made.snapshot, budget);
-        made.set = std::make_unique<assembly::ElementSet>(*made.index, registry);
+        made.set = std::make_unique<assembly::ElementSet>(
+            *made.index, registry,
+            elements::formulationEntitiesOf(*made.index, registry, elements::EntityLayout::Kind::Static));
     }
 }
 

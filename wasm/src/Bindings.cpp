@@ -6,7 +6,10 @@
 //   elementFormulations()            -> [{ card, formulations }], the card its neutral type ("ShellQuad4"), the default
 //                                       formulation of each card first
 //   Model                            .tableNames() .checkSupport(analysis)
-//   runAnalysis(model, analysis, settings) -> { nodalTables, elementTables, gridPointForces, eigenvalues, diagnostics }
+//   runAnalysis(model, analysis, settings) -> { nodalTables, elementTables, gridPointForces, eigenvalues, diagnostics,
+//                                               condensation }
+//   condensationCache(memoryBytes)   -> CondensationCache .statistics(), for settings.condensation.cache
+//   runSuperelements(residual, parts, analysis, settings) -> { superelements, diagnostics }
 //
 // The names are those of oos::api, the neutral names of O_o_Reader (card types, table kinds, columns), passed through
 // untranslated. Errors of the solver become JavaScript errors whose message is the solver's (what was expected, what
@@ -390,7 +393,185 @@ val eigenvalueTableObject(const output::EigenvalueTable& table)
     return object;
 }
 
-// runAnalysis(model, analysis, settings): settings is { subcases?: number[], memoryBytes?: number }.
+// settings.condensation: "all", "recommended", or { units: "all" | "recommended" | number[], fullUnits?: number[],
+// retainedNodes?: number[], modeCount?: number, memoryMode?: "auto" | "speed" | "low_memory",
+// cache?: CondensationCache, cacheModelTag?: string } (an array of units: those condensed).
+api::CondensationSettings condensationSettingsOf(const val& given)
+{
+    api::CondensationSettings settings;
+    if (given.isUndefined() || given.isNull())
+        return settings;
+    const auto unitsNamed = [&](const val& units)
+    {
+        if (units.isArray())
+        {
+            settings.units = api::CondensedUnits::Listed;
+            const std::vector<double> ids = emscripten::convertJSArrayToNumberVector<double>(units);
+            for (const double id : ids)
+                settings.condensedUnits.push_back(static_cast<std::int64_t>(id));
+            return;
+        }
+        const std::string name = units.isString() ? units.as<std::string>() : std::string();
+        if (name == "all")
+            settings.units = api::CondensedUnits::All;
+        else if (name == "recommended")
+            settings.units = api::CondensedUnits::Recommended;
+        else if (name == "none")
+            settings.units = api::CondensedUnits::None;
+        else
+            throw std::invalid_argument(
+                "condensation: expected \"all\", \"recommended\", \"none\" or an array of unit IDs");
+    };
+    if (given.isString())
+    {
+        unitsNamed(given);
+        return settings;
+    }
+    unitsNamed(given["units"]);
+    if (const val full = given["fullUnits"]; !full.isUndefined() && !full.isNull())
+        for (const double id : emscripten::convertJSArrayToNumberVector<double>(full))
+            settings.fullUnits.push_back(static_cast<std::int64_t>(id));
+    if (const val retained = given["retainedNodes"]; !retained.isUndefined() && !retained.isNull())
+        settings.retainedNodes = emscripten::convertJSArrayToNumberVector<std::int32_t>(retained);
+    if (const val modes = given["modeCount"]; !modes.isUndefined() && !modes.isNull())
+    {
+        const double count = modes.as<double>();
+        if (!std::isfinite(count) || count < 0 || count > 1e6 || std::floor(count) != count)
+            throw std::invalid_argument("condensation.modeCount must be an integer from 0");
+        settings.modeCount = static_cast<std::int32_t>(count);
+    }
+    if (const val mode = given["memoryMode"]; !mode.isUndefined() && !mode.isNull())
+        settings.memoryMode = reduction::memoryModeOf(mode.as<std::string>());
+    if (const val cache = given["cache"]; !cache.isUndefined() && !cache.isNull())
+        settings.cache = cache.as<std::shared_ptr<reduction::CondensationCache>>();
+    if (const val tag = given["cacheModelTag"]; !tag.isUndefined() && !tag.isNull())
+        settings.cacheModelTag = tag.as<std::string>();
+    return settings;
+}
+
+// condensationCache(memoryBytes): a condensation cache in memory (0: its default size).
+std::shared_ptr<reduction::CondensationCache> condensationCache(double memoryBytes)
+{
+    return guarded(
+        [&]
+        {
+            if (!std::isfinite(memoryBytes) || memoryBytes < 0)
+                throw std::invalid_argument("condensationCache: memoryBytes must be a number of bytes from 0");
+            return api::makeCondensationCache(static_cast<std::uint64_t>(memoryBytes));
+        });
+}
+
+// cache.statistics(): { memoryHits, diskHits, misses, stores, refusedStores, evictions, missCauses: { cause: count } }.
+val cacheStatistics(const reduction::CondensationCache& cache)
+{
+    const reduction::CacheStatistics statistics = cache.statistics();
+    val result = val::object();
+    result.set("memoryHits", static_cast<double>(statistics.memoryHits));
+    result.set("diskHits", static_cast<double>(statistics.diskHits));
+    result.set("misses", static_cast<double>(statistics.misses));
+    result.set("stores", static_cast<double>(statistics.stores));
+    result.set("refusedStores", static_cast<double>(statistics.refusedStores));
+    result.set("evictions", static_cast<double>(statistics.evictions));
+    val causes = val::object();
+    for (const auto& [cause, count] : statistics.missCauses)
+        causes.set(cause, static_cast<double>(count));
+    result.set("missCauses", causes);
+    return result;
+}
+
+// settings.externalUnits: [{ zone: { id, name?, elements: number[], boundary: [{ grid, components? }] },
+// labels: [[grid, component], ...], stiffness: number[] (labels × labels, column by column), mass?: number[] }].
+std::vector<api::ExternalUnitSettings> externalUnitsOf(const val& given)
+{
+    std::vector<api::ExternalUnitSettings> units;
+    if (given.isUndefined() || given.isNull())
+        return units;
+    const auto numbers = [](const val& array)
+    {
+        return array.isUndefined() || array.isNull() ? std::vector<double>()
+                                                     : emscripten::convertJSArrayToNumberVector<double>(array);
+    };
+    const auto length = given["length"].as<unsigned>();
+    for (unsigned u = 0; u < length; ++u)
+    {
+        const val entry = given[u];
+        const val zone = entry["zone"];
+        api::ExternalUnitSettings unit;
+        unit.zone.id = zone["id"].as<std::int32_t>();
+        if (const val name = zone["name"]; !name.isUndefined() && !name.isNull())
+            unit.zone.name = name.as<std::string>();
+        for (const double id : numbers(zone["elements"]))
+            unit.zone.elements.push_back(static_cast<std::int32_t>(id));
+        if (const val boundary = zone["boundary"]; !boundary.isUndefined() && !boundary.isNull())
+            for (unsigned b = 0; b < boundary["length"].as<unsigned>(); ++b)
+            {
+                const val point = boundary[b];
+                output::ZoneBoundaryPoint entry;
+                entry.grid = point["grid"].as<std::int32_t>();
+                const val components = point["components"];
+                entry.components = output::componentMaskOf(
+                    components.isUndefined() || components.isNull() ? "123456" : components.as<std::string>());
+                unit.zone.boundary.push_back(std::move(entry));
+            }
+        const val labels = entry["labels"];
+        for (unsigned k = 0; k < labels["length"].as<unsigned>(); ++k)
+        {
+            const std::vector<double> pair = numbers(labels[k]);
+            if (pair.size() != 2)
+                throw std::invalid_argument("externalUnits: each label is [grid, component]");
+            unit.labels.push_back({reduction::UnitPointKind::Grid, static_cast<base::EntityId>(pair[0]),
+                                   reduction::FastenerSide::None, static_cast<std::uint8_t>(pair[1])});
+        }
+        unit.stiffness = numbers(entry["stiffness"]);
+        unit.mass = numbers(entry["mass"]);
+        units.push_back(std::move(unit));
+    }
+    return units;
+}
+
+val numberArray(const std::vector<std::int64_t>& values)
+{
+    val array = val::array();
+    for (const std::int64_t value : values)
+        array.call<void>("push", static_cast<double>(value));
+    return array;
+}
+
+// settings.envelopes: [{ kind, quantity, mode }] (output::EnvelopeSpec).
+std::vector<output::EnvelopeSpec> envelopesOf(const val& given)
+{
+    std::vector<output::EnvelopeSpec> envelopes;
+    if (given.isUndefined() || given.isNull())
+        return envelopes;
+    for (unsigned i = 0; i < given["length"].as<unsigned>(); ++i)
+    {
+        const val entry = given[i];
+        envelopes.push_back({entry["kind"].as<std::string>(), entry["quantity"].as<std::string>(),
+                             entry["mode"].as<std::string>()});
+    }
+    return envelopes;
+}
+
+// An envelope table: { kind, elementType, quantity, mode, ids, nodeIds, layers, positions, values, cases }.
+val envelopeTableObject(const output::EnvelopeTable& table)
+{
+    val object = val::object();
+    object.set("kind", table.kind);
+    object.set("elementType", table.elementType);
+    object.set("quantity", table.quantity);
+    object.set("mode", table.mode);
+    object.set("ids", typedArray("Int32Array", table.ids.data(), table.ids.size()));
+    object.set("nodeIds", typedArray("Int32Array", table.nodeIds.data(), table.nodeIds.size()));
+    object.set("layers", typedArray("Int32Array", table.layers.data(), table.layers.size()));
+    object.set("positions", typedArray("Float64Array", table.positions.data(), table.positions.size()));
+    object.set("values", typedArray("Float64Array", table.values.data(), table.values.size()));
+    object.set("cases", typedArray("Int32Array", table.cases.data(), table.cases.size()));
+    return object;
+}
+
+// runAnalysis(model, analysis, settings): settings is { subcases?: number[], memoryBytes?: number, threads?: number,
+// condensation?: see condensationSettingsOf, streamed?: boolean, externalUnits?: see externalUnitsOf, envelopes?: see
+// envelopesOf, keepsCaseTables?: boolean }.
 val runAnalysis(Model& model, const std::string& analysis, const val& settings)
 {
     return guarded(
@@ -403,6 +584,13 @@ val runAnalysis(Model& model, const std::string& analysis, const val& settings)
                     chosen.subcases = emscripten::convertJSArrayToNumberVector<std::int32_t>(subcases);
                 if (const val bytes = settings["memoryBytes"]; !bytes.isUndefined() && !bytes.isNull())
                     chosen.memoryBytes = static_cast<std::uint64_t>(bytes.as<double>());
+                chosen.condensation = condensationSettingsOf(settings["condensation"]);
+                if (const val streamed = settings["streamed"]; !streamed.isUndefined() && !streamed.isNull())
+                    chosen.isStreamed = streamed.as<bool>();
+                chosen.externalUnits = externalUnitsOf(settings["externalUnits"]);
+                chosen.envelopes = envelopesOf(settings["envelopes"]);
+                if (const val keeps = settings["keepsCaseTables"]; !keeps.isUndefined() && !keeps.isNull())
+                    chosen.keepsCaseTables = keeps.as<bool>();
             }
             if (const val threads =
                     settings.isUndefined() || settings.isNull() ? val::undefined() : settings["threads"];
@@ -427,13 +615,97 @@ val runAnalysis(Model& model, const std::string& analysis, const val& settings)
             val eigenvalues = val::array();
             for (const output::EigenvalueTable& table : output.eigenvalues)
                 eigenvalues.call<void>("push", eigenvalueTableObject(table));
+            val envelopes = val::array();
+            for (const output::EnvelopeTable& table : output.envelopes)
+                envelopes.call<void>("push", envelopeTableObject(table));
 
             val result = val::object();
             result.set("nodalTables", nodal);
             result.set("elementTables", elements);
             result.set("gridPointForces", forces);
             result.set("eigenvalues", eigenvalues);
+            result.set("envelopes", envelopes);
             result.set("aeroelastic", output.aeroelastic ? wasm::trimResultsObject(*output.aeroelastic) : val::null());
+            result.set("diagnostics", diagnosticArray(output.diagnostics));
+            if (output.condensation)
+            {
+                val condensation = val::object();
+                condensation.set("condensedUnits", numberArray(output.condensation->condensedUnits));
+                condensation.set("fullUnits", numberArray(output.condensation->fullUnits));
+                condensation.set("interfaceDofs", static_cast<double>(output.condensation->interfaceDofs));
+                condensation.set("note", output.condensation->note);
+                condensation.set("unitByUnit", output.condensation->isUnitByUnit);
+                result.set("condensation", condensation);
+            }
+            else
+            {
+                result.set("condensation", val::null());
+            }
+            return result;
+        });
+}
+
+// runSuperelements(residual, parts, analysis, settings): parts is [{ id, model, boundary: [[partPoint, residualPoint],
+// ...] }], settings as runAnalysis' (subcases, memoryBytes, threads). Gives { superelements: [{ id, nodalTables,
+// elementTables, eigenvalues }], diagnostics }, the residual structure (0) first.
+val runSuperelements(Model& residual, const val& parts, const std::string& analysis, const val& settings)
+{
+    return guarded(
+        [&]
+        {
+            api::AnalysisSettings chosen;
+            if (!settings.isNull() && !settings.isUndefined())
+            {
+                if (const val subcases = settings["subcases"]; !subcases.isUndefined() && !subcases.isNull())
+                    chosen.subcases = emscripten::convertJSArrayToNumberVector<std::int32_t>(subcases);
+                if (const val bytes = settings["memoryBytes"]; !bytes.isUndefined() && !bytes.isNull())
+                    chosen.memoryBytes = static_cast<std::uint64_t>(bytes.as<double>());
+                if (const val threads = settings["threads"]; !threads.isUndefined() && !threads.isNull())
+                    chosen.threads = static_cast<std::size_t>(threads.as<double>());
+            }
+            std::vector<api::SuperelementPartSettings> given;
+            const auto count = parts["length"].as<unsigned>();
+            for (unsigned p = 0; p < count; ++p)
+            {
+                const val part = parts[p];
+                api::SuperelementPartSettings entry;
+                entry.superelementId = part["id"].as<std::int32_t>();
+                entry.snapshot = part["model"].as<Model&>().snapshot;
+                const val boundary = part["boundary"];
+                for (unsigned b = 0; b < boundary["length"].as<unsigned>(); ++b)
+                {
+                    const std::vector<double> pair = emscripten::convertJSArrayToNumberVector<double>(boundary[b]);
+                    if (pair.size() != 2)
+                        throw std::invalid_argument(
+                            "runSuperelements: each boundary entry is [partPoint, residualPoint]");
+                    entry.boundary.emplace_back(static_cast<base::EntityId>(pair[0]),
+                                                static_cast<base::EntityId>(pair[1]));
+                }
+                given.push_back(std::move(entry));
+            }
+            const api::SuperelementAnalysisOutput output =
+                api::runSuperelements(*residual.snapshot, std::move(given), analysisNamed(analysis), chosen);
+            val superelements = val::array();
+            for (const api::SuperelementOutput& entry : output.superelements)
+            {
+                val nodal = val::array();
+                for (const output::NodalResultTable& table : entry.tables.nodalTables)
+                    nodal.call<void>("push", nodalTableObject(table));
+                val elements = val::array();
+                for (const output::ElementResultTable& table : entry.tables.elementTables)
+                    elements.call<void>("push", elementTableObject(table));
+                val eigenvalues = val::array();
+                for (const output::EigenvalueTable& table : entry.eigenvalues)
+                    eigenvalues.call<void>("push", eigenvalueTableObject(table));
+                val object = val::object();
+                object.set("id", entry.superelementId);
+                object.set("nodalTables", nodal);
+                object.set("elementTables", elements);
+                object.set("eigenvalues", eigenvalues);
+                superelements.call<void>("push", object);
+            }
+            val result = val::object();
+            result.set("superelements", superelements);
             result.set("diagnostics", diagnosticArray(output.diagnostics));
             return result;
         });
@@ -544,4 +816,10 @@ EMSCRIPTEN_BINDINGS(oos_solver)
         .function("checkSupport", &checkSupport);
 
     function("runAnalysis", &runAnalysis);
+    function("runSuperelements", &runSuperelements);
+
+    class_<reduction::CondensationCache>("CondensationCache")
+        .smart_ptr<std::shared_ptr<reduction::CondensationCache>>("CondensationCachePointer")
+        .function("statistics", &cacheStatistics);
+    function("condensationCache", &condensationCache);
 }

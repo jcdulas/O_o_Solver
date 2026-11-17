@@ -612,13 +612,36 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
         reportPair(m_pairs[p], tallies[p], subcase, sink);
 
     // 3. The rows, by record then component; a row of component c of the point:
-    //     u_s,c = Σ_i Σ_k N_i·(R_sᵀ·R_i)(c, k)·u_i,k     (k over the translations).
-    // The coefficients are computed twice (to size the buffers exactly, then to write them): cheap against the memory
-    // of an upper bound (8 face points × 3 terms per row).
-    const auto forEachTerm = [&](const GlueRecord& record, int component, auto visit)
+    //     u_s,c = Σ_i Σ_k N_i·(R_sᵀ·R_i)(c, k)·u_i,k     (k over the translations),
+    // or u_s,c = Σ_b R_s(b, c)·u_b(P) over the DOFs of an element of the formulation that has the face. The
+    // coefficients are computed twice (to size the buffers exactly, then to write them): cheap against the memory of an
+    // upper bound (8 face points × 3 terms per row).
+    const auto faceMotionOf = [&](const GlueRecord& record) -> std::optional<elements::FormulationModel::PointMotion>
+    {
+        if (context.formulation == nullptr)
+            return std::nullopt;
+        const auto count = static_cast<std::size_t>(record.facePointCount);
+        return context.formulation->facePointMotion({record.faceRows.data(), count},
+                                                    {record.shapeValues.data(), count});
+    };
+    const auto forEachTerm = [&](const GlueRecord& record,
+                                 const std::optional<elements::FormulationModel::PointMotion>& motion, int component,
+                                 auto visit)
     {
         const auto c = static_cast<std::size_t>(component - 1);
         const base::Mat3 toPoint = dofMap.cdToBasic(record.pointRow).transposed();
+        if (motion)
+        {
+            std::map<base::DofIndex, double> sums; // one term per DOF
+            for (std::size_t b = 0; b < 3; ++b)
+                if (toPoint(c, b) != 0.0)
+                    for (const elements::FormulationRelationTerm& term : motion->rows[b])
+                        sums[dofMap.dofOf(term.dof)] += toPoint(c, b) * term.coefficient;
+            for (const auto& [dof, coefficient] : sums)
+                if (coefficient != 0.0)
+                    visit(dof, coefficient);
+            return;
+        }
         for (std::int32_t i = 0; i < record.facePointCount; ++i)
         {
             const std::int32_t faceRow = record.faceRows[static_cast<std::size_t>(i)];
@@ -639,13 +662,16 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
     std::size_t rowCapacity = 0;
     std::int64_t termCapacity = 0;
     for (std::size_t r = 0; r < recordCount; ++r)
+    {
+        const std::optional<elements::FormulationModel::PointMotion> motion = faceMotionOf(records[r]);
         for (int component = 1; component <= TRANSLATIONS; ++component)
         {
             if (!isTied(records[r], component))
                 continue;
             ++rowCapacity;
-            forEachTerm(records[r], component, [&](base::DofIndex, double) { ++termCapacity; });
+            forEachTerm(records[r], motion, component, [&](base::DofIndex, double) { ++termCapacity; });
         }
+    }
     m_dependents = base::BudgetedBuffer<base::DofIndex>(budget, rowCapacity, "glue constraint rows");
     m_offsets = base::BudgetedBuffer<std::int64_t>(budget, rowCapacity + 1, "glue constraint rows");
     m_terms =
@@ -657,6 +683,7 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
     {
         const GlueRecord& record = records[r];
         const GluedPair& pair = m_pairs[static_cast<std::size_t>(record.pairIndex)].pair;
+        const std::optional<elements::FormulationModel::PointMotion> motion = faceMotionOf(record);
         for (int component = 1; component <= TRANSLATIONS; ++component)
         {
             if (!isTied(record, component))
@@ -664,7 +691,7 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
             m_dependents[m_rowCount] = dofMap.gridDof(record.pointRow, component);
             m_sources[m_rowCount] = static_cast<std::uint8_t>(sourceOfCard(pair.card));
             m_sourceIds[m_rowCount] = pair.tableId;
-            forEachTerm(record, component, [&](base::DofIndex dof, double coefficient)
+            forEachTerm(record, motion, component, [&](base::DofIndex dof, double coefficient)
                         { m_terms[static_cast<std::size_t>(m_termCount++)] = {dof, coefficient}; });
             ++m_rowCount;
             m_offsets[m_rowCount] = m_termCount;

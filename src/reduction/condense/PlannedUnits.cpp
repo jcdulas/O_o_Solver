@@ -18,12 +18,12 @@ constexpr std::int32_t NO_UNIT = -1;
 
 std::int32_t nodeOf(const assembly::DofMap& dofMap, base::EntityId nodeId)
 {
-    const std::optional<input::PointRef> point = dofMap.points().find(nodeId);
-    if (!point)
+    const std::optional<std::int32_t> node = dofMap.findNode(nodeId);
+    if (!node)
         throw std::invalid_argument(base::concatenate({"PlannedUnits: point ", std::to_string(nodeId),
                                                        " of the plan is not a point of the model; the plan and the "
                                                        "model must come from one snapshot"}));
-    return point->kind == input::PointKind::Grid ? point->row : dofMap.gridCount() + point->row;
+    return *node;
 }
 
 bool isFastenerSource(assembly::ConstraintSource source) noexcept
@@ -185,6 +185,8 @@ RelationKey PlannedUnits::keyOf(const assembly::ConstraintRowOrigin& origin) con
 {
     if (isGlueSource(origin.source))
         return glueRelationKey(m_dofMap->pointIdOf(origin.dependent));
+    if (origin.source == assembly::ConstraintSource::Formulation)
+        return formulationRelationKey(m_dofMap->nodeIdOf(m_dofMap->nodeDofOf(origin.dependent).node));
     return RelationKey{origin.source == assembly::ConstraintSource::Mpc, origin.id};
 }
 
@@ -283,9 +285,8 @@ UnitDescription PlannedUnits::describe(std::size_t unitIndex, const SpiderWeight
         {
             if (decision.referenceNodeId != 0)
             {
-                const assembly::ConstraintSource source = decision.card == "Weld"
-                                                              ? assembly::ConstraintSource::Weld
-                                                              : assembly::ConstraintSource::Fastener;
+                const assembly::ConstraintSource source =
+                    decision.card == "Weld" ? assembly::ConstraintSource::Weld : assembly::ConstraintSource::Fastener;
                 const std::optional<SpiderRelation> relation =
                     unitRelations.fastenerPointRelation(decision.key.elementId, source, decision.referenceNodeId);
                 if (!relation)

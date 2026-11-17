@@ -236,6 +236,7 @@ SensitivitySystem::SensitivitySystem(std::shared_ptr<const solutions::Factorised
                  std::to_string(subcase.label), ", which was not; build the system from the element set instead"}));
     m_dofMap = &m_kept->dofMap();
     m_kernels = std::make_unique<linalg::DenseKernels>(kernel, linalg::DenseKernelOptions{pool});
+    m_formulationView = m_kept->formulation();
     m_gmView = &m_kept->gm();
     m_setsView = &m_kept->solveSets();
     m_kggView = &m_kept->kgg();
@@ -263,23 +264,44 @@ SensitivitySystem::SensitivitySystem(const assembly::ElementSet& elementSet, con
     m_kernels = std::make_unique<linalg::DenseKernels>(kernel, linalg::DenseKernelOptions{pool});
     m_mpc = std::make_unique<assembly::MpcEquations>(constraints, dofMap, first.mpc, budget, sink);
     m_fasteners = std::make_unique<assembly::FastenerConstraints>(fastenerPiercings, dofMap, budget, sink);
-    m_spc = std::make_unique<assembly::SpcSet>(constraints, snapshot.findLoads(), dofMap, first.spc, first.load, budget,
-                                               sink);
+    // With the supports the element formulation derives on its edges and faces (none for most).
+    const elements::FormulationModel* formulation = dofMap.formulation();
+    m_spc = std::make_unique<assembly::SpcSet>(assembly::withFormulationSupports(
+        assembly::SpcSet(constraints, snapshot.findLoads(), dofMap, first.spc, first.load, budget, sink), dofMap,
+        formulation, dofMap.layoutKind(), budget, sink));
     // The glued contact of the subcases (StaticSolution groups them by BCONTACT; the design subcases share one).
-    const assembly::GlueContext glueContext{rigidElements, m_mpc.get(), m_fasteners.get(), m_spc->sbDofs(),
-                                            m_spc->sgDofs()};
+    const assembly::GlueContext glueContext{rigidElements,   m_mpc.get(),     m_fasteners.get(),
+                                            m_spc->sbDofs(), m_spc->sgDofs(), formulation};
     m_glue = std::make_unique<assembly::GlueConstraints>(snapshot, first.contact, first.label, dofMap, glueContext,
                                                          budget, sink);
     m_gm = std::make_unique<assembly::RigidElimination>(rigidElements, m_mpc.get(), dofMap, budget, sink,
                                                         m_fasteners.get(), m_glue.get());
+    // The element formulation's relations and excluded DOFs, as solutions::ConstrainedSystem makes them: the model's
+    // relations eliminated a first time to know what they make dependent or read, then again with the formulation's.
+    std::vector<base::DofIndex> excludedDofs; // bounded by the determined grid components
+    m_connectivity = std::make_unique<assembly::ElementConnectivity>(elementSet, dofMap, budget, pool);
+    if (formulation != nullptr)
+    {
+        assembly::UsedElsewhere usedElsewhere;
+        usedElsewhere.flags.assign(static_cast<std::size_t>(dofMap.gSetSize()), 0);
+        usedElsewhere.markConcentratedLoads(snapshot, dofMap);
+        usedElsewhere.markStiffened(m_connectivity->usedComponents(), dofMap);
+        usedElsewhere.markIndependentTerms(*m_gm);
+        m_formulation = std::make_shared<const assembly::FormulationConstraints>(
+            *formulation, dofMap.layoutKind(), dofMap, *m_spc, usedElsewhere, *m_gm, sink);
+        excludedDofs.assign(m_formulation->excludedDofs().begin(), m_formulation->excludedDofs().end());
+        m_gm = std::make_unique<assembly::RigidElimination>(
+            rigidElements, m_mpc.get(), dofMap, budget, sink, m_fasteners.get(), m_glue.get(),
+            assembly::ConstraintRowFilter{}, &m_formulation->relations());
+    }
     // FreeBodySupport without inertia relief: the r set is held as constraints (StaticSolution's
     // "free-body-support-as-constraint").
     const std::vector<base::DofIndex> rSet = assembly::supportDofsOf(snapshot, dofMap, first.tableId, sink);
     const assembly::DofSets sets(
-        dofMap, assembly::DofSetInputs{m_gm->mDofs(), m_spc->sbDofs(), m_spc->sgDofs(), {}, rSet, {}}, budget, sink);
+        dofMap, assembly::DofSetInputs{m_gm->mDofs(), m_spc->sbDofs(), m_spc->sgDofs(), {}, rSet, excludedDofs}, budget,
+        sink);
     stopOnErrors(sink);
 
-    m_connectivity = std::make_unique<assembly::ElementConnectivity>(elementSet, dofMap, budget, pool);
     m_couplings = std::make_unique<assembly::MsetCouplings>(m_connectivity->groups(), *m_gm, dofMap, budget);
     const std::vector<linalg::NodeGroupList> groupLists{m_connectivity->groups(), m_couplings->groups()};
     m_graph = std::make_unique<linalg::NodeGraph>(dofMap.nodeCount(), groupLists, budget, pool);
@@ -298,9 +320,11 @@ SensitivitySystem::SensitivitySystem(const assembly::ElementSet& elementSet, con
 
     solutions::FsetSolverOptions options;
     options.pivotPolicy = pivotPolicyOf(params, first.label, sink);
+    options.unreducedStiffness = m_kgg.get();
     m_solver = std::make_unique<solutions::FsetSolver>(*m_knn, *m_graph, dofMap, *m_solveSets, *m_kernels, options,
                                                        budget, pool);
     m_gmView = m_gm.get();
+    m_formulationView = m_formulation.get();
     m_setsView = m_solveSets.get();
     m_kggView = m_kgg.get();
     m_patternView = m_pattern.get();
@@ -332,6 +356,7 @@ SensitivitySystem::SensitivitySystem(std::shared_ptr<const solutions::CondensedF
     m_dofMap = &m_condensedSet->dofMap();
     m_kernels = std::make_unique<linalg::DenseKernels>(kernel, linalg::DenseKernelOptions{pool});
     m_gmView = &m_condensedSet->gm();
+    m_formulationView = m_condensedSet->formulation();
     m_condensed = std::make_unique<BoundaryReducedSensitivity>(m_condensedSet, kernel, budget, pool);
 }
 
@@ -401,10 +426,15 @@ void SensitivitySystem::toEquations(std::span<const double> vectorG, std::span<d
     {
         // The condensed solve applies Tᵀ itself (the units' and the interface's relations).
         std::copy(vectorG.begin(), vectorG.end(), equations.begin());
+        if (m_formulationView != nullptr)
+            m_formulationView->moveExcludedWeights(equations);
         return;
     }
     base::BudgetedBuffer<double> reduced(*m_budget, gSize, "sensitivity reduced vector");
     std::copy(vectorG.begin(), vectorG.end(), reduced.data());
+    // The transpose of the fill of the excluded DOFs (fromEquations), then of Gm.
+    if (m_formulationView != nullptr)
+        m_formulationView->moveExcludedWeights(reduced.span());
     m_gmView->reduceToN(reduced.span());
     for (std::size_t e = 0; e < equations.size(); ++e)
         equations[e] = reduced[static_cast<std::size_t>(dofOfEquation(static_cast<std::int32_t>(e)))];
@@ -415,6 +445,8 @@ void SensitivitySystem::toEquationsInPlace(std::span<double> vectorG, std::span<
     const auto gSize = static_cast<std::size_t>(m_dofMap->gSetSize());
     if (vectorG.size() != gSize || equations.size() != static_cast<std::size_t>(equationCount()))
         throw std::invalid_argument("SensitivitySystem::toEquationsInPlace: expected a g-set vector and the equations");
+    if (m_formulationView != nullptr)
+        m_formulationView->moveExcludedWeights(vectorG);
     if (m_condensed)
     {
         std::copy(vectorG.begin(), vectorG.end(), equations.begin());
@@ -431,14 +463,18 @@ void SensitivitySystem::fromEquations(std::span<const double> equations, std::sp
     if (vectorG.size() != gSize || equations.size() != static_cast<std::size_t>(equationCount()))
         throw std::invalid_argument("SensitivitySystem::fromEquations: expected the equations and a g-set vector");
     if (m_condensed)
-    {
         std::copy(equations.begin(), equations.end(), vectorG.begin());
-        return;
+    else
+    {
+        std::fill(vectorG.begin(), vectorG.end(), 0.0);
+        for (std::size_t e = 0; e < equations.size(); ++e)
+            vectorG[static_cast<std::size_t>(dofOfEquation(static_cast<std::int32_t>(e)))] = equations[e];
+        m_gmView->expandToG(vectorG);
     }
-    std::fill(vectorG.begin(), vectorG.end(), 0.0);
-    for (std::size_t e = 0; e < equations.size(); ++e)
-        vectorG[static_cast<std::size_t>(dofOfEquation(static_cast<std::int32_t>(e)))] = equations[e];
-    m_gmView->expandToG(vectorG);
+    // The excluded DOFs of the element formulation (the rotations of the grid points of its shells), a linear map of
+    // the others: filled as the analysis fills them.
+    if (m_formulationView != nullptr)
+        m_formulationView->fillExcluded(vectorG);
 }
 
 void SensitivitySystem::solve(linalg::DenseMatrixView rightHandSides, std::span<const std::uint8_t> isReadDof) const

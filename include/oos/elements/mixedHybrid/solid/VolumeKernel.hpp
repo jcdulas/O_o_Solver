@@ -90,6 +90,13 @@ public:
                                                          const SolidMaterial& material, const SolidOptions& options,
                                                          bool withMass, std::span<const SolidLoad> loads);
 
+    // This kernel with the consistent mass of density `density`, the mass build() gives with `withMass` (the same
+    // values): its fields are tabulated again, its other matrices copied. For a kernel built without the mass, when an
+    // analysis asks for it later (the units of a condensed analysis): about a third of a build. Not for the interior
+    // fields of a modal analysis, which need the bubble matrices build() does not keep. Refused as build() for the
+    // geometry (not for a kernel that build() gave).
+    [[nodiscard]] SolidResult<VolumeKernel> withMass(double density) const;
+
     // `p`, `pf`, `d`: the trace, face and stress degrees.
     [[nodiscard]] std::size_t traceDegree() const { return m_traceDegree; }
     [[nodiscard]] std::size_t faceDegree() const { return m_faceDegree; }
@@ -146,6 +153,13 @@ public:
     // (K_g = [I; T]ᵀ G [I; T]); symmetric (document 28, section 3.6).
     // Reference: volume::VolumeKernel::geometric
     [[nodiscard]] SolidResult<Matrix> geometric(std::span<const double> beta) const;
+
+    // The gradient of φᵀ·K_g(β(q))·φ with respect to the parameters q, φ on the parameters (its first
+    // parameterCount() values), β(q) = stressOperator q: entry k is φᵀ·K_g(β(e_k))·φ (the particular stresses of the
+    // loads, constant in q, are left out). K_g is linear in β, so this is stressOperatorᵀ applied to the products of
+    // ∇ψ with itself (ψ = [I; T] φ) against each stress function: one pass over the points instead of one K_g per
+    // parameter. Used by the derivative of a buckling factor through its preload.
+    [[nodiscard]] SolidResult<Vector> geometricGradient(std::span<const double> phi) const;
 
     // The local face that has the local corners `corners` (three of them, or all of its corners); empty if none.
     // Reference: volume::VolumeKernel::face_of

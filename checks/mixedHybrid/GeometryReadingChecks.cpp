@@ -930,3 +930,180 @@ CHECK_CASE("geometry: edges of line elements")
     // a rod along x: n across it from the y axis
     runner.expect(distance(topology.frames[5][2], {0.0, 1.0, 0.0}) < 1e-15, "n of a rod");
 }
+
+namespace
+{
+
+// A flat plate with a corner of its outline that turns into the plate (grids on a lattice of cells dx × dy):
+//   5 - 6 - 7        the cell 0-1-3-2 is cut in two triangles along 0-3 (or along 1-2: `otherDiagonal`), the cells
+//   |   |   |        2-3-6-5 and 3-4-7-6 are quadrilaterals. The outline turns at grid 3, between its edges 1-3 and
+//   2 - 3 - 4        3-4, and three elements have that grid: its line goes on there (document 26, section 7, limit 4).
+//   | / |            `turn` is the corner the triangles start from.
+//   0 - 1
+mh::MeshReadingInput cornerPlate(double dx, double dy, std::size_t turn, bool otherDiagonal = false)
+{
+    mh::MeshReadingInput input;
+    constexpr std::array<std::array<double, 2>, 8> LATTICE{
+        {{0, 0}, {1, 0}, {0, 1}, {1, 1}, {2, 1}, {0, 2}, {1, 2}, {2, 2}}};
+    for (const std::array<double, 2>& at : LATTICE)
+        input.grids.push_back({at[0] * dx, at[1] * dy, 0.0});
+    const auto triangle = [&](const std::array<std::size_t, 3>& g)
+    { input.shells.push_back(mh::ShellCorners::triangle(g[turn % 3], g[(turn + 1) % 3], g[(turn + 2) % 3])); };
+    if (otherDiagonal)
+    {
+        triangle({0, 1, 2});
+        triangle({1, 3, 2});
+    }
+    else
+    {
+        triangle({0, 1, 3});
+        triangle({0, 3, 2});
+    }
+    input.shells.push_back(mh::ShellCorners::quadrilateral(2, 3, 6, 5));
+    input.shells.push_back(mh::ShellCorners::quadrilateral(3, 4, 7, 6));
+    return input;
+}
+
+// The largest outline turn of a mesh read, over its edges but `first` and `second`.
+double largestOutlineTurnBut(const mh::MeshReadingInput& input, const mh::Topology& topology, std::size_t first,
+                             std::size_t second)
+{
+    double out = 0.0;
+    for (std::size_t e = 0; e < topology.edges.size(); ++e)
+        if (e != first && e != second)
+            out = std::fmax(out, mh::outlineTurn(input, topology, e));
+    return out;
+}
+
+// The largest outline turn over every edge.
+double largestOutlineTurn(const mh::MeshReadingInput& input, const mh::Topology& topology)
+{
+    return largestOutlineTurnBut(input, topology, topology.edges.size(), topology.edges.size());
+}
+
+} // namespace
+
+// The reading has no angle criterion: a corner of the outline through which its line goes on is rounded unless an
+// edge is declared raw there (document 26 of the reference, section 7, limit 4). On a flat plate the normals show
+// nothing of it: the turn of the outline does. Where the diagonal of a triangle ends at the corner of square cells,
+// the rounded edge comes tangent to it: the triangle has no angle left there (0 / 0 for its normal: the NaN of the
+// results), and the reading says so, whatever the grid the triangles start from.
+CHECK_CASE("geometry: a rounded corner of the outline is measured, and refused where it closes a triangle")
+{
+    const mh::Topology first = mh::Topology::fromMesh(cornerPlate(1.0, 1.0, 0));
+    for (std::size_t turn = 0; turn < 3; ++turn)
+    {
+        const std::string which = "start " + std::to_string(turn);
+        const ReadMesh mesh = read(cornerPlate(1.0, 1.0, turn));
+        const std::size_t down = mesh.topology.indexOf(1, 3);
+        const std::size_t right = mesh.topology.indexOf(3, 4);
+        // the two outline edges at grid 3 are each a quarter of the circle through grids 1, 3 and 4
+        runner.expect(distance(mesh.topology.bulges[down], {-0.25, 0.0, 0.0}) < 1e-15, which + ": edge 1-3 rounded");
+        runner.expect(distance(mesh.topology.bulges[right], {0.0, 0.25, 0.0}) < 1e-15, which + ": edge 3-4 rounded");
+        // the reading does not depend on the grid an element starts from
+        for (std::size_t e = 0; e < mesh.topology.edges.size(); ++e)
+        {
+            const mh::EdgeKey edge = mesh.topology.edges[e];
+            const Vector3& reference = first.bulges[first.indexOf(edge.lower, edge.higher)];
+            runner.expect(distance(mesh.topology.bulges[e], reference) < 1e-15, which + ": the same curves");
+        }
+        runner.expectNear(mh::outlineTurn(mesh.input, mesh.topology, down), 0.25 * PI, 1e-14, which + ": turn of 1-3");
+        runner.expectNear(mh::outlineTurn(mesh.input, mesh.topology, right), 0.25 * PI, 1e-14, which + ": turn of 3-4");
+        runner.expect(largestOutlineTurnBut(mesh.input, mesh.topology, down, right) == 0.0,
+                      which + ": the other edges straight");
+        // the report of the normals sees nothing (the round-off of the angle of two unit normals); the turn of the
+        // outline is in it
+        const std::vector<mh::EdgeGeometry> report =
+            mh::geometryReport(mesh.input, mesh.topology, mesh.surfaces, REPORT_POINTS);
+        runner.expect(geo::largestKink(report) < 1e-7, which + ": no kink");
+        runner.expectNear(report[down].outlineTurn, 0.25 * PI, 1e-14, which + ": turn in the report");
+        runner.expect(!report[down].given, which + ": read from the mesh");
+        // the edge 1-3 leaves grid 3 along the diagonal 3-0 of the first triangle
+        const std::vector<mh::DegenerateCorner> closed = mh::degenerateCorners(mesh.input, mesh.topology);
+        runner.expect(closed.size() == 1, which + ": one closed corner, found " + std::to_string(closed.size()));
+        if (closed.size() != 1)
+            continue;
+        runner.expect(closed[0].element == 0 && mesh.input.shells[0].at(closed[0].corner) == 3,
+                      which + ": the first triangle at grid 3");
+        runner.expect(std::abs(closed[0].sine) < 1e-15, which + ": tangent edges " + std::to_string(closed[0].sine));
+    }
+}
+
+// The same plate with its two outline edges declared raw at the corner, with cells that are not square, with the other
+// diagonal and with quadrilaterals only. Declared raw, the corner is kept. With cells 2 × 1 the rounded edge stays
+// short of the diagonal (turns of atan(1/2) and atan(2), a triangle that keeps an angle); with cells 1 × 2 it crosses
+// the diagonal (the triangle folds over itself: a negative sine). Between quadrilaterals no line goes round the
+// corner.
+CHECK_CASE("geometry: corners of the outline kept, rounded and folded")
+{
+    for (std::size_t turn = 0; turn < 3; ++turn)
+    {
+        const std::string which = "start " + std::to_string(turn);
+        mh::MeshReadingInput declared = cornerPlate(1.0, 1.0, turn);
+        declared.rawEdges = {mh::EdgeKey::of(1, 3), mh::EdgeKey::of(3, 4)};
+        const mh::Topology kept = mh::Topology::fromMesh(declared);
+        runner.expect(largestOutlineTurn(declared, kept) == 0.0, which + ": declared raw, straight outline");
+        runner.expect(mh::degenerateCorners(declared, kept).empty(), which + ": declared raw, sound corners");
+
+        const mh::MeshReadingInput wide = cornerPlate(2.0, 1.0, turn);
+        const mh::Topology wideRead = mh::Topology::fromMesh(wide);
+        runner.expectNear(mh::outlineTurn(wide, wideRead, wideRead.indexOf(1, 3)), std::atan(0.5), 1e-14,
+                          which + ": cells 2 x 1, turn of 1-3");
+        runner.expectNear(mh::outlineTurn(wide, wideRead, wideRead.indexOf(3, 4)), std::atan(2.0), 1e-14,
+                          which + ": cells 2 x 1, turn of 3-4");
+        runner.expect(mh::degenerateCorners(wide, wideRead).empty(), which + ": cells 2 x 1, sound corners");
+
+        const mh::MeshReadingInput tall = cornerPlate(1.0, 2.0, turn);
+        const std::vector<mh::DegenerateCorner> folded = mh::degenerateCorners(tall, mh::Topology::fromMesh(tall));
+        runner.expect(folded.size() == 1 && folded[0].element == 0 && tall.shells[0].at(folded[0].corner) == 3 &&
+                          folded[0].sine < -0.5,
+                      which + ": cells 1 x 2, the first triangle folds at grid 3");
+
+        // the other diagonal: the edge 1-3 leaves grid 1 along the diagonal 1-2 of the second triangle
+        const mh::MeshReadingInput other = cornerPlate(1.0, 1.0, turn, true);
+        const std::vector<mh::DegenerateCorner> closed = mh::degenerateCorners(other, mh::Topology::fromMesh(other));
+        runner.expect(closed.size() == 1 && closed[0].element == 1 && other.shells[1].at(closed[0].corner) == 1 &&
+                          std::abs(closed[0].sine) < 1e-15,
+                      which + ": other diagonal, the second triangle closed at grid 1");
+    }
+    // quadrilaterals only: the line of each outline edge goes on into the plate, straight
+    mh::MeshReadingInput quads = cornerPlate(1.0, 1.0, 0);
+    quads.shells[0] = mh::ShellCorners::quadrilateral(0, 1, 3, 2);
+    quads.shells.erase(quads.shells.begin() + 1);
+    const mh::Topology quadsRead = mh::Topology::fromMesh(quads);
+    runner.expect(largestOutlineTurn(quads, quadsRead) == 0.0, "quadrilaterals: straight outline");
+    runner.expect(mh::degenerateCorners(quads, quadsRead).empty(), "quadrilaterals: sound corners");
+}
+
+// The turn of the outline is measured in the surface: a circle of a cylinder curves along the normal alone (no turn),
+// a circle of a flat annulus leaves its chord by half the angle of an element, and a smooth mesh has no closed corner.
+CHECK_CASE("geometry: outline turn of curved outlines")
+{
+    const mh::MeshReadingInput cylinder = geo::cellMesh(
+        4, 4, [](double s, double t) { return cylinderPoint(1.5, 2.0, 0.5 * PI, s, t); }, CellPattern::Quadrilaterals);
+    const mh::Topology cylinderRead = mh::Topology::fromMesh(cylinder);
+    runner.expect(largestOutlineTurn(cylinder, cylinderRead) < 1e-12, "cylinder: no turn in the surface");
+    runner.expect(mh::degenerateCorners(cylinder, cylinderRead).empty(), "cylinder: sound corners");
+
+    const double angle = 0.9;
+    const std::size_t cells = 2;
+    const mh::MeshReadingInput annulus = geo::cellMesh(
+        cells, cells,
+        [&](double s, double t)
+        {
+            const double r = 1.0 + s;
+            return Vector3{r * std::cos(angle * t), r * std::sin(angle * t), 0.0};
+        },
+        CellPattern::Quadrilaterals);
+    const mh::Topology annulusRead = mh::Topology::fromMesh(annulus);
+    for (std::size_t e = 0; e < annulusRead.edges.size(); ++e)
+    {
+        const double ra = mh::norm3(annulus.grids[annulusRead.edges[e].lower]);
+        const double rb = mh::norm3(annulus.grids[annulusRead.edges[e].higher]);
+        const bool outlineCircle = std::abs(ra - rb) < 1e-12 && annulusRead.isExternal(e);
+        const double expected = outlineCircle ? 0.5 * angle / static_cast<double>(cells) : 0.0;
+        runner.expect(std::abs(mh::outlineTurn(annulus, annulusRead, e) - expected) < 1e-12,
+                      "annulus: turn of edge " + std::to_string(e));
+    }
+    runner.expect(mh::degenerateCorners(annulus, annulusRead).empty(), "annulus: sound corners");
+}

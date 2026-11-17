@@ -19,8 +19,8 @@ namespace
 struct SideRows
 {
     std::int32_t gridRow = 0;
-    std::vector<std::int32_t> piercedGridRows;
-    std::vector<double> coefficients; // 6 rows of 6·piercedGridRows.size()
+    std::vector<elements::ElementDof> piercedDofs; // the DOFs of the pierced element the side reads
+    std::vector<double> coefficients;              // 6 rows of piercedDofs.size()
 };
 
 base::Diagnostic sideProblem(const std::string& card, std::int32_t elementId, const char* field, std::string message)
@@ -36,7 +36,8 @@ base::Diagnostic sideProblem(const std::string& card, std::int32_t elementId, co
 
 // The rows of the side on table rows [first, last), or nothing (with a diagnostic when the side cannot be resolved).
 std::optional<SideRows> buildSide(const input::FastenerPiercingTable& table, std::int64_t first, std::int64_t last,
-                                  const DofMap& dofMap, base::DiagnosticSink& sink)
+                                  const DofMap& dofMap, const elements::FormulationModel* formulation,
+                                  base::DiagnosticSink& sink)
 {
     const auto f = static_cast<std::size_t>(first);
     const std::int32_t elementId = table.fastenerIds()[f];
@@ -60,29 +61,30 @@ std::optional<SideRows> buildSide(const input::FastenerPiercingTable& table, std
             return std::nullopt;
         return elements::SideGrid{*gridRow, dofMap.positionInBasic(*gridRow), dofMap.cdToBasic(*gridRow)};
     };
-    std::variant<elements::SideInterpolation, std::string> resolved =
-        elements::interpolateSide(table, {first, last}, findGrid);
+    std::variant<elements::SideMotion, std::string> resolved =
+        elements::resolveSideMotion(table, {first, last}, findGrid, formulation);
     if (const auto* problem = std::get_if<std::string>(&resolved))
     {
         sink.report(sideProblem(card, elementId, isSideA ? "patchIdA" : "patchIdB",
                                 base::concatenate({"pierced element of ", card, ".", field, ": ", *problem})));
         return std::nullopt;
     }
-    const elements::SideInterpolation& interpolation = std::get<elements::SideInterpolation>(resolved);
+    const elements::SideMotion& motion = std::get<elements::SideMotion>(resolved);
     SideRows side;
     side.gridRow = *pointRow;
-    side.piercedGridRows = interpolation.gridRows;
-    const base::Vec3 point = interpolation.point;
+    side.piercedDofs = motion.dofs;
+    const base::Vec3 point = motion.point;
 
     // G = diag(R_GAᵀ, R_GAᵀ)·[I, −[x_GA − x_P]×; 0, I]·M.
     const base::Mat3 toPoint = dofMap.cdToBasic(side.gridRow).transposed();
     const base::Mat3 arm = elements::crossProductMatrix(dofMap.positionInBasic(side.gridRow) - point);
-    const std::size_t width = 6 * side.piercedGridRows.size();
+    const std::size_t width = side.piercedDofs.size();
     side.coefficients.assign(6 * width, 0.0);
+    const auto at = [&](std::size_t i, std::size_t j) { return motion.map[i * width + j]; };
     for (std::size_t j = 0; j < width; ++j)
     {
-        base::Vec3 translation{interpolation.map.at(0, j), interpolation.map.at(1, j), interpolation.map.at(2, j)};
-        const base::Vec3 rotation{interpolation.map.at(3, j), interpolation.map.at(4, j), interpolation.map.at(5, j)};
+        base::Vec3 translation{at(0, j), at(1, j), at(2, j)};
+        const base::Vec3 rotation{at(3, j), at(4, j), at(5, j)};
         translation = translation - arm * rotation; // u_P + θ_P × (x_GA − x_P) = u_P − [x_GA − x_P]×·θ_P
         const base::Vec3 localTranslation = toPoint * translation;
         const base::Vec3 localRotation = toPoint * rotation;
@@ -123,7 +125,8 @@ ConstraintSource sourceOfCard(std::string_view card)
 } // namespace
 
 FastenerConstraints::FastenerConstraints(const input::FastenerPiercingTable* piercings, const DofMap& dofMap,
-                                         base::MemoryBudget& budget, base::DiagnosticSink& sink)
+                                         base::MemoryBudget& budget, base::DiagnosticSink& sink,
+                                         const elements::FormulationModel* formulation)
 {
     if (piercings == nullptr)
         return;
@@ -139,7 +142,8 @@ FastenerConstraints::FastenerConstraints(const input::FastenerPiercingTable* pie
     forEachGivenSide(*piercings,
                      [&](std::int64_t first, std::int64_t last)
                      {
-                         const std::optional<SideRows> side = buildSide(*piercings, first, last, dofMap, scratch);
+                         const std::optional<SideRows> side =
+                             buildSide(*piercings, first, last, dofMap, formulation, scratch);
                          if (!side || isConstrained[static_cast<std::size_t>(side->gridRow)] != 0)
                              return;
                          isConstrained[static_cast<std::size_t>(side->gridRow)] = 1;
@@ -160,11 +164,12 @@ FastenerConstraints::FastenerConstraints(const input::FastenerPiercingTable* pie
     forEachGivenSide(*piercings,
                      [&](std::int64_t first, std::int64_t last)
                      {
-                         const std::optional<SideRows> side = buildSide(*piercings, first, last, dofMap, sink);
+                         const std::optional<SideRows> side =
+                             buildSide(*piercings, first, last, dofMap, formulation, sink);
                          if (!side || isConstrained[static_cast<std::size_t>(side->gridRow)] != 0)
                              return;
                          isConstrained[static_cast<std::size_t>(side->gridRow)] = 1;
-                         const std::size_t width = 6 * side->piercedGridRows.size();
+                         const std::size_t width = side->piercedDofs.size();
                          const ConstraintSource source = sourceOfCard(piercings->card(first));
                          const std::int32_t elementId = piercings->fastenerIds()[static_cast<std::size_t>(first)];
                          for (int component = 1; component <= 6; ++component)
@@ -178,9 +183,8 @@ FastenerConstraints::FastenerConstraints(const input::FastenerPiercingTable* pie
                                  const double coefficient = side->coefficients[i * width + j];
                                  if (coefficient == 0.0)
                                      continue;
-                                 const std::int32_t piercedGridRow = side->piercedGridRows[j / 6];
-                                 m_terms[static_cast<std::size_t>(m_termCount++)] = {
-                                     dofMap.gridDof(piercedGridRow, static_cast<int>(j % 6) + 1), coefficient};
+                                 m_terms[static_cast<std::size_t>(m_termCount++)] = {dofMap.dofOf(side->piercedDofs[j]),
+                                                                                     coefficient};
                              }
                              ++m_rowCount;
                              m_offsets[m_rowCount] = m_termCount;

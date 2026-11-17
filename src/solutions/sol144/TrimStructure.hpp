@@ -528,6 +528,8 @@ public:
     // Carries the support forces of the element formulation's derived supports to their grid points
     // (SpcSet::carryDerivedReactions); nothing without them.
     virtual void carryDerivedReactions(std::span<double> /*supportForcesG*/) const {}
+    // The SPC set of the structure (with the supports the element formulation derives), for the grid point forces.
+    [[nodiscard]] virtual const assembly::SpcSet* spcSet() const { return nullptr; }
     // The grid point forces of the units not recovered with the rows of a case (nothing on the full path).
     [[nodiscard]] virtual std::optional<output::StiffnessRecovery::CondensedUnits> condensedUnits(
         std::span<const output::StiffnessRecovery::UnitRow> rows) const = 0;
@@ -629,6 +631,7 @@ public:
     {
         m_system->spc().carryDerivedReactions(supportForcesG);
     }
+    [[nodiscard]] const assembly::SpcSet* spcSet() const override { return &m_system->spc(); }
     [[nodiscard]] std::optional<output::StiffnessRecovery::CondensedUnits> condensedUnits(
         std::span<const output::StiffnessRecovery::UnitRow> /*rows*/) const override
     {
@@ -664,10 +667,12 @@ private:
 class CondensedStructure final : public TrimStructure
 {
 public:
-    CondensedStructure(CondensedStatics& statics, CondensedStatics::LoadGroup group,
+    // `spc`: the constraint set of the group (its derived supports carried to their grid points), which must outlive
+    // the structure.
+    CondensedStructure(CondensedStatics& statics, CondensedStatics::LoadGroup group, const assembly::SpcSet& spc,
                        std::span<const base::DofIndex> supports, const assembly::RigidBodyModes& rigidModes,
                        const base::Mat3& axes, base::MemoryBudget& budget)
-        : m_statics(&statics), m_group(std::move(group))
+        : m_statics(&statics), m_group(std::move(group)), m_spc(&spc)
     {
         const std::size_t gSize = rigidModes.modes().rows();
         const std::size_t r = supports.size();
@@ -733,6 +738,11 @@ public:
 
     [[nodiscard]] const assembly::RigidElimination& gm() const override { return *m_group.gm; }
     [[nodiscard]] std::span<const std::uint8_t> isConstrained() const override { return m_group.isConstrained.span(); }
+    void carryDerivedReactions(std::span<double> supportForcesG) const override
+    {
+        m_spc->carryDerivedReactions(supportForcesG);
+    }
+    [[nodiscard]] const assembly::SpcSet* spcSet() const override { return m_spc; }
     [[nodiscard]] std::optional<output::StiffnessRecovery::CondensedUnits> condensedUnits(
         std::span<const output::StiffnessRecovery::UnitRow> rows) const override
     {
@@ -754,6 +764,7 @@ private:
 
     CondensedStatics* m_statics;
     CondensedStatics::LoadGroup m_group;
+    const assembly::SpcSet* m_spc;
 };
 
 // The structure in the space of the boxes (BoxFlexibility) for one constraint set.

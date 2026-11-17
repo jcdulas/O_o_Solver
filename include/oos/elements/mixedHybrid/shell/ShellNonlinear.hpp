@@ -117,6 +117,15 @@ struct NonlinearEvaluation
                                                     const Vector* momentTerm, const Vector* membraneTerm,
                                                     bool geometric);
 
+// The gradient of φᵀ·K(x)·φ with respect to the preload unknowns x, K(x) the geometric stiffness evaluateNonlinear
+// gives with `geometric`: entry k is φᵀ·K(e_k)·φ, the thermal terms (constant in x) left out. K is linear in the
+// stresses of x and they are linear in x, so the gradient is the transpose of the stress maps applied to the products
+// of φ with the second variations of the measures: one pass over the points instead of one K per unknown. Used by the
+// derivative of a buckling factor through its preload.
+[[nodiscard]] Vector geometricStiffnessGradient(const ShellReferenceElement& re, const ShellElementDefinition& def,
+                                                const ShellElementMatrices& matrices,
+                                                const NonlinearPreparation& preparation, std::span<const double> phi);
+
 // Takes the state x as the new start of the angles of the edges (after a converged step).
 // Reference: tdnns/nonlinear.rs::accept
 void acceptNonlinearState(const ShellReferenceElement& re, const ShellElementDefinition& def,

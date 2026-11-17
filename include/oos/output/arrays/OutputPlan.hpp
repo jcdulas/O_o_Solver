@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -102,6 +103,13 @@ public:
     // takes the points or elements of `required` with this plan's describers, a kind only `required` asks for takes its
     // describers, a kind only this plan asks for is dropped.
     void restrictTo(const std::array<OutputRequestPlan, OUTPUT_KIND_COUNT>& required);
+    // The rows of the grid point stress table of the solids of an element formulation (null: every grid point of the
+    // solids the stress request takes): elementSelectionOf hands it over.
+    [[nodiscard]] const std::shared_ptr<const GridPointStressScope>& gridPointScope() const noexcept
+    {
+        return m_gridPointScope;
+    }
+    void setGridPointScope(std::shared_ptr<const GridPointStressScope> scope) { m_gridPointScope = std::move(scope); }
 
 private:
     std::array<OutputRequestPlan, OUTPUT_KIND_COUNT> m_requests;
@@ -109,6 +117,7 @@ private:
     ModalEffectiveMassRequest m_modalEffectiveMass;
     bool m_isAeroPressureRequested = false;
     bool m_isAeroForceRequested = false;
+    std::shared_ptr<const GridPointStressScope> m_gridPointScope;
 };
 
 // The element tables a plan asks for (STRESS, STRAIN, FORCE with their SETs, CENTER or CORNER, FIBER or STRCUR). The

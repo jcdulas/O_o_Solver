@@ -240,8 +240,7 @@ std::optional<base::DofIndex> InterfaceProblem::modelDofOf(std::int64_t localDof
     const std::int32_t node = m_points[static_cast<std::size_t>(nodeDof.node)].modelNode;
     if (node < 0)
         return std::nullopt; // a generated fastener point, or modal coordinates
-    return node < m_dofMap->gridCount() ? m_dofMap->gridDof(node, nodeDof.component + 1)
-                                        : m_dofMap->scalarDof(node - m_dofMap->gridCount());
+    return m_dofMap->dofsOfNode(node).first + nodeDof.component;
 }
 
 base::GridComponent InterfaceProblem::nameOf(std::int64_t localDof) const
@@ -252,9 +251,13 @@ base::GridComponent InterfaceProblem::nameOf(std::int64_t localDof) const
     if (point.modelNode == MODAL)
         for (std::size_t u = 0; u + 1 < m_modalDofOffsets.size(); ++u)
             if (localDof >= m_modalDofOffsets[u] && localDof < m_modalDofOffsets[u + 1])
-                return {point.label.id, static_cast<int>(localDof - m_modalDofOffsets[u] + 1)};
+                return {point.label.id, static_cast<int>(localDof - m_modalDofOffsets[u] + 1), {}};
+    // An unknown of the element formulation is named by what it is (it has no ID).
+    if (point.label.kind == UnitPointKind::EntityNode)
+        if (const std::optional<base::DofIndex> dof = modelDofOf(localDof))
+            return {0, static_cast<int>(m_dofMap->labelOf(*dof).component) + 1, m_dofMap->describe(*dof)};
     // A generated fastener point is named by its fastener's ID (it has no point of the model).
-    return {point.label.id, point.label.kind == UnitPointKind::Scalar ? 0 : nodeDof.component + 1};
+    return {point.label.id, point.label.kind == UnitPointKind::Scalar ? 0 : nodeDof.component + 1, {}};
 }
 
 void InterfaceProblem::numberPoints(const InterfaceInputs& inputs, base::MemoryBudget& budget)
@@ -292,13 +295,18 @@ void InterfaceProblem::numberPoints(const InterfaceInputs& inputs, base::MemoryB
         }
         const auto modelNode = static_cast<std::int32_t>(node);
         const bool isGrid = modelNode < dofMap.gridCount();
+        const bool isEntity = dofMap.isEntityNode(modelNode);
         InterfacePoint& point = m_points[next];
         point.modelNode = modelNode;
-        point.dofCount = isGrid ? GRID_DOF_COUNT : 1;
-        point.label = isGrid ? UnitDofLabel{UnitPointKind::Grid, dofMap.gridId(modelNode), FastenerSide::None, 1}
-                             : UnitDofLabel{UnitPointKind::Scalar, dofMap.scalarId(modelNode - dofMap.gridCount()),
-                                            FastenerSide::None, 0};
-        point.position = isGrid ? dofMap.positionInBasic(modelNode) : base::Vec3{};
+        point.dofCount = static_cast<std::uint8_t>(dofMap.dofsOfNode(modelNode).count);
+        if (isGrid)
+            point.label = UnitDofLabel{UnitPointKind::Grid, dofMap.gridId(modelNode), FastenerSide::None, 1};
+        else if (isEntity)
+            point.label = UnitDofLabel{UnitPointKind::EntityNode, dofMap.nodeIdOf(modelNode), FastenerSide::None, 1};
+        else
+            point.label = UnitDofLabel{UnitPointKind::Scalar, dofMap.scalarId(modelNode - dofMap.gridCount()),
+                                       FastenerSide::None, 0};
+        point.position = isGrid || isEntity ? dofMap.nodePosition(modelNode) : base::Vec3{};
         m_pointOfNode[node] = static_cast<std::int32_t>(next);
         ++next;
     }
@@ -453,6 +461,11 @@ void InterfaceProblem::mapUnits(const InterfaceInputs& inputs, base::MemoryBudge
                         local = m_firstDof[p] + label.component - 1;
                 }
             }
+            else if (label.kind == UnitPointKind::EntityNode)
+            {
+                if (const std::optional<std::int32_t> node = inputs.dofMap->findNode(label.id))
+                    local = localDofOf(inputs.dofMap->dofsOfNode(*node).first + label.component - 1);
+            }
             else if (const std::optional<base::DofIndex> dof =
                          inputs.dofMap->findDof(label.id, label.kind == UnitPointKind::Scalar ? 0 : label.component))
             {
@@ -529,13 +542,43 @@ void InterfaceProblem::mapUnits(const InterfaceInputs& inputs, base::MemoryBudge
     }
 }
 
+namespace
+{
+
+// A g-set DOF as a message names it: the component of its grid or scalar point, or the unknown of an entity of the
+// element formulation (which has no ID).
+std::string dofText(const assembly::DofMap& dofMap, base::DofIndex dof)
+{
+    const assembly::DofLabel label = dofMap.labelOf(dof);
+    if (label.kind == input::PointKind::Entity)
+        return base::concatenate({"unknown ", std::to_string(label.component), " of entity ",
+                                  std::to_string(label.row), " of the element formulation"});
+    return base::concatenate(
+        {"component ", std::to_string(label.component), " of point ", std::to_string(dofMap.pointIdOf(dof))});
+}
+
+} // namespace
+
 void InterfaceProblem::readRelations(const InterfaceInputs& inputs, base::MemoryBudget& budget)
 {
     const assembly::RigidElimination& gm = *inputs.relations;
     const assembly::DofMap& dofMap = *inputs.dofMap;
+    // The terms of row i: its own, or, when one of them is a DOF a unit eliminates inside it (a relation of the
+    // interface that reads a DOF tied inside a unit: a glued point on a face of solids that follows a shell), the row
+    // resolved through every relation of the constraint set, whose DOFs the plan put on the boundaries.
+    const auto termsOf = [&](std::size_t i) -> std::span<const assembly::ConstraintTerm>
+    {
+        const std::span<const assembly::ConstraintTerm> own = gm.row(i);
+        const bool isLocal = std::all_of(own.begin(), own.end(), [&](const assembly::ConstraintTerm& term)
+                                         { return localDofOf(term.dof).has_value(); });
+        if (isLocal || inputs.resolvedRelations == nullptr)
+            return own;
+        const std::optional<std::size_t> row = inputs.resolvedRelations->findRow(gm.mDofs()[i]);
+        return row ? inputs.resolvedRelations->row(*row) : own;
+    };
     std::size_t termCount = 0;
     for (std::size_t i = 0; i < gm.rowCount(); ++i)
-        termCount += gm.row(i).size();
+        termCount += termsOf(i).size();
     m_relations = LocalRelations(gm.rowCount(), termCount, budget, "interface Gm rows");
     const auto dofCount = static_cast<std::size_t>(localDofCount());
     m_role = base::BudgetedBuffer<std::uint8_t>(budget, dofCount, "interface DOF roles");
@@ -552,16 +595,16 @@ void InterfaceProblem::readRelations(const InterfaceInputs& inputs, base::Memory
                  "out of the interface's relations)"}));
         m_relations.appendRow(*local);
         m_role[static_cast<std::size_t>(*local)] = DEPENDENT;
-        for (const assembly::ConstraintTerm& term : gm.row(i))
+        for (const assembly::ConstraintTerm& term : termsOf(i))
         {
             const std::optional<std::int64_t> independent = localDofOf(term.dof);
             if (!independent)
                 throw std::invalid_argument(base::concatenate(
                     {"InterfaceProblem: ", std::string(assembly::cardNameOf(gm.sourceOf(i))), " ",
-                     std::to_string(gm.sourceIdOf(i)), " makes point ", std::to_string(dofMap.pointIdOf(dependent)),
-                     " depend on point ", std::to_string(dofMap.pointIdOf(term.dof)),
-                     ", an interior point of a unit; the plan puts the points of the interface's relations on the "
-                     "boundaries (BoundaryPromotion; a bug of O_o_Solver: report it)"}));
+                     std::to_string(gm.sourceIdOf(i)), " makes ", dofText(dofMap, dependent), " depend on ",
+                     dofText(dofMap, term.dof),
+                     ", a DOF of an interior point of a unit; the plan puts the points of the interface's relations "
+                     "on the boundaries (BoundaryPromotion; a bug of O_o_Solver: report it)"}));
             m_relations.appendTerm(LocalTerm{*independent, term.coefficient});
         }
     }
@@ -573,9 +616,11 @@ void InterfaceProblem::readRelations(const InterfaceInputs& inputs, base::Memory
         const std::optional<base::DofIndex> dof = modelDofOf(static_cast<std::int64_t>(local));
         if (!dof || m_role[local] == DEPENDENT)
             continue;
+        // The formulation's excluded DOFs (the x set) are held too: no element acts on them, and they have no
+        // reaction to report (CondensedStatics leaves them out of the constrained DOFs).
         const assembly::ExclusiveSet set = inputs.modelSets->exclusiveSetOf(*dof);
         if (set == assembly::ExclusiveSet::Sb || set == assembly::ExclusiveSet::Sg ||
-            (set == assembly::ExclusiveSet::R && !isConditioned))
+            set == assembly::ExclusiveSet::X || (set == assembly::ExclusiveSet::R && !isConditioned))
             m_role[local] = HELD;
     }
     for (const base::DofIndex dof : inputs.conditionedSupports)
@@ -914,7 +959,7 @@ void InterfaceProblem::buildGraph(const InterfaceInputs& inputs, base::MemoryBud
     // A scalar point takes the position of a grid point it is coupled to (FsetOrdering does the same).
     for (std::size_t p = 0; p < m_points.size(); ++p)
     {
-        if (m_points[p].dofCount != 1)
+        if (m_points[p].dofCount != 1 || m_points[p].label.kind != UnitPointKind::Scalar)
             continue;
         for (const std::int32_t neighbour : m_graph.neighbours(static_cast<std::int32_t>(p)))
             if (m_points[static_cast<std::size_t>(neighbour)].dofCount == GRID_DOF_COUNT)
@@ -1070,7 +1115,8 @@ void InterfaceProblem::checkSingularities(const InterfaceInputs& inputs, base::M
         for (int c = 0; c < count; ++c)
             if (isFree(first + c))
                 largest = std::max(largest, std::abs(diagonal[static_cast<std::size_t>(c + count * c)]));
-        if (count != GRID_DOF_COUNT)
+        // The entities are left out (spec section 5.8: the formulation holds what no element stiffens).
+        if (count != GRID_DOF_COUNT || m_points[p].label.kind == UnitPointKind::EntityNode)
             continue;
         for (std::size_t half = 0; half < 2; ++half)
         {
@@ -1095,7 +1141,8 @@ void InterfaceProblem::checkSingularities(const InterfaceInputs& inputs, base::M
     }
     for (std::size_t p = 0; p < m_points.size(); ++p)
     {
-        if (m_points[p].modelNode < 0 || m_points[p].dofCount != 1 || !isFree(m_firstDof[p]))
+        if (m_points[p].modelNode < 0 || m_points[p].dofCount != 1 ||
+            m_points[p].label.kind == UnitPointKind::EntityNode || !isFree(m_firstDof[p]))
             continue;
         const double diagonal = raw.blockValues(m_pattern->columnBegin(static_cast<std::int32_t>(p)))[0];
         if (diagonal <= inputs.singularity.pivotZeroThreshold * largest)
@@ -1139,6 +1186,18 @@ void InterfaceProblem::computeMassProperties(const InterfaceInputs& inputs, base
     {
         const std::int32_t node = m_points[p].modelNode;
         const bool isGenerated = node == GENERATED;
+        // An entity's DOFs take the formulation's rigid-body fields (spec section 5.7).
+        if (m_points[p].label.kind == UnitPointKind::EntityNode)
+        {
+            const auto entityDofs = static_cast<std::size_t>(m_dofMap->gSetSize() - m_dofMap->firstEntityDof());
+            const auto entityDof =
+                static_cast<std::size_t>(m_dofMap->dofsOfNode(node).first - m_dofMap->firstEntityDof());
+            const auto first = static_cast<std::size_t>(m_firstDof[p]);
+            for (std::size_t mode = 0; mode < RIGID_BODY_MODE_COUNT && !inputs.entityRigidModes.empty(); ++mode)
+                for (std::size_t k = 0; k < m_points[p].dofCount; ++k)
+                    m_rigidBodyModes(first + k, mode) = inputs.entityRigidModes[mode * entityDofs + entityDof + k];
+            continue;
+        }
         // A scalar point does not move with the body; nor do modal coordinates (a rigid motion of a unit is its
         // constraint modes alone, q = 0).
         if (m_points[p].dofCount != GRID_DOF_COUNT || node == MODAL)

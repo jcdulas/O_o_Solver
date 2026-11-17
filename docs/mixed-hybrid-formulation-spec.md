@@ -216,8 +216,32 @@ These are properties of the formulation; the port reproduces them and does not t
   shell (section 4.4).
 - Two shell triangles on a quadrilateral face of a solid are tied to it by their grid points and edges only. A line
   alone on an edge with a mid-side node is straight.
-- A rotation held at an isolated grid point with no line element there acts only through the edges that hold it
-  (section 5.6).
+- A rotation held at one grid point of shells with no line element there is no unknown of the shells: it is read
+  along the edges whose two grid points hold it, and elsewhere tied to the mean rotation of the shells at the grid
+  point (section 5.6; not in the reference, which reads it along the edges only).
+- Measured by the validation suite of this repository (section 13.3, `wasm/test/validation/known-limits.mjs`), and
+  reproduced by the reference on the same meshes:
+  - distorted triangles on a curved surface keep kinks of 1 to 3 degrees however fine the mesh, which the shell takes
+    as folds: the Scordelis-Lo roof is 30 % off and a pressurised cylinder up to 50 %, without converging. Such a
+    mesh is warned (`geometry-kink`, section 10.5); its triangles are declared raw, or given mid-side nodes, or
+    replaced by quadrilaterals, which read the same surfaces to 0.3 % when distorted;
+  - a corner of the outline of the shells where a triangle meets another element is read as an outline that goes on:
+    its two edges are rounded in the surface, and a triangle left without an angle there is refused
+    (`degenerate-geometry`); the edges of the corner are declared raw (warned by `geometry-rounding`);
+  - on a skin of solids, a mesh line of three grid points on a flat face is read as a curve when its middle grid
+    point is off-centre: faces two cells wide lose the exactness of the linear stress states (1e-6 to 4e-6) and a
+    strongly zigzagging line is refused as a fold; three cells or more per side, mid-side nodes or sharp edges
+    avoid it;
+  - a shell that continues solids, or stands on them (tie 4), passes its moment to them along a line: the solids are
+    not told the thickness of the shell, and the joint softens as the solids are refined (a cantilever continued by
+    solids deflects 1.26 to 3.8 times too much); a soft shell on stiff solids is exact;
+  - an inertia, a spring or a moment at a grid point of shells acts on their mean rotation there: the answer to a
+    concentrated moment is 1 to 2.5 % softer or stiffer than a fine `ClassicFormulation` model, whose own answer
+    depends on its mesh;
+  - the fibre stresses of a curved membrane carry the term of order t / R of the curvature measure with the sign
+    opposite to the thick-wall solution (0.5 % at R / t = 100);
+  - the rotary inertia of a line acts on the slope of its axis, not on the rotation of its section: the higher
+    bending frequencies of a short shear-flexible beam are 0.3 to 1.1 % below Timoshenko's.
 - The offset of the axis of a line element is in its section law (the axial strain of the axis coupled to the
   curvatures), not a rigid arm: the torsion and the shear stay about the edge. A transverse force across the offset
   twists a `ClassicFormulation` bar through its rigid arm and not a bar of this formulation; in the plane of the
@@ -235,8 +259,10 @@ These are properties of the formulation; the port reproduces them and does not t
 | THETA, MCID | the material direction, as `EdgeShearShellFamily` builds it (THETA from G1→G2, MCID projected), handed over as a direction vector in the tangent plane |
 | ZOFFS | the offset of the section (section 3.1) |
 | MID3 blank | no transverse shear flexibility: the section is a Kirchhoff section |
-| MID2 blank (membrane only) | the Regge membrane strains alone: no moments, no shear, no edge rotation; the element adds no shear or rotation unknown to its edges (section 15, decision 8; not in the reference) |
-| MID1 blank (bending only) | the moments and shear alone, the membrane stiffness zero; the in-plane unknowns that no other element stiffens are removed as singular (section 5.8; not in the reference) |
+| MID2 blank (membrane only) | the Regge membrane strains alone (Ā = A): no moments, no transverse shear, no rotation about the edges; its shear and edge rotation unknowns that no other element stiffens are held at zero (section 5.8). Offset, the membrane bends about the surface of the grid points (B' = z0 A, D' = z0² A: its strain is e + z0 κ) as a Kirchhoff shell. Its mass has no rotary inertia (I1 = I2 = 0), its thermal load is the force of the rise (section 15, decision 8; not in the reference) |
+| MID1 blank (bending only) | the moments and shear alone, A = B = 0; the in-plane directions that no element stiffens are held (section 5.8); without MID3 its Kirchhoff limit is measured on 12 D / t², the membrane stiffness of a homogeneous plate; its thermal load is the moment of the gradient (not in the reference) |
+| A membrane-only or bending-only laminate (its membrane or bending option) | as the two rows above |
+| two shells on the same corner grids (two properties laid over one surface) | refused: the edges would hold two shells on one side, where the reading of the surface, the supports along the edges and the continuity of the shear count one shell per side; one property with both parts is the way |
 | Z1, Z2 | fibre distances of the stress output |
 | G5-G8 (`ShellQuad8`), G4-G6 (`ShellTria6`) | each mid-side node given fixes its edge as the parabola through the two corners and it, as a mid-side node of a solid does (document 35, section 3.4); a partial set is accepted. The mid-side node carries no unknown: its translations follow the edge (an observer relation where something uses them, else filled after the solution, as the rotations of section 5.4) |
 | T1-T4 of the drilling and higher-order cards | as T1-T4 of `ShellQuad4` (corner thicknesses) |
@@ -324,14 +350,17 @@ a third kind of node, the entity:
   layout (section 5.2). `gSetSize`, `nodeCount`, `nodeDofCounts`, `dofOf`, `labelOf` and `nodeDofOf` take them
   in. `findDof` and `pointIdOf` never return one: they have no ID;
 - `NodalDisplacements::entity`: one value per entity DOF, read by the recovery and differential stiffness facets
-  (`valueAt`);
+  (`valueAt`, which checks that they were given: the displacements of a g-set vector are made by
+  `NodalDisplacements::ofGSet` with the layout, zero displacements included);
 - `DofLabel` of an entity DOF: kind `Entity`, its row and index, for the diagnostics. Diagnostics name the entity by
-  what it is (edge between grid points 12 and 15, face of grid points ..., interior of element 7).
+  what it is (edge between grid points 12 and 15, face of grid points ..., interior of element 7): `DofMap::describe`,
+  which the messages of the factorisations take through `base::GridComponent::name` (a mechanism at an unknown of an
+  edge is reported as "DOF 3 of the edge between grid points 12 and 15", on every path).
 
 Every place that handles `PointKind::Scalar` today, about 30 files (search `PointKind::Scalar`, `scalarCount()`,
-`nodeDofCounts(`), is reviewed. Those on the full path take entities. Those on the refused paths (condensed and
-streamed statics, superelements, design sensitivities) refuse a DofMap that has entities, with a diagnostic, until
-phase 6.
+`nodeDofCounts(`), is reviewed. Every path takes them since phase 6: the full path, the condensed path (section 5.11),
+the streamed path (section 5.12), external units (section 5.13), superelements (section 5.14) and the design
+sensitivities (section 5.15).
 
 A model without entities is numbered exactly as today: the layout is empty, no offset changes, and the node graph,
 ordering and factor are bit for bit those of today.
@@ -340,7 +369,9 @@ ordering and factor are bit for bit those of today.
 
 A new folder `src/elements/mixedHybrid/` (headers in `include/oos/elements/mixedHybrid/`) holds what the families
 share. It is built once per snapshot through `SnapshotIndex::computedOnce<MixedHybridModel>`, which the shared
-directors of the higher-order shells already use:
+directors of the higher-order shells already use; a condensed analysis takes the index of its condensation planner
+(`StaticOptions::snapshotIndex`, `AnalysisModelOptions::index`), so that the model and the kernels of its elements are
+built once for the plan and the analysis:
 
 | Part | Content |
 |---|---|
@@ -382,8 +413,8 @@ of `mixedHybrid/`:
 | `mixedHybrid/solid/` | spaces, face and edge functions, element functions, kernel |
 | `mixedHybrid/model/` | topology, layout, ties, supports, rotations at grid points, rigid fields |
 
-The facets offered: stiffness, mass, differential stiffness, loads (pressure, line, thermal), recovery. They do not
-offer derivatives, and the design module refuses the formulation (phase 6). The element matrices are emitted over
+The facets offered: stiffness, mass, differential stiffness, loads (pressure, line, thermal), recovery, and
+derivatives by differences of those facets (section 5.15). The element matrices are emitted over
 their own DOFs (grid translations, grid rotations where the element uses them, entity DOFs), in the displacement
 systems of the grid points as every family does: the kernel works in the basic system and the family rotates the
 grid rows by CD.
@@ -395,14 +426,15 @@ grid point stay, with this meaning:
 
 | Grid point | Rotation components |
 |---|---|
-| with line elements of the new formulation (on shell edges or alone), except the next row | independent: the rotation Λ of the lines; the directions without line stiffness tied (section 3.4, tie 5) |
+| with line elements of the new formulation (on shell edges or alone), except the next row | independent: the rotation Λ of the lines; the directions without line stiffness tied (section 3.4, tie 5), and, at a grid point of shells whose lines all lie on shell edges, made the mean rotation of the shells in those directions (a rod on a shell edge stiffens no bending rotation: a couple, a spring or a rigid element there acts on the shells; `MixedHybridModel::findUnstiffenedLineRotations`; not in the reference) |
 | with shells and lines alone only, no line on a shell edge | dependent: the mean rotation of the shells at their corners (tie 6) |
 | with shells only, or shells and solids | the mean rotation of the shells at their corners, by an observer relation where something else uses it, else excluded and filled after the solution (below) |
 | with solids only | unused: no stiffness, removed by the automatic constraint of singular DOFs, as for the solids of `ClassicFormulation` |
 
 The rotation of a shell at a corner is θ = ν × β + ν w, with w = ½ (∂1u · e2 − ∂2u · e1): it is exact for a rigid
 motion. The mean is over the shell elements of the grid point, with equal weights (`fill_rotations` of the
-reference).
+reference); over those that carry moments where one does (a membrane-only shell without offset turns only with its
+surface: it counts only at a grid point where no shell bends; not in the reference).
 
 **Observer relations.** A rotation component of a shell grid point is made dependent on the shell unknowns (an
 observer relation, section 5.5) when something other than the formulation uses it:
@@ -422,13 +454,10 @@ fill these components with the mean corner rotation (`MixedHybridModel::fillGrid
 tables have them. Observer relations are not used everywhere because a corner rotation depends on all the unknowns of
 the element: about 1000 terms per grid point. That is too many for the m set of a large model.
 
-**Held or dependent rotations.** A rotation component held by a support, or made dependent by a user relation, has
-no observer relation:
-
-- a held one is read along the edges (section 5.6);
-- a dependent one is the relation's own and carries no shell stiffness. The shells are not tied to that relation in
-  rotation; a warning names the grid point and the relation (`rotation-not-transmitted`). The edge reading of rigid
-  elements that would tie them is phase 6.
+**Held or dependent rotations.** A rotation component held by a support, or made dependent by a user relation (a
+rigid element, a multipoint constraint), has no observer relation: it is read along the edges whose two grid points
+have it, and tied to the mean rotation of the shells where no edge reads it (section 5.6). A warning
+(`rotation-not-transmitted`) names a grid point whose dependent rotation no unknown of the shells is free to follow.
 
 ### 5.5 Formulation relations
 
@@ -451,14 +480,21 @@ A support is stated at grid points; the formulation reads it along the edges and
 document 35). For each constraint set the formulation derives supports of entity DOFs, added to the s set by
 `SpcSet` as derived DOFs, with their values:
 
-| Held at both grid points of an external shell edge | Entity DOFs held |
+| Held at both grid points of a shell edge | Entity DOFs held |
 |---|---|
 | translation along a direction | the displacement moments of the edge along it |
 | rotation about the edge axis (t in the span of the held rotation axes) | the edge rotation |
 | rotation about the conormal μ, with the normal translation held | the shear γ · t of the edge |
 
+- The edges read: the external edges (the reference's rule), and an edge inside the shells one of whose two grid
+  points is inside them too, so that a line of supports across a plate holds the plate along it (the model files
+  state supports at grid points only; the reference states such supports on the edges). An inner edge between two
+  grid points of the outline is not read: the diagonal of a triangle at a corner, or the edge across a strip one
+  element wide, joins two supported sides, and holding it would hold the shell between them.
 - Solids: an edge of the skin whose two grid points hold a translation direction holds its edge functions along it;
-  a face whose grid points all hold it holds its face functions.
+  a face of the skin whose grid points all hold it holds its face functions.
+- Supports at two grid points of one edge hold the edge between them: three supports that would hold a body
+  isostatically at grid points far apart over-constrain it when they sit on the corners of one element.
 - Grid points with line elements hold Λ as stated.
 - An entity DOF that follows another through a tie is held through it, never directly.
 - Enforced values (`EnforcedMotionConstr`) are carried along the edge as by a rod: linear along the chord, cubic
@@ -466,15 +502,59 @@ document 35). For each constraint set the formulation derives supports of entity
   along the chord.
 
 Directions. The reference states supports in global axes. Here the held components are in each grid point's CD
-system. An edge holds a direction when the held directions at its two grid points contain it: the intersection of
-the two spans of held CD axes, in the basic system. When the two CD systems give parallel axes (CD 0, or a common
-rectangular CD) this is the reference's rule. When they do not (a cylindrical CD along a circle), phase 2 holds only
-the common directions and warns (`support-not-carried-along-edge`). Phase 6 adds skew supports as relations
-(u(s) · d(s) = value on the edge moments).
+system, and an edge or a face holds the directions its grid points share:
 
-Reactions. The forces of held entity DOFs are added to the grid points of their edge or face by the transpose of the
-carrying map above. That map is exact for rigid motions, so the resultant of the reported reactions equals the
-applied loads, as every support force table must.
+- the basic axes that lie in the span of the held CD axes of every grid point are held as supports of the entity DOFs
+  (the table above);
+- a held direction d that is no basic axis and is the same at every grid point of the edge or face (a rectangular
+  CD turned from the basic system, the cutting plane of a sector in a cylindrical CD: a plane of symmetry in any
+  orientation) is no support of one DOF. The trace along d of each displacement function l follows the chord,
+  Σ_c d_c·q_(l,c) = m_l(a)·(u_a · d) + m_l(b)·(u_b · d) on a shell edge and Σ_c d_c·q_(m,c) = 0 on the functions of
+  an edge or a face of solids (`FormulationModel::supportRows`), and these rows are eliminated as relations, each
+  written on the component of the function along which d is largest (`FormulationConstraints::eliminateRows`). The
+  rotations held about axes that are no basic axis are read by the spans of the held axes: the edge rotation where
+  the tangent lies in both spans, the shear where the conormal does;
+- a direction that differs between the grid points (a cylindrical CD along a circle: the radial direction turns) is
+  held by the grid points only; the edge between them is free along it, and a warning counts such edges
+  (`support-not-carried-along-edge`). Holding both directions of the plane they turn in holds the edge (their span
+  is the same plane at both grid points). The relation u(s) · d(s) = value along such an edge is later work
+  (section 14).
+
+Reactions. The force of a held entity DOF is reported at the grid points of its edge or face as forces and moments
+with the same resultant force and moment (`DerivedSupportDof::reactionTo`, the map of the grid point force balance,
+section 10.1): the reported reactions balance the applied loads in force and in moment, along a curved edge too
+(the map that carries the held values along the chord is not exact for a rotation of a curved edge: it gives the
+values, not the reactions).
+
+Relations of the model. A grid component that a relation of the model makes dependent (a rigid element, a multipoint
+constraint) is read along the edges and faces as a held one is: an edge whose two grid points have a component held
+or dependent follows them. Its entity DOFs that the supports alone do not hold become dependent on those grid
+components, by the map that carries the values of a support along the edge (`FormulationConstraints`, the relations
+"that follow"): a rigid element on the grid points of the rim of a hole, or along a line of grid points, moves the
+edges between them rigidly, as it moves the straight sides of `ClassicFormulation` elements. The relations of the
+formulation name the independent DOFs of the model's relations in place of their dependent ones
+(`FormulationConstraints::addRelation`), so that no relation of the formulation chains through a relation of the
+model, which the condensed path may eliminate elsewhere.
+
+Rotations no edge reads. A rotation of a grid point of shells that a support holds, or a relation makes dependent,
+with no edge to read it (the neighbour grid points do not have it), is tied to the mean rotation of the shells there
+(the rotation of section 5.4): Σ_s d_s·(W_s·u − θ_s) = 0, W_s the row of the mean rotation and θ_s the grid component
+(held, with its value, or dependent). Each such row is written on one unknown of the shells (the largest coefficient
+among the entity DOFs that nothing else determines and no other relation reads; the rows eliminated one after the
+other), a relation as any other. The directions d:
+
+- a dependent rotation: each of its components (a rigid element joined to the shells at one grid point turns them,
+  about their normal too);
+- a held rotation: the axes of the span of the held components that lie in the plane of the shells (their common
+  normal, `FormulationModel::commonShellNormal`). The rotation about the normal is the rotation of the membrane field
+  in its plane, which the same support leaves free on a shell without drilling stiffness: the rotation about the
+  normal held at every grid point of a plate, written to remove that singularity, stiffens nothing;
+- a held rotation at a fold, or at a grid point that holds its rotations alone (no grid point joined to it by an
+  edge holds a rotation): each held component. The six components held at one grid point hold a plate as a free
+  body.
+
+The translations of a mid-side grid point of shells (section 4.1) that a support holds or a relation makes dependent
+are tied the same way to the point of its edge.
 
 ### 5.7 Rigid and affine fields
 
@@ -496,37 +576,251 @@ translation) gives the total mass on each axis, and D gives zero strain energy (
 ### 5.8 Singularities
 
 - Entity DOFs do not enter the automatic constraint of singular DOFs: the formulation has no singular entity DOF
-  except through a real mechanism, which the factorisation and `MechanismShapes` report. The one exception is the
-  bending-only shell (MID1 blank, section 4.1): the formulation itself holds the in-plane entity DOFs that no
-  element stiffens, as derived supports of zero value.
+  except through a real mechanism, which the factorisation and `MechanismShapes` report. The exceptions are the
+  membrane-only and bending-only shells (section 4.1) and the functions across a rod alone: the formulation itself
+  holds the entity DOFs that no element stiffens, as derived supports of zero value in every constraint set (a
+  support that holds one with a value along an edge takes precedence). Of the entities whose shells are all
+  membrane-only or bending-only (`ShellPart::unstiffenedUnknowns`):
+  - the shear of an edge none of whose shells has a transverse shear, and the interior shear of a membrane-only
+    shell;
+  - the rotation about an edge none of whose shells carries moments, unless a line on it turns it (its diagonal
+    terms there above 1e-14 of its largest: not a rod without torsion constant);
+  - the singular directions of each displacement function (an edge function l, an interior function) that no solid
+    follows: the eigenvalues of the 3 × 3 block of the stiffness of the shells of the entity and of the lines on the
+    edge, on the three components of the function, below 1e-8 of the largest (the default threshold of the grid
+    points). The s singular directions V are held by the s components C that maximise |det V_C|, as the singularity
+    processor of the grid points does. They lie along those components on a flat membrane or plate in a plane of
+    the basic system; otherwise the displacement of the function keeps a part along them that carries no stress,
+    which an information diagnostic counts (`unstiffened-directions-held`). On a curved surface the membrane
+    stiffens the normal (and the bending the tangent directions it turns): nothing is held there.
+  A membrane-only shell whose structure is a mechanism stays one (an open cylinder of membranes ovalises freely, a
+  stiffener on a membrane edge twists about its axis): the factorisation reports it.
 - The grid rotations of section 5.4 follow its table; the excluded set x is outside the free set before the
   singularity processor runs.
+- The pivot ratio test of the factorisation (matrix diagonal over factor diagonal above `MaxDiagonalRatio`) reads, at
+  an entity DOF, the diagonal of the elements' own stiffness when it is below that of the reduced matrix
+  (`linalg::FactorOptions::referenceDiagonal`, `FsetSolverOptions::unreducedStiffness`): a stiff spring on the
+  rotation of a grid point of shells puts k·c² on the diagonal of every unknown of its observer relation, though it
+  stiffens one combination of them, and the test would read the others as mechanisms. A true mechanism at an entity
+  DOF is still reported. The units and the interface of the condensed path and the streamed path keep the matrix
+  diagonal.
 
 ### 5.9 Refusals
 
-Until phase 6 lifts them, a model with the new formulation is refused, with a diagnostic naming the reason, by:
+Phase 6 lifted the refusals of the first phases: the condensed path with its Craig-Bampton reduction, its load groups,
+its recovery in sequence and its cache (section 5.11), the streamed path (section 5.12), external units (section 5.13),
+superelements (section 5.14) and the design derivatives (section 5.15) take a model of the new formulation. A
+fastener, a weld or a glued contact on an element of the new formulation is not refused: it reads the element through
+section 5.10.
 
-- the condensed path, the streamed path, components, superelements, the condensation cache: `PathChoice` keeps the
-  full path, and an explicit request for another path is refused (lifted in phase 6);
-- the design and optimization interfaces (lifted in phase 6);
-- (not refused in the implementation: a fastener, weld or glued contact on an element of the new formulation reads
-  the translations of its corner grid points, section 12; the facet of section 5.10 would read every DOF of the
-  element).
+Each of them joins the formulation's elements to something that acts on grid points (a plugin's matrices, a part
+reduced on its boundary) or differences them with respect to the positions, so each refuses, with a diagnostic, what
+grid points alone cannot carry: an edge or a face whose unknowns would be joined at its grid points only, a rotation
+of a shell grid point that something stiffens while no stiffness of the formulation acts on it there, a shape whose
+derivative would need that of the formulation's relations (sections 5.13 to 5.15).
 
-These stay refused after phase 6 (section 14, later work):
+The grid point force balance takes the formulation (section 10.1), and a rigid element or a multipoint constraint
+whose dependent DOF is a rotation of a shell grid point ties the shells to it (section 5.6).
 
-- grid point force balance output;
-- a rigid element or a multipoint constraint whose dependent DOF is a rotation of a shell grid point
-  (`rotation-not-transmitted`, section 5.4, is a warning only when the relation names it as independent);
-- a following pressure in buckling.
+A following pressure in buckling stays out (section 14, later work): no formulation of this solver has the load
+stiffness of a pressure, and the differential stiffness facet receives the preload displacements, not its loads.
 
 ### 5.10 Point interpolation facet
 
-Phase 6 adds a facet that gives the displacement (and, for shells and lines, the rotation) at a point of an element
-as a linear combination of its DOFs, grid and entity: `interpolateAt(view, row, parametric point, rows)`. The
-piercing of fasteners and welds and the glue of glued contacts use it in place of the shape functions of
-`ClassicFormulation`: the relation they write names entity DOFs, which `FormulationRelations` (section 5.5) accepts
-as independent DOFs.
+Phase 6 adds the motion of a point of an element as a linear combination of its DOFs, grid and entity. It is a
+function of the formulation model rather than a facet of the families, since the elements that read it (fasteners,
+welds, glue) know the pierced element by its ID or its face, not by a batch row:
+
+- `FormulationModel::shellPointMotion(elementId, gridRows, shapeValues, point)`: the displacement and the rotation of
+  a shell at the point a fastener or a weld pierces. The point of the shell is placed by the shape functions of its
+  card that the fastener piercing table gives, Σ N_j r_j / Σ N_j, r_j the reference corner of a corner grid point
+  and the middle of its edge for a mid-side grid point (the shape functions of a card reproduce the linear functions
+  of its parameters: on a flat element of straight sides this is the point itself). The rotation is that of the
+  shell there (θ = ν × β + ω ν, section 5.4), and the translation is carried rigidly from the point X of the surface
+  to the piercing point P: u_P = u(X) + θ × (P − X). The map is exact for every rigid motion.
+- `FormulationModel::facePointMotion(faceGridRows, shapeValues)`: the translations of a point of a face of a shell
+  or of a solid (the primary face of a glued contact), placed the same way on the shell or on the reference shape of
+  the solid (the functions of its kernel at that point; the interior fields of a modal analysis vanish on a face).
+
+The fastener elements (`elements/fasteners/FastenerConnection`, through `resolveSideMotion`), the rows of the GA and
+GB grid points (`assembly/FastenerConstraints`) and the glue (`assembly/GlueConstraints`) use them when the
+formulation has the element, in place of the shape functions of `ClassicFormulation`: their matrices and relations
+name entity DOFs, which the assembly and `RigidElimination` take as any DOF. A side with no element of the
+formulation (a CWELD GRIDID face of grid points, an element of another card) keeps the classic interpolation. The
+element views carry the formulation model with the entity layout (`ElementBatchView::formulation`).
+
+### 5.11 The condensed path
+
+The static condensation of components (SOL 101; `reduction/`, `solutions/sol101/CondensedStatics`) takes the
+formulation: each unit condensed onto its boundary, the interface problem solved, the units recovered, the results
+those of the full path to round-off. Exposed by `api::AnalysisSettings::condensation` and, in JavaScript, by
+`modelFromReader(oor, deck, { condensation: true })` (the component tables of the reader) and
+`run(model, "statics", { condensation: "all" })`; the units are the components of the reader.
+
+Entity nodes as points. The condensed path names its points by ID. A node of an entity (section 5.1: an entity is
+split into nodes of at most six DOFs) takes the ID `DofMap::entityNodeId(node − firstEntityNode())`, a negative
+number that no point of the input format has (`DofMap::nodeIdOf`, `DofMap::findNode`); its DOFs are labelled
+`UnitPointKind::EntityNode`, components 1 to 6. The plan graph, the units, the boundaries, `K*` and the interface
+problem take them as points.
+
+The units take the entities of their elements. The components of the reader are made of elements and grid points; the
+planner gives the plan the entity nodes of each element (`reduction::ElementEntityNodes`, from the groups of the
+connectivity). An entity node is on the boundary of its unit when another unit or an element of no unit holds it (a
+fastener that reads a pierced shell, section 5.10), and when its constraints vary between the subcases (below). The
+interface elements reach the others through the matrices of their elements, as any point
+(`PlannedUnits` reached points).
+
+Relations. Each relation of the formulation is a relation of the plan of its own, keyed by its dependent node
+(`reduction::formulationRelationKey`): eliminated inside its unit like a rigid element, or at the interface when a
+point of it lies outside the unit (an observer relation at a grid point shared by units). A relation eliminated
+inside a unit whose dependent DOF is on the boundary puts its independent points on the boundary, a point held in
+every subcase included (`BoundaryPromotion`): the interface eliminates it again there.
+
+What the subcases share. The units are condensed once for every subcase. `CommonConstraints` builds the formulation's
+constraints of each constraint selection as the full path does (SPC set with derived supports, the model's
+relations, `FormulationConstraints`): the derived supports and the excluded DOFs count with the supports (an excluded
+DOF of every subcase is held in the units, without a reaction to report), the relations every selection has with the
+same terms bit for bit are eliminated in the units, and the nodes of the relations, excluded DOFs and derived
+supports some subcases only have are boundary points. Each constraint set then builds its own constraints at the
+interface: its relations (those the units eliminate are left out, but at their boundary points), its excluded DOFs in
+the x set (held at the interface, not reported), its derived supports.
+
+After the recovery. Every unit of a model with the formulation is recovered: the excluded rotation of a grid point is
+the mean of every shell there, which may lie in several units (`FormulationConstraints::fillExcluded` on the case's
+g-set displacements, which the batches fill whole, in sequence too). The recovery unit by unit
+(`GroupInputs::visitUnit`: each unit's recovery made once for every case and its results handed over alone, with the
+memory mode `low_memory`, envelopes and no per-case table: `run(model, "statics", { condensation, envelopes,
+keepsCaseTables: false })`) takes the formulation too. Each unit fills the excluded rotations of its interior points in
+its own displacements (every shell there is the unit's) and keeps, per case, the values of its interior DOFs that its
+elements at the interface's grid points have (`CondensedStatics::listKeptDofs`); the cases' vectors take them before
+their excluded rotations are filled, and the stresses of the grid points of solids are made at the unit's interior
+points with the unit, at the interface's points from the cases' vectors (`output::GridPointStressScope`). The reactions
+of the derived supports
+are carried to their grid points (`SpcSet::carryDerivedReactions`) and the formulation's relations are left out of
+the multipoint constraint forces, as on the full path. Brought back to the gauge of the FreeBodySupport DOFs (inertia
+relief solved on six farthest translations), the displacements move by the rigid motion on the entity DOFs too, with
+the formulation's fields (`assembly::addRigidMotion` with `entityRigidModes`). The rigid-body modes of the units and of
+the interface
+(inertia relief, mass properties) take the formulation's rigid fields on the entity DOFs (section 5.7,
+`UnitModel::entityRigidModes`). The singularity processor leaves the entity nodes out (section 5.8).
+
+The eigenvalue analyses and the trim. Normal modes (the modal layout: the planner numbers the entities of that
+analysis, `CondensationPlanner` taking the analysis kind) and buckling reduce the units by Craig-Bampton, with every
+fixed-interface mode kept the roots of the full path; the trim condenses them statically with the structural points
+of the splines retained (`trimRetainedPoints`). Their constraint sets build the formulation's constraints as the
+static ones do (`CondensedStatics::formulationConstraintsOf`: the relations, the excluded DOFs filled in the
+eigenvectors and in the trim's displacements, the derived supports with their reactions). Exposed by
+`run(model, "modes" | "buckling" | "aeroelastic", { condensation })`; `condensation.modeCount` is the count of
+fixed-interface modes per unit (0: those below the cut-off).
+
+The cache. The key of a unit (`reduction::CacheKey`) names its entity nodes by their IDs and DOF counts, and mixes in
+what the formulation reads around the unit's elements (`FormulationModel::describeSurroundings`: the elements of two
+rings around its grid points, with their IDs, cards and the IDs and positions of their grid points, and the geometry
+declarations of the model): the normals and the curves the unit's elements read come from their neighbours, which may
+lie in other units, and the declarations come from the program, which O_o_Reader's stamps do not see. A change of the
+declarations condenses every unit again. Exposed by `condensation: { cache }` with `solver.condensationCache()` (in
+memory).
+
+### 5.12 The streamed path
+
+The full path streamed (SOL 101; `solutions/sol101/StreamedStatics`, exposed by `run(model, "statics", { streamed:
+true })`) takes the formulation: the full path's equations solved without a factor of the whole model, the results
+those of the full path to round-off.
+
+- The nodes of the entities are nodes of the fronts as any other (`StreamedElements::nodeDofs`: a node's DOFs from the
+  DOF map), and an element placed at a front brings every node of its entities. The pass that sums the n-set diagonal
+  blocks (`StreamedFront::nodeDiagonals`) gives the entity DOFs a diagonal (the pivot ratios) and no block: they do not
+  enter the singularity processor (section 5.8).
+- The rigid-body motions on the entity DOFs are the formulation's fields of the six motions
+  (`StreamedFront::entityRigidRowsOf`, section 5.7): the check that no element resists a rigid motion, inertia relief
+  on the FreeBodySupport DOFs and the GravityLoad accelerations take them.
+- The windows of the outputs carry the entities a region gives, each entity's values in a block of its own
+  (`elements::DisplacementSlots::entityOffsets`, `output::RecoveryWindow`).
+- The excluded rotation of a grid point is the mean over every shell there, and the stress of a grid point of solids
+  the mean over every solid there, which may lie in other regions: for a model with entities the outputs keep the
+  displacements of the whole g set of every vector of the load basis (`StreamedOutputs::keepsWholeVectors`, in the
+  memory plan), fill the excluded DOFs there (`FormulationConstraints::fillExcluded`) and make the displacement rows
+  and the grid point stress table from them once the downward pass is over.
+- The grid point forces of a load basis' declared cuts are refused, as the grid point force balance is (section 5.9).
+
+### 5.13 External units
+
+An external unit (`solutions/sol101/ExternalUnitPath`) replaces the elements of a zone by a plugin's matrices on the
+grid points of its contour. Exposed by `run(model, "statics", { externalUnits })`, each unit given by its zone and its
+matrices (`api::ExternalUnitSettings`).
+
+- The entities that only replaced elements act on are held (nothing acts on them any more). A load on them (a
+  pressure on a replaced shell) is refused (`external-unit-formulation-loads`): the plugin's load source takes loads of
+  grid points.
+- An entity that a replaced element and a kept one share (an edge or a face across the contour) is refused
+  (`external-unit-formulation-contour`): the plugin's matrices act on grid points, and the edge functions of the kept
+  shell would be joined to nothing between them.
+- The plugin's matrix may act on any component of its contour grid points: they count as used elsewhere (section 5.4),
+  so that the rotation of a shell grid point it stiffens is an observer relation; the m-set couplings of the dense
+  block are added to the node graph (`ConstrainedSystem`, for the superelements too).
+
+### 5.14 Superelements
+
+A part (`solutions/superelements/PartReduction`) is its own model, reduced on the grid points it shares with the
+residual structure; exposed by `solver.runSuperelements(residual, parts, "statics" | "modes")`.
+
+- A part builds the formulation's constraints of its subcases (`CommonConstraints` with its connectivity's stiffened
+  components): its relations are eliminated in it, its excluded DOFs held in it and filled at its recovery, its entity
+  nodes interior to it. An excluded DOF is no support: it is not held in the residual structure.
+- Refused before any part is reduced: an edge or a face that a part and the residual structure (or two parts) both
+  have (`superelement-boundary-formulation`), whose unknowns would be joined at its grid points only.
+- Refused after the reduction: a component of a boundary point that a part's formulation excludes while an element of
+  the residual structure stiffens it (`superelement-boundary-rotation`): the part has no stiffness on the rotation of
+  its shell grid points. A part joined through translations, or through line elements of the part (their rotations
+  are unknowns), is taken.
+- The rotation of a boundary point that a part's formulation determines (the mean of the part's shells there), on
+  which no element of the residual structure acts, is taken from the part's recovery into the residual's vectors
+  before its tables are made (`copyDeterminedStatics`, `copyDeterminedModes` of `SuperelementSolution`): both tables
+  give the structure's rotation there. Where shells of the residual structure meet the part's at a grid point, the
+  residual's table gives the mean of its own shells and the part's table the mean of the part's.
+- The residual structure builds its SPC sets with the formulation's derived supports and fills its excluded DOFs, as
+  the full path does.
+
+### 5.15 Design derivatives
+
+The semi-analytic sensitivities (`design/sensitivity`) difference the facets of the elements on the snapshots of the
+design point with one designed quantity moved; the families of the formulation offer `Facet::Derivatives` with every
+computation changing (the default `FieldUse`).
+
+- Every snapshot of a perturbation builds its own formulation model (its own index), and the element sets and the DOF
+  map of the sensitivities take the entities (`elements::formulationEntitiesOf`, static layout); the analysis keeps
+  the g-set displacements of its subcases (`StaticOptions::keptDisplacements`): no table holds the entities.
+- The systems solve with the formulation's constraints: the relations, the excluded set, the derived supports; a
+  solution's excluded DOFs are filled (`SensitivitySystem::fromEquations`), and a weight on an excluded DOF (a
+  response that reads the rotation of a shell grid point) is moved onto the DOFs it is filled from
+  (`FormulationConstraints::moveExcludedWeights`, the transpose of the fill), for the adjoint method, on the
+  right-hand sides made sparse too (`AdjointColumns::reduceToEquations`).
+- A shape reaches the elements whose geometry reads the grid points it moves (`FormulationModel::readGridRows`: the
+  two rings of describeSurroundings), not only those that have them.
+- A shape also moves the formulation's relations, u_m = Σ c_mj(v)·u_j (ties, observer relations), and the fill of its
+  excluded DOFs, u_x = W(v)·u: u = T(v)·u_n. Their rows on each side of the perturbation come from that side's
+  formulation model (`FormulationConstraints::relationsOn`, `fillExcludedOn`), and differences give, per subcase
+  (`SensitivityComputation::addFormulationShapeTerms`, `FormulationShape`):
+  - D = ∂u/∂v at fixed u_n: D_m = Σ (∂c_mj/∂v)·u_j + Σ c_mj·D_j on the dependent DOFs (the chains of the relations
+    followed), D_x = W·D + (∂W/∂v)·u on the excluded ones;
+  - the pseudo-load −K·D − (∂C/∂v)ᵀ·μ = −K·D − Σ_m λ_m·∂c_mj/∂v, λ the forces of the relations (K·u − P on their
+    dependent DOFs, through the chains), so that Tᵀ·K·T·du_n = Tᵀ·(q − K·D − ∂Cᵀ·μ) and du = T·du_n + D;
+  - the explicit part w·D of every item (its weights before the excluded ones are moved), the SPC force items given
+    back their share of that pseudo-load (their explicit part reads it), a compliance −scale·(K·u − P)·D (its weights
+    are scale·K·u, not scale·P).
+  The roots take the same derivative of the reduced problem (`EigenItems::addFormulationShapeTerms`): with D_a the
+  derivative of mode a at fixed φ_a,n, a cluster's projection along the shape takes D_aᵀ·R_b + D_bᵀ·R_a, R = (K − λ·M)·φ
+  in vibration and (K + λ·K_d)·φ in buckling (the force of the relations on the mode); the constraints, Kgg, Mgg or
+  K_d of each solve are made once.
+- Where a shape bends a straight boundary of the shells, the reading of the surface changes branch
+  (`SurfaceReconstruction`'s straight boundary): the matrices of the elements are not smooth there, and a shape
+  gradient taken on the flat configuration is about 1e-4 off.
+- The derivative of a buckling factor through its preload needs φᵀ K_d(e_k) φ for every DOF k of an element. The
+  shells and solids of the formulation give it in one pass per element and mode
+  (`ElementFamily::differentialStiffnessPreloadGradient`): K_d is linear in the stresses of the preload, which are
+  linear in its unknowns, so the gradient is the transpose of the stress maps applied to the products of φ with the
+  second variations of the measures (`geometricStiffnessGradient` of the shell kernel, `VolumeKernel::geometricGradient`).
+  The lines form K_d of each of their DOFs, which are few (`EigenItems`).
 
 ## 6. Kernels and numerics
 
@@ -565,7 +859,8 @@ as independent DOFs.
 | EnforcedMotionConstr | section 5.6 |
 
 A following pressure (load stiffness in buckling) is not in phase 3. The differential stiffness facet receives the
-preload displacements, not its loads; adding the loads (`ElementLoadContext`) to that facet is phase 6.
+preload displacements, not its loads; adding the loads (`ElementLoadContext`) to that facet is later work (section
+14).
 
 ## 8. Mass and modal analysis
 
@@ -595,7 +890,26 @@ preload displacements, not its loads; adding the loads (`ElementLoadContext`) to
   zero at grid points of solids only.
 - Support forces: those of grid DOFs, plus the forces of held entity DOFs carried to the grid points (section 5.6).
 - Multipoint constraint forces: user relations only.
-- Entity DOFs never appear in any user table.
+- Entity DOFs never appear in any user table: the applied loads and the multipoint constraint forces on them (a
+  pressure, the glue or the fastener of a face) are carried to the grid points of their entities as the reactions
+  are, so that each table has the resultant of what it reports.
+- Grid point force balance (`NodeForceOutput`). The elements also act on the unknowns of their edges, faces and
+  interiors. Every force on an entity DOF (of an element, of a load, of a relation) is carried to the grid points of
+  its entity (`assembly::EntityForceCarry`, `FormulationModel::entityGridRows`: the two grid points of an edge, those
+  of a face, the corners of the element of an interior) as forces and moments with the same resultant force and
+  moment: the work of the entity's forces in the six rigid motions (the values of section 5.7) is that of the carried
+  forces. The set of least norm is taken, the moments counted against the forces with the size of the entity, so that
+  moments are used only where forces cannot give the resultant (the torque about an edge, which its two grid points
+  carry as moments: the bending moment through a section of a plate). The map depends on the entity alone, never on
+  the element or the load, so what balances on an entity DOF balances once carried; a derived support takes its own
+  map (section 5.6), as its reaction does. Then, as for `ClassicFormulation`: the rows of a grid point sum to zero,
+  the rows of one element have no resultant, and the rows of the grid points of a free body give the forces on it.
+  The forces of the formulation's own relations (ties, observer relations, tied rotations) are a row of their own,
+  `elementFormulation`, with no resultant: they are no card of the model. The multipoint constraint force rows are
+  not split by relation in a model with entities. A case that combines cases of several constraint sets (a SUBCOM)
+  has no one set of relations: its `elementFormulation` row is what closes the balance of the grid point. The
+  condensed path gives the table of the full path; the full path streamed gives no grid point forces for any
+  formulation.
 
 ### 10.2 Shells
 
@@ -607,8 +921,14 @@ same tables and columns, so that every client reads them unchanged. The resultan
 ### 10.3 Solids
 
 Rows of `solids/SolidRecovery` (the 20 columns) at the centre and corners, in CORDM, from the stresses of the element
-at those points. The particular stresses of a body force are added, so the recovery reads the subcase's
-accelerations: `NodalDisplacements` gains them. The corner value of one element is 1 to 3 % from the converged value
+at those points. The particular stresses of a body force (GravityLoad, RotationalForceLoad) are not added yet: the
+recovery does not read the subcase's accelerations (later work, section 14), so the stresses of a solid under its
+weight are first order in the element size (0.2 % at the centres and up to 3 % at the corners of a 2 × 2 × 2 mesh;
+the displacements and the reactions are exact). The pressure of a `FacePressureLoad` given at the corners of a face
+is interpolated by position (the functions of the corners of the straight element at the nearest point, as the
+temperatures), so that a pressure linear in the position is read as such on a face whose geometry the skin reads
+curved. The strain energy density divides the energy by the volume the element itself gives
+(`ElementFamily::computeVolumes`). The corner value of one element is 1 to 3 % from the converged value
 on a regular mesh. The mean over the elements at a grid point is the accurate grid value (document 28), so a grid
 point stress table is added (section 15, decision 5): for each grid point of solids of the new formulation, the mean
 of the corner stresses of its solids, in the basic system, with the principal values of `solids/SolidRecovery`.
@@ -626,8 +946,8 @@ fold.
 
 ## 11. Support catalog and checks
 
-- `addSupportTo`: the fields each family reads, with the rules of section 4 (refused fields: MID1 or MID2 blank, pin
-  flags, BeamShapeProp, warping).
+- `addSupportTo`: the fields each family reads, with the rules of section 4 (refused fields: the plane-strain option
+  MID2 = −1, pin flags of a line on a shell edge, BeamShapeProp, warping).
 - `check()`: everything of section 4, the topology of section 5.2, the consistency of section 4.5, degenerate
   elements (a solid that folds: Jacobian of both signs; a shell with a zero-length edge), and the trace residual of the
   solids (section 6).
@@ -645,16 +965,29 @@ fold.
 | A BeamDistributedLoad on a line on a shell edge works on the kinematics of the line (θ = a_T t + t × du/ds, the offset o × f included); a couple about the shell normal is taken, on −μ · du/ds | The load is consistent with the energy of the line; the reference's edge traction puts the couple about μ on −β · t, which differs by the shear γ · t (zero for a Kirchhoff shell, small for a thin one). |
 | The forces of a bar or beam on a shell edge are the section forces of the line kernel along it; the Bar2 row reads its shear forces, axial force and torque at its middle | The shell loads the line along the edge: no end forces describe the forces between the ends. A line alone keeps the end forces of its equilibrium (`r = K x − f`), exact at the ends. |
 | PointsPressureLoad on a face of a shell or a solid of the formulation goes through the pressure facet (section 7), of the sign of the order of its grid points | The consistent load of the element instead of forces at the grid points. |
-| Fasteners and welds pierce the shells of the formulation through the translations of the corners of the pierced element (the weighted least-squares interpolation of `fasteners/PiercingInterpolation`) | Exact for rigid motions, and the corner translations are unknowns of the formulation; the point interpolation facet of section 5.10 is not written yet. |
+| Fasteners, welds and glued contacts read the shells and solids of the formulation at their point over every DOF of the element (section 5.10), the point placed by the shape functions of the card | The reference has no such elements. |
 | Temperatures of a solid: the corner changes interpolated by the functions of the corners of the straight element at the point nearest to each point of the kernel; an expansion that differs between directions is refused under a temperature load | The kernel of the reference takes one expansion coefficient and a temperature field of the position. |
 | A pressure along a direction on a solid face is taken when it is the same at every corner of the face | The kernel's traction field is uniform there. |
+| Membrane-only and bending-only shells (section 4.1): the strains of the part a section lacks are recovered as zero (the generalised inverse of [A B; Bᵀ D], `membraneBendingCompliance`), and the strains of an offset membrane-only section are one split (e, κ) of its strain e + z0 κ | The reference takes both parts; its compliance is the inverse of the whole section. |
+| Two shells on the same corner grids are refused | The reading of the surface, the supports along the edges (an external edge has one shell) and the continuity of the shear (the second shell of an edge across from the first) of the reference count one shell per side of an edge. |
+| The static condensation of components takes the formulation (section 5.11) | The reference solves the whole model at once. |
+| Supports are read along the edges inside the shells that have a grid point inside them, as along the external ones (section 5.6) | The reference reads the grid supports along the external edges and states the others on the edges; a model file states supports at grid points only, and a line of supports inside a plate must hold it along the line. |
+| Supports along a direction that is no basic axis, the same at the grid points of an edge or a face, are relations on its functions (section 5.6) | The reference has global axes only; a plane of symmetry in any orientation must hold the edges and faces in it. |
+| The reactions of the held edges and faces, the loads and the forces of the relations on entity DOFs are reported at the grid points with their resultant force and moment (sections 5.6, 10.1) | The reference reports no table at grid points; the map that carries held values along a chord does not balance the moment on a curved edge. |
+| At a grid point of shells whose lines all lie on shell edges, the rotation follows the shells in the directions the lines do not stiffen (section 5.4) | The reference holds those directions at zero (tie 5): a couple or a rigid element at the end of a rod on a shell edge would act on nothing. |
+| A rotation held at one grid point of shells, or made dependent there by a relation of the model, is tied to the mean rotation of the shells (section 5.6); the edges and faces follow the relations of the model as they follow supports | The reference has no rigid element and reads a held rotation along the edges only: the six components held at one grid point would not hold a free body, and a rigid element joined at one grid point would hinge. |
+| Grid point force balance with the forces of the entity DOFs carried to the grid points (section 10.1) | The reference has no such table. |
 
 Implementation notes. The rows of the element tables are those of section 10; the grid point stress table of section
 10.3 has the element type `SolidGridPoints` (one row per grid point, its ID as element and place, the columns of the
-stress rows of the solids, basic system). The geometry report of section 10.5 is a set of information diagnostics:
-`geometry-report` (the counts and the largest kink and rounding), `geometry-kink` (an edge whose normals differ by
-more than 1°) and `geometry-rounding` (an edge along which the surface read turns by more than 15° from the plane of
-the corners of a shell: a fold that is not declared raw). A moment at a grid point of solids alone is refused
+stress rows of the solids, basic system). The geometry report of section 10.5 is a set of diagnostics:
+`geometry-report` (information: the counts and the largest kink and rounding); `geometry-kink` (an edge whose normals
+differ by more than 1°: a warning along an edge of one or two shells that is not declared raw, which the shell takes
+as a fold; an information along a raw edge or a junction); `geometry-rounding` (an edge along which the surface read
+turns from the plane of the corners of a shell by more than 15°: an information, and a warning above 30°, a fold
+that is not declared raw; and a warning for an edge of the outline that leaves its chord by more than 30° in the
+surface: a corner of the outline read as a curve). A shell left without an angle at a corner by the reading is
+refused (`degenerate-geometry`), with the edges to declare raw. A moment at a grid point of solids alone is refused
 (`load-unsupported`); an element or relation using such a rotation is warned (`rotation-held`).
 
 ## 13. Verification
@@ -679,7 +1012,12 @@ Benchmarks through the whole path (reader, `modelFromReader`, run), against thei
 plates (simply supported and clamped, thin and thick), the Scordelis-Lo roof, the pinched cylinder, the pinched
 hemisphere, the twisted beam, a box beam with folds, laminates, offsets, line elements alone and on shells, solids of
 every shape with and without mid-side nodes, shells and lines on solids, modes, buckling, inertia relief. Slow cases
-go to a separate suite, not to the fast suite of `wasm/test` with its one-second limit per case.
+go to a separate suite, not to the fast suite of `wasm/test` with its one-second limit per case:
+`wasm/test/validation/*.test.mjs` (`node --test`, about four minutes), six files of about 500 cases with the criteria
+of section 13.6 (shells in statics; shells in modes, buckling and inertia relief; lines; solids; mixed meshes;
+assemblies through every path). The cases that do not meet their criterion are listed with their reason in
+`wasm/test/validation/known-limits.mjs` and reported as "todo": a limit of section 3.6, later work of section 14, or
+a defect outside the formulation. No criterion is loosened there.
 
 ### 13.4 Checks of this repository
 
@@ -700,8 +1038,8 @@ In `wasm/test`, tiny models within one second per case:
 - Every existing test passes unchanged.
 - A model that selects no new formulation is numbered, assembled and solved bit for bit as before (compare the
   results of the existing suites before and after each phase of section 5).
-- `ELEMENT_FORMULATION_VERSION` does not change: no matrix of an existing formulation changes. The condensation cache
-  is refused with the new formulation until phase 6.
+- `ELEMENT_FORMULATION_VERSION` does not change: no matrix of an existing formulation changes. The keys of the
+  condensation cache of a model without the formulation are unchanged.
 
 ### 13.6 Criteria
 
@@ -721,7 +1059,8 @@ Each phase ends with the full test suite passing and its own checks of section 1
 | 4 | line elements on shell edges and alone, Λ, tie 5 and 6, line loads | the same, for lines |
 | 5 | solids of every shape, mid-side nodes, skin reading, ties 1 to 4, solid loads and recovery, the grid point stress table | the same, for solids and mixed models |
 | 6 | the extensions the owner chose (section 15): point interpolation facet (fasteners, welds, glue), pin flags of lines alone, membrane-only and bending-only shells, condensed and streamed paths, components, superelements and the condensation cache, design derivatives | each with its own checks |
-| later | not chosen yet: edge reading of rigid elements, skew supports, loads in the differential stiffness facet (following pressure), grid point force balance | |
+| 7 | finishing: supports read along the edges inside the shells and along directions that are no basic axis, rigid elements and multipoint constraints read along the edges, rotations no edge reads tied to the mean rotation of the shells, rotations the lines do not stiffen following the shells, grid point force balance and force tables carried to the grid points, entity names in the messages of the factorisations, the pivot ratio test at entity DOFs, the geometry report as warnings, the validation suite of section 13.3 (`wasm/test/validation`) and the defects it found | each with its own checks |
+| later | not chosen yet: supports along a direction that turns along an edge (a cylindrical CD along a circle, section 5.6), the particular stresses of body forces in the solids (section 10.3), loads in the differential stiffness facet (following pressure), the formulation's problems listed by the support check before a run, the pivot reference on the condensed and streamed paths | |
 
 ## 15. Decisions of the owner (15 November 2026)
 

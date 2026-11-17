@@ -1,0 +1,183 @@
+#include "oos/elements/mixedHybrid/geometry/ReferenceShapes.hpp"
+#include "oos/elements/mixedHybrid/model/MixedHybridModel.hpp"
+#include "oos/elements/mixedHybrid/solid/VolumeShape.hpp"
+
+#include <algorithm>
+#include <map>
+#include <tuple>
+
+// The points of the elements of the formulation that the elements of other cards read: a fastener or a weld that
+// pierces a shell, a glued contact whose primary face is a face of a shell or of a solid
+// (docs/mixed-hybrid-formulation-spec.md section 5.10; not in the reference).
+
+namespace oos::elements::mixedHybrid
+{
+
+namespace
+{
+
+// The terms of a row on one DOF each, summed, by increasing DOF (kind, row, component), without the zero ones.
+void mergeTerms(std::vector<FormulationRelationTerm>& terms)
+{
+    std::map<std::tuple<int, std::int32_t, int>, std::pair<ElementDof, double>> sums;
+    for (const FormulationRelationTerm& term : terms)
+    {
+        auto& [dof, sum] = sums[{static_cast<int>(term.dof.kind), term.dof.row, static_cast<int>(term.dof.component)}];
+        dof = term.dof;
+        sum += term.coefficient;
+    }
+    terms.clear();
+    for (const auto& [key, sum] : sums)
+        if (sum.second != 0.0)
+            terms.push_back({sum.first, sum.second});
+}
+
+// The reference point of a shell at the point given by the shape functions `shapeValues` of grid points of its card
+// (node table rows `gridRows`): Σ N_j r_j / Σ N_j, r_j the reference corner of a corner grid point, the middle of the
+// edge of a mid-side grid point. The shape functions of a card reproduce the linear functions of its parameters,
+// those of the reference element of the shell: on a flat element of straight sides it is the point itself. Empty
+// when a grid point is not one of the shell's.
+std::optional<ReferencePoint> shellReferencePoint(const MixedShell& shell, std::span<const std::int32_t> gridRows,
+                                                  std::span<const double> shapeValues)
+{
+    if (gridRows.empty() || gridRows.size() != shapeValues.size())
+        return std::nullopt;
+    ReferencePoint point{};
+    double total = 0.0;
+    for (std::size_t j = 0; j < gridRows.size(); ++j)
+    {
+        if (gridRows[j] < 0)
+            continue; // an absent mid-side point of a face
+        std::optional<ReferencePoint> at;
+        for (std::size_t k = 0; k < shell.cornerCount && !at; ++k)
+        {
+            if (shell.gridRows[k] == gridRows[j])
+                at = referenceCorner(shell.cornerCount, k);
+            else if (shell.midRows[k] >= 0 && shell.midRows[k] == gridRows[j])
+                at = referenceEdgePointAndDirection(shell.cornerCount, k, 0.5).first;
+        }
+        if (!at)
+            return std::nullopt;
+        point[0] += shapeValues[j] * (*at)[0];
+        point[1] += shapeValues[j] * (*at)[1];
+        total += shapeValues[j];
+    }
+    if (!(total > 0.0))
+        return std::nullopt;
+    return ReferencePoint{point[0] / total, point[1] / total};
+}
+
+} // namespace
+
+std::optional<FormulationModel::PointMotion> MixedHybridModel::shellPointMotion(std::int32_t elementId,
+                                                                                std::span<const std::int32_t> gridRows,
+                                                                                std::span<const double> shapeValues,
+                                                                                const base::Vec3& point) const
+{
+    if (m_shellPart == nullptr || !m_shellPart->usable())
+        return std::nullopt;
+    const auto found = m_shellOfId.find(elementId);
+    if (found == m_shellOfId.end())
+        return std::nullopt;
+    const MixedShell& shell = m_shells[found->second];
+    const std::optional<ReferencePoint> at = shellReferencePoint(shell, gridRows, shapeValues);
+    if (!at)
+        return std::nullopt;
+    const ShellPart::PointRows rows = m_shellPart->pointRows(shell.partIndex, (*at)[0], (*at)[1]);
+    PointMotion motion;
+    for (std::size_t r = 0; r < 6; ++r)
+        appendPartTerms(rows.rows[r], 1.0, motion.rows[r]);
+    // The translation of the piercing point P with the surface: u + θ × d, d = P − X (zero on a flat element).
+    const std::array<double, 3> d{point[0] - rows.point[0], point[1] - rows.point[1], point[2] - rows.point[2]};
+    for (std::size_t c = 0; c < 3; ++c)
+    {
+        const std::size_t next = (c + 1) % 3;
+        const std::size_t last = (c + 2) % 3;
+        // (θ × d)_c = θ_next d_last − θ_last d_next
+        if (d[last] != 0.0)
+            appendPartTerms(rows.rows[3 + next], d[last], motion.rows[c]);
+        if (d[next] != 0.0)
+            appendPartTerms(rows.rows[3 + last], -d[next], motion.rows[c]);
+    }
+    for (std::vector<FormulationRelationTerm>& row : motion.rows)
+        mergeTerms(row);
+    return motion;
+}
+
+std::optional<FormulationModel::PointMotion> MixedHybridModel::facePointMotion(
+    std::span<const std::int32_t> faceGridRows, std::span<const double> shapeValues) const
+{
+    const std::size_t count = faceGridRows.size();
+    if ((count != 3 && count != 4 && count != 6 && count != 8) || shapeValues.size() != count)
+        return std::nullopt;
+    const std::size_t corners = count == 3 || count == 6 ? 3 : 4;
+    const std::optional<FormulationFace> face = faceOf(faceGridRows.first(corners));
+    if (!face)
+        return std::nullopt;
+    PointMotion motion;
+    if (const MixedShell* shell = shellOf(face->card, face->batchRow))
+    {
+        const std::optional<ReferencePoint> at = shellReferencePoint(*shell, faceGridRows, shapeValues);
+        if (!at)
+            return std::nullopt;
+        const ShellDisplacementRows rows =
+            m_shellPart->displacementRowsAt(shell->partIndex, std::span<const ReferencePoint>(&*at, 1)).front();
+        for (std::size_t c = 0; c < 3; ++c)
+            appendPartTerms(rows.rows[c], 1.0, motion.rows[c]);
+    }
+    else if (const MixedSolid* solid = solidOf(face->card, face->batchRow))
+    {
+        // The point of the reference shape: Σ N_j r_j / Σ N_j over the vertices of the corners and the middles of the
+        // edges of the mid-side points.
+        const VolumeShape shape = m_solidPart->shapeOf(solid->partIndex);
+        const std::span<const SolidPoint> vertices = shapeVertices(shape);
+        const std::span<const ShapeEdge> edges = shapeEdges(shape);
+        SolidPoint r{};
+        double total = 0.0;
+        for (std::size_t j = 0; j < count; ++j)
+        {
+            if (faceGridRows[j] < 0)
+                continue;
+            std::optional<SolidPoint> at;
+            const std::int32_t grid = gridIndexOfRow(faceGridRows[j]);
+            for (std::size_t k = 0; k < solid->part.corners.size() && !at; ++k)
+                if (grid >= 0 && solid->part.corners[k] == static_cast<std::size_t>(grid))
+                    at = vertices[k];
+            for (std::size_t e = 0; e < solid->midRows.size() && e < edges.size() && !at; ++e)
+                if (solid->midRows[e] == faceGridRows[j])
+                    at = scl3(add3(vertices[edges[e][0]], vertices[edges[e][1]]), 0.5);
+            if (!at)
+                return std::nullopt;
+            r = add3(r, scl3(*at, shapeValues[j]));
+            total += shapeValues[j];
+        }
+        if (!(total > 0.0))
+            return std::nullopt;
+        r = scl3(r, 1.0 / total);
+        std::variant<SolidPart::SharedKernel, std::string> kernel =
+            m_solidPart->kernelOf(solid->partIndex, EntityLayout::Kind::Static, false);
+        if (!std::holds_alternative<SolidPart::SharedKernel>(kernel))
+            return std::nullopt; // a refused solid: its family reports it
+        const std::vector<double> functions = std::get<SolidPart::SharedKernel>(kernel)->functionsAt(r);
+        const std::vector<SolidLocalUnknown> local =
+            m_solidPart->localUnknowns(solid->partIndex, EntityLayout::Kind::Static);
+        // u_c = Σ_j N_j q_{3j+c} (the interior fields of a modal analysis vanish on the faces)
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            std::vector<SolidTerm> terms;
+            for (std::size_t j = 0; j < functions.size() && 3 * j + c < local.size(); ++j)
+                if (functions[j] != 0.0)
+                    terms.push_back({local[3 * j + c], functions[j]});
+            appendSolidTerms(terms, 1.0, motion.rows[c]);
+        }
+    }
+    else
+    {
+        return std::nullopt;
+    }
+    for (std::vector<FormulationRelationTerm>& row : motion.rows)
+        mergeTerms(row);
+    return motion;
+}
+
+} // namespace oos::elements::mixedHybrid

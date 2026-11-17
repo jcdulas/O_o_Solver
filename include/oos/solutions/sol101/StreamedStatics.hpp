@@ -224,6 +224,11 @@ struct StreamedSetRecord
 // requests, outputs other than the displacements and the element tables (SPC and MPC forces, applied loads, grid point
 // forces, strain energies), and the loads StreamedLoads refuses.
 //
+// A model of an element formulation with entities (MixedHybridFormulation, docs/mixed-hybrid-formulation-spec.md
+// section 5.12) is taken: its entities are nodes of the fronts and of the output windows, their rigid-body motions
+// the formulation's fields (StreamedFront::entityRigidRowsOf), and its outputs are made from the whole g set of every
+// vector (StreamedOutputs::keepsWholeVectors); the grid point forces of a load basis' cuts are refused there.
+//
 // Thread-safety: stateless. Ownership: none.
 class StreamedStatics
 {

@@ -249,7 +249,7 @@ void appendTable(const char* kind, std::string elementType, std::int32_t subcase
 constexpr const char* SOLID_GRID_POINT_TYPE = "SolidGridPoints";
 
 // Appends the table of the stresses at the grid points of the solids of the formulation of `dofMap`, when the stresses
-// of a solid of it are asked (the means over the solids the selection takes).
+// of a solid of it are asked (the means over the solids the selection takes), at the grid points of its scope.
 void appendGridPointStresses(const assembly::DofMap& dofMap, std::int32_t subcase,
                              const elements::NodalDisplacements& displacements, const ElementOutputSelection& chosen,
                              base::MemoryBudget& budget, std::vector<ElementResultTable>& tables)
@@ -257,10 +257,24 @@ void appendGridPointStresses(const assembly::DofMap& dofMap, std::int32_t subcas
     const elements::FormulationModel* model = dofMap.formulation();
     if (model == nullptr || !chosen.stress.isRequested)
         return;
+    const GridPointStressScope* scope = chosen.gridPointScope.get();
+    const auto takes = [&](std::int32_t elementId)
+    {
+        if (scope != nullptr && scope->elements)
+            return std::binary_search(scope->elements->begin(), scope->elements->end(), elementId);
+        return chosen.stress.takes(elementId);
+    };
     std::vector<elements::FormulationModel::GridPointStress> stresses; // one per grid point of the solids taken
     model->gridPointStresses(
-        dofMap.layoutKind(), displacements,
-        [&](std::string_view, std::int32_t elementId) { return chosen.stress.takes(elementId); }, stresses);
+        dofMap.layoutKind(), displacements, [&](std::string_view, std::int32_t elementId) { return takes(elementId); },
+        stresses);
+    if (scope != nullptr)
+        std::erase_if(stresses,
+                      [&](const elements::FormulationModel::GridPointStress& stress)
+                      {
+                          return !std::binary_search(scope->gridIds.begin(), scope->gridIds.end(),
+                                                     dofMap.gridId(stress.gridRow));
+                      });
     if (stresses.empty())
         return;
     elements::ElementResultBlock block;
@@ -296,9 +310,12 @@ bool ElementKindSelection::selectsSameAs(const ElementKindSelection& other) cons
 
 bool ElementOutputSelection::selectsSameAs(const ElementOutputSelection& other) const
 {
+    const bool isSameScope = gridPointScope == other.gridPointScope ||
+                             (gridPointScope != nullptr && other.gridPointScope != nullptr &&
+                              *gridPointScope == *other.gridPointScope);
     return stress.selectsSameAs(other.stress) && strain.selectsSameAs(other.strain) &&
            forces.selectsSameAs(other.forces) && isStrainAtFibres == other.isStrainAtFibres &&
-           isMaximumShear == other.isMaximumShear;
+           isMaximumShear == other.isMaximumShear && isSameScope;
 }
 
 namespace
@@ -1318,6 +1335,22 @@ void ElementResultBuilder::buildWindow(std::span<const std::int32_t> subcases,
     buildCasesIn(subcases, displacements, vectorisedCases, budget, tables, pool, cancellation, selection, {}, &window);
 }
 
+void ElementResultBuilder::buildGridPointStresses(std::int32_t subcase, std::span<const double> displacementsG,
+                                                  base::MemoryBudget& budget, std::vector<ElementResultTable>& tables,
+                                                  const ElementOutputSelection* selection) const
+{
+    if (displacementsG.size() != static_cast<std::size_t>(m_dofMap->gSetSize()))
+        throw std::invalid_argument(base::concatenate(
+            {"ElementResultBuilder::buildGridPointStresses: expected the displacements of the g set (",
+             std::to_string(m_dofMap->gSetSize()), " values), found ", std::to_string(displacementsG.size())}));
+    const ElementOutputSelection everything;
+    const elements::NodalDisplacements displacements =
+        elements::NodalDisplacements::ofGSet(displacementsG, static_cast<std::size_t>(m_dofMap->gridCount()),
+                                             static_cast<std::size_t>(m_dofMap->scalarCount()), &m_dofMap->entities());
+    appendGridPointStresses(*m_dofMap, subcase, displacements, selection != nullptr ? *selection : everything, budget,
+                            tables);
+}
+
 void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
                                         linalg::ConstDenseMatrixView displacementsG, std::size_t vectorisedCases,
                                         base::MemoryBudget& budget, std::span<std::vector<ElementResultTable>> tables,
@@ -1325,8 +1358,7 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
                                         const ElementOutputSelection* selection, std::span<const CaseLoads> loads,
                                         const RecoveryWindow* window) const
 {
-    const auto gSize = window != nullptr ? 6 * window->gridSlotCount + window->scalarSlotCount
-                                         : static_cast<std::size_t>(m_dofMap->gSetSize());
+    const auto gSize = window != nullptr ? window->rowCount() : static_cast<std::size_t>(m_dofMap->gSetSize());
     const elements::DisplacementSlots* slots = window != nullptr ? &window->slots : nullptr;
     if (displacementsG.rows != gSize || displacementsG.columns != subcases.size() || tables.size() != subcases.size())
         throw std::invalid_argument(base::concatenate(
@@ -1371,7 +1403,20 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
             cases.push_back(displacements);
         }
         else
-            cases.push_back({column.first(gridValues), column.subspan(gridValues), temperatures, slots});
+        {
+            // The window's rows: its grid slots, its scalar slots, then the blocks of its entities.
+            elements::NodalDisplacements displacements;
+            displacements.grid = column.first(gridValues);
+            displacements.scalar = column.subspan(gridValues, window->scalarSlotCount);
+            displacements.temperatures = temperatures;
+            displacements.slots = slots;
+            if (window->entityValueCount > 0)
+            {
+                displacements.entity = column.subspan(gridValues + window->scalarSlotCount);
+                displacements.entityLayout = &m_dofMap->entities();
+            }
+            cases.push_back(displacements);
+        }
     }
     const auto lineLoadsOf = [&](std::size_t c, std::size_t b) -> std::span<const elements::ElementLineLoad>
     {
@@ -1380,6 +1425,10 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
         return loads[c].lineLoads[b];
     };
     std::optional<base::BudgetedBuffer<double>> zero; // the displacements of the rows at rest, made when first needed
+    // The vectorised recovery reads the grid and scalar points only (its rows at rest, its unit displacements, the
+    // DOFs of its slopes): in a model with the entities of a formulation, which a fastener on its shells reads, every
+    // kind is recovered case by case.
+    const std::size_t vectorisable = m_dofMap->entities().totalDofCount() == 0 ? vectorisedCases : 0;
 
     for (std::size_t b = 0; b < batches.size(); ++b)
     {
@@ -1409,7 +1458,7 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
             if (!plans[k])
                 continue;
             const std::size_t minimum = family.vectorisedRecoveryMinCases(plans[k]->output);
-            if (minimum > 0 && vectorisedCases >= minimum)
+            if (minimum > 0 && vectorisable >= minimum)
             {
                 vectorisedIndex[k] = vectorised.size();
                 const elements::RecoveryOutput output = elements::RecoveryOutput::of(plans[k]->output);
@@ -1425,7 +1474,7 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
                 output == elements::LayerOutput::Strains ? chosen.strain : chosen.stress;
             const std::size_t minimum = family.vectorisedLayerRecoveryMinCases(output);
             if (family.layerOutputColumns(output).empty() || !kindSelection.isRequested || minimum == 0 ||
-                vectorisedCases < minimum)
+                vectorisable < minimum)
                 continue;
             vectorisedLayerIndex[k] = vectorised.size();
             vectorised.push_back(
@@ -1508,7 +1557,8 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
                     break;
             }
     }
-    // The stresses at the grid points of the solids of the formulation (the streamed path, a window, has none).
+    // The stresses at the grid points of the solids of the formulation (the streamed path, a window, makes them from
+    // the whole g set: buildGridPointStresses).
     if (window == nullptr)
         for (std::size_t c = 0; c < subcases.size(); ++c)
             appendGridPointStresses(*m_dofMap, subcases[c], cases[c], chosen, budget, tables[c]);

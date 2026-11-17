@@ -62,9 +62,34 @@ public:
             values[static_cast<std::size_t>(position)] += value;
     }
 
+    // add() for two DOFs given by their node and component (the terms of the rows of Gm, looked up once per row), with
+    // the block of the last pair of nodes remembered: the terms of a row come by increasing DOF, so the six
+    // components of a node follow one another, and a relation of the element formulation has hundreds of terms.
+    void add(std::span<double> values, const linalg::NodeDof& a, const linalg::NodeDof& b, double value)
+    {
+        if (a.node < b.node)
+            return; // the upper triangle of two nodes: its partner writes the stored value
+        if (a.node != m_lastRowNode || b.node != m_lastColumnNode)
+        {
+            m_lastRowNode = a.node;
+            m_lastColumnNode = b.node;
+            m_lastBlock = m_pattern->findBlock(a.node, b.node);
+        }
+        if (m_lastBlock < 0)
+            throw std::invalid_argument(base::concatenate(
+                {"MsetElimination: a term of nodes ", std::to_string(a.node), " and ", std::to_string(b.node),
+                 " of Knn is outside the pattern of the stiffness; build the node graph with MsetCouplings"}));
+        values[static_cast<std::size_t>(m_pattern->blockValueOffset(m_lastBlock) + a.component +
+                                        static_cast<std::int64_t>(m_pattern->nodeDofCount(a.node)) * b.component)] +=
+            value;
+    }
+
 private:
     const linalg::SparsePattern* m_pattern;
     const DofMap* m_dofMap;
+    std::int32_t m_lastRowNode = -1;
+    std::int32_t m_lastColumnNode = -1;
+    std::int64_t m_lastBlock = -1;
 };
 
 // The g DOFs of a node.
@@ -85,13 +110,25 @@ void MsetElimination::reduce(const linalg::BlockSparseMatrix& kgg, const linalg:
     const std::span<const double> k = kgg.values();
     const std::span<double> out = knn.values();
     std::copy(k.begin(), k.end(), out.begin());
-    const FullMatrixAccess access(kgg.pattern(), dofMap);
+    FullMatrixAccess access(kgg.pattern(), dofMap);
+    // The node and component of every term of Gm, by row (bounded by Gm's terms).
+    std::vector<std::size_t> termOffsets(gm.rowCount() + 1, 0);
+    for (std::size_t r = 0; r < gm.rowCount(); ++r)
+        termOffsets[r + 1] = termOffsets[r] + gm.row(r).size();
+    std::vector<linalg::NodeDof> termNodes(termOffsets.back());
+    for (std::size_t r = 0; r < gm.rowCount(); ++r)
+    {
+        const std::span<const ConstraintTerm> row = gm.row(r);
+        for (std::size_t t = 0; t < row.size(); ++t)
+            termNodes[termOffsets[r] + t] = dofMap.nodeDofOf(row[t].dof);
+    }
 
     std::vector<base::DofIndex> coupled; // the DOFs of the nodes coupled to one node: bounded by a node's degree
     for (std::size_t r = 0; r < gm.rowCount(); ++r)
     {
         const base::DofIndex d = gm.mDofs()[r];
         const std::span<const ConstraintTerm> rowD = gm.row(r);
+        const linalg::NodeDof* nodesD = termNodes.data() + termOffsets[r];
         const std::int32_t nodeD = dofMap.nodeDofOf(d).node;
         coupled.clear();
         appendNodeDofs(dofMap, nodeD, coupled);
@@ -106,9 +143,11 @@ void MsetElimination::reduce(const linalg::BlockSparseMatrix& kgg, const linalg:
             if (const std::optional<std::size_t> rowE = gm.findRow(i))
             {
                 // Gmᵀ·K̄mm·Gm: d and e = i both dependent.
-                for (const ConstraintTerm& termJ : rowD)
-                    for (const ConstraintTerm& termK : gm.row(*rowE))
-                        access.add(out, termJ.dof, termK.dof, termJ.coefficient * kid * termK.coefficient);
+                const std::span<const ConstraintTerm> termsE = gm.row(*rowE);
+                const linalg::NodeDof* nodesE = termNodes.data() + termOffsets[*rowE];
+                for (std::size_t j = 0; j < rowD.size(); ++j)
+                    for (std::size_t m = 0; m < termsE.size(); ++m)
+                        access.add(out, nodesD[j], nodesE[m], rowD[j].coefficient * kid * termsE[m].coefficient);
                 continue;
             }
             // K̄nm·Gm and its transpose: i independent.

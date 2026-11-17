@@ -7,6 +7,7 @@
 #include "oos/base/ids/EntityId.hpp"
 #include "oos/base/memory/BudgetedBuffer.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/input/tables/FastenerPiercingTable.hpp"
 
 #include <cstdint>
@@ -30,6 +31,10 @@ namespace oos::assembly
 // point that several fasteners name (the middle point of a stack of three sheets) is constrained once, by the first
 // side that names it in table order.
 //
+// A side that pierces a shell of an element formulation with unknowns besides its grid points (`formulation`, null:
+// none) reads the displacement and the rotation of that shell at the point over its DOFs instead
+// (elements::resolveSideMotion, docs/mixed-hybrid-formulation-spec.md section 5.10).
+//
 // Problems are Diagnostics on the card and ID of the fastener (field GA or GB, IDA or IDB for the pierced element): a
 // grid point of the table that the model does not define, shape functions that are not an interpolation.
 //
@@ -39,7 +44,7 @@ class FastenerConstraints
 public:
     // `piercings` may be null (no fastener piercing table: no rows).
     FastenerConstraints(const input::FastenerPiercingTable* piercings, const DofMap& dofMap, base::MemoryBudget& budget,
-                        base::DiagnosticSink& sink);
+                        base::DiagnosticSink& sink, const elements::FormulationModel* formulation = nullptr);
 
     [[nodiscard]] std::size_t rowCount() const noexcept { return m_rowCount; }
     [[nodiscard]] std::int64_t termCount() const noexcept { return m_termCount; }

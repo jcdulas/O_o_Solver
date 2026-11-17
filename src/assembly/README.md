@@ -25,7 +25,9 @@ folders in that order, which is the order in which the pieces depend on one anot
   `elements/fasteners/PiercingInterpolation` (the fastener elements condense their auxiliary points themselves; these
   rows recover a given GA or GB and pass what is attached to it to the pierced element; a point named by two fasteners
   is constrained once). Handed to RigidElimination as its last argument, built
-  from `snapshot.fastenerPiercings()` when the snapshot has the table.
+  from `snapshot.fastenerPiercings()` when the snapshot has the table. A side that pierces a shell of an element
+  formulation with entities reads that shell at the point over all its DOFs (`elements::resolveSideMotion`,
+  FormulationModel::shellPointMotion).
 - `constraints/GlueConstraints`: the glue equations of glued contact, the node-to-surface tie of the open-source
   solver CalculiX (G. Dhondt, CalculiX CrunchiX User's Manual 2.21, section 7.132 *TIE). The two surfaces come from
   O_o_Reader's contactNodePairs taken with the reader's own rule (rule="components"): the grid points of each
@@ -43,7 +45,22 @@ folders in that order, which is the order in which the pieces depend on one anot
   subcase's BCONTACT, refuses touching contact (IGLUE 0) and a model without the columns the glue reads
   (ContractError). A component an SinglePointConstr holds or another relation makes dependent keeps it (never a glue through an
   SinglePointConstr'd DOF); a point tied by an earlier pair keeps that tie, an equation closing a loop of glue equations is left
-  out; each case is reported per pair. Handed to RigidElimination after the MPCs.
+  out; each case is reported per pair. A primary face of an element of a formulation with entities
+  (`GlueContext::formulation`) gives the displacement of that element at the tied point over all its DOFs
+  (FormulationModel::facePointMotion) instead of Σ N_i·R_i·u_i. Handed to RigidElimination after the MPCs.
+- `constraints/FormulationConstraints`: what an element formulation with unknowns outside the grid points adds to a
+  constraint set (the mixed hybrid formulation, docs/mixed-hybrid-formulation-spec.md sections 5.4 to 5.6): its ties,
+  the edges and faces that follow the grid components a relation of the model makes dependent (as they follow a
+  support), the observer relations of the rotations of shell grid points that something else uses, the excluded set
+  of those nothing uses, and the tied rows of a rotation held or dependent at a grid point where no edge reads it (the
+  mean rotation of the shells written on one of their unknowns). Its relations name the independent DOFs of the
+  model's relations, never their dependent ones. The supports along a direction that is no basic axis
+  (`FormulationModel::supportRows`: a plane of symmetry in any orientation) are rows eliminated with the tied ones.
+  `withFormulationSupports` adds the supports of the entity DOFs the formulation derives from an SPC set, each with
+  the map that reports its reaction at the grid points. Handed to RigidElimination first.
+- `dofs/EntityForceCarry`: the forces on the entity DOFs carried to the grid points of their entities with their
+  resultant force and moment (the set of least norm), for the grid point force balance; a derived support takes its
+  own map.
 - `constraints/RigidElimination`: Gm, u_m = Gm·u_n, from all of them, chains resolved in dependency order (a cycle and a
   DOF dependent twice are diagnostics); `expandToG`, `reduceToN` (loads by virtual work) and `computeMpcForces`
   (MPCFORCES: q_m = (K·u − P)_m, q_n = −Gmᵀ·q_m).

@@ -79,7 +79,9 @@ inline constexpr std::size_t EDGE_MOMENT_RULE_POINTS = 14;
 // The reading of the geometry of a mesh, edge by edge (document 34 of the reference, section 9): the largest angle
 // between the normals of the elements of the edge along it (a fold of the reading where the shell is meant to be
 // smooth is a real fold for this element), whether the edge is declared raw or sharp, and its number of elements.
-// Reference: src/tdnns/analysis.rs::EdgeGeometry (with `sharp` added).
+// The reference's report sees nothing of what the reading does in the surface itself: a flat plate whose outline is
+// rounded at a corner has no kink. The turn of the outline says it.
+// Reference: src/tdnns/analysis.rs::EdgeGeometry (with `sharp`, `outlineTurn` and `given` added).
 struct EdgeGeometry
 {
     EdgeKey grids{};
@@ -88,7 +90,54 @@ struct EdgeGeometry
     bool sharp = false;
     // The largest angle (radians) between the normals of two elements of the edge, along it.
     double kink = 0.0;
+    // On an edge of one shell (the outline of the mesh): how far the reading bends the outline in its surface
+    // (outlineTurn). Zero on the other edges, whose curve in the surface does not move the outline.
+    double outlineTurn = 0.0;
+    // The curve of the edge is given by the model (a mid-side grid point), not read from the mesh. The reports of the
+    // geometry module leave it false: only the owner of the mid-side grids knows (ShellPart::geometryReport).
+    bool given = false;
 };
+
+// The tangent (not unit) at grid `from` of the curve of the edge between grids `from` and `to`: from the grid towards
+// the control point of the conic of the edge, chord / 2 + 2 b with b the bulge (Surface.hpp, "edge conics").
+[[nodiscard]] Vector3 edgeEndTangent(const MeshReadingInput& input, const Topology& topology, std::size_t from,
+                                     std::size_t to);
+
+// The largest angle (radians), at the two grids of edge `edge` of one shell, between the curve of the edge and its
+// chord, seen along the normal of the corners of that shell: atan2(|t · b|, t · u) with t the end tangent, u the chord
+// direction from that grid and b = n × u across the chord in the plane of the shell. Zero on a straight edge and on
+// an edge that curves along the normal alone (a circle of a cylinder). The reading has no angle criterion: where the
+// outline of the mesh turns at a grid through which its line goes on (a corner that no raw edge declares), the two
+// outline edges there are read as one curve, half the turn of the corner away from their chords, and the area of the
+// shells changes (document 26 of the reference, section 7, limit 4). Zero on an edge that is not of one shell.
+[[nodiscard]] double outlineTurn(const MeshReadingInput& input, const Topology& topology, std::size_t edge);
+
+// Below this sine of the angle between the two edge curves of a shell at one of its corners, the map of the shell is
+// not invertible there: the curves are tangent to each other to the round-off (a cusp), or cross (negative: the shell
+// folds over itself). The limit is as loose as that of the Jacobian inside the elements: a thin corner is accepted.
+inline constexpr double DEGENERATE_CORNER_SINE = 1e-6;
+
+// The sine of the angle at corner `corner` of shell `element` from its edge to the next grid to its edge to the
+// previous grid, about the normal of the corners of the shell: (t_next × t_previous) · n / (|t_next| |t_previous|)
+// with the end tangents of the two edge curves (edgeEndTangent). Positive on a sound corner whatever the grid the
+// element starts from; zero when an edge curve has no tangent there (its control point on the grid).
+[[nodiscard]] double cornerSine(const MeshReadingInput& input, const Topology& topology, std::size_t element,
+                                std::size_t corner);
+
+// A corner of a shell where its edge curves leave no angle (cornerSine ≤ DEGENERATE_CORNER_SINE).
+struct DegenerateCorner
+{
+    std::size_t element = 0;
+    // The position of the corner among the grids of the element.
+    std::size_t corner = 0;
+    double sine = 0.0;
+};
+
+// The degenerate corners of the shells of a mesh, in the order of the shells and of their corners. A mesh line that
+// the reading takes round a corner of the outline can come tangent to the other edge of an element there (two
+// boundary edges at a right angle beside a triangle whose diagonal ends at the corner): nothing can be computed at
+// such a corner (the normal of the surface is 0 / 0), so the element must be refused.
+[[nodiscard]] std::vector<DegenerateCorner> degenerateCorners(const MeshReadingInput& input, const Topology& topology);
 
 // The position and the unit normal of the surface of a shell at a point of one of its edges.
 using EdgeSurfacePoint = std::pair<Vector3, Vector3>;

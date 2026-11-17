@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,15 @@ using EquationNamer = std::function<base::GridComponent(std::int32_t equation)>;
 // maxRatio flags a near mechanism (the pivot lost almost all of its diagonal to the coupled DOFs); a negative ratio
 // (a negative factor diagonal) flags a matrix that is not positive definite. Every such DOF is listed with its ratio,
 // then the run stops unless BAILOUT is negative.
+//
+// The caller may give the test another diagonal than the matrix's for some equations (a reference diagonal:
+// FactorOptions::referenceDiagonal, ratioTestDiagonal below). The matrix diagonal measures the stiffness a DOF has
+// before the elimination only when its terms are stiffnesses at that DOF. The relations of an element formulation
+// eliminated before the factorisation (the rotation of a grid point of shells written as a combination Σ c_j·u_j of
+// the unknowns of the shells around it) put the stiffness k of what is attached to the eliminated DOF on the diagonal
+// of every unknown of the relation, k·c_j², although it holds one combination of them only: the pivots of the others
+// come back to the stiffness of their own elements, and the ratio to the inflated diagonal would read as a mechanism
+// that is not there. The reference is then the diagonal of the stiffness of the elements at the DOF.
 struct PivotPolicy
 {
     static constexpr double DEFAULT_MAX_RATIO = 1.0e7; // default of PARAM MAXRATIO
@@ -41,8 +51,8 @@ enum class PivotIssueKind : std::uint8_t
 // One pivot that fails the ratio test.
 struct PivotIssue
 {
-    std::int32_t equation = 0; // in the numbering of the factorised matrix (the caller's SymmetricCsc)
-    double matrixDiagonal = 0.0;
+    std::int32_t equation = 0;   // in the numbering of the factorised matrix (the caller's SymmetricCsc)
+    double matrixDiagonal = 0.0; // the diagonal of the test: the matrix's, or the reference given for the equation
     double factorDiagonal = 0.0;
     double ratio = 0.0;
     PivotIssueKind kind = PivotIssueKind::RatioAboveMaximum;
@@ -93,7 +103,25 @@ private:
     double m_maxRatio = PivotPolicy::DEFAULT_MAX_RATIO;
 };
 
-// The name of an equation for messages: "grid 1001 component 3", "scalar point 7", or "equation 12" without a namer.
+// The value of a reference diagonal at an equation it gives no reference for (any negative value is read so).
+inline constexpr double NO_REFERENCE_DIAGONAL = -1.0;
+
+// The diagonal the ratio test divides by the factor diagonal of `equation`: the matrix diagonal a_jj, or the reference
+// of the equation when `referenceDiagonal` (one value per equation, or empty: no reference at all) gives one, a
+// value that is not negative. Without a reference the value and the bits of the test are those of the matrix diagonal.
+[[nodiscard]] inline double ratioTestDiagonal(std::span<const double> referenceDiagonal, std::int32_t equation,
+                                              double matrixDiagonal) noexcept
+{
+    if (referenceDiagonal.empty())
+        return matrixDiagonal;
+    const double reference = referenceDiagonal[static_cast<std::size_t>(equation)];
+    return reference >= 0.0 ? reference : matrixDiagonal;
+}
+// Throws std::invalid_argument when a reference diagonal that is not empty has not one value per equation.
+void requireReferenceDiagonal(std::span<const double> referenceDiagonal, std::int64_t equationCount);
+
+// The name of an equation for messages: "grid 1001 component 3", "scalar point 7", the namer's own name of a DOF
+// that is no component of a point (base::GridComponent::name), or "equation 12" without a namer.
 [[nodiscard]] std::string describeEquation(const EquationNamer& namer, std::int32_t equation);
 // The DOF of an equation for SingularityError: the namer's, or {equation, 0} without one.
 [[nodiscard]] base::GridComponent gridComponentOf(const EquationNamer& namer, std::int32_t equation);

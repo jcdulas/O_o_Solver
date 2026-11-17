@@ -442,6 +442,13 @@ bool ElementFamily::differentialStiffnessFieldDerivative(const ElementBatchView&
     return false;
 }
 
+bool ElementFamily::differentialStiffnessPreloadGradient(const ElementBatchView& /*view*/, std::int64_t /*row*/,
+                                                         const NodalDisplacements& /*shape*/,
+                                                         ElementVectorBlock& /*block*/) const
+{
+    return false;
+}
+
 bool ElementFamily::differentialStiffnessFieldMixedDerivative(
     const ElementBatchView& /*view*/, std::int64_t /*row*/, const DesignedField& first, const DesignedField& second,
     const NodalDisplacements& /*preload*/, ElementMatrixBlock& /*block*/) const

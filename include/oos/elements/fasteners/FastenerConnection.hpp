@@ -20,7 +20,9 @@ namespace oos::elements
 // of that element at the point (PiercingInterpolation), so that the motions of A and B in the basic system are
 //     w = (u_A, θ_A, u_B, θ_B) = M·u,   u the DOFs of the grid points of both pierced elements (six each, in their
 //     displacement systems, each grid point once; the interpolation reads their translations only).
-// A side connected directly (CWELD ALIGN, the GS of a Weld ELEMID without SHIDB) is that grid point itself.
+// A side connected directly (CWELD ALIGN, the GS of a Weld ELEMID without SHIDB) is that grid point itself. A side
+// that pierces a shell of a formulation with unknowns besides its grid points reads the displacement and the rotation
+// of that shell at the point over its own DOFs instead (resolveSideMotion, FormulationModel::shellPointMotion).
 //
 // The auxiliary points GA and GB of a fastener are eliminated at element level by default (PWELD MSET = OFF, the
 // default: the constraint equations are condensed into the element, whose matrix couples the grid points of the
@@ -36,12 +38,14 @@ struct FastenerConnection
 {
     base::Vec3 pointA;
     base::Vec3 pointB;
-    std::vector<std::int32_t> gridRows; // the grid points of the elements both sides pierce, each once
-    std::vector<double> map;            // M: 12 rows of 6·gridRows.size(), row-major
+    // The DOFs both sides read, each once: six per grid point of a pierced element, or the DOFs of a pierced shell of
+    // a formulation with entities.
+    std::vector<ElementDof> dofList;
+    std::vector<double> map; // M: 12 rows of dofList.size(), row-major
 
-    [[nodiscard]] std::size_t dofCount() const noexcept { return 6 * gridRows.size(); }
-    // The DOFs of u: six per grid point of a pierced element, in the order of gridRows.
-    [[nodiscard]] std::vector<ElementDof> dofs() const;
+    [[nodiscard]] std::size_t dofCount() const noexcept { return dofList.size(); }
+    // The DOFs of u, in the order of dofList.
+    [[nodiscard]] std::vector<ElementDof> dofs() const { return dofList; }
     // K = Mᵀ·k·M over dofs(), row-major and exactly symmetric.
     [[nodiscard]] std::vector<double> condense(const base::MatN<12>& k) const;
     // w = M·u from the displacements of the model.

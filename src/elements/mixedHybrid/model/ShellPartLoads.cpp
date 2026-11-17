@@ -2,6 +2,7 @@
 #include "oos/elements/mixedHybrid/geometry/ReferenceShapes.hpp"
 #include "oos/elements/mixedHybrid/model/ShellPart.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellGeometry.hpp"
+#include "oos/elements/mixedHybrid/shell/ShellNonlinear.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellPointLaw.hpp"
 
 #include <cmath>
@@ -177,6 +178,13 @@ Matrix ShellPart::geometricStiffness(const ShellElementData& element, std::span<
 {
     return elementGeometricStiffness(referenceElement(element.cornerCount), element.definition(), element.matrices, x,
                                      momentTerm, membraneTerm, followerPressure);
+}
+
+Vector ShellPart::geometricStiffnessGradient(const ShellElementData& element, std::span<const double> phi) const
+{
+    const ShellReferenceElement& re = referenceElement(element.cornerCount);
+    const ShellElementDefinition def = element.definition();
+    return mixedHybrid::geometricStiffnessGradient(re, def, element.matrices, prepareNonlinear(re, def), phi);
 }
 
 } // namespace oos::elements::mixedHybrid

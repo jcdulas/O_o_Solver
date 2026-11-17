@@ -53,8 +53,9 @@ struct ShellPointState
     std::array<double, 2> thermal{};
 };
 
-// The compliance of a section point: [A B; Bᵀ D]⁻¹ on the six membrane and bending components, H⁻¹ on the two shear
-// components. Throws InternalError when the section is singular.
+// The compliance of a section point: [A B; Bᵀ D]⁻¹ on the six membrane and bending components (the generalised
+// inverse of membraneBendingCompliance for a membrane-only or bending-only section: the strains of the part it lacks
+// are zero), H⁻¹ on the two shear components. Throws InternalError when the section is singular.
 // Reference: kernel.rs::compliance
 [[nodiscard]] std::array<std::array<double, 8>, 8> sectionCompliance(const SectionPoint& point);
 
