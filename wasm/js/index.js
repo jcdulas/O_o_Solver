@@ -182,6 +182,8 @@ export class OosSolver {
   // element IDs; an empty object says that every edge is smooth).
   // `options.condensation`: true also takes the component tables of the model, which a condensed static analysis reads
   // (run(model, "statics", { condensation: "all" })).
+  // The model's ModelParams OffsetDefinition is read (where the mass of an offset element is; another value than
+  // those the solver takes is refused by checkSupport and run).
   // Throws an Error naming the table and the column when a table of the reader is not what the solver reads.
   modelFromReader(oor, deck, options = {}) {
     const reader = oor.core;
@@ -225,10 +227,25 @@ export class OosSolver {
       const scalarPoints = points.filter((card) => SCALAR_POINT_CARDS.includes(card));
       if (scalarPoints.length > 0) {
         if (scalarPoints.length !== points.length && scalarPoints.length !== 1) {
-          throw new Error("the model mixes SPOINT or EPOINT with other point cards: give the scalar points one type");
+          throw new Error(`the model has the scalar point cards ${scalarPoints.join(" and ")} beside other point ` +
+            "cards: give the scalar points one card type");
         }
         const source = scalarPoints.length === points.length ? "points" : scalarPoints[0];
         putTable("scalarPoints", packageOf(reader.cardTable(deck, source, ["id"])));
+      }
+
+      // The offset convention the model selects (ModelParams OffsetDefinition; the last one given).
+      if (deck.cardCounts().ModelParams > 0) {
+        const parameters = reader.cardTable(deck, "ModelParams", ["name", "text"]);
+        try {
+          const names = parameters.column("name").values;
+          const texts = parameters.column("text").values;
+          names.forEach((name, k) => {
+            if (name === "OffsetDefinition") input.setOffsetDefinition(texts[k]);
+          });
+        } finally {
+          parameters.delete();
+        }
       }
 
       // The cards the solver reads field by field.

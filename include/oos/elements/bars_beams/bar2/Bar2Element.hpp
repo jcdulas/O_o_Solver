@@ -18,8 +18,9 @@
 // bending at C, D, E, F of each end, axial, maximum and minimum, margins of safety in tension and compression). Under
 // BeamDistributedLoad the Bar2 is written with the layout of its stations (the ends A and B: bending moments,
 // shears, axial, torque per station; sxc-sxf, axial, smax, smin, ms): recoverUnderLineLoads gives that layout. Thermal
-// loads (BeamThermal: the mean temperature of LineElemTemperatureLoad or of GA and GB, the free axial expansion held;
-// the recovery subtracts it); strains as the stresses over E; the strain energy from the stiffness
+// loads (BeamThermal: the mean temperature of LineElemTemperatureLoad or of GA and GB, the free axial expansion held,
+// and the free bending of the temperature gradients of LineElemTemperatureLoad across the section; the recovery
+// subtracts them); strains as the stresses over E; the strain energy from the stiffness
 // (output::StiffnessRecovery). Differential stiffness (BeamDifferential) and design derivatives
 // (Bar2Derivatives.cpp).
 //
@@ -38,8 +39,8 @@
 // inertia and ignores the pin flags; the loads are the exact fixed-end forces of the shear-flexible bar; the margin of
 // the type-100 layout is the smaller of the tension and compression margins. The mass, the thermal and
 // BeamDistributedLoad loads of an offset bar are those of its length between the offset ends, at the grid points under
-// ModelParams OFFDEF ELMOFF (the default; an offset bar refused in a buckling analysis), through the offsets under
-// LROFF and ELMZ.
+// ModelParams OffsetDefinition ElemOffsetsOnly (the default; an offset bar refused in a buckling analysis), through the
+// offsets under LoadRecoveryOffsets and ElemOffsetZ.
 
 #include "oos/elements/bars_beams/BeamFormulation.hpp"
 #include "oos/elements/bars_beams/TabulatedSection.hpp"

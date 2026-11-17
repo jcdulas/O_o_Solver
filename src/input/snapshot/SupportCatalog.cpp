@@ -43,11 +43,11 @@ using CardUses = std::map<std::string, CardUse, std::less<>>;
 // The card of the multipoint constraint equations, whose rows multiPointConstrTable gives without a card column.
 constexpr std::string_view MULTIPOINT_CONSTRAINT_CARD = "MultiPointConstr";
 
-// The card of the model parameters (MDLPRM), and its parameter OFFDEF by its neutral name (the card table's name).
+// The card of the model parameters and its parameter of the offsets, by the names of the card table.
 constexpr std::string_view MODEL_PARAMS_CARD = "ModelParams";
 constexpr std::string_view OFFSET_DEFINITION_PARAM = "OffsetDefinition";
 
-// The refusal of an MDLPRM OFFDEF value O_o_Solver does not take (input::OffsetDefinition).
+// The refusal of a ModelParams OffsetDefinition value O_o_Solver does not take (input::OffsetDefinition).
 Diagnostic unsupportedOffsetDefinition(const std::string& value)
 {
     const std::string keyword = std::string(OFFSET_DEFINITION_PARAM);

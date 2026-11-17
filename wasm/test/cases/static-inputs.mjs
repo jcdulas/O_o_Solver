@@ -171,3 +171,32 @@ test("selected mass supports static optimization while the modal path refuses it
     finally { problem.delete(); }
   });
 });
+
+test("the model's ModelParams OffsetDefinition says where the mass of an offset element is", () => {
+  // A Bar2 along x offset by 0.5 along z, clamped at one end, under a gravity along x. With the mass on the offset
+  // (LoadRecoveryOffsets) the weight acts on the axis: the bar stretches, u = ρ g L² / (2 E). With the mass at the
+  // grid points (ElemOffsetsOnly, the default) the weight acts 0.5 from the axis and bends the bar too.
+  const bulk = (value) => (value ? `ModelParams;OffsetDefinition;${value}\n` : "") +
+    "Node;1;;0.;0.;0.\nNode;2;;3.;0.;0.\nBar2;1;1;1;2;0.;;1.;0.;;;;0.;0.;0.5;0.;0.;0.5\n" +
+    "BarProp;1;1;2.;0.1;0.1;0.05\nIsoMat;1;1000.;;0.3;1.\nSinglePointConstrList;1;123456;1\n" +
+    "GravityLoad;2;;10.;1.;0.;0.\n";
+  const tipOf = (value) => {
+    let values = null;
+    withModel(CASE, bulk(value), model => {
+      const table = solver.run(model, "statics").nodalTables.find(t => t.kind === "displacements");
+      values = Array.from(table.values.slice(6, 12));
+    });
+    return values;
+  };
+  const onOffsets = tipOf("LoadRecoveryOffsets");
+  near(onOffsets[0], 0.045);
+  assert.ok(Math.abs(onOffsets[2]) < 1e-12, `deflection ${onOffsets[2]} with the mass on the offset`);
+  const atGridPoints = tipOf("ElemOffsetsOnly");
+  assert.ok(Math.abs(atGridPoints[2]) > 0.1, `deflection ${atGridPoints[2]} with the mass at the grid points`);
+  assert.deepEqual(tipOf(null), atGridPoints);
+  // A value O_o_Solver does not take is refused, not ignored.
+  withModel(CASE, bulk("NoMassOffsets"), model => {
+    assert.ok(model.checkSupport("statics").refusals.some(d => d.code === "unsupported-parameter"));
+    assert.throws(() => solver.run(model, "statics"), /OffsetDefinition/);
+  });
+});

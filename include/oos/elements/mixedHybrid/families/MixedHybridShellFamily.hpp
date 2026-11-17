@@ -63,7 +63,7 @@ public:
                              ElementVectorBlock& block) const override;
     [[nodiscard]] bool isThermallyInert() const noexcept override { return false; }
     // The second variation of the shells under the forces of the preload (the offsets in the section law: nothing to
-    // refuse under OFFDEF ELMOFF, spec section 9).
+    // refuse under OffsetDefinition ElemOffsetsOnly, spec section 9).
     void checkDifferentialStiffness(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
     void computeDifferentialStiffness(const ElementBatchView& view, ElementRange range,
                                       const NodalDisplacements& preload, ElementMatrixBlock& block) const override;

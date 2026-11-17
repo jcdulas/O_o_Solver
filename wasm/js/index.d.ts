@@ -257,6 +257,7 @@ export declare class OosSolver {
   // of elementFormulations(), exactly: an unknown card type throws an Error.
   // `options.elementFormulation` chooses the formulation of the whole model ("MixedHybridFormulation"), and
   // `options.formulationGeometry` gives its geometry declarations (grid point and element IDs).
+  // The model's ModelParams OffsetDefinition is read (where the mass of an offset element is).
   modelFromReader(oor: unknown, deck: unknown, options?: ModelOptions): Model;
   createOptimization(model: Model, declarations?: OptimizationDeclarations, settings?: OptimizationSettings): OptimizationProblem;
   // `modelOptions`: those of modelFromReader (a model in MixedHybridFormulation: elementFormulation and
@@ -264,6 +265,9 @@ export declare class OosSolver {
   optimizationFromReader(oor: unknown, deck: unknown, declarations?: OptimizationDeclarations,
     settings?: OptimizationSettings, modelOptions?: ModelOptions): OptimizationProblem;
 
+  // What the solver refuses of the model for the analysis, without running it: the cards, fields and selections it
+  // does not take, then what the element formulation of the model refuses (a geometry declaration that names no
+  // edge, an element it cannot compute).
   checkSupport(model: Model, analysis?: Analysis): SupportCheck;
   run(model: Model, analysis?: Analysis,
       settings?: { subcases?: number[]; memoryBytes?: number; threads?: number;

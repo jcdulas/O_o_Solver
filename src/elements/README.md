@@ -169,6 +169,15 @@ register it in `ElementRegistry::standard()` after the card's default.
   membrane and bending at the edge midpoints, a constant transverse shear plus one parameter fitted to the edge strains,
   its stiffness the inverse of the compliance Z (`MID3` plus a bending relief from L_x, L_y). Neither has a drilling
   stiffness (no ShellDrillingStiffness: θz of a flat mesh is removed by the automatic constraint of singular DOFs) nor rotary inertia.
+  A laminate whose plies give no G1Z and G2Z is rigid in transverse shear (a choice of this project): the `ShellQuad4`
+  then takes the G3 of a general bending card without its term between the two shears (`PlateConstitutive`), which
+  with the anisotropic factor made elements a few thicknesses wide indefinite.
+  A limit that follows from the missing drilling stiffness, on a curved surface with a shear-flexible section (`MID3`): the rotations of two elements
+  that meet at an angle are tied by no stiffness about the direction across their common edge, only by the transverse
+  shear of each, which weakens as the elements come to the size of the thickness. The results then drift with
+  refinement (the roof of Scordelis and Lo, R/t = 100, sag of the free edge over 0.3024: 1.013, 1.018, 1.067 at 8²,
+  16², 32² `ShellQuad4`; 0.994 at 32² without `MID3`). `ShellQuad4Drilling` (1.002, 0.999 at 16², 32²) and
+  `MixedHybridFormulation` do not have it.
   `PlateConstitutive` reads a section (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D; CompProp and CompPropGlobal through their equivalent section,
   this project's choice) into the matrices of the kernels; `ShellCentreRecovery` the centre recovery as an affine map
   of the local DOFs; `ShellScalar` the small matrices templated on the scalar. `EdgeShearShellFamily` (with

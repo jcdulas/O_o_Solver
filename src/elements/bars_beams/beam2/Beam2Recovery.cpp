@@ -86,7 +86,7 @@ void Beam2Element::appendStationRows(const ElementBatchView& view, std::int64_t 
                                      const NodalDisplacements& displacements, ElementResultBlock& block)
 {
     appendResponseRows(view, row, beam,
-                       BeamResponse(beam, displacements, loads, beamThermalStrain(view, row, beam, displacements)),
+                       BeamResponse(beam, displacements, loads, beamFreeStrains(view, row, beam, displacements)),
                        output, block);
 }
 

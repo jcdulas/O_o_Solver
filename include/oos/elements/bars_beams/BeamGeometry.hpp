@@ -49,8 +49,8 @@ struct BeamGeometry
     // T, the map from the grid point DOFs to the end DOFs (d = T·g).
     [[nodiscard]] base::MatN<12> endTransform() const;
     // T without the offsets, per end [[Eᵀ·R, 0], [0, Eᵀ·R]]: what carries the mass of a bar or beam to its grid points
-    // under ModelParams OFFDEF ELMOFF, the default (input::OffsetDefinition; only LROFF carries the masses through the
-    // offsets).
+    // under ModelParams OffsetDefinition ElemOffsetsOnly, the default (input::OffsetDefinition; only
+    // LoadRecoveryOffsets carries the masses through the offsets).
     [[nodiscard]] base::MatN<12> rotationTransform() const;
     // The grid point DOFs [GA 1-6, GB 1-6], in the order of T's columns.
     [[nodiscard]] std::array<ElementDof, 12> dofs() const;

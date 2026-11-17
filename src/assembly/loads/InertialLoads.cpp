@@ -442,20 +442,51 @@ void InertialLoads::writeField(const RowSpec& spec, std::span<double> field) con
             writer.setTranslation(grid, base::cross(omega, base::cross(omega, rho)) + base::cross(alpha, rho));
             writer.setRotation(grid, alpha);
         }
-        // The entities of the element formulation: the field is affine, a(x) = A·(x − c) with
-        // A = ω ωᵀ − |ω|² I + [α]× (ω × (ω × ρ) = (ω ωᵀ − |ω|² I) ρ), its rotation the skew part α (section 5.7).
+        // The entities of the element formulation: the field is affine, a(x) = A·(x − c) (rotationGradientOf; spec
+        // section 5.7).
         if (m_dofMap->hasEntities())
         {
-            const double omega2 = base::dot(omega, omega);
-            base::Mat3 gradient = base::matrixFromRows({0.0, -alpha[2], alpha[1]}, {alpha[2], 0.0, -alpha[0]},
-                                                       {-alpha[1], alpha[0], 0.0});
-            for (std::size_t i = 0; i < 3; ++i)
-                for (std::size_t j = 0; j < 3; ++j)
-                    gradient(i, j) += omega[i] * omega[j] - (i == j ? omega2 : 0.0);
+            const base::Mat3 gradient = rotationGradientOf(spec);
             m_dofMap->addAffineEntityField(gradient, -1.0 * (gradient * spec.centre), field);
         }
         return;
     }
+    }
+}
+
+base::Mat3 InertialLoads::rotationGradientOf(const RowSpec& spec)
+{
+    const base::Vec3 axis = spec.direction / base::norm(spec.direction);
+    const base::Vec3 omega = RADIANS_PER_REVOLUTION * spec.velocity * axis;
+    const base::Vec3 alpha = RADIANS_PER_REVOLUTION * spec.angularAcceleration * axis;
+    const double omega2 = base::dot(omega, omega);
+    base::Mat3 gradient =
+        base::matrixFromRows({0.0, -alpha[2], alpha[1]}, {alpha[2], 0.0, -alpha[0]}, {-alpha[1], alpha[0], 0.0});
+    for (std::size_t i = 0; i < 3; ++i)
+        for (std::size_t j = 0; j < 3; ++j)
+            gradient(i, j) += omega[i] * omega[j] - (i == j ? omega2 : 0.0);
+    return gradient;
+}
+
+void InertialLoads::addAffineAcceleration(base::EntityId loadSetId, elements::BodyAcceleration& field) const
+{
+    if (!m_snapshot->hasTable(input::TableRole::Loads))
+        return;
+    base::DiagnosticSink reportedWithTheLoads;
+    const std::vector<RowSpec> specs = m_snapshot->hasTable(input::TableRole::InertialLoads)
+                                           ? inertialRowsOf(loadSetId, reportedWithTheLoads)
+                                           : gravityRowsOf(loadSetId);
+    for (const RowSpec& spec : specs)
+    {
+        if (spec.kind == RowSpec::Kind::Gravity)
+            field.constant = field.constant + spec.factor * spec.direction;
+        if (spec.kind != RowSpec::Kind::Rotation)
+            continue;
+        const base::Mat3 gradient = rotationGradientOf(spec);
+        const base::Vec3 constant = -1.0 * (gradient * spec.centre);
+        for (std::size_t k = 0; k < gradient.values.size(); ++k)
+            field.gradient.values[k] += spec.factor * gradient.values[k];
+        field.constant = field.constant + spec.factor * constant;
     }
 }
 

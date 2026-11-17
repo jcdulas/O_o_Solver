@@ -15,7 +15,7 @@ namespace oos::input
 // CD, permanent constraints PS, superelement SEID, and the position in the basic system (xyzGlobal, whatever CP); the
 // rotation from each grid point's CD system to the basic system (displacementRotations(deck): per row a 3 x 3 matrix,
 // row-major, whose columns are the directions 1, 2, 3 of CD in the basic system, evaluated at the point); and the
-// scalar points (SPOINT, EPOINT), which share the ID space of the grid points.
+// scalar points (ScalarPoint, ExtraPoint), which share the ID space of the grid points.
 //
 // Row r of every column is the grid point of row r of cardTable(deck, "nodes"), which the nodesRows columns of the
 // element batches index.

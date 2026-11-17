@@ -135,7 +135,7 @@ std::array<double, 12> beamGridLoads(const BeamData& beam, std::span<const BeamL
                 "report it)");
         endLoads = release->condenseLoads(endLoads);
     }
-    // f_grid = Tᵀ·f_end (T without the offsets under ELMOFF).
+    // f_grid = Tᵀ·f_end (T without the offsets under ElemOffsetsOnly).
     const base::MatN<12> transform =
         areLoadsOnOffsets ? beam.geometry.endTransform() : beam.geometry.rotationTransform();
     return transform.transposed() * endLoads;

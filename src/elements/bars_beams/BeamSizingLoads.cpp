@@ -49,17 +49,22 @@ std::array<MixedScalar, 12> Kernel::lineEndLoads(std::span<const BeamLineLoad> l
     return result;
 }
 
-std::array<MixedScalar, 12> Kernel::loads(MixedScalar thermalStrain,
+std::array<MixedScalar, 12> Kernel::loads(const FreeStrains& freeStrains,
                                         std::span<const BeamLineLoad> lineLoads, bool onOffsets) const
 {
     const auto raw = lineEndLoads(lineLoads);
+    const auto bending = curvatureDisplacements(freeStrains);
     std::array<MixedScalar, 12> end{};
     for (std::size_t i = 0; i < end.size(); ++i)
     {
         // C^T condenses applied loads with the same differentiated release map as elastic stiffness.
         for (std::size_t j = 0; j < end.size(); ++j)
             end[i] += m_completion(j, i) * raw[j];
-        end[i] += m_end(i, 6) * thermalStrain * m_beam.geometry.length;
+        end[i] += m_end(i, 6) * freeStrains.axial * m_beam.geometry.length;
+        // K_condensed d of the end displacements d of the free curvatures (BeamThermal).
+        if (freeStrains.hasCurvatures)
+            for (std::size_t j = 0; j < end.size(); ++j)
+                end[i] += m_end(i, j) * bending[j];
     }
     const auto transform = onOffsets ? m_beam.geometry.endTransform() : m_beam.geometry.rotationTransform();
     std::array<MixedScalar, 12> result{};

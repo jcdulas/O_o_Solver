@@ -162,7 +162,7 @@ void Bar2Element::recover(const ElementBatchView& view, ElementRange range, Elem
     {
         const BeamData beam = resolve(view, columns, row).required();
         const auto loads = resolveLineLoadsOrThrow(view, displacements.lineLoads, beam.geometry, row);
-        const BeamResponse response(beam, displacements, loads, beamThermalStrain(view, row, beam, displacements));
+        const BeamResponse response(beam, displacements, loads, beamFreeStrains(view, row, beam, displacements));
         const Bar2Row values = bar2RowOf(beam, response, output);
         block.append(row, view.elementId(row), std::span<const double>(values.values.data(), values.count));
     }
@@ -276,7 +276,7 @@ void Bar2Element::recoverUnderLineLoads(const ElementBatchView& view, std::span<
                              const std::vector<BeamLineLoad> resolved =
                                  resolveLineLoadsOrThrow(view, elementLoads, beam.geometry);
                              const BeamResponse response(beam, displacements, resolved,
-                                                         beamThermalStrain(view, row, beam, displacements));
+                                                         beamFreeStrains(view, row, beam, displacements));
                              for (std::size_t end = 0; end < 2; ++end)
                              {
                                  const double position = static_cast<double>(end);

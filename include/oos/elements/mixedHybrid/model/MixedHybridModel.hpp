@@ -202,6 +202,13 @@ public:
     // by the functions of its corners at the point of its straight element nearest to each point of the kernel.
     [[nodiscard]] VolumeKernel solidThermalKernel(const MixedSolid& solid, EntityLayout::Kind kind,
                                                   std::span<const double> changes) const;
+    // The thermal load of a solid for the temperature changes of its corners (solidCornerChanges).
+    [[nodiscard]] SolidLoad solidThermalLoad(const MixedSolid& solid, std::span<const double> changes) const;
+    // Adds to the stress coefficients `beta` of a solid the particular stresses of the body force ρ a(x) of the
+    // acceleration field of a case (NodalDisplacements::bodyAcceleration; nothing without a field or without
+    // density), from its kernel.
+    static void addBodyForceStresses(const MixedSolid& solid, const BodyAcceleration* acceleration,
+                                     const VolumeKernel& kernel, Vector& beta);
     // The stress coefficients of a solid for the displacements of a case, with the kernel they are of (the kept one,
     // or one with the free expansion of the case's temperatures as its load) and the corner changes (empty without a
     // thermal strain).

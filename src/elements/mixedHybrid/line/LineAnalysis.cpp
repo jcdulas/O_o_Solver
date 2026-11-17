@@ -73,7 +73,13 @@ std::variant<LineState, std::string> lineStateOfCase(const LineData& data, const
 
 double lineStress(const LineSection& section, const LineState& state, double y, double z)
 {
-    return section.youngModulus * (state.strains[0] + z * state.strains[4] - y * state.strains[5] - state.freeStrain);
+    if (state.freeCurvature.isZero())
+        return section.youngModulus *
+               (state.strains[0] + z * state.strains[4] - y * state.strains[5] - state.freeStrain);
+    // With free curvatures the free strain of the point is e0 + z K0_y − y K0_z.
+    const double elasticKy = state.strains[4] - state.freeCurvature.y;
+    const double elasticKz = state.strains[5] - state.freeCurvature.z;
+    return section.youngModulus * (state.strains[0] + z * elasticKy - y * elasticKz - state.freeStrain);
 }
 
 Vector lineInertiaLoad(const LineData& data, const Vec3Of<double>& acceleration)
@@ -112,8 +118,27 @@ Vector aloneEdgeTraction(const AloneEdge& edge, bool fromLowerGrid, const EdgeTr
     return load;
 }
 
-Vector lineAxialForces(const LineData& data, std::span<const double> x, std::span<const double> freeStrains)
+Vector lineAxialForces(const LineData& data, std::span<const double> x, std::span<const double> freeStrains,
+                       std::span<const LineFreeCurvature> freeCurvatures)
 {
+    if (!freeCurvatures.empty())
+    {
+        // N = Ā (Γ_x − Γ0) + (D⁻¹ Bᵀ)ᵀ M_s with the free axial strain Γ0 of the edge and the moments less the
+        // term of the free strains and curvatures.
+        const std::vector<double> edge = data.edgeFreeStrains(freeStrains, freeCurvatures);
+        const Vector thermal =
+            data.complianceInverse * std::span<const double>(data.thermalMoments(freeStrains, freeCurvatures));
+        Vector coefficients = data.moments * x;
+        for (std::size_t i = 0; i < coefficients.size(); ++i)
+            coefficients[i] -= thermal[i];
+        Vector forces(data.axial.size(), 0.0);
+        for (std::size_t q = 0; q < data.axial.size(); ++q)
+        {
+            const LineAxialPoint& p = data.axial[q];
+            forces[q] = p.axialStiffness * (dot(p.strainRow, x) - edge[q]) + dot(p.momentRow, coefficients);
+        }
+        return forces;
+    }
     // The moment coefficients less their free part.
     Vector coefficients = data.moments * x;
     if (!freeStrains.empty())
@@ -132,9 +157,10 @@ Vector lineAxialForces(const LineData& data, std::span<const double> x, std::spa
     return forces;
 }
 
-Matrix lineGeometricStiffness(const LineData& data, std::span<const double> x, std::span<const double> freeStrains)
+Matrix lineGeometricStiffness(const LineData& data, std::span<const double> x, std::span<const double> freeStrains,
+                              std::span<const LineFreeCurvature> freeCurvatures)
 {
-    const Vector forces = lineAxialForces(data, x, freeStrains);
+    const Vector forces = lineAxialForces(data, x, freeStrains, freeCurvatures);
     const std::size_t n = data.dofs.size();
     Matrix kg(n, n);
     for (std::size_t q = 0; q < data.axial.size(); ++q)

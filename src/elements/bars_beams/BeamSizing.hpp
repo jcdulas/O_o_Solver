@@ -2,6 +2,7 @@
 
 #include "oos/elements/bars_beams/BeamFieldDerivatives.hpp"
 #include "oos/elements/bars_beams/BeamFlexibility.hpp"
+#include "oos/elements/bars_beams/BeamThermal.hpp"
 #include "oos/elements/core/MixedScalar.hpp"
 
 #include <optional>
@@ -75,6 +76,19 @@ struct Station
                                 double addedMass, MassFormulation formulation, TorsionalInertia torsion,
                                 bool onOffsets);
 
+// The free deformation of the element with its rates (BeamFreeStrains of BeamThermal): the free axial strain
+// α·ΔT + D/L and, for an element with temperature gradients across its section, the free curvatures −α·ΔT'. A
+// free axial strain alone converts to it.
+struct FreeStrains
+{
+    MixedScalar axial;
+    BeamFreeCurvaturesOf<MixedScalar> curvatures;
+    bool hasCurvatures = false;
+
+    FreeStrains() = default;
+    FreeStrains(MixedScalar axialStrain) : axial(axialStrain) {}
+};
+
 struct RecoveredRow
 {
     ResultPlace place;
@@ -89,20 +103,24 @@ class Kernel
 public:
     Kernel(const BeamData& beam, const Direction& first, const Direction& other);
     [[nodiscard]] Matrix<12> stiffness() const;
-    [[nodiscard]] Matrix<12> differential(std::span<const double> grid, MixedScalar thermalStrain = {}) const;
-    [[nodiscard]] std::array<MixedScalar, 12> loads(MixedScalar thermalStrain,
+    [[nodiscard]] Matrix<12> differential(std::span<const double> grid, const FreeStrains& freeStrains = {}) const;
+    [[nodiscard]] std::array<MixedScalar, 12> loads(const FreeStrains& freeStrains,
                                                   std::span<const BeamLineLoad> lineLoads, bool onOffsets) const;
     [[nodiscard]] std::vector<RecoveredRow> recover(const ElementBatchView& view, ElementOutput output,
-                                                    std::span<const double> grid, MixedScalar thermalStrain = {},
+                                                    std::span<const double> grid,
+                                                    const FreeStrains& freeStrains = {},
                                                     std::span<const BeamLineLoad> lineLoads = {}) const;
 
 private:
     void release(const Matrix<12>& raw);
     [[nodiscard]] Matrix<6> complianceAt(double position) const;
     [[nodiscard]] std::array<MixedScalar, 12> endForces(std::span<const double> grid,
-                                                     MixedScalar thermalStrain = {},
+                                                     const FreeStrains& freeStrains = {},
                                                      std::span<const BeamLineLoad> lineLoads = {}) const;
     [[nodiscard]] std::array<MixedScalar, 12> lineEndLoads(std::span<const BeamLineLoad> loads) const;
+    // The displacements of end B in the free deformation of the curvatures (beamFreeCurvatureDisplacements), over
+    // the end DOFs; zeros without curvatures.
+    [[nodiscard]] std::array<MixedScalar, 12> curvatureDisplacements(const FreeStrains& freeStrains) const;
     [[nodiscard]] Station at(double position) const;
 
     const BeamData& m_beam;

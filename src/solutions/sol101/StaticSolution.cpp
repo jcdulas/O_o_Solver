@@ -346,18 +346,25 @@ struct BlockCases
     // temperature and deformation sets of the thermal block cases (InitialStrainKey).
     std::vector<std::vector<std::vector<elements::ElementLineLoad>>> lineLoads; // per case of the group
     std::vector<std::unique_ptr<assembly::TemperatureField>> temperatures;
+    std::vector<std::optional<elements::BodyAcceleration>> accelerations; // per case of the group: BodyAccelerations
 };
+
+// The acceleration field of the inertial loads of a case times the mass factor of the model
+// (elements::BodyAcceleration), for the elements whose stresses take the particular stresses of a body force; none
+// for a case without inertial loads, and for every case of a model without such elements.
+using BodyAccelerations = std::function<std::optional<elements::BodyAcceleration>(const StaticSubcase&)>;
 
 BlockCases blockCasesOf(std::span<const std::size_t> group, const std::vector<StaticSubcase>& subcases,
                         const std::vector<output::OutputPlan>& plans, const assembly::LoadVectorBuilder& loadBuilder,
                         const input::ModelSnapshot& snapshot, const input::PointIndex& points, bool isCaseByCase,
-                        base::MemoryBudget& budget)
+                        base::MemoryBudget& budget, const BodyAccelerations& bodyAccelerations)
 {
     BlockCases blocks;
     const std::size_t caseCount = group.size();
     blocks.isBlockCase.assign(caseCount, 0);
     blocks.loads.resize(caseCount);
     blocks.lineLoads.resize(caseCount);
+    blocks.accelerations.resize(caseCount);
     // The thermal cases of each key of initial strains (TEMPERATURE(LOAD), TEMPERATURE(INITIAL), DEFORM).
     std::map<InitialStrainKey, std::size_t> sharing;
     for (const std::size_t s : group)
@@ -396,6 +403,12 @@ BlockCases blockCasesOf(std::span<const std::size_t> group, const std::vector<St
                 blocks.lineLoads[g] = std::move(lineLoads);
                 blocks.loads[g].lineLoads = blocks.lineLoads[g];
             }
+        }
+        if (bodyAccelerations)
+        {
+            blocks.accelerations[g] = bodyAccelerations(subcase);
+            if (blocks.accelerations[g])
+                blocks.loads[g].bodyAcceleration = &*blocks.accelerations[g];
         }
         blocks.isBlockCase[g] = 1;
         ++blocks.count;
@@ -1325,6 +1338,38 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
     const linalg::DenseKernels kernels(m_options.kernel, linalg::DenseKernelOptions{pool});
     results.kernel = std::string(linalg::kernelName(m_options.kernel));
     const assembly::LoadVectorBuilder loadBuilder(elementSet, dofMap, budget);
+    // The acceleration field of the inertial loads of a case, for the stresses of the elements that take the
+    // particular stresses of a body force (BodyAccelerations): the solids of an element formulation with entities,
+    // whose inertial loads are affine fields (GravityLoad, RotationalForceLoad; the others are refused there). A
+    // SUBCOM combines those of its terms.
+    const double massFactor = assembly::MassAssemblyOptions::fromParams(params, std::nullopt, sink).weightToMass;
+    const BodyAccelerations bodyAccelerations =
+        [&](const StaticSubcase& subcase) -> std::optional<elements::BodyAcceleration>
+    {
+        if (!dofMap.hasEntities())
+            return std::nullopt;
+        elements::BodyAcceleration field;
+        const auto add = [&](const StaticSubcase& loaded, double factor)
+        {
+            if (!loaded.load)
+                return;
+            elements::BodyAcceleration own;
+            loadBuilder.addInertialAffineAcceleration(*loaded.load, own);
+            for (std::size_t k = 0; k < own.gradient.values.size(); ++k)
+                field.gradient.values[k] += factor * massFactor * own.gradient.values[k];
+            field.constant = field.constant + (factor * massFactor) * own.constant;
+        };
+        if (!subcase.isCombination)
+            add(subcase, 1.0);
+        else
+            for (std::size_t t = 0; t < subcase.combined.size(); ++t)
+                for (const StaticSubcase& term : subcases)
+                    if (term.label == subcase.combined[t])
+                        add(term, subcase.coefficients[t]);
+        if (field.isZero())
+            return std::nullopt;
+        return field;
+    };
     const output::NodalResultBuilder tableBuilder(dofMap);
     const output::ElementResultBuilder elementTableBuilder(elementSet, dofMap, m_options.recoveryRangeElements);
     const output::StiffnessRecovery stiffnessRecovery(elementSet, dofMap, pool);
@@ -1761,8 +1806,12 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         if (vectorised != nullptr)
             elementTables = std::move(*vectorised);
         else
+        {
+            const std::optional<elements::BodyAcceleration> acceleration = bodyAccelerations(subcase);
             elementTableBuilder.build(subcase.label, state.elementDisplacementsOrAll(), state.lineLoads, budget,
-                                      elementTables, pool, cancellation, temperatureView, &selection);
+                                      elementTables, pool, cancellation, temperatureView, &selection,
+                                      acceleration ? &*acceleration : nullptr);
+        }
         if (plan.of(output::OutputKind::StrainEnergy).isRequested)
             stiffnessRecovery.strainEnergy(subcase.label, state.elementDisplacementsOrAll(),
                                            plan.of(output::OutputKind::StrainEnergy), budget, elementTables,
@@ -2075,6 +2124,10 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             streamedInputs.nodalTables = &tableBuilder;
             streamedInputs.subcases = subcases;
             streamedInputs.cases = group;
+            std::vector<std::optional<elements::BodyAcceleration>> streamedAccelerations; // per case of the set
+            for (const std::size_t s : group)
+                streamedAccelerations.push_back(bodyAccelerations(subcases[s]));
+            streamedInputs.bodyAccelerations = streamedAccelerations;
             streamedInputs.plans = plans;
             streamedInputs.spc = &groupSpc;
             streamedInputs.supports = userSupports;
@@ -2266,7 +2319,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             // Measured: 400 plates, 32 cases, 40 recovered, 5.1 → 1.9 s of recovery.
             const BlockCases condensedBlocks =
                 blockCasesOf(group, subcases, casePlans, loadBuilder, snapshot, index.points(),
-                             m_options.isRecoveredCaseByCase || results.areTablesStreamed, budget);
+                             m_options.isRecoveredCaseByCase || results.areTablesStreamed, budget, bodyAccelerations);
             // The rows of each recovered unit (unit by unit): its element tables, made as the batches make the cases'
             // (by blocks of cases, or case by case), and its interior points' displacements, offered to the envelopes
             // in the order of the cases. The plan of a unit made at its first batch.
@@ -2299,13 +2352,22 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                     std::vector<std::vector<output::ElementResultTable>> tables(count);
                     if (selection.stress.isRequested || selection.strain.isRequested || selection.forces.isRequested)
                     {
+                        // Of the loads of the cases the acceleration fields only: a condensed unit has no line
+                        // load and no temperature here.
+                        std::vector<std::optional<elements::BodyAcceleration>> fields; // bounded by a batch
+                        for (std::size_t c = 0; c < count; ++c)
+                            fields.push_back(bodyAccelerations(subcases[group[unitCases.firstCaseInGroup + c]]));
+                        std::vector<output::CaseLoads> caseLoads(count); // bounded by a batch
+                        for (std::size_t c = 0; c < count; ++c)
+                            caseLoads[c].bodyAcceleration = fields[c] ? &*fields[c] : nullptr;
                         if (condensedBlocks.count > 0)
                             elementTableBuilder.buildCases(labels, displacements, condensedBlocks.count, budget, tables,
-                                                           pool, cancellation, &selection);
+                                                           pool, cancellation, &selection, caseLoads);
                         else
                             for (std::size_t c = 0; c < count; ++c)
                                 elementTableBuilder.build(labels[c], columnOf(c), {}, budget, tables[c], pool,
-                                                          cancellation, nullptr, &selection);
+                                                          cancellation, nullptr, &selection,
+                                                          caseLoads[c].bodyAcceleration);
                     }
                     for (std::size_t c = 0; c < count; ++c)
                     {
@@ -2909,7 +2971,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         const std::size_t batch = combination.batchCaseCount(gSize, QUANTITY_COUNT, budget.available());
         // The cases whose element tables are recovered by blocks (blockCasesOf).
         const BlockCases blockCases = blockCasesOf(group, subcases, plans, loadBuilder, snapshot, index.points(),
-                                                   m_options.isRecoveredCaseByCase, budget);
+                                                   m_options.isRecoveredCaseByCase, budget, bodyAccelerations);
         // A streamed run holds the tables of STREAMED_SUBCASES_IN_FLIGHT subcases: its blocks stay within them.
         const std::size_t blockLimit = results.areTablesStreamed ? STREAMED_SUBCASES_IN_FLIGHT - 1 : batch;
         std::vector<linalg::DenseMatrix> combined; // per quantity, g × batch

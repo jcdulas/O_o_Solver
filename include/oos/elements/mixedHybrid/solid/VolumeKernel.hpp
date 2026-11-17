@@ -131,6 +131,14 @@ public:
     // Reference: tdnns::solid::Solids::beta
     [[nodiscard]] Vector stressCoefficients(std::span<const double> q, std::span<const std::size_t> loadIndices) const;
 
+    // The particular stress coefficients of a body force per unit volume that is affine in the position,
+    // f_c(x) = constant_c + Σ_m gradient(c, m) x_m (basic axes; `coefficients`: the three constants, then
+    // gradient(c, m) at 3 + 3 m + c), to add to stressCoefficients(): the weight of the element, the inertia of a
+    // rotation. Every kernel keeps those of the twelve unit fields (a few milliseconds of its build), so that the
+    // stresses of a case with inertial loads need no kernel of their own. Not in the reference.
+    static constexpr std::size_t AFFINE_BODY_FIELDS = 12;
+    [[nodiscard]] Vector affineBodyStresses(std::span<const double, AFFINE_BODY_FIELDS> coefficients) const;
+
     // The stresses (σxx, σyy, σzz, τxy, τyz, τzx) at the reference point r for the stress coefficients β.
     // Reference: volume::VolumeKernel::stress_at
     [[nodiscard]] VoigtVector stressAt(std::span<const double> beta, const SolidPoint& r) const;
@@ -215,6 +223,7 @@ private:
     Matrix m_stressOperator;
     Matrix m_bubbleOperator;
     std::vector<SolidLoadResult> m_loads;
+    Matrix m_affineBodyStresses; // 6 N × AFFINE_BODY_FIELDS: the particular stresses of the unit affine body forces
     std::optional<SolidInteriorFields> m_interiorFields;
     double m_volume = 0.0;
     VolumeGeometry m_geometry;

@@ -364,6 +364,12 @@ void LoadVectorBuilder::addInertialAccelerations(base::EntityId loadSetId, std::
     m_inertial->addAccelerations(loadSetId, accelerationsG, budget, sink);
 }
 
+void LoadVectorBuilder::addInertialAffineAcceleration(base::EntityId loadSetId,
+                                                      elements::BodyAcceleration& field) const
+{
+    m_inertial->addAffineAcceleration(loadSetId, field);
+}
+
 std::vector<InertialTerm> LoadVectorBuilder::inertialTermsOf(base::EntityId loadSetId, base::DiagnosticSink& sink) const
 {
     return m_inertial->termsOf(loadSetId, sink);

@@ -36,8 +36,8 @@ inline constexpr std::array<std::string_view, 4> MATRIX_PARAMETERS{"AutoSingular
                                                                    "PivotZeroThreshold", "WeightToMass"};
 
 // The model parameter beside them, under this name in CacheKey::parameters with the value
-// input::offsetDefinitionName gives: ModelParams OFFDEF, where the mass of the offset elements is (the reduced mass,
-// the inertial patterns and the rigid-body mass properties).
+// input::offsetDefinitionName gives: ModelParams OffsetDefinition, where the mass of the offset elements is (the
+// reduced mass, the inertial patterns and the rigid-body mass properties).
 inline constexpr std::string_view OFFSET_DEFINITION_PARAMETER = "ModelParams OffsetDefinition";
 
 // The key of one condensation in the condensation cache: its parts kept apart so that a key that differs from a stored

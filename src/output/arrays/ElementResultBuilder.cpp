@@ -1265,7 +1265,8 @@ void ElementResultBuilder::build(std::int32_t subcase, std::span<const double> d
                                  base::MemoryBudget& budget, std::vector<ElementResultTable>& tables,
                                  base::ThreadPool* pool, const base::CancellationToken* cancellation,
                                  const elements::ElementTemperatures* temperatures,
-                                 const ElementOutputSelection* selection) const
+                                 const ElementOutputSelection* selection,
+                                 const elements::BodyAcceleration* bodyAcceleration) const
 {
     if (displacementsG.size() != static_cast<std::size_t>(m_dofMap->gSetSize()))
         throw std::invalid_argument(
@@ -1284,6 +1285,7 @@ void ElementResultBuilder::build(std::int32_t subcase, std::span<const double> d
         elements::NodalDisplacements::ofGSet(displacementsG, static_cast<std::size_t>(m_dofMap->gridCount()),
                                              static_cast<std::size_t>(m_dofMap->scalarCount()), &m_dofMap->entities());
     displacements.temperatures = temperatures;
+    displacements.bodyAcceleration = bodyAcceleration;
 
     for (std::size_t b = 0; b < batches.size(); ++b)
     {
@@ -1330,23 +1332,26 @@ void ElementResultBuilder::buildWindow(std::span<const std::int32_t> subcases,
                                        const RecoveryWindow& window, base::MemoryBudget& budget,
                                        std::span<std::vector<ElementResultTable>> tables, base::ThreadPool* pool,
                                        const base::CancellationToken* cancellation,
-                                       const ElementOutputSelection* selection) const
+                                       const ElementOutputSelection* selection, std::span<const CaseLoads> loads) const
 {
-    buildCasesIn(subcases, displacements, vectorisedCases, budget, tables, pool, cancellation, selection, {}, &window);
+    buildCasesIn(subcases, displacements, vectorisedCases, budget, tables, pool, cancellation, selection, loads,
+                 &window);
 }
 
 void ElementResultBuilder::buildGridPointStresses(std::int32_t subcase, std::span<const double> displacementsG,
                                                   base::MemoryBudget& budget, std::vector<ElementResultTable>& tables,
-                                                  const ElementOutputSelection* selection) const
+                                                  const ElementOutputSelection* selection,
+                                                  const elements::BodyAcceleration* bodyAcceleration) const
 {
     if (displacementsG.size() != static_cast<std::size_t>(m_dofMap->gSetSize()))
         throw std::invalid_argument(base::concatenate(
             {"ElementResultBuilder::buildGridPointStresses: expected the displacements of the g set (",
              std::to_string(m_dofMap->gSetSize()), " values), found ", std::to_string(displacementsG.size())}));
     const ElementOutputSelection everything;
-    const elements::NodalDisplacements displacements =
+    elements::NodalDisplacements displacements =
         elements::NodalDisplacements::ofGSet(displacementsG, static_cast<std::size_t>(m_dofMap->gridCount()),
                                              static_cast<std::size_t>(m_dofMap->scalarCount()), &m_dofMap->entities());
+    displacements.bodyAcceleration = bodyAcceleration;
     appendGridPointStresses(*m_dofMap, subcase, displacements, selection != nullptr ? *selection : everything, budget,
                             tables);
 }
@@ -1400,6 +1405,7 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
                 column, static_cast<std::size_t>(m_dofMap->gridCount()),
                 static_cast<std::size_t>(m_dofMap->scalarCount()), &m_dofMap->entities());
             displacements.temperatures = temperatures;
+            displacements.bodyAcceleration = loads.empty() ? nullptr : loads[c].bodyAcceleration;
             cases.push_back(displacements);
         }
         else
@@ -1409,6 +1415,7 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
             displacements.grid = column.first(gridValues);
             displacements.scalar = column.subspan(gridValues, window->scalarSlotCount);
             displacements.temperatures = temperatures;
+            displacements.bodyAcceleration = loads.empty() ? nullptr : loads[c].bodyAcceleration;
             displacements.slots = slots;
             if (window->entityValueCount > 0)
             {

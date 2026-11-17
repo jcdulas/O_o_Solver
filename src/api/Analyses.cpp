@@ -1,11 +1,15 @@
 #include "oos/api/Analyses.hpp"
 
 #include "oos/api/Threading.hpp"
+#include "oos/assembly/assemble/ElementSet.hpp"
+#include "oos/base/diagnostics/DiagnosticSink.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/errors/SolverError.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/base/platform/MemoryInfo.hpp"
 #include "oos/elements/core/ElementRegistry.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
+#include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/input/contract/TableRole.hpp"
 #include "oos/linalg/dense/KernelSelection.hpp"
 #include "oos/reduction/external/ExternalUnit.hpp"
@@ -414,12 +418,54 @@ std::vector<ElementFormulations> elementFormulations()
     return list;
 }
 
+namespace
+{
+
+// The problems that an element formulation with a model of its own finds before any assembly (the mixed hybrid
+// formulation: its geometry declarations, the elements its reading of the mesh refuses), which stop an analysis as a
+// refused card does: appended to `refusals`. The model of the formulation is built as an analysis builds it (the
+// reading of the surface and the check of every element); the other formulations have none.
+void addFormulationRefusals(const input::ModelSnapshot& snapshot, const elements::ElementRegistry& registry,
+                            Analysis analysis, std::vector<base::Diagnostic>& refusals)
+{
+    if (!registry.isMixedHybrid())
+        return;
+    base::DiagnosticSink sink;
+    try
+    {
+        base::MemoryBudget budget(budgetBytes(AnalysisSettings{}));
+        const elements::SnapshotIndex index(snapshot, budget);
+        const elements::FormulationModel* formulation = elements::formulationModelOf(index, registry);
+        if (formulation == nullptr)
+            return;
+        formulation->reportProblems(sink);
+        const elements::EntityLayout::Kind kind =
+            analysis == Analysis::Modes ? elements::EntityLayout::Kind::Modal : elements::EntityLayout::Kind::Static;
+        const assembly::ElementSet elements(index, registry, &formulation->layout(kind));
+        elements.check(sink, nullptr);
+    }
+    catch (const std::exception& error)
+    {
+        base::Diagnostic diagnostic;
+        diagnostic.code = "formulation-model";
+        diagnostic.message = error.what();
+        refusals.push_back(std::move(diagnostic));
+    }
+    for (const base::Diagnostic& diagnostic : sink.diagnostics())
+        if (diagnostic.severity == base::Severity::Error)
+            refusals.push_back(diagnostic);
+}
+
+} // namespace
+
 SupportCheck checkSupport(const input::ModelSnapshot& snapshot, Analysis analysis)
 {
-    const base::SupportReport report =
-        solutions::checkSupport(snapshot, elements::ElementRegistry::forModel(snapshot), kindOf(analysis));
+    const elements::ElementRegistry registry = elements::ElementRegistry::forModel(snapshot);
+    base::SupportReport report = solutions::checkSupport(snapshot, registry, kindOf(analysis));
     // Diagnostics keep the neutral names used by the model and the tables.
-
+    // With every card supported, the formulation's own problems: an analysis would stop on them too.
+    if (report.refusals.empty())
+        addFormulationRefusals(snapshot, registry, analysis, report.refusals);
     return {report.supported, report.refusals, report.ignored};
 }
 

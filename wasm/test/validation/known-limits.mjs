@@ -60,19 +60,6 @@ export const KNOWN_LIMITS = [
     reason: "the results are the same (8e-11); the share of a distributed load between the grid points of a triangle " +
       "in the applied load table depends on its first corner (its resultant does not)" },
 
-  // ---- later work (section 14)
-  { match: "hanging under its weight (GravityLoad): stresses",
-    reason: "the particular stresses of a body force are not added to the stresses of the solids yet (0.2 % at the " +
-      "centres, up to 3 % at the corners of a 2 x 2 x 2 mesh, first order in the element size); displacements exact" },
-  { match: "spinning about an axis across its end (RotationalForceLoad)",
-    reason: "the particular stresses of a body force (as the hanging columns): 0.35 %" },
-  { match: "1. panel: the applied loads and the support forces balance in every subcase",
-    reason: "the forces balance to 1e-11; the moments of the tables of the warped panel assembly are 1e-4 apart " +
-      "in two " +
-      "subcases (1.8e-2 before the reactions were carried with their resultant): not explained yet" },
-  { match: "1. panel: the support forces balance the loads stated, which the applied load table gives",
-    reason: "the moment of the tables of the warped panel assembly (as the case above): 1.2e-4" },
-
   // ---- comparisons with ClassicFormulation that are no criterion
   { match: "5. panel: displacements, frequencies and buckling factor against the classic formulation",
     reason: "a yardstick, not a criterion: quantities attached through rotations at grid points of shells " +
@@ -82,16 +69,8 @@ export const KNOWN_LIMITS = [
     reason: "a yardstick: the flange tip is 5 to 9 % from the ClassicFormulation value (rounded corner, shell " +
       "on solids)" },
   { match: "5. wing: displacements, frequencies and buckling factor against the classic formulation",
-    reason: "a yardstick: an in-plane displacement of a spar corner is 51 % above the ClassicFormulation value (the " +
-      "reaction agrees to 0.4 %): not explained" },
-
-  // ---- outside the formulation
-  { match: "temperature gradients across two Bar2 (LineElemTemperatureLoad)",
-    reason: "the data contract carries one gradient per element: the gradients of a line have no effect in either " +
-      "formulation" },
-  { match: "temperature gradients across two Beam2 (LineElemTemperatureLoad)",
-    reason: "the gradients of a line (as the Bar2 case)" },
-  { match: "loads: a FacePressureLoad on every face of one distorted SolidPyramid",
-    reason: "O_o_Reader names the wrong triangle of a pyramid for one of its four (both formulations); " +
-      "PointsPressureLoad is exact on the five faces" },
+    reason: "a yardstick: the two cells of the cover across the chord state a roof where the wing has a camber " +
+      "(warned by geometry-kink), and the formulation takes the fold as the geometry: an in-plane displacement " +
+      "of a spar corner is 51 % above the ClassicFormulation value on its finer mesh (the reaction agrees to " +
+      "0.4 %)" },
 ];

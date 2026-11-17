@@ -218,3 +218,90 @@ test("a rounded corner of the outline of MixedHybridFormulation that leaves its 
   assert.deepEqual(declared.diagnostics.filter((d) => d.severity !== "information"), []);
   assert.doesNotMatch(declared.diagnostics.find((d) => d.code === "geometry-report").text, /outline/);
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// A mesh transition on a boundary that goes straight on (spec section 4.4): three quadrilaterals at a grid point of
+// a straight outline or junction are not a re-entrant corner.
+
+// A flat skin of 3 × 2 unit quadrilaterals in the plane z = 0 with a flat rib under its middle line (the plane
+// y = 0, 1.2 deep), clamped at the end x = 3, under its weight. `transition`: the rib has one element across its
+// depth at the clamped end and two at the free end, with three quadrilaterals at grid point 3 of the junction.
+function ribbedSkin(transition) {
+  const lines = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
+    "StaticLoadSelection;2", "DisplacementOutput;All", "[model]", "ShellProp;1;1;0.01;1;;1",
+    "IsoMat;1;7.e10;;0.3;2700.", "GravityLoad;2;;9.81;0.;0.;-1."];
+  const node = (id, x, y, z) => lines.push(`Node;${id};;${real(x)};${real(y)};${real(z)}`);
+  const quad = (id, corners) => lines.push(`ShellQuad4;${id};1;${corners.join(";")}`);
+  // the skin: grid point 1 + 3 i + j at (i, j − 1, 0)
+  const skin = (i, j) => 1 + 3 * i + j;
+  for (let i = 0; i <= 3; ++i)
+    for (let j = 0; j <= 2; ++j) node(skin(i, j), i, j - 1, 0);
+  for (let i = 0; i < 3; ++i)
+    for (let j = 0; j < 2; ++j) quad(1 + 2 * i + j, [skin(i, j), skin(i + 1, j), skin(i + 1, j + 1), skin(i, j + 1)]);
+  const top = (i) => skin(i, 1);
+  const held = [skin(3, 0), skin(3, 1), skin(3, 2)];
+  if (transition) {
+    node(20, 0, 0, -0.6); node(21, 0, 0, -1.2); node(22, 0.5, 0, -0.6); node(23, 0.5, 0, -1.2);
+    node(24, 1, 0, -1.2); node(25, 2, 0, -1.2); node(26, 3, 0, -1.2);
+    quad(11, [20, 22, top(1), top(0)]); quad(12, [21, 23, 22, 20]); quad(13, [top(1), 22, 23, 24]);
+    quad(14, [24, 25, top(2), top(1)]); quad(15, [25, 26, top(3), top(2)]);
+    held.push(26);
+  } else {
+    for (let i = 0; i <= 3; ++i) { node(20 + 2 * i, i, 0, -0.6); node(21 + 2 * i, i, 0, -1.2); }
+    for (let i = 0; i < 3; ++i) {
+      quad(11 + 2 * i, [20 + 2 * i, 22 + 2 * i, top(i + 1), top(i)]);
+      quad(12 + 2 * i, [21 + 2 * i, 23 + 2 * i, 22 + 2 * i, 20 + 2 * i]);
+    }
+    held.push(26, 27);
+  }
+  for (const id of held) lines.push(`SinglePointConstrList;1;123456;${id}`);
+  return lines.join("\n") + "\n";
+}
+
+test("a mesh transition of the rib on its junction with a skin of MixedHybridFormulation leaves the junction straight", () => {
+  // Everything is plane: no kink, no rounding, and the skin answers as it does over the regular rib. Read as a
+  // re-entrant corner of the rib, the three quadrilaterals at the junction bent it towards the mesh line inside the
+  // rib (kinks of 27 degrees between coplanar shells of the skin, a deflection seven times too small).
+  const deflection = (transition) => {
+    const run = solve(ribbedSkin(transition), {});
+    const warnings = run.diagnostics.filter((d) => d.severity === "warning");
+    assert.deepEqual(warnings.map((d) => d.code), [], JSON.stringify(warnings));
+    const displacements = table(run, "displacements");
+    return displacements.values[6 * Array.from(displacements.ids).indexOf(1) + 2];
+  };
+  const [regular, withTransition] = [deflection(false), deflection(true)];
+  assert.ok(Math.abs(withTransition / regular - 1) < 0.02,
+    `corner deflection ${withTransition} with the transition, ${regular} over the regular rib`);
+});
+
+test("a re-entrant corner of three ShellQuad4 of MixedHybridFormulation beside a triangle of another surface is kept", () => {
+  // An L of three unit quadrilaterals in the plane z = 0 (its re-entrant corner at grid point 5, the origin) with a
+  // web of four triangles through the line y = 0. The side of the L has quadrilaterals only at grid point 5: it is read
+  // as between quadrilaterals (each edge of the outline goes on into the L), whatever the web is made of, and the
+  // L carries the pressure on its area of 3. Read by the rule of the grid points that have a triangle, the outline
+  // went round the corner (a rounding of 42 degrees).
+  const pressure = 100.0;
+  const lines = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
+    "StaticLoadSelection;2", "DisplacementOutput;All", "SinglePointConstrForceOutput;All", "[model]",
+    "ShellProp;1;1;0.01;1;;1", "IsoMat;1;7.e10;;0.3;2700."];
+  // grid point 1 + 3 i + j at (i − 1, j − 1, 0); the quadrant x < 0, y > 0 has no element
+  const id = (i, j) => 1 + 3 * i + j;
+  for (let i = 0; i <= 2; ++i)
+    for (let j = 0; j <= 2; ++j)
+      if (!(i === 0 && j === 2)) lines.push(`Node;${id(i, j)};;${real(i - 1)};${real(j - 1)};0.`);
+  let element = 0;
+  for (const [i, j] of [[0, 0], [1, 0], [1, 1]]) {
+    lines.push(`ShellQuad4;${++element};1;${id(i, j)};${id(i + 1, j)};${id(i + 1, j + 1)};${id(i, j + 1)}`,
+      `ShellPressureLoad;2;${real(pressure)};${element}`);
+  }
+  // the web: two triangles under the line y = 0 and two above it, so that both edges of the L along it are junctions
+  const [centre, before, after] = [id(1, 1), id(0, 1), id(2, 1)];
+  lines.push("Node;20;;0.;0.;-1.", "Node;21;;0.;0.;1.", `ShellTria3;11;1;${centre};${after};20`,
+    `ShellTria3;12;1;${centre};20;${before}`, `ShellTria3;13;1;${centre};${before};21`,
+    `ShellTria3;14;1;${centre};21;${after}`);
+  for (const j of [0, 1, 2]) lines.push(`SinglePointConstrList;1;123456;${id(2, j)}`);
+  const run = solve(lines.join("\n") + "\n", {});
+  const warnings = run.diagnostics.filter((d) => d.severity === "warning");
+  assert.deepEqual(warnings.map((d) => d.code), [], JSON.stringify(warnings));
+  assert.ok(Math.abs(carried(run) / (3 * pressure) - 1) < 1e-9, `the L carries ${carried(run)}`);
+});

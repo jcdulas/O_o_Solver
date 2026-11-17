@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <string_view>
 #include <utility>
 
 namespace oos::elements::mixedHybrid
@@ -19,6 +20,9 @@ namespace
 // Two mid-side grids of one edge given by two shells are the same point when they are closer than this share of the
 // chord of the edge.
 constexpr double SAME_MIDSIDE_TOLERANCE = 1e-9;
+// How the refusal of an element for its section begins (elementRefusal); every other refusal of an element is one of
+// its geometry.
+constexpr std::string_view SINGULAR_SECTION = "singular section";
 
 // The surface of an element as a function of its reference coordinates.
 SurfaceAt surfaceOf(const Patch& patch)
@@ -64,9 +68,10 @@ ShellPart::ShellPart(ShellPartInput input) : m_input(std::move(input))
         checkElements();
 }
 
-void ShellPart::addProblem(ShellPartProblem::Subject subject, std::size_t index, std::string message)
+void ShellPart::addProblem(ShellPartProblem::Subject subject, std::size_t index, std::string message,
+                           bool isGeometry)
 {
-    m_problems.push_back({subject, index, std::move(message)});
+    m_problems.push_back({subject, index, std::move(message), isGeometry});
 }
 
 std::string ShellPart::gridName(std::size_t grid) const
@@ -411,7 +416,11 @@ void ShellPart::checkElements()
 {
     for (std::size_t ie = 0; ie < m_input.shells.size(); ++ie)
         if (std::optional<std::string> refusal = elementRefusal(ie))
-            addProblem(ShellPartProblem::Subject::Shell, ie, std::move(*refusal));
+        {
+            // every refusal of an element but that of its section is one of its geometry
+            const bool isGeometry = !refusal->starts_with(SINGULAR_SECTION);
+            addProblem(ShellPartProblem::Subject::Shell, ie, std::move(*refusal), isGeometry);
+        }
     for (std::size_t il = 0; il < m_input.lines.size(); ++il)
     {
         if (!m_lineEdges[il])
@@ -441,18 +450,18 @@ std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, 
     if (input.section.parts == SectionParts::MembraneOnly)
     {
         if (!inverse33(input.section.a))
-            return std::string("singular section: its membrane matrix A is singular");
+            return std::string(SINGULAR_SECTION) + ": its membrane matrix A is singular";
     }
     else if (!inverse33(input.section.d))
     {
-        return std::string("singular section: it has no bending stiffness (its matrix D is singular)");
+        return std::string(SINGULAR_SECTION) + ": it has no bending stiffness (its matrix D is singular)";
     }
     const std::array<double, 4>& thickness = m_shells[shell].section.thickness();
     const std::array<std::size_t, 4> cornerSlot =
         nv == 3 ? std::array<std::size_t, 4>{0, 1, 3, 3} : std::array<std::size_t, 4>{0, 1, 2, 3};
     for (std::size_t k = 0; k < nv; ++k)
         if (!(thickness[cornerSlot[k]] > 0.0))
-            return std::string("singular section: its thickness at a corner is not positive");
+            return std::string(SINGULAR_SECTION) + ": its thickness at a corner is not positive";
     ShellElementData data = element(shell);
     const ShellReferenceElement& re = referenceElement(nv);
     const ShellElementDefinition def = data.definition();

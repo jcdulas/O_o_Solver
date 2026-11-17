@@ -18,7 +18,7 @@ namespace oos::elements
 namespace
 {
 
-// The element types with offsets (MDLPRM OFFDEF: the shells' ZOFFS, the bars' and beams' WA, WB).
+// The element types with offsets (ModelParams OffsetDefinition: the shells' ZOFFS, the bars' and beams' WA, WB).
 constexpr std::array<std::string_view, 6> OFFSET_SHELLS{"ShellQuad4",        "ShellQuad4Drilling", "ShellTria3",
                                                         "ShellTria3Drilling", "ShellQuad8",        "ShellTria6"};
 constexpr std::array<std::string_view, 2> OFFSET_BEAMS{"Bar2", "Beam2"};
@@ -165,8 +165,8 @@ bool ElementFamily::isDifferentiallyInert() const noexcept
 
 void ElementFamily::checkDifferentialStiffness(const ElementBatchView& view, base::DiagnosticSink& sink) const
 {
-    // Under ModelParams OFFDEF ELMOFF, the default, the offsets take no part in the differential stiffness, so an
-    // offset element is refused in a linear buckling analysis (SOL 105).
+    // Under ModelParams OffsetDefinition ElemOffsetsOnly, the default, the offsets take no part in the differential
+    // stiffness, so an offset element is refused in a linear buckling analysis (SOL 105).
     if (view.rowCount() > 0 && !view.hasOffsetDifferentialStiffness())
         if (const OffsetUse use = offsetUseOf(view, card()); use.count > 0)
         {

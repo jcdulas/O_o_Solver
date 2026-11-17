@@ -127,11 +127,12 @@ public:
     {
         return m_formulationGeometry;
     }
-    // The model's MDLPRM OFFDEF (ELMOFF, the default, when the model gives none): where the mass of an offset
-    // element is (OffsetDefinition).
+    // The model's ModelParams OffsetDefinition (ElemOffsetsOnly, the default, when the model gives none): where the
+    // mass of an offset element is (OffsetDefinition).
     [[nodiscard]] OffsetDefinition offsetDefinition() const noexcept { return m_offsetDefinition; }
-    // The model's MDLPRM OFFDEF value when O_o_Solver does not take it (offsetDefinitionOf gives nothing: NOMASS ...),
-    // which SupportCatalog::check refuses; empty otherwise (offsetDefinition() is then the value's).
+    // The model's ModelParams OffsetDefinition value when O_o_Solver does not take it (offsetDefinitionOf gives
+    // nothing: NoMassOffsets ...), which SupportCatalog::check refuses; empty otherwise (offsetDefinition() is then the
+    // value's).
     [[nodiscard]] const std::string& unsupportedOffsetDefinition() const noexcept
     {
         return m_unsupportedOffsetDefinition;

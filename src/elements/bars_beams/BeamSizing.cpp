@@ -198,19 +198,33 @@ Matrix<6> Kernel::complianceAt(double position) const
     return compliance(m_beam, m_first, m_other, position);
 }
 
-std::array<MixedScalar, 12> Kernel::endForces(std::span<const double> grid, MixedScalar thermalStrain,
+std::array<MixedScalar, 12> Kernel::curvatureDisplacements(const FreeStrains& freeStrains) const
+{
+    if (!freeStrains.hasCurvatures)
+        return {};
+    return beamFreeCurvatureDisplacements(m_beam.section, m_beam.geometry.length, freeStrains.curvatures,
+                                          [&](double position) { return at(position).neutral; });
+}
+
+std::array<MixedScalar, 12> Kernel::endForces(std::span<const double> grid, const FreeStrains& freeStrains,
                                            std::span<const BeamLineLoad> lineLoads) const
 {
     std::array<double, 12> values{};
     std::copy(grid.begin(), grid.end(), values.begin());
     const auto ends = m_beam.geometry.endTransform() * values;
+    const auto bending = curvatureDisplacements(freeStrains);
     std::array<MixedScalar, 12> result{};
     for (std::size_t i = 0; i < 12; ++i)
     {
         for (std::size_t j = 0; j < 12; ++j)
             result[i] += m_end(i, j) * ends[j];
         // C^T K_raw e_thermal = K_condensed e_thermal: released columns cancel exactly.
-        result[i] -= m_end(i, 6) * thermalStrain * m_beam.geometry.length;
+        result[i] -= m_end(i, 6) * freeStrains.axial * m_beam.geometry.length;
+        // The same for the end displacements of the free curvatures (any free end displacement d: C^T K_raw d =
+        // K_condensed d).
+        if (freeStrains.hasCurvatures)
+            for (std::size_t j = 0; j < 12; ++j)
+                result[i] -= m_end(i, j) * bending[j];
     }
     if (!lineLoads.empty())
     {
@@ -223,9 +237,9 @@ std::array<MixedScalar, 12> Kernel::endForces(std::span<const double> grid, Mixe
     return result;
 }
 
-Matrix<12> Kernel::differential(std::span<const double> grid, MixedScalar thermalStrain) const
+Matrix<12> Kernel::differential(std::span<const double> grid, const FreeStrains& freeStrains) const
 {
-    const auto force = endForces(grid, thermalStrain)[6];
+    const auto force = endForces(grid, freeStrains)[6];
     const auto unit = beamEndDifferentialStiffness(1.0, m_beam.geometry.length);
     Matrix<12> result;
     for (std::size_t k = 0; k < result.values.size(); ++k)

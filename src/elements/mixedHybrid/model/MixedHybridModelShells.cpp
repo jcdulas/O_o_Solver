@@ -393,8 +393,10 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
         case ShellPartProblem::Subject::Shell:
         {
             const MixedShell& shell = m_shells[problem.index];
-            addElementProblem(shell.card, shell.batchRow,
-                              shellProblem(shell.card, shell.elementId, "", problem.message));
+            base::Diagnostic diagnostic = shellProblem(shell.card, shell.elementId, "", problem.message);
+            if (problem.isGeometry)
+                diagnostic.code = problem_code::DEGENERATE_GEOMETRY;
+            addElementProblem(shell.card, shell.batchRow, std::move(diagnostic));
             break;
         }
         case ShellPartProblem::Subject::Line:

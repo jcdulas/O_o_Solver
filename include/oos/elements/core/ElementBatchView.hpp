@@ -58,20 +58,22 @@ public:
     {
         return m_batch->ids()[static_cast<std::size_t>(row)];
     }
-    // Whether the mass of an offset element is on its offset (the model's ModelParams OFFDEF LROFF or ELMZ) rather than
-    // at its grid points (ELMOFF, the default): input::OffsetDefinition.
+    // Whether the mass of an offset element is on its offset (the model's ModelParams OffsetDefinition
+    // LoadRecoveryOffsets or ElemOffsetZ) rather than at its grid points (ElemOffsetsOnly, the default):
+    // input::OffsetDefinition.
     [[nodiscard]] bool isMassOnOffsets() const noexcept
     {
         return input::carriesMassOnOffsets(snapshot().offsetDefinition());
     }
     // Whether the element loads of an offset element (thermal, pressure, BeamDistributedLoad) act through its offset
-    // (LROFF, ELMZ) rather than at its grid points (ELMOFF, the default): input::OffsetDefinition.
+    // (LoadRecoveryOffsets, ElemOffsetZ) rather than at its grid points (ElemOffsetsOnly, the default):
+    // input::OffsetDefinition.
     [[nodiscard]] bool areLoadsOnOffsets() const noexcept
     {
         return input::carriesLoadsOnOffsets(snapshot().offsetDefinition());
     }
-    // Whether the differential stiffness of an offset element is formed (LROFF, ELMZ); under ELMOFF it is not and an
-    // offset element is refused in a buckling analysis: input::OffsetDefinition.
+    // Whether the differential stiffness of an offset element is formed (LoadRecoveryOffsets, ElemOffsetZ); under
+    // ElemOffsetsOnly it is not and an offset element is refused in a buckling analysis: input::OffsetDefinition.
     [[nodiscard]] bool hasOffsetDifferentialStiffness() const noexcept
     {
         return input::carriesLoadsOnOffsets(snapshot().offsetDefinition());

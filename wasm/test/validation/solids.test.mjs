@@ -219,9 +219,7 @@ function skinFaces(mesh) {
 // The FacePressureLoad record of set `sid` on `face`: the pressures `p` (one, or one per corner in the order of
 // face.nodes) pressing on the element, or, with `direction`, the traction p × direction. G1 is the first corner of the
 // face and G3 the one across it (a quadrilateral), G4 the corner off the face (a tetrahedron), nothing (a triangle of
-// a pentahedron). A triangle of a pyramid is named by the second corner of its base edge and the apex: the reader
-// takes the first face of the element that holds G1 and G3, and this pair finds three of the four triangles (the
-// fourth cannot be named: every pair of its corners belongs to a face listed before it).
+// a pentahedron). A triangle of a pyramid is named by the two corners of its edge on the base.
 function facePressure(sid, face, p, direction = null) {
   const values = Array.isArray(p) ? p : [p];
   const pressures = [0, 1, 2, 3].map((k) => (k < values.length ? real(values[k]) : "")).join(";");
@@ -230,10 +228,8 @@ function facePressure(sid, face, p, direction = null) {
   if (face.nodes.length === 4) across = face.nodes[2];
   else if (face.card === "SolidTetra") across = face.element.corners.find((id) => !face.nodes.includes(id));
   else if (face.card === "SolidPyramid") {
-    const corners = face.element.corners;
-    const base = face.nodes.map((id) => corners.indexOf(id)).filter((local) => local < 4).sort((a, b) => a - b);
-    first = corners[base[0] === 0 && base[1] === 3 ? 0 : base[1]];
-    across = corners[4];
+    const apex = face.element.corners[4];
+    [first, across] = face.nodes.filter((id) => id !== apex);
   }
   const tail = direction ? `;0;${direction.map(real).join(";")}` : "";
   return `FacePressureLoad;${sid};${face.element.id};${pressures};${first};${across}${tail}`;
@@ -531,14 +527,13 @@ for (const meshCase of [PATCH_MESHES[0], PATCH_MESHES[4], PATCH_MESHES[5], PATCH
       bendingPatch(t, patchMesh({ ...meshCase, n: [3, 3, 3] }, GEOMETRIES[0]), { centres: true });
     });
 
-// The same block of hexahedra with two cells along each side. SUSPECTED DEFECT (kept failing): the skin is read as a
-// smooth surface and a mesh line of two edges between two sharp edges is read as one curve through its three grid
-// points; when the middle grid point is not at the middle, the line stays straight but is not run through at a
-// uniform speed, and the corner pressures of a FacePressureLoad, interpolated in the parameters of the face
-// (SolidPart::faceCornerPressureLoad), are no longer the linear pressure of the card: the load is not even in
-// equilibrium (support forces 1e-2 of it). Measured: displacements 3.6e-1 of the scale, stresses 12 times the largest,
-// both proportional to the distortion; exact with a uniform pressure, with three cells along each side, with every
-// edge of the skin declared sharp, with mid-side nodes, and on tetrahedra.
+// The same block of hexahedra with two cells along each side. A limit of the reading of the skin (known-limits.mjs):
+// the skin is read as a smooth surface and a mesh line of two edges between two sharp edges is read as one curve
+// through its three grid points; when the middle grid point is not at the middle, the line stays straight but is not
+// run through at a uniform speed (4e-6 for a criterion of 1e-6). Exact with three cells along each side, with every
+// edge of the skin declared sharp, with mid-side nodes, and on tetrahedra. (The corner pressures of a
+// FacePressureLoad were interpolated in the parameters of the face, which this case found: they are now interpolated
+// by position.)
 test("patch: three pure bendings on a block of 2 x 2 x 2 SolidHexa whose skin is distorted too, straight edges",
   (t) => { bendingPatch(t, patchMesh(PATCH_MESHES[0], GEOMETRIES[0]), { centres: true }); });
 
@@ -1033,10 +1028,9 @@ test("Lamé: a sector of a thick cylinder of SolidHexa in a cylindrical displace
   const bore = skinFaces(mesh).filter((face) => face.x.every((p) => near(Math.hypot(p[0], p[1]), a)));
   for (const face of bore) records.push(facePressure(2, face, pressure));
   const run = runModel(deck(101, staticCase([2]), records), mesh.options());
-  // SUSPECTED DEFECT (kept failing): the run warns (support-not-carried-along-edge) that the edges and faces hold only
-  // the directions of the basic system: the hoop direction, the same at every grid point of each plane, is held at
-  // the grid points and not between them. Spec section 5.6 holds along an edge the directions common to its two grid
-  // points. Measured: displacements 8 times the exact ones.
+  // The hoop direction, the same at every grid point of each plane, is held along the edges and faces of the planes
+  // (spec section 5.6: the directions common to the grid points). This case found that only the directions of the
+  // basic system were (displacements 8 times the exact ones).
   const warnings = run.diagnostics.filter((d) => d.severity === "warning");
   t.diagnostic(`warnings: ${warnings.map((d) => d.code).join(", ") || "none"}`);
   const exact = lameCylinder({ ...TUBE, planeStrain: true });
@@ -1135,11 +1129,8 @@ const SINGLE_ELEMENTS = {
 
 // A pressure on every face of one element, of every face type (the triangles and quadrilaterals of the four shapes):
 // the state is hydrostatic, σ = −p I, u = −p (1 − 2 ν) x / E. A face loaded on the wrong side, or a wrong face,
-// breaks it. SUSPECTED DEFECT of the reader (the FacePressureLoad cases of the pyramid are kept failing): the face of
-// the card is the first face of the element that holds G1 and G3 (O_o_Reader, pressureFace); two triangular faces
-// of a pyramid share each edge to the apex and the base holds each base edge, so that one of the four triangles
-// cannot be named: its pressure goes to its neighbour (support forces 0.46 p, the state is not hydrostatic). The
-// PointsPressureLoad card, which names the grid points of the face, is right on the five faces.
+// breaks it. A triangle of a pyramid is named by the two corners of its edge on the base (this case found that
+// O_o_Reader took the first face holding the two grid points, which named no triangle of a pyramid for sure).
 for (const shape of SHAPES)
   for (const quadratic of [false, true])
     for (const card of ["FacePressureLoad", "PointsPressureLoad"])
@@ -1205,11 +1196,9 @@ for (const shape of SHAPES)
     assertRatio(carried, 1, CRITERIA.invariant, "the weight carried by the supports");
   });
 
-// The stresses of the same column. SUSPECTED DEFECT (kept failing): the recovery of the solids does not add the
-// particular stresses of a body force (MixedHybridModel::solidStresses gives SolidPart::stressCoefficients the factor
-// of the thermal load only), which spec section 10.3 states: the displacements are exact and the stresses are those
-// of the same displacements without the weight inside each element. Measured on this mesh: 0.2 % (centres of the
-// hexahedra) to 3 % (corners) of ρ g L; 12 % at the corners of a single hexahedron.
+// The stresses of the same column: the recovery adds the particular stresses of the body force to those of the
+// unknowns (spec section 10.3). Without them (what this case found) the stresses were those of the same displacements
+// without the weight inside each element: 0.2 % (centres of the hexahedra) to 3 % (corners) of ρ g L on this mesh.
 for (const shape of ["SolidTetra", "SolidHexa"])
   test(`loads: a column of ${shape} hanging under its weight (GravityLoad): stresses`, (t) => {
     const column = hangingColumn(shape);
@@ -1223,8 +1212,7 @@ for (const shape of ["SolidTetra", "SolidHexa"])
 // A bar spinning about an axis across its end (RotationalForceLoad), with ν = 0: the body force ρ ω² (x, y', 0)
 // gives σxx = ρ ω² (L² − x²) / 2 and σyy = ρ ω² (h² / 4 − y'²) / 2, u = ρ ω² (L² x / 2 − x³ / 6) / E,
 // v = ρ ω² (h² y' / 8 − y'³ / 6) / E (x along the bar from the axis, y' across it from the axis; the axis is z).
-// The stresses are quadratic: within the degree of the element. The stresses fail for the cause of the hanging
-// column (no particular stresses of the body force in the recovery).
+// The stresses are quadratic: within the degree of the element, with the particular stresses of the body force.
 test("loads: a bar of SolidHexa spinning about an axis across its end (RotationalForceLoad)", (t) => {
   const length = 4.0;
   const depth = 1.0;
@@ -1310,9 +1298,8 @@ for (const meshCase of PATCH_MESHES.slice(0, 4))
 // A block turned by 30 degrees about z, its grid points in a rectangular displacement system turned with it, stretched
 // along its own axis between two planes held in that system (component 1 of the grid points of its two end faces):
 // the uniaxial state, u' = ε x' in the turned axes. Spec section 5.6: a common rectangular displacement system is
-// carried along the edges as the basic one. SUSPECTED DEFECT (kept failing): the run warns
-// (support-not-carried-along-edge) and holds along the edges and faces only the directions of the basic system
-// (MixedHybridModel::basicSupportsOf): the planes are held at their grid points alone. Measured: 14 % of the stretch.
+// carried along the edges as the basic one. (This case found that only the directions of the basic system were:
+// 14 % of the stretch.)
 test("loads: supports in a rectangular displacement system turned with a block of SolidHexa", (t) => {
   const angle = Math.PI / 6;
   const [c, s] = [Math.cos(angle), Math.sin(angle)];
@@ -1614,9 +1601,8 @@ for (const shape of SHAPES)
 
 // The same ring of hexahedra held at three corners of one element, two of them the ends of an arc: the supports are
 // read along the edges (spec section 5.6) and their forces are carried back to the grid points; the table of the
-// support forces must still balance the weight and its moment. SUSPECTED DEFECT (kept failing): the moment of the
-// forces carried back from the held arc is not that of the forces on the arc: the centre of gravity read from the
-// table is 0.6 % off along z (the forces themselves balance).
+// support forces must still balance the weight and its moment. (This case found that the forces carried back from
+// the held arc did not keep their moment: the centre of gravity read from the table was 0.6 % off along z.)
 test("mass: the support forces of a quarter ring of SolidHexa held along an arc balance the moment of its weight",
   (t) => {
     const [a, b, h] = [1.0, 2.0, 1.0];

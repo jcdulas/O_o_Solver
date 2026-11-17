@@ -263,7 +263,8 @@ void EdgeShearShellFamily<Shell>::computeStiffness(const ElementBatchView& view,
 }
 
 // The kernel's translational mass, ρ t + NSM per unit area (the ShellProp's NSM and the NSM cards' share; ρ of MID1, of
-// MID2 without MID1, ShellSection), through the offset only under ModelParams OFFDEF LROFF or ELMZ.
+// MID2 without MID1, ShellSection), through the offset only under ModelParams OffsetDefinition LoadRecoveryOffsets or
+// ElemOffsetZ.
 template <typename Shell>
 void EdgeShearShellFamily<Shell>::computeMass(const ElementBatchView& view, ElementRange range,
                                               const MassOptions& options, ElementMatrixBlock& block) const
@@ -291,7 +292,7 @@ void EdgeShearShellFamily<Shell>::checkPressureLoads(const ElementBatchView& vie
 }
 
 // The kernel's pressure loads (PLOAD4, and ShellPressureLoad as a uniform FacePressureLoad), without the offset unless
-// ModelParams OFFDEF puts the loads on it.
+// ModelParams OffsetDefinition puts the loads on it.
 template <typename Shell>
 void EdgeShearShellFamily<Shell>::computePressureLoads(const ElementBatchView& view,
                                                        std::span<const ElementPressure> pressures,
@@ -333,7 +334,7 @@ void EdgeShearShellFamily<Shell>::checkThermalLoads(const ElementBatchView& view
 }
 
 // The kernel's thermal loads of the element's mean temperature change and gradient, through the offset (see the
-// header: consistent with the stiffness, whatever ModelParams OFFDEF).
+// header: consistent with the stiffness, whatever ModelParams OffsetDefinition).
 template <typename Shell>
 void EdgeShearShellFamily<Shell>::computeThermalLoads(const ElementBatchView& view, ElementRange range,
                                                       const ElementTemperatures& temperatures,

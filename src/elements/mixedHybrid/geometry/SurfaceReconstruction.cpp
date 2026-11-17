@@ -36,6 +36,12 @@ constexpr double QUADRIC_RIDGE = 1e-12;
 constexpr double QUADRIC_VARIANCE_FLOOR = 1e-20;
 // Guards of divisions whose terms may all vanish.
 constexpr double TINY = 1e-300;
+// An open fan of three quadrilaterals at a grid is a mesh transition on a boundary that goes straight on when the
+// corners of its elements there add up to less than this angle (half a turn, against three quarters of a turn at a
+// re-entrant corner): the middle of the two.
+constexpr double STRAIGHT_FAN_LIMIT = 1.25 * 3.14159265358979323846;
+// The quadrilaterals of the fan of a mesh transition on a boundary.
+constexpr std::size_t TRANSITION_FAN_SIZE = 3;
 
 // A seed direction not along n: x, unless n is near x.
 Vector3 seedAcross(const Vector3& n)
@@ -217,6 +223,9 @@ std::pair<std::vector<SurfaceReconstruction::RingStep>, bool> SurfaceReconstruct
 // boundary of the mesh only the boundary goes on, from one boundary edge to the other, unless the grid has a single
 // element, or two triangles and nothing else: nothing tells a corner cut by a diagonal from a straight boundary with
 // two triangles, and a corner is the safe reading. The other lines end on the boundary.
+// A side of a junction or of the outline that has quadrilaterals only at a is read as between quadrilaterals, whatever
+// the other sides have (not in the reference, which took the boundary rule there and rounded a re-entrant corner of
+// three quadrilaterals beside a triangle of another surface).
 // Reference: Reconstruction::candidates (cached: a function of the mesh alone).
 const std::map<std::size_t, bool>& SurfaceReconstruction::candidates(std::size_t a, std::size_t b)
 {
@@ -224,6 +233,67 @@ const std::map<std::size_t, bool>& SurfaceReconstruction::candidates(std::size_t
         return it->second;
     std::map<std::size_t, bool> found = candidatesAt(a, b);
     return m_candidates.emplace(GridPair{a, b}, std::move(found)).first->second;
+}
+
+// The corner angle of element e at its grid a.
+double SurfaceReconstruction::cornerAngle(std::size_t e, std::size_t a) const
+{
+    const std::array<std::size_t, 2> next = neighboursIn(shell(e), a);
+    const Vector3 u = unit3(sub3(position(next[0]), position(a)));
+    const Vector3 v = unit3(sub3(position(next[1]), position(a)));
+    return std::acos(std::clamp(dot3(u, v), -1.0, 1.0));
+}
+
+// Edge a − b of quadrilateral e at a mesh transition on a boundary that goes straight on, or nothing.
+//
+// A quadrilateral is a quarter of a turn where the mesh is regular. Three quadrilaterals between two edges that no
+// element faces across (the outline of the mesh, or a junction seen from one of its sides) are then three quarters of
+// a turn, a re-entrant corner: each of the two edges goes on into the mesh. The same three quadrilaterals are also
+// what a mesh transition leaves on a straight boundary (two elements becoming one), where the boundary goes on and
+// the two lines inside end. The mesh alone does not tell them apart; the corners of the three elements do: half a
+// turn there, three quarters at the corner (STRAIGHT_FAN_LIMIT). Read as a corner, a transition on a junction line
+// bends the straight junction towards the mesh line inside (found on a rib under a skin: seven times too stiff).
+// This rule is not in the reference.
+//
+// `goesOnTo`: the grid of the other end edge of the fan when a − b is one of them; nothing for a line inside the
+// fan, which ends at a. `smooth`: no raw edge is crossed on the way.
+std::optional<SurfaceReconstruction::TransitionEdge> SurfaceReconstruction::transitionEdge(std::size_t e,
+                                                                                           std::size_t a,
+                                                                                           std::size_t b)
+{
+    // the fan: from e away from a − b, and from the element that faces e across a − b the other way
+    const std::pair<std::vector<RingStep>, bool> forward = ring(e, a, b);
+    if (forward.second)
+        return std::nullopt;
+    std::vector<RingStep> backward;
+    if (const std::optional<std::size_t> f = facing(e, a, b))
+    {
+        std::pair<std::vector<RingStep>, bool> walk = ring(*f, a, b);
+        if (walk.second)
+            return std::nullopt;
+        backward = std::move(walk.first);
+    }
+    if (forward.first.size() + backward.size() != TRANSITION_FAN_SIZE)
+        return std::nullopt;
+    std::vector<RingStep> fan = forward.first;
+    fan.insert(fan.end(), backward.begin(), backward.end());
+    double angle = 0.0;
+    for (const RingStep& step : fan)
+    {
+        if (shell(step.first).count != 4)
+            return std::nullopt;
+        angle += cornerAngle(step.first, a);
+    }
+    if (angle >= STRAIGHT_FAN_LIMIT)
+        return std::nullopt;
+    TransitionEdge out;
+    if (!backward.empty())
+        return out; // a line inside the fan
+    out.goesOnTo = forward.first.back().second;
+    out.smooth = true;
+    for (std::size_t m = 0; m + 1 < forward.first.size(); ++m)
+        out.smooth = out.smooth && !isRaw(a, forward.first[m].second);
+    return out;
 }
 
 std::map<std::size_t, bool> SurfaceReconstruction::candidatesAt(std::size_t a, std::size_t b)
@@ -234,6 +304,15 @@ std::map<std::size_t, bool> SurfaceReconstruction::candidatesAt(std::size_t a, s
     {
         for (const std::size_t e : es)
         {
+            if (const std::optional<TransitionEdge> transition = transitionEdge(e, a, b))
+            {
+                if (transition->goesOnTo)
+                {
+                    bool& entry = found.try_emplace(*transition->goesOnTo, false).first->second;
+                    entry = entry || transition->smooth;
+                }
+                continue;
+            }
             const std::size_t dd = other(e, a, b);
             if (const std::optional<std::size_t> f = facing(e, a, dd))
             {
@@ -266,9 +345,21 @@ std::map<std::size_t, bool> SurfaceReconstruction::candidatesAt(std::size_t a, s
             return true;
         };
         std::optional<std::size_t> step;
-        if (closed && triangles == 0)
+        // Quadrilaterals only on this side of a junction or of the outline (the triangle of the grid is elsewhere):
+        // as at a grid without triangle, across two of them, a re-entrant corner of three quadrilaterals included
+        // (the boundary rule below would round it), a mesh transition on a straight boundary apart. The skin of
+        // solids keeps its declared grids on its boundary.
+        if (triangles == 0 && (closed || !m_input.throughGrids))
         {
-            // quadrilaterals only on this side of a junction: across two of them
+            if (const std::optional<TransitionEdge> transition = transitionEdge(e, a, b))
+            {
+                if (transition->goesOnTo)
+                {
+                    bool& entry = found.try_emplace(*transition->goesOnTo, false).first->second;
+                    entry = entry || transition->smooth;
+                }
+                continue;
+            }
             if (steps.size() >= 2)
                 step = 1;
         }

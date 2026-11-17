@@ -155,6 +155,10 @@ struct ElementFormulations
 // Every element card the solver computes, with its formulations, in the order of the element library.
 [[nodiscard]] std::vector<ElementFormulations> elementFormulations();
 
+// What the solver refuses of the model for the analysis, without running it: the cards, fields and selections it does
+// not take and, when there is none, what the element formulation of the model refuses (the problems of its model, as
+// a geometry declaration that names no edge, and the elements it cannot compute), which a run reports before it
+// assembles anything.
 [[nodiscard]] SupportCheck checkSupport(const input::ModelSnapshot& snapshot, Analysis analysis);
 
 // Runs the analysis on the model. Throws UnsupportedCardError when a card is refused (checkSupport lists them all),

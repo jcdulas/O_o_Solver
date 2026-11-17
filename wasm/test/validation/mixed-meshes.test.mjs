@@ -219,9 +219,7 @@ function skinFaces(mesh) {
 // The FacePressureLoad record of set `sid` on `face`: the pressures `p` (one, or one per corner in the order of
 // face.nodes) pressing on the element, or, with `direction`, the traction p × direction. G1 is the first corner of the
 // face and G3 the one across it (a quadrilateral), G4 the corner off the face (a tetrahedron), nothing (a triangle of
-// a pentahedron). A triangle of a pyramid is named by the second corner of its base edge and the apex: the reader
-// takes the first face of the element that holds G1 and G3, and this pair finds three of the four triangles (the
-// fourth cannot be named: every pair of its corners belongs to a face listed before it).
+// a pentahedron). A triangle of a pyramid is named by the two corners of its edge on the base.
 function facePressure(sid, face, p, direction = null) {
   const values = Array.isArray(p) ? p : [p];
   const pressures = [0, 1, 2, 3].map((k) => (k < values.length ? real(values[k]) : "")).join(";");
@@ -230,10 +228,8 @@ function facePressure(sid, face, p, direction = null) {
   if (face.nodes.length === 4) across = face.nodes[2];
   else if (face.card === "SolidTetra") across = face.element.corners.find((id) => !face.nodes.includes(id));
   else if (face.card === "SolidPyramid") {
-    const corners = face.element.corners;
-    const base = face.nodes.map((id) => corners.indexOf(id)).filter((local) => local < 4).sort((a, b) => a - b);
-    first = corners[base[0] === 0 && base[1] === 3 ? 0 : base[1]];
-    across = corners[4];
+    const apex = face.element.corners[4];
+    [first, across] = face.nodes.filter((id) => id !== apex);
   }
   const tail = direction ? `;0;${direction.map(real).join(";")}` : "";
   return `FacePressureLoad;${sid};${face.element.id};${pressures};${first};${across}${tail}`;

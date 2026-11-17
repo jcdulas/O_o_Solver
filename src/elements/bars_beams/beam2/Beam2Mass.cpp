@@ -4,8 +4,8 @@ namespace oos::elements
 {
 
 // The mass of each Beam2 (BeamMass: lumped or coupled with ρ·A(x) + NSM(x) per unit length and the torsional inertia
-// ρ·(I1 + I2) of the section), through the offsets under ModelParams OFFDEF LROFF or ELMZ, at the grid points under
-// ELMOFF, the default (beamGridMass).
+// ρ·(I1 + I2) of the section), through the offsets under ModelParams OffsetDefinition LoadRecoveryOffsets or
+// ElemOffsetZ, at the grid points under ElemOffsetsOnly, the default (beamGridMass).
 void Beam2Element::computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                                   ElementMatrixBlock& block) const
 {

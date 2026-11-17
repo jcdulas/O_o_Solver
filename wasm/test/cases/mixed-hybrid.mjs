@@ -2117,3 +2117,108 @@ test("a declared edge of MixedHybridFormulation that is no edge of the model is 
   const accepted = run({ rawEdges: [[1, 2]] }, "mixed-raw-known");
   assert.ok(!accepted.diagnostics.some((d) => d.severity === "error"), JSON.stringify(accepted.diagnostics));
 });
+
+test("checkSupport lists what MixedHybridFormulation refuses of a model before it is run", () => {
+  // The refusals of the formulation's model (here a declared edge that is no edge) are those of the run.
+  const codes = (geometry, name) => withModel(plate(), name,
+    { elementFormulation: "MixedHybridFormulation", formulationGeometry: geometry },
+    (model) => model.checkSupport("statics").refusals.map((refusal) => refusal.code));
+  assert.ok(codes({ rawEdges: [[1, 3]] }, "mixed-check-raw").includes("geometry-declaration-unknown"));
+  assert.ok(codes({ sharpEdges: [[1, 2]] }, "mixed-check-sharp").includes("geometry-declaration-unknown"));
+  assert.deepEqual(codes({ rawEdges: [[1, 2]] }, "mixed-check-known"), []);
+});
+
+test("the stresses of SolidHexa in MixedHybridFormulation under their weight take the particular stresses of the body force", () => {
+  // A bar along x held on its end x = 0 under a gravity g along x, without Poisson's ratio: σxx = ρ g (L − x) and
+  // u = ρ g (L x − x² / 2) / E. The stresses are linear and the displacements quadratic: exact once the particular
+  // stresses of the body force are added to those of the unknowns (spec section 10.3).
+  const [gravity, density, nx] = [9.81, 7800.0, 2];
+  const model = solidBlock({ shape: "SolidHexa", nx, poisson: 0, records: (node) => {
+    const records = [`GravityLoad;2;;${real(gravity)};1.;0.;0.`, `SinglePointConstrList;1;23;${node(0, 0, 0)}`,
+      `SinglePointConstrList;1;3;${node(0, 1, 0)}`, `SinglePointConstrList;1;2;${node(0, 0, 1)}`];
+    for (let k = 0; k <= 1; ++k)
+      for (let j = 0; j <= 1; ++j) records.push(`SinglePointConstrList;1;1;${node(0, j, k)}`);
+    return records;
+  } });
+  model.text = model.text.replace("SinglePointConstrSelection;1", "SinglePointConstrSelection;1\nStaticLoadSelection;2");
+  const run = runSolids(model, "mixed-solid-weight");
+  const weight = density * gravity;
+  const tip = (weight * BLOCK.length ** 2) / (2 * BLOCK.young);
+  for (const { id, x } of model.points)
+    assertClose(nodal(run, "displacements", id).slice(0, 3), [(weight * (BLOCK.length * x - (x * x) / 2)) / BLOCK.young, 0, 0],
+      1e-9, `grid ${id}`, tip);
+  const stressAt = (x) => [weight * (BLOCK.length - x), 0, 0, 0, 0, 0];
+  for (const row of rowsOf(run, "SolidHexa", "stress")) {
+    const x = row.nodeId === 0 ? (BLOCK.length * (row.id - 0.5)) / nx : model.points.find((p) => p.id === row.nodeId).x;
+    assertClose([row.oxx, row.oyy, row.ozz, row.txy, row.tyz, row.txz], stressAt(x), 1e-9,
+      `stresses of element ${row.id} at ${row.nodeId}`, weight * BLOCK.length);
+  }
+  for (const row of rowsOf(run, "SolidGridPoints", "stress"))
+    assertClose([row.oxx, row.oyy, row.ozz, row.txy, row.tyz, row.txz], stressAt(model.points.find((p) => p.id === row.id).x),
+      1e-9, `stresses at grid point ${row.id}`, weight * BLOCK.length);
+});
+
+test("a curved edge of ShellQuad4 in MixedHybridFormulation that follows a rigid element turns with it", () => {
+  // A roof of 2 × 2 shells whose end x = 0.6 (an arc of three grid points) follows grid point 100 by a rigid element,
+  // and nothing else holds it: turning grid point 100 turns the roof as a rigid body, u = θ × (x − x100), without
+  // strain and without reaction. The edges of the arc read the relation of their grid points; on a curved edge
+  // that needs the rotations too (u_edge = u_rod + θ × δ, δ the offset of the arc from its chord; spec section 5.6).
+  const [rise, half, angle] = [0.0603, 0.342, 0.01];
+  const centre = [0.7, 0.1, 0.1];
+  const lines = ["[executive]", "SolutionSequence;101", "[case]", "DisplacementOutput;All",
+    "SinglePointConstrForceOutput;All", "SubcaseStart;1", "SinglePointConstrSelection;1", "[model]"];
+  const points = [];
+  for (let i = 0; i <= 2; ++i)
+    for (let j = 0; j <= 2; ++j) {
+      const point = { id: 3 * i + j + 1, x: 0.3 * i, y: half * (j - 1), z: j === 1 ? 0 : -rise };
+      points.push(point);
+      lines.push(`Node;${point.id};;${real(point.x)};${real(point.y)};${real(point.z)}`);
+    }
+  lines.push("ShellQuad4;1;1;1;4;5;2", "ShellQuad4;2;1;2;5;6;3", "ShellQuad4;3;1;4;7;8;5", "ShellQuad4;4;1;5;8;9;6",
+    "ShellProp;1;1;0.01;1;;1", "IsoMat;1;7.e10;;0.3;2700.", `Node;100;;${centre.map(real).join(";")}`,
+    "RigidBodyStar;900;100;123;7;8;9", "SinglePointConstrList;1;12346;100", `SinglePointConstr;1;100;5;${real(angle)}`);
+  const run = runShells(lines.join("\n") + "\n", "mixed-curved-followed-edge");
+  let reach = 0;
+  for (const point of points) reach = Math.max(reach, angle * Math.hypot(point.x - centre[0], point.z - centre[2]));
+  for (const { id, x, z } of points)
+    assertClose(nodal(run, "displacements", id).slice(0, 3), [angle * (z - centre[2]), 0, -angle * (x - centre[0])], 1e-8,
+      `grid ${id}`, reach);
+  // The membrane stiffness E t times the motion is the scale of the reaction a hidden link to the ground would give.
+  const reaction = nodal(run, "singlePointConstrForces", 100);
+  const scale = 7.0e10 * 0.01 * reach;
+  assert.ok(Math.max(...reaction.map(Math.abs)) < 1e-8 * scale, `reaction ${reaction}, scale ${scale}`);
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// What real models found.
+
+test("a sandwich of 2D orthotropic plies without transverse shear moduli is solved in both formulations", () => {
+  // A cantilever plate of 4 × 4 ShellQuad4, 2.5 thicknesses wide each, with an unsymmetric sandwich (four plies,
+  // a core, two plies) whose plies give no G1Z and G2Z: the laminate is rigid in transverse shear. ClassicFormulation
+  // took the general matrix of the bending section as its transverse shear there, whose Poisson term made the
+  // stiffness of such elements indefinite (negative pivots); it takes that matrix without that term. The two
+  // formulations then agree on the deflection under the corner force (1.8645e-4 and 1.9013e-4; ClassicFormulation
+  // gives 1.8913e-4 on 8 × 8).
+  const [n, side] = [4, 2.5];
+  const id = (i, j) => j * (n + 1) + i + 1;
+  const lines = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
+    "StaticLoadSelection;2", "DisplacementOutput;All", "[model]"];
+  for (let j = 0; j <= n; ++j)
+    for (let i = 0; i <= n; ++i) lines.push(`Node;${id(i, j)};;${real(side * i)};${real(side * j)};0.`);
+  for (let j = 0; j < n; ++j)
+    for (let i = 0; i < n; ++i)
+      lines.push(`ShellQuad4;${j * n + i + 1};1;${id(i, j)};${id(i + 1, j)};${id(i + 1, j + 1)};${id(i, j + 1)}`);
+  const plies = [[1, 0.1, 0], [1, 0.1, 45], [1, 0.1, -45], [1, 0.1, 90], [2, 0.5, 0], [1, 0.05, 90], [1, 0.05, 0]];
+  lines.push(`CompProp;1;;0.;;;0.;0.;;${plies.map(([m, t, a]) => `${m};${real(t)};${real(a)};Yes`).join(";")}`,
+    "OrthoMat2D;1;1.3e11;9.e9;0.3;5.e9;;;1600.", "IsoMat;2;1.e8;;0.3;50.");
+  for (let j = 0; j <= n; ++j) lines.push(`SinglePointConstrList;1;123456;${id(0, j)}`);
+  lines.push(`PointForceLoad;2;${id(n, n)};;1.e4;0.;0.;1.`);
+  const text = lines.join("\n") + "\n";
+  const deflection = (options) => withModel(text, "sandwich-without-shear-moduli", options, (model) => {
+    const run = solver.run(model, "statics");
+    assert.ok(!run.diagnostics.some((d) => d.severity === "error"), JSON.stringify(run.diagnostics));
+    return nodal(run, "displacements", id(n, n))[2];
+  });
+  const [classic, mixed] = [deflection({}), deflection(SHELL_OPTIONS)];
+  assert.ok(Math.abs(classic / mixed - 1) < 0.03, `deflection ${classic} in ClassicFormulation, ${mixed} in MixedHybridFormulation`);
+});

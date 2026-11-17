@@ -171,6 +171,9 @@ struct ShellPartProblem
     Subject subject = Subject::Model;
     std::size_t index = 0;
     std::string message;
+    // The geometry of the element is what the formulation refuses (a degenerate element, an element that turns too
+    // much), not its property or its grids.
+    bool isGeometry = false;
 };
 
 // An entity of the shells: a set of unknowns that belongs to no grid point.
@@ -649,7 +652,8 @@ private:
     // The local edge of shell `shell` that is edge `edge` of the topology.
     [[nodiscard]] std::size_t localEdgeOf(std::size_t shell, std::size_t edge) const;
     [[nodiscard]] const InteriorProjection& projectionOf(std::size_t cornerCount) const;
-    void addProblem(ShellPartProblem::Subject subject, std::size_t index, std::string message);
+    void addProblem(ShellPartProblem::Subject subject, std::size_t index, std::string message,
+                    bool isGeometry = false);
     [[nodiscard]] std::string gridName(std::size_t grid) const;
 
     // The shells with their matrices kept once built (ShellPartInput::matrixCacheBytes), by shell, and the bytes they

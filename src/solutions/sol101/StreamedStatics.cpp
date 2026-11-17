@@ -939,6 +939,7 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
     outputInputs.builder = inputs.elementTables;
     outputInputs.coefficients = &loadCases.coefficients();
     outputInputs.caseLabels = labels;
+    outputInputs.caseAccelerations = inputs.bodyAccelerations;
     // The load basis: the vectors as the cases (α the identity), numbered as the units.
     linalg::DenseMatrix identity(budget, inputs.keepsLoadBasis ? columns : 0, inputs.keepsLoadBasis ? columns : 0,
                                  "streamed load basis identity");
@@ -952,6 +953,7 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
         }
         outputInputs.coefficients = &identity;
         outputInputs.caseLabels = unitLabels;
+        outputInputs.caseAccelerations = {};
         outputInputs.basisQuantities = inputs.basisQuantities;
         outputInputs.basisSelection = inputs.basisSelection;
         outputInputs.isForceNode = isForceNode.span();

@@ -44,14 +44,15 @@ public:
     // version that is not accepted or differs from that of the tables given before.
     void setTable(TableRole role, base::ImportedTable table);
     void setCdRotations(BorrowedArray<double> rotations);
-    // The model's MDLPRM OFFDEF (ModelSnapshot::offsetDefinition); ELMOFF, the default, without this call.
+    // The model's ModelParams OffsetDefinition (ModelSnapshot::offsetDefinition); ElemOffsetsOnly, the default, without
+    // this call.
     void setOffsetDefinition(OffsetDefinition definition)
     {
         m_offsetDefinition = definition;
         m_unsupportedOffsetDefinition.clear();
     }
-    // The model's MDLPRM OFFDEF as its value: one offsetDefinitionOf takes, or another one, kept for the support report
-    // to refuse (ModelSnapshot::unsupportedOffsetDefinition) with the default definition.
+    // The model's ModelParams OffsetDefinition as its value: one offsetDefinitionOf takes, or another one, kept for the
+    // support report to refuse (ModelSnapshot::unsupportedOffsetDefinition) with the default definition.
     void setOffsetDefinitionValue(std::string_view value);
     // The formulation of the elements of one card (the card by its neutral name, "ShellQuad4"; the formulation
     // "ClassicFormulation": ModelSnapshot::elementFormulations), the formulation compared exactly; a second call for

@@ -186,6 +186,61 @@ LineTemperatureField uniformField(double freeStrain)
     return [freeStrain](const Vec3Of<double>&) { return freeStrain; };
 }
 
+// The free strains of the kernel at one point of a line with free curvatures: the free axial strain of the
+// reference axis and the free curvatures K_y, K_z of the section axes.
+struct KernelFreeStrain
+{
+    double axial = 0.0;
+    LineFreeCurvature curvature{};
+};
+
+// The free strains of the kernel at the fraction `fraction` of a line from its grid A, from the free deformation
+// of the element (BeamThermal: the free axial strain ε of the neutral axis, the free curvatures κ1 = v'' and
+// κ2 = w'', linear between the ends). The kernel takes K_z = v'' and K_y = −w'', and its axis is the reference
+// axis, at (−y_n, −z_n) from the neutral axis the sections turn about: its free strain is ε + y_n κ1 + z_n κ2.
+KernelFreeStrain kernelFreeStrainAt(const MixedLine& line, const BeamFreeStrains& freeStrains, double fraction)
+{
+    const BeamFreeCurvatures& curvatures = freeStrains.curvatures;
+    const double curvature1 = curvatures.plane1[0] + fraction * (curvatures.plane1[1] - curvatures.plane1[0]);
+    const double curvature2 = curvatures.plane2[0] + fraction * (curvatures.plane2[1] - curvatures.plane2[0]);
+    const std::array<double, 2> neutralAxis = line.section.at(fraction).neutralAxis;
+    KernelFreeStrain at;
+    at.axial = freeStrains.axial + neutralAxis[0] * curvature1 + neutralAxis[1] * curvature2;
+    at.curvature = {-curvature2, curvature1};
+    return at;
+}
+
+// The free strains of the kernel at the points of the rule of a line with free curvatures.
+struct KernelFreeStrains
+{
+    std::vector<double> axial;
+    std::vector<LineFreeCurvature> curvatures;
+};
+
+KernelFreeStrains kernelFreeStrains(const MixedLine& line, const LineData& data, const BeamFreeStrains& freeStrains)
+{
+    KernelFreeStrains at;
+    at.axial.reserve(data.axial.size());
+    at.curvatures.reserve(data.axial.size());
+    for (const LineAxialPoint& point : data.axial)
+    {
+        const KernelFreeStrain one = kernelFreeStrainAt(line, freeStrains, point.fraction);
+        at.axial.push_back(one.axial);
+        at.curvatures.push_back(one.curvature);
+    }
+    return at;
+}
+
+// The load of the free deformation of a line on its local unknowns. Without free curvatures it is the load of the
+// uniform free strain, as it always was (the same bits for a model without temperature gradients).
+Vector freeStrainLoad(const MixedLine& line, const LineData& data, const BeamFreeStrains& freeStrains)
+{
+    if (!freeStrains.hasCurvatures())
+        return lineThermalLoad(data, unitExpansion(line.section), uniformField(freeStrains.axial));
+    const KernelFreeStrains at = kernelFreeStrains(line, data, freeStrains);
+    return data.thermalLoad(at.axial, at.curvatures);
+}
+
 // The load of one BeamDistributedLoad on the local unknowns of a line: the work of the force f and the couple m per
 // length (basic system) at the axis, whose point is the edge's moved by the offset o of the axis:
 //   δW = ∫ f · (u + θ × o) + m · θ ds = ∫ f · u + (m + o × f) · θ ds
@@ -237,14 +292,15 @@ Vector lineLoadVector(const MixedHybridModel& model, const MixedLine& line, cons
     return vector;
 }
 
-// The sum of the loads of a line on its local unknowns: its free expansion and its line loads (a bar or beam only).
+// The sum of the loads of a line on its local unknowns: its free deformation and its line loads (a bar or beam
+// only).
 Vector lineLoadsOf(const MixedHybridModel& model, const MixedLine& line, const BeamData* beam, const LineData& data,
-                   double freeStrain, std::span<const BeamLineLoad> loads)
+                   const BeamFreeStrains& freeStrains, std::span<const BeamLineLoad> loads)
 {
     const std::size_t n = data.dofs.size();
     Vector total(n, 0.0);
-    if (freeStrain != 0.0)
-        total = lineThermalLoad(data, unitExpansion(line.section), uniformField(freeStrain));
+    if (!freeStrains.isZero())
+        total = freeStrainLoad(line, data, freeStrains);
     for (const BeamLineLoad& lineLoad : loads)
     {
         const Vector one = lineLoadVector(model, line, *beam, lineLoad, n);
@@ -254,14 +310,32 @@ Vector lineLoadsOf(const MixedHybridModel& model, const MixedLine& line, const B
     return total;
 }
 
+// The state of the kernel at the point of `kinematics`, at the fraction `fraction` of a line from its grid A, under
+// its free deformation. Without free curvatures it is the state under the uniform free strain, as it always was.
+std::variant<LineState, std::string> lineStateUnder(const MixedLine& line, const LineData& data,
+                                                    const LineKinematics& kinematics, std::span<const double> x,
+                                                    double fraction, const BeamFreeStrains& freeStrains)
+{
+    if (!freeStrains.hasCurvatures())
+        return lineStateOfCase(data, kinematics, line.element, unitExpansion(line.section), x,
+                               uniformField(freeStrains.axial));
+    // The moment term of the free strains and curvatures of the points of the rule, and those of this point (the
+    // free axial strain stands for the temperature rise, as with the unit expansion above).
+    const KernelFreeStrains all = kernelFreeStrains(line, data, freeStrains);
+    const Vector freeMoments = data.thermalMoments(all.axial, all.curvatures);
+    const KernelFreeStrain here = kernelFreeStrainAt(line, freeStrains, fraction);
+    return lineState(data, kinematics, line.element, line.section, x, here.axial, here.axial, freeMoments,
+                     here.curvature);
+}
+
 // The forces (N, V_y, V_z, T, M_y, M_z) on the face of normal +x of the section of a line at the fraction `fraction`
 // of its chord from its grid A, the moments about its reference axis (the kernel's LineState).
 std::array<double, 6> sectionStateForcesAt(const MixedHybridModel& model, const MixedLine& line, const LineData& data,
-                                           std::span<const double> x, double fraction, double freeStrain)
+                                           std::span<const double> x, double fraction,
+                                           const BeamFreeStrains& freeStrains)
 {
     const LineKinematics kinematics = kinematicsAt(model, line, fraction);
-    std::variant<LineState, std::string> state =
-        lineStateOfCase(data, kinematics, line.element, unitExpansion(line.section), x, uniformField(freeStrain));
+    const std::variant<LineState, std::string> state = lineStateUnder(line, data, kinematics, x, fraction, freeStrains);
     if (const std::string* message = std::get_if<std::string>(&state))
         throw std::logic_error(
             base::concatenate({"MixedHybridLineFamily: element ", std::to_string(line.elementId), ": ", *message}));
@@ -273,9 +347,9 @@ std::array<double, 6> sectionStateForcesAt(const MixedHybridModel& model, const 
 // shear2 = V_z, axial = N, torque = T. The kernel gives the moments about the reference axis (the shear centre): the
 // axial force acts at the neutral axis (y_n, z_n), so M_n = M − n × N e_x, M_y,n = M_y − z_n N, M_z,n = M_z + y_n N.
 BeamForces sectionForcesAt(const MixedHybridModel& model, const MixedLine& line, const LineData& data,
-                           std::span<const double> x, double fraction, double freeStrain)
+                           std::span<const double> x, double fraction, const BeamFreeStrains& freeStrains)
 {
-    const std::array<double, 6> f = sectionStateForcesAt(model, line, data, x, fraction, freeStrain);
+    const std::array<double, 6> f = sectionStateForcesAt(model, line, data, x, fraction, freeStrains);
     const std::array<double, 2> neutral = line.section.at(fraction).neutralAxis;
     const double momentY = f[4] - neutral[1] * f[0];
     const double momentZ = f[5] + neutral[0] * f[0];
@@ -290,11 +364,12 @@ BeamForces sectionForcesAt(const MixedHybridModel& model, const MixedLine& line,
 // element (a polynomial) only approximates under a load that is not one. The moments are carried from the grid points
 // to the end points of the offset axis: M_end = M_grid − w × F.
 std::array<double, 12> beamEndForces(const MixedHybridModel& model, const MixedLine& line, const BeamData& beam,
-                                     const LineData& data, std::span<const double> x, double freeStrain,
+                                     const LineData& data, std::span<const double> x,
+                                     const BeamFreeStrains& freeStrains,
                                      std::span<const BeamLineLoad> loads)
 {
     const std::size_t n = x.size();
-    const Vector load = lineLoadsOf(model, line, &beam, data, freeStrain, loads);
+    const Vector load = lineLoadsOf(model, line, &beam, data, freeStrains, loads);
     Vector residual(n, 0.0);
     for (std::size_t i = 0; i < n; ++i)
     {
@@ -339,18 +414,18 @@ class LineForces
 {
 public:
     LineForces(const MixedHybridModel& model, const MixedLine& line, const BeamData& beam, const LineData& data,
-               std::span<const double> x, double freeStrain, std::span<const BeamLineLoad> loads)
-        : m_model(&model), m_line(&line), m_beam(&beam), m_data(&data), m_x(x), m_freeStrain(freeStrain)
+               std::span<const double> x, const BeamFreeStrains& freeStrains, std::span<const BeamLineLoad> loads)
+        : m_model(&model), m_line(&line), m_beam(&beam), m_data(&data), m_x(x), m_freeStrains(freeStrains)
     {
         if (line.shellLine < 0)
-            m_response.emplace(beam, beamEndForces(model, line, beam, data, x, freeStrain, loads), loads);
+            m_response.emplace(beam, beamEndForces(model, line, beam, data, x, freeStrains, loads), loads);
     }
 
     [[nodiscard]] BeamForces at(double distance) const
     {
         if (m_response)
             return m_response->forcesAt(distance);
-        return sectionForcesAt(*m_model, *m_line, *m_data, m_x, distance / m_beam->geometry.length, m_freeStrain);
+        return sectionForcesAt(*m_model, *m_line, *m_data, m_x, distance / m_beam->geometry.length, m_freeStrains);
     }
 
     // The distance where the bar output reads its shear forces, axial force and torque (one value per element): end
@@ -364,7 +439,7 @@ private:
     const BeamData* m_beam;
     const LineData* m_data;
     std::span<const double> m_x;
-    double m_freeStrain;
+    BeamFreeStrains m_freeStrains;
     std::optional<BeamResponse> m_response;
 };
 
@@ -486,7 +561,7 @@ void MixedHybridLineFamily::recover(const ElementBatchView& view, ElementRange r
         const MixedLine& line = requiredLine(model, view, row);
         const LineData data = lineDataOf(model, line, false);
         const Vector x = localUnknowns(lineMapOf(view, model, line, data), displacements);
-        const double freeStrain = freeStrainOf(view, row, line, displacements.temperatures);
+        const BeamFreeStrains freeStrain = freeStrainOf(view, row, line, displacements.temperatures);
         if (m_rows == Rows::Rod)
         {
             // The axial force and the torque of a rod: constant along a rod alone, read at its middle (their mean
@@ -509,20 +584,20 @@ void MixedHybridLineFamily::recover(const ElementBatchView& view, ElementRange r
     }
 }
 
-double MixedHybridLineFamily::freeStrainOf(const ElementBatchView& view, std::int64_t row, const MixedLine& data,
-                                           const ElementTemperatures* temperatures)
+BeamFreeStrains MixedHybridLineFamily::freeStrainOf(const ElementBatchView& view, std::int64_t row,
+                                                    const MixedLine& data, const ElementTemperatures* temperatures)
 {
     if (temperatures == nullptr)
-        return 0.0;
+        return {};
     if (const RodData* rod = std::get_if<RodData>(&data.classic))
     {
         // α ΔT + δ/L, the free strain of the card's other family (rodThermalForce over E A).
         const RodInitialStrain initial = resolveRodInitialStrain(view, row, *rod, *temperatures).required();
-        return rod->material.expansion * initial.deltaT + initial.elongation / rod->geometry.length;
+        return {rod->material.expansion * initial.deltaT + initial.elongation / rod->geometry.length, {}};
     }
     NodalDisplacements onlyTemperatures;
     onlyTemperatures.temperatures = temperatures;
-    return beamThermalStrain(view, row, std::get<BeamData>(data.classic), onlyTemperatures);
+    return beamFreeStrains(view, row, std::get<BeamData>(data.classic), onlyTemperatures);
 }
 
 void MixedHybridLineFamily::checkThermalLoads(const ElementBatchView& view, const ElementTemperatures& temperatures,
@@ -540,11 +615,11 @@ void MixedHybridLineFamily::computeThermalLoads(const ElementBatchView& view, El
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const MixedLine& line = requiredLine(model, view, row);
-        const double freeStrain = freeStrainOf(view, row, line, &temperatures);
-        if (freeStrain == 0.0)
+        const BeamFreeStrains freeStrain = freeStrainOf(view, row, line, &temperatures);
+        if (freeStrain.isZero())
             continue;
         const LineData data = lineDataOf(model, line, false);
-        const Vector load = lineThermalLoad(data, unitExpansion(line.section), uniformField(freeStrain));
+        const Vector load = freeStrainLoad(line, data, freeStrain);
         const LocalMap map = lineMapOf(view, model, line, data);
         block.append(row, map.dofs, onDofs(load, map));
     }
@@ -552,7 +627,8 @@ void MixedHybridLineFamily::computeThermalLoads(const ElementBatchView& view, El
 
 void MixedHybridLineFamily::checkDifferentialStiffness(const ElementBatchView& view, base::DiagnosticSink& sink) const
 {
-    // The offsets are in the section law of the formulation: nothing to refuse under OFFDEF ELMOFF (spec section 9).
+    // The offsets are in the section law of the formulation: nothing to refuse under OffsetDefinition ElemOffsetsOnly
+    // (spec section 9).
     static_cast<void>(view);
     static_cast<void>(sink);
 }
@@ -568,9 +644,16 @@ void MixedHybridLineFamily::computeDifferentialStiffness(const ElementBatchView&
         const LineData data = lineDataOf(model, line, false);
         const LocalMap map = lineMapOf(view, model, line, data);
         const Vector x = localUnknowns(map, preload);
-        const double freeStrain = freeStrainOf(view, row, line, preload.temperatures);
+        const BeamFreeStrains freeStrain = freeStrainOf(view, row, line, preload.temperatures);
+        if (freeStrain.hasCurvatures())
+        {
+            const KernelFreeStrains at = kernelFreeStrains(line, data, freeStrain);
+            block.append(row, map.dofs,
+                         congruent(lineGeometricStiffness(data, x, at.axial, at.curvatures), map));
+            continue;
+        }
         const std::vector<double> freeStrains =
-            lineFreeStrains(data, unitExpansion(line.section), uniformField(freeStrain));
+            lineFreeStrains(data, unitExpansion(line.section), uniformField(freeStrain.axial));
         block.append(row, map.dofs, congruent(lineGeometricStiffness(data, x, freeStrains), map));
     }
 }
@@ -588,7 +671,7 @@ void MixedHybridLineFamily::computeLineLoads(const ElementBatchView& view, std::
                              const LocalMap map = lineMapOf(view, model, line, data);
                              const std::vector<BeamLineLoad> resolved =
                                  resolveLineLoadsOrThrow(view, elementLoads, beam.geometry);
-                             const Vector total = lineLoadsOf(model, line, &beam, data, 0.0, resolved);
+                             const Vector total = lineLoadsOf(model, line, &beam, data, {}, resolved);
                              block.append(row, map.dofs, onDofs(total, map));
                          });
 }
@@ -607,7 +690,7 @@ void MixedHybridLineFamily::recoverUnderLineLoads(const ElementBatchView& view, 
             const BeamData& beam = std::get<BeamData>(line.classic);
             const LineData data = lineDataOf(model, line, false);
             const Vector x = localUnknowns(lineMapOf(view, model, line, data), displacements);
-            const double freeStrain = freeStrainOf(view, row, line, displacements.temperatures);
+            const BeamFreeStrains freeStrain = freeStrainOf(view, row, line, displacements.temperatures);
             // The rows of the card's other family from the forces along the element (LineForces: the loads between
             // the ends in its equilibrium).
             const std::vector<BeamLineLoad> resolved = resolveLineLoadsOrThrow(view, elementLoads, beam.geometry);

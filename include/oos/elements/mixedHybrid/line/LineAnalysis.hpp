@@ -86,7 +86,8 @@ using EdgeTractionField = std::function<std::array<double, 6>(double)>;
                                                                    std::span<const double> x,
                                                                    const LineTemperatureField& temperature);
 
-// The axial stress at the point (y, z) of the section from the reference axis: E (Γ_x + z K_y − y K_z − e0).
+// The axial stress at the point (y, z) of the section from the reference axis: E (Γ_x + z K_y − y K_z − e0), the
+// curvatures less the free ones of the state.
 // Reference: src/tdnns/analysis.rs::Analysis::line_stress
 [[nodiscard]] double lineStress(const LineSection& section, const LineState& state, double y, double z);
 
@@ -108,14 +109,17 @@ using EdgeTractionField = std::function<std::array<double, 6>(double)>;
 
 // The geometric stiffness of a line for the local unknowns `x` of a solution with the free strains `freeStrains` at
 // the points of its rule (empty without): ∫ N du⊥ᵀ du⊥ ds, N = Ā (Γ_x − e0) + (D⁻¹ Bᵀ)ᵀ M_s the axial force with
-// its free strain, the moments less their free part.
+// its free strain, the moments less their free part. `freeCurvatures`: the free curvatures of the axis at the points
+// of the rule (empty without; not in the reference).
 // Reference: src/tdnns/analysis.rs::Analysis::geometric_stiffness (the lines)
 [[nodiscard]] Matrix lineGeometricStiffness(const LineData& data, std::span<const double> x,
-                                            std::span<const double> freeStrains);
+                                            std::span<const double> freeStrains,
+                                            std::span<const LineFreeCurvature> freeCurvatures = {});
 
 // The axial force N at each point of the rule of a line (the factor of its geometric stiffness).
 [[nodiscard]] Vector lineAxialForces(const LineData& data, std::span<const double> x,
-                                     std::span<const double> freeStrains);
+                                     std::span<const double> freeStrains,
+                                     std::span<const LineFreeCurvature> freeCurvatures = {});
 
 // The local unknowns of a line alone (n_x + 6) in the rigid motion u = c + ω × X, θ = ω: the grid translations, no
 // function of the edge, the twist coefficient 0 equal to ω · (X_upper − X_lower), Λ = ω at both grids.

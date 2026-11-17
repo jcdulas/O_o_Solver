@@ -18,9 +18,9 @@
 //
 // Choices of this project (NASTRAN-95 differs or has no equivalent):
 // - mass: the lumped mass of the element on the grid points through the rotations alone, and the pressure loads
-//   without the offset, unless ModelParams OFFDEF asks for them on the offset (ShellNodeFrames), as the other shells;
-//   the thermal loads always through the offset, consistently with the stiffness (NASTRAN-95's QUAD4 leaves the offset
-//   out of its thermal loads, its TRIA3 does not);
+//   without the offset, unless ModelParams OffsetDefinition asks for them on the offset (ShellNodeFrames), as the other
+//   shells; the thermal loads always through the offset, consistently with the stiffness (NASTRAN-95's QUAD4 leaves the
+//   offset out of its thermal loads, its TRIA3 does not);
 // - THETA and MCID: the material axis is measured and applied in one frame. NASTRAN-95's QUAD4 measures an MCID's
 //   angle in its element (bisector) frame but applies it from the user frame (G1→G2), which turns the material of a
 //   skewed element by the angle between the two; a THETA of exactly 0.0 on the element would take the ShellProp's MCSID

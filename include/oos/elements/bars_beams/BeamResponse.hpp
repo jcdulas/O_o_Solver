@@ -3,6 +3,7 @@
 #include "oos/base/math/MatN.hpp"
 #include "oos/elements/bars_beams/BeamFormulation.hpp"
 #include "oos/elements/bars_beams/BeamLineLoad.hpp"
+#include "oos/elements/bars_beams/BeamThermal.hpp"
 #include "oos/elements/bars_beams/PinRelease.hpp"
 #include "oos/elements/core/ElementFamily.hpp"
 
@@ -40,7 +41,8 @@ class BeamEndForces
 {
 public:
     // Throws std::invalid_argument for pin flags that check() refuses (a bug of the caller).
-    BeamEndForces(const BeamData& beam, std::span<const BeamLineLoad> loads, double thermalStrain = 0.0);
+    // `freeStrains` the free deformation of the element (beamFreeStrains), zero without initial strains.
+    BeamEndForces(const BeamData& beam, std::span<const BeamLineLoad> loads, const BeamFreeStrains& freeStrains = {});
 
     // f_e = K·d − f with d = T·g (the released DOFs completed), g the displacements of the grid points.
     [[nodiscard]] std::array<double, 12> of(const std::array<double, 12>& grid) const;
@@ -58,7 +60,7 @@ private:
 // - end DOFs d = T·g (pin flags: the released DOFs from PinRelease::completeDisplacements);
 // - end forces, the forces the grid points exert on the element, f_e = K·d − f (f the equivalent loads of
 //   BeamFlexibility, so that a loaded element gives its exact end moments, plus K·d_T, the load of the
-//   free thermal expansion of a subcase with a thermal load: BeamThermal);
+//   free thermal deformation of a subcase with a thermal load: BeamThermal);
 // - stress resultants at a distance x from end A from the equilibrium of the part [0, x]: force −f_A − F[0,x),
 //   moment −M_A + x·e_x × F_A − M[0,x) about x (the loads of [0, x] included at x = L, so that the value at L is f_B).
 //
@@ -66,9 +68,10 @@ private:
 class BeamResponse
 {
 public:
-    // `thermalStrain` the free axial strain α·ΔT of the element (beamThermalStrain), 0 without a thermal load.
+    // `freeStrains` the free deformation of the element under its initial strains (beamFreeStrains: the free axial
+    // strain α·ΔT + D/L and the free curvatures of the temperature gradients), zero without a thermal load.
     BeamResponse(const BeamData& beam, const NodalDisplacements& displacements, std::span<const BeamLineLoad> loads,
-                 double thermalStrain = 0.0);
+                 const BeamFreeStrains& freeStrains = {});
     // The response whose end forces `endForces` made (BeamEndForces::of), under the same loads.
     BeamResponse(const BeamData& beam, const std::array<double, 12>& endForces, std::span<const BeamLineLoad> loads);
 

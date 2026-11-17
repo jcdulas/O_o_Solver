@@ -399,8 +399,10 @@ for (const connection of ["springs", "rotationSprings", "fastener"])
   });
 
 // Two blocks of SolidHexa in MixedHybridFormulation, the second 0.5 beyond the first along x, joined by springs between
-// their facing corners, the first held on its far face, the second loaded on its far face in two subcases.
-function solidBlockPair() {
+// their facing corners, the first held on its far face, the second loaded on its far face in two subcases; with
+// `weight`, in one subcase, with the weight of the blocks: the stresses of the solids then take the particular
+// stresses of the body force, on every path.
+function solidBlockPair({ weight = false } = {}) {
   const id = (block, i, j, k) => block * 1000 + (k * 2 + j) * 2 + i + 1;
   const bulk = [];
   const sharpEdges = [];
@@ -427,31 +429,33 @@ function solidBlockPair() {
         `PointForceLoad;4;${id(1, 1, j, k)};;1.;0.;${real(0.3 + 0.1 * j)};0.5`);
     }
   bulk.push(`SinglePointConstrList;1;123;${held.join(";")}`);
-  const cases = ["SubcaseStart;1", "SinglePointConstrSelection;1", "StaticLoadSelection;2",
-    "SubcaseStart;2", "SinglePointConstrSelection;1", "StaticLoadSelection;4"];
+  if (weight) bulk.push("GravityLoad;2;;2.;0.;-1.;0.");
+  const cases = ["SubcaseStart;1", "SinglePointConstrSelection;1", "StaticLoadSelection;2"];
+  if (!weight) cases.push("SubcaseStart;2", "SinglePointConstrSelection;1", "StaticLoadSelection;4");
   return { sharpEdges, text: ["[executive]", "SolutionSequence;101", "[case]", "DisplacementOutput;All",
     "StressOutput;All", ...cases, "[model]", ...bulk, "Parameter;AutoSingularityConstr;Yes", ""].join("\n") };
 }
 
-test("condensed statics of mixed hybrid solids recovered unit by unit gives the grid point stresses", () => {
-  const { text, sharpEdges } = solidBlockPair();
-  oor.writeFile("/work/condensation.oos", text);
-  const deck = oor.readModel("/work/condensation.oos", { strict: true });
-  const model = solver.modelFromReader(oor, deck, { condensation: true, elementFormulation: "MixedHybridFormulation",
-    formulationGeometry: { sharpEdges } });
-  try {
-    const envelopes = [...envelopesOf("displacements", ["t1", "t2", "t3"], "absMax"),
-      ...envelopesOf("stress", ["oxx", "txy", "vonMises"], "max")];
-    const full = solver.run(model, "statics", { envelopes, keepsCaseTables: false });
-    const condensed = solver.run(model, "statics", { ...UNIT_BY_UNIT, envelopes });
-    assert.equal(condensed.condensation.unitByUnit, true, "the units recovered unit by unit");
-    assert.ok(full.envelopes.some((table) => table.elementType === "SolidGridPoints"), "the grid point stresses");
-    assertSameEnvelopes(full, condensed);
-  } finally {
-    model.delete();
-    deck.delete();
-  }
-});
+for (const weight of [false, true])
+  test(`condensed statics of mixed hybrid solids recovered unit by unit gives the grid point stresses${weight ? " under their weight" : ""}`, () => {
+    const { text, sharpEdges } = solidBlockPair({ weight });
+    oor.writeFile("/work/condensation.oos", text);
+    const deck = oor.readModel("/work/condensation.oos", { strict: true });
+    const model = solver.modelFromReader(oor, deck, { condensation: true, elementFormulation: "MixedHybridFormulation",
+      formulationGeometry: { sharpEdges } });
+    try {
+      const envelopes = [...envelopesOf("displacements", ["t1", "t2", "t3"], "absMax"),
+        ...envelopesOf("stress", ["oxx", "txy", "vonMises"], "max")];
+      const full = solver.run(model, "statics", { envelopes, keepsCaseTables: false });
+      const condensed = solver.run(model, "statics", { ...UNIT_BY_UNIT, envelopes });
+      assert.equal(condensed.condensation.unitByUnit, true, "the units recovered unit by unit");
+      assert.ok(full.envelopes.some((table) => table.elementType === "SolidGridPoints"), "the grid point stresses");
+      assertSameEnvelopes(full, condensed);
+    } finally {
+      model.delete();
+      deck.delete();
+    }
+  });
 
 // The plates free, joined by RigidBodyStar, under inertia relief on FreeBodySupport DOFs of the first plate: the condensed
 // path solves its interface on six farthest translations and brings the displacements back to the gauge of the

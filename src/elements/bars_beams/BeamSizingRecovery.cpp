@@ -55,10 +55,10 @@ MixedScalar axialStress(const Station& station, const Forces& forces)
 } // namespace
 
 std::vector<RecoveredRow> Kernel::recover(const ElementBatchView& view, ElementOutput output,
-                                         std::span<const double> grid, MixedScalar thermalStrain,
+                                         std::span<const double> grid, const FreeStrains& freeStrains,
                                          std::span<const BeamLineLoad> lineLoads) const
 {
-    const auto ends = endForces(grid, thermalStrain, lineLoads);
+    const auto ends = endForces(grid, freeStrains, lineLoads);
     const auto e = MixedScalar(m_beam.material.youngModulus, m_first.material.youngModulus,
                                 m_other.material.youngModulus);
     const bool strains = output == ElementOutput::Strains;

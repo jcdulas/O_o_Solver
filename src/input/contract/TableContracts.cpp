@@ -114,9 +114,15 @@ TableContract contractOf(TableRole role)
                         required("loadType", TEXTS), required("scaleType", TEXTS)},
                        {"x1", "p1", "x2", "p2", "scale"});
     case TableRole::Temperatures:
+        // O_o_Reader temperatureTable: a row per grid point, default or element of a temperature card. `gradient` is
+        // the gradient through the thickness of a PlateTemperatureLoad, or the change from end A to end B of a
+        // LineElemTemperatureLoad. The four line gradients are those of a LineElemTemperatureLoad across its section:
+        // gradient1a and gradient1b along the element y axis at ends A and B, gradient2a and gradient2b along z (null
+        // for the other cards). They are optional: a table built by hand without them gives lines no gradient.
         return tableOf(role,
                        {required("setId", INT32), required("card", TEXTS), required("targetType", TEXTS),
-                        required("targetId", INT32)},
+                        required("targetId", INT32), optional("gradient1a", FLOAT64), optional("gradient1b", FLOAT64),
+                        optional("gradient2a", FLOAT64), optional("gradient2b", FLOAT64)},
                        {"temperature", "gradient"});
     case TableRole::Deformations:
         // The DEFORM cards as O_o_Reader stores them (cardTable(deck, "AxialDeformationLoad")): one row per card, its

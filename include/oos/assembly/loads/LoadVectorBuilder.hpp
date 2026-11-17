@@ -88,6 +88,9 @@ public:
     // `accelerationsG` is not the g-set size.
     void addInertialAccelerations(base::EntityId loadSetId, std::span<double> accelerationsG,
                                   base::MemoryBudget& budget, base::DiagnosticSink& sink) const;
+    // Adds to `field` the acceleration field of the inertial loads of the set where it is affine in the position
+    // (InertialLoads::addAffineAcceleration).
+    void addInertialAffineAcceleration(base::EntityId loadSetId, elements::BodyAcceleration& field) const;
     // The terms of the set's inertial loads (InertialLoads::termsOf: the generator of each row's field and its
     // coefficients), the inertial family's description of the load basis.
     [[nodiscard]] std::vector<InertialTerm> inertialTermsOf(base::EntityId loadSetId, base::DiagnosticSink& sink) const;

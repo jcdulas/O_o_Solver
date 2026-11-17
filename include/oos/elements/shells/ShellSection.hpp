@@ -194,10 +194,11 @@ template <std::size_t N>
 // naming ZOFFS.
 [[nodiscard]] std::optional<std::string> offsetSectionProblem(const ShellSection& section, double offset);
 
-// The problem of a shell offset by ZOFFS under the model's ModelParams OFFDEF, or nothing: LROFF takes a shell's offset
-// direction from the shell normals at its grid points (MDLPRM OFFDEF LROFF), which O_o_Solver does not
-// compute (its offsets are along the element normal, as ELMOFF and ELMZ); refused, naming ELMZ (LROFF with the element
-// z direction: input::OffsetDefinition).
+// The problem of a shell offset by ZOFFS under the model's ModelParams OffsetDefinition, or nothing:
+// LoadRecoveryOffsets takes a shell's offset direction from the shell normals at its grid points (ModelParams
+// OffsetDefinition LoadRecoveryOffsets), which O_o_Solver does not compute (its offsets are along the element normal,
+// as ElemOffsetsOnly and ElemOffsetZ); refused, naming ElemOffsetZ (LoadRecoveryOffsets with the element z direction:
+// input::OffsetDefinition).
 [[nodiscard]] std::optional<std::string> offsetDefinitionProblem(const input::ModelSnapshot& snapshot, double offset);
 
 } // namespace oos::elements

@@ -245,6 +245,9 @@ public:
         const output::NodalResultBuilder* nodalTables = nullptr;
         std::span<const StaticSubcase> subcases;   // the analysis's
         std::span<const std::size_t> cases;        // the set's, into subcases
+        // The acceleration field of the inertial loads of each case of the set, in the order of `cases`
+        // (elements::BodyAcceleration, for the stresses of the solids of an element formulation); empty: none.
+        std::span<const std::optional<elements::BodyAcceleration>> bodyAccelerations;
         std::span<const output::OutputPlan> plans; // per subcase
         const assembly::SpcSet* spc = nullptr;
         std::span<const base::DofIndex> supports; // the FreeBodySupport DOFs

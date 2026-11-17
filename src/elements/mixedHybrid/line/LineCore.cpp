@@ -267,6 +267,52 @@ Vector LineData::thermalLoad(std::span<const double> freeStrains) const
     return f;
 }
 
+std::vector<double> LineData::edgeFreeStrains(std::span<const double> freeStrains,
+                                              std::span<const LineFreeCurvature> freeCurvatures) const
+{
+    std::vector<double> edge(axial.size(), 0.0);
+    for (std::size_t q = 0; q < axial.size(); ++q)
+    {
+        const std::array<double, 2>& ofCurvature = axial[q].freeCurvatureAxial;
+        const double given = q < freeStrains.size() ? freeStrains[q] : 0.0;
+        edge[q] = given + ofCurvature[0] * freeCurvatures[q].y + ofCurvature[1] * freeCurvatures[q].z;
+    }
+    return edge;
+}
+
+Vector LineData::thermalMoments(std::span<const double> freeStrains,
+                                std::span<const LineFreeCurvature> freeCurvatures) const
+{
+    // g0 = Σ w M_sᵀ (D⁻¹ Bᵀ Γ0 + K0): the term of the free axial strain of the edge, then that of the curvatures.
+    Vector g0 = thermalMoments(edgeFreeStrains(freeStrains, freeCurvatures));
+    for (std::size_t q = 0; q < axial.size(); ++q)
+    {
+        const LineAxialPoint& p = axial[q];
+        for (std::size_t i = 0; i < g0.size(); ++i)
+            g0[i] += p.weight * (p.freeCurvatureRows[0][i] * freeCurvatures[q].y +
+                                 p.freeCurvatureRows[1][i] * freeCurvatures[q].z);
+    }
+    return g0;
+}
+
+Vector LineData::thermalLoad(std::span<const double> freeStrains,
+                             std::span<const LineFreeCurvature> freeCurvatures) const
+{
+    const std::vector<double> edge = edgeFreeStrains(freeStrains, freeCurvatures);
+    Vector f(dofs.size(), 0.0);
+    for (std::size_t q = 0; q < axial.size(); ++q)
+    {
+        const LineAxialPoint& p = axial[q];
+        const double factor = p.axialStiffness * p.weight * edge[q];
+        for (std::size_t i = 0; i < f.size(); ++i)
+            f[i] += p.strainRow[i] * factor;
+    }
+    const Vector fromMoments = transposeTimes(moments, thermalMoments(freeStrains, freeCurvatures));
+    for (std::size_t i = 0; i < f.size(); ++i)
+        f[i] += fromMoments[i];
+    return f;
+}
+
 std::variant<LineData, std::string> lineCore(const LineSource& source, std::span<const WeightedLineKinematics> points,
                                              std::size_t kinematicsColumns, std::size_t momentDegree, bool shear,
                                              const LineElement& line, const LineSection& section,
@@ -418,10 +464,20 @@ std::variant<LineData, std::string> lineCore(const LineSource& source, std::span
         }
         // The moment part of the axial force: (D⁻¹ Bᵀ) · M_s on the moment coefficients.
         Vector momentRow(nm, 0.0);
+        // The rows of a unit free curvature K_y and K_z of the axis: μ M_s · e_y and μ M_s · e_z.
+        std::array<Vector, 2> freeCurvatureRows{Vector(nm, 0.0), Vector(nm, 0.0)};
         for (std::size_t c = 0; c < 3; ++c)
             for (std::size_t l = 0; l <= pm; ++l)
-                momentRow[3 * l + c] = dot3(momentOf(c, l), law.inverseCoupling);
-        axial.push_back({std::move(gx), law.membrane, std::move(transverse), w, std::move(momentRow)});
+            {
+                const Vec3Of<double> ms = momentOf(c, l);
+                momentRow[3 * l + c] = dot3(ms, law.inverseCoupling);
+                freeCurvatureRows[0][3 * l + c] = mu * ms[1];
+                freeCurvatureRows[1][3 * l + c] = mu * ms[2];
+            }
+        // The axial strain of the edge in a unit free curvature of the axis, at the offset o from it.
+        const std::array<double, 2> freeCurvatureAxial{-mu * law.offset[2], mu * law.offset[1]};
+        axial.push_back({std::move(gx), law.membrane, std::move(transverse), w, std::move(momentRow), lam,
+                         std::move(freeCurvatureRows), freeCurvatureAxial});
         axisPoints.push_back(add3(kin.point, offset));
     }
 
@@ -503,7 +559,8 @@ std::variant<LineData, std::string> lineCore(const LineSource& source, std::span
 std::variant<LineState, std::string> lineState(const LineData& data, const LineKinematics& kinematics,
                                                const LineElement& line, const LineSection& section,
                                                std::span<const double> x, double temperature, double freeStrain,
-                                               std::span<const double> freeMoments)
+                                               std::span<const double> freeMoments,
+                                               const LineFreeCurvature& freeCurvature)
 {
     const LineKinematics& kin = kinematics;
     const std::size_t nxk = data.dofs.size() - 6;
@@ -547,15 +604,24 @@ std::variant<LineState, std::string> lineState(const LineData& data, const LineK
             dm = add3(dm, scl3(data.basis[c], coefficient * dv * 2.0 * kin.fractionRate));
         }
     }
-    // The curvatures of the edge, D⁻¹ (M_s − bᵀ (Γ_x − e0)).
-    const Vec3Of<double> ms = inSectionAxes(axes, m);
-    const double elasticAxial = gamma - freeStrain;
-    const Vec3Of<double> kappaEdge = times(law.bendingInverse, sub3(ms, scl3(law.coupling, elasticAxial)));
-    // The strains of the axis: those seen from the edge over the metric.
     const Vec3Of<double>& os = law.offset;
     const double mu = law.metric;
-    const double gammaAxis = (gamma + kappaEdge[1] * os[2] - kappaEdge[2] * os[1]) / mu;
+    // The free strains of the edge: the free axial strain given, and under free curvatures K0a of the axis the
+    // curvatures μ K0a and the axial strain μ (−o_z K0a_y + o_y K0a_z) of the edge, at −o from the axis. The
+    // sums are left out without free curvatures: the same bits as before them.
+    const bool hasFreeCurvature = !freeCurvature.isZero();
+    const Vec3Of<double> freeKappaEdge{0.0, mu * freeCurvature.y, mu * freeCurvature.z};
+    const double freeEdge =
+        hasFreeCurvature ? freeStrain - freeKappaEdge[1] * os[2] + freeKappaEdge[2] * os[1] : freeStrain;
+    // The elastic curvatures of the edge, D⁻¹ (M_s − bᵀ (Γ_x − Γ0)), and its curvatures, with the free ones.
+    const Vec3Of<double> ms = inSectionAxes(axes, m);
+    const double elasticAxial = gamma - freeEdge;
+    const Vec3Of<double> kappaEdge = times(law.bendingInverse, sub3(ms, scl3(law.coupling, elasticAxial)));
+    const Vec3Of<double> totalKappaEdge = hasFreeCurvature ? add3(kappaEdge, freeKappaEdge) : kappaEdge;
+    // The strains of the axis: those seen from the edge over the metric.
+    const double gammaAxis = (gamma + totalKappaEdge[1] * os[2] - totalKappaEdge[2] * os[1]) / mu;
     const Vec3Of<double> kappa{kappaEdge[0] / mu, kappaEdge[1] / mu, kappaEdge[2] / mu};
+    const Vec3Of<double> totalKappa{totalKappaEdge[0] / mu, totalKappaEdge[1] / mu, totalKappaEdge[2] / mu};
     const double freeAxis = freeStrain / mu;
     const std::array<double, 4> strains4{gammaAxis - freeAxis, kappa[0], kappa[1], kappa[2]};
     std::array<double, 4> forces4{};
@@ -578,9 +644,10 @@ std::variant<LineState, std::string> lineState(const LineData& data, const LineK
     state.point = add3(kin.point, offset);
     state.axes = axes;
     state.forces = {forces4[0], vs[1], vs[2], forces4[1], forces4[2], forces4[3]};
-    state.strains = {gammaAxis, shearStrain(0), shearStrain(1), kappa[0], kappa[1], kappa[2]};
+    state.strains = {gammaAxis, shearStrain(0), shearStrain(1), totalKappa[0], totalKappa[1], totalKappa[2]};
     state.temperature = temperature;
     state.freeStrain = freeAxis;
+    state.freeCurvature = freeCurvature;
     return state;
 }
 

@@ -615,6 +615,24 @@ SolidResult<VolumeKernel> VolumeKernel::build(const VolumeGeometry& geometry, st
         const FieldLoad onFields = loadOnFields(load, points, values, phi, projected, material);
         kernel.m_loads.push_back(reduceLoad(onFields, nq, bubbles, stresses, material));
     }
+    // the particular stresses of the unit affine body forces (affineBodyStresses): field c the unit force along c,
+    // field 3 + 3 m + c the force x_m along c
+    kernel.m_affineBodyStresses = Matrix(STRESS_COMPONENTS * kernel.m_stressFunctionCount, AFFINE_BODY_FIELDS);
+    for (std::size_t k = 0; k < AFFINE_BODY_FIELDS; ++k)
+    {
+        const std::size_t c = k % COMPONENTS;
+        const SolidLoad unit = SolidLoad::body(
+            [k, c](const SolidPoint& position)
+            {
+                SolidPoint force{};
+                force[c] = k < COMPONENTS ? 1.0 : position[k / COMPONENTS - 1];
+                return force;
+            });
+        const FieldLoad onFields = loadOnFields(unit, points, values, phi, projected, material);
+        const SolidLoadResult result = reduceLoad(onFields, nq, bubbles, stresses, material);
+        for (std::size_t i = 0; i < result.particularStresses.size(); ++i)
+            kernel.m_affineBodyStresses(i, k) = result.particularStresses[i];
+    }
 
     // the mass of the fields, the bubbles following statically, and the interior fields of a modal analysis
     if (withMass)
@@ -660,6 +678,19 @@ Vector VolumeKernel::stressCoefficients(std::span<const double> q, std::span<con
     for (std::size_t l : loadIndices)
         for (std::size_t i = 0; i < beta.size(); ++i)
             beta[i] += m_loads[l].particularStresses[i];
+    return beta;
+}
+
+Vector VolumeKernel::affineBodyStresses(std::span<const double, AFFINE_BODY_FIELDS> coefficients) const
+{
+    Vector beta(m_affineBodyStresses.rows(), 0.0);
+    for (std::size_t k = 0; k < AFFINE_BODY_FIELDS; ++k)
+    {
+        if (coefficients[k] == 0.0)
+            continue;
+        for (std::size_t i = 0; i < beta.size(); ++i)
+            beta[i] += coefficients[k] * m_affineBodyStresses(i, k);
+    }
     return beta;
 }
 

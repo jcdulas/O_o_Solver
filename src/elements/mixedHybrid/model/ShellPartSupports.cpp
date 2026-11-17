@@ -37,6 +37,8 @@ SpaceVector basisVector(std::size_t c)
     return e;
 }
 
+// An edge is curved when a point of it leaves its chord by more than this fraction of the chord.
+constexpr double CURVED_EDGE_RATIO = 1e-10;
 // Two directions held at the two grids of an edge are one when they are parallel within this (1 − |cosine|).
 constexpr double PARALLEL_TOLERANCE = 1e-10;
 
@@ -224,6 +226,15 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
         const bool hasSkew = !supportOf[ga].skewAxes.empty() && !supportOf[gb].skewAxes.empty();
         if (held == EdgeSupport{} && !hasSkew)
             continue;
+        // An edge with a grid that follows a relation of the model (a rigid element) must move with it in every rigid
+        // motion, or the relation would act as a link to the ground: it follows only when its two grids have their
+        // three translations, and, where it is curved, their three rotations too (the rotation about the chord, which
+        // moves the points of a curved edge, is not known from two translations). Otherwise it keeps to its grids.
+        const bool readsRelation = supportOf[ga].followsRelation || supportOf[gb].followsRelation;
+        const bool allTranslations = held.translations[0] && held.translations[1] && held.translations[2];
+        const bool allRotations = held.rotations[0] && held.rotations[1] && held.rotations[2];
+        if (readsRelation && (!allTranslations || hasSkew))
+            continue;
         // with rotations held off the basic axes, the spans of the held rotation axes replace the flags of the basic
         // ones (the same tests when the axes are basic)
         const bool skewRotations = hasSkew && (hasSkewRotation(supportOf[ga]) || hasSkewRotation(supportOf[gb]));
@@ -298,6 +309,7 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
         std::vector<std::array<SpaceVector, 2>> rotationByRotation(p + 1);
         // [l][end]: the moment l of the function of the chord that is 1 at the grid `end` and 0 at the other
         std::vector<std::array<double, 2>> linearMoments(k - 1, std::array<double, 2>{});
+        double largestOffset = 0.0; // of the points of the edge from its chord
         for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
         {
             const PointGeometry g = edgeGeometry(def, re.h1Count, kk, gi);
@@ -305,7 +317,13 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
             const double te = forward ? re.edgeParameters[gi] : 1.0 - re.edgeParameters[gi];
             const double sc = dot3(sub3(g.x, xa), rod.tangent) / rod.length;
             const double we = def.edgeWeights[kk][gi];
-            const SpaceVector uv = rod.at(sc);
+            // the rod gives the motion of the point of the chord under the point of the edge; the point itself, at
+            // δ from it, moves by θ × δ more, θ the rotation of the rod there (linear between the grids): the motion
+            // carried is then that of a rigid body in every rigid motion of the two grids, along a curved edge too
+            const SpaceVector offset = sub3(sub3(g.x, xa), scl3(rod.tangent, sc * rod.length));
+            largestOffset = std::max(largestOffset, norm3(offset));
+            const SpaceVector theta = add3(scl3(rod.ta, 1.0 - sc), scl3(rod.tb, sc));
+            const SpaceVector uv = add3(rod.at(sc), cross3(theta, offset));
             for (std::size_t l = 0; l + 1 < k; ++l)
             {
                 const double f = re.edgeWeights[gi] * legendreValue(l, 2.0 * te - 1.0) * we;
@@ -317,14 +335,15 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                     for (std::size_t end = 0; end < 2; ++end)
                         for (std::size_t cp = 0; cp < 3; ++cp)
                         {
+                            const double share = end == 0 ? 1.0 - sc : sc;
                             traceByTranslation[l][c][end][cp] += f * rod.translationRate(sc, end, c, cp);
-                            traceByRotation[l][c][end][cp] += f * rod.rotationRate(sc, end, c, cp);
+                            traceByRotation[l][c][end][cp] +=
+                                f * (rod.rotationRate(sc, end, c, cp) + share * cross3(basisVector(cp), offset)[c]);
                         }
                 }
             }
             // the rotation about the edge: W² θ · X_τ_e, X_τ_e = s_k X_τ in the canonical direction
             const SpaceVector xt = scl3(add3(scl3(g.a[0], tv[0]), scl3(g.a[1], tv[1])), sk);
-            const SpaceVector theta = add3(scl3(rod.ta, 1.0 - sc), scl3(rod.tb, sc));
             for (std::size_t l = 0; l <= p; ++l)
             {
                 const double f = re.edgeWeights[gi] * legendreValue(l, 2.0 * te - 1.0) * we * we;
@@ -336,6 +355,10 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                 }
             }
         }
+        // a curved edge that reads a relation without the rotations of its grids keeps to them; one that reads it with
+        // some of them only follows in its displacement, not in its rotation
+        if (readsRelation && !allRotations && largestOffset > CURVED_EDGE_RATIO * rod.length)
+            continue;
         const std::array<std::size_t, 2> ends{ga, gb};
         for (std::size_t c = 0; c < 3; ++c)
         {
@@ -381,7 +404,8 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
             normalHeld = normalHeld && inSpanOf(g.nu, translationAxesA) && inSpanOf(g.nu, translationAxesB);
         }
         const bool anyRotation =
-            hasSkew ? bothTurn : (held.rotations[0] || held.rotations[1] || held.rotations[2]);
+            (hasSkew ? bothTurn : (held.rotations[0] || held.rotations[1] || held.rotations[2])) &&
+            (!readsRelation || allRotations);
         if (rotationHeld && anyRotation)
             for (std::size_t l = 0; l <= p; ++l)
             {

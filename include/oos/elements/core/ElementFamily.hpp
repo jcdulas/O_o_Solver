@@ -2,6 +2,8 @@
 
 #include "oos/base/diagnostics/DiagnosticSink.hpp"
 #include "oos/base/errors/InternalError.hpp"
+#include "oos/base/math/Mat3.hpp"
+#include "oos/base/math/Vec3.hpp"
 #include "oos/elements/core/DesignFieldUse.hpp"
 #include "oos/elements/core/ElementBatchView.hpp"
 #include "oos/elements/core/ElementDof.hpp"
@@ -190,6 +192,27 @@ struct DisplacementSlots
     std::span<const std::int32_t> scalarSlots;   // per scalar point row of the model
     std::span<const std::int64_t> entityOffsets; // per entity row of the layout (empty: no entity)
 };
+
+// The acceleration field of the inertial loads of a case where it is affine in the position: a(x) = gradient·x +
+// constant, x and a in the basic system, times the mass factor of the model, so that the body force of a material of
+// density ρ is ρ·a(x). A uniform acceleration (GravityLoad) is its constant; a rotation about an axis
+// (RotationalForceLoad) has the gradient ω ωᵀ − |ω|² I + [α]× (assembly::InertialLoads). Twelve numbers a case,
+// whatever the size of the model and the part of it recovered.
+struct BodyAcceleration
+{
+    base::Mat3 gradient{};
+    base::Vec3 constant{};
+
+    [[nodiscard]] base::Vec3 at(const base::Vec3& position) const { return gradient * position + constant; }
+    [[nodiscard]] bool isZero() const
+    {
+        for (const double value : gradient.values)
+            if (value != 0.0)
+                return false;
+        return constant[0] == 0.0 && constant[1] == 0.0 && constant[2] == 0.0;
+    }
+};
+
 struct NodalDisplacements
 {
     std::span<const double> grid;                      // 6 · NodeTable::rowCount() values (6 per grid slot)
@@ -204,6 +227,10 @@ struct NodalDisplacements
     // and null for a model without entities.
     std::span<const double> entity{};
     const EntityLayout* entityLayout = nullptr; // not owned
+    // The acceleration field of the inertial loads of the case (BodyAcceleration), or null: none; not owned. Read by
+    // the elements whose stresses take the particular stresses of a body force (the solids of the mixed hybrid
+    // formulation).
+    const BodyAcceleration* bodyAcceleration = nullptr;
 
     // The displacements of a g-set vector in the DofMap's order: 6 values per grid point, 1 per scalar point, then
     // the entity DOFs of `layout` (null: none).

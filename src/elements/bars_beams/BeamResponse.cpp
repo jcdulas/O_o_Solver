@@ -12,15 +12,16 @@
 namespace oos::elements
 {
 
-BeamEndForces::BeamEndForces(const BeamData& beam, std::span<const BeamLineLoad> loads, double thermalStrain)
+BeamEndForces::BeamEndForces(const BeamData& beam, std::span<const BeamLineLoad> loads,
+                             const BeamFreeStrains& freeStrains)
     : m_beam(&beam)
 {
     const BeamFlexibility flexibility(beam.section, beam.material, beam.geometry.length);
     m_stiffness = flexibility.stiffness();
     m_equivalent = flexibility.equivalentLoads(loads);
-    if (thermalStrain != 0.0)
+    if (!freeStrains.isZero())
     {
-        const std::array<double, 12> thermal = beamThermalEndLoads(beam, thermalStrain);
+        const std::array<double, 12> thermal = beamThermalEndLoads(beam, freeStrains);
         for (std::size_t i = 0; i < 12; ++i)
             m_equivalent[i] += thermal[i];
     }
@@ -47,14 +48,14 @@ std::array<double, 12> BeamEndForces::of(const std::array<double, 12>& grid) con
 }
 
 BeamResponse::BeamResponse(const BeamData& beam, const NodalDisplacements& displacements,
-                           std::span<const BeamLineLoad> loads, double thermalStrain)
+                           std::span<const BeamLineLoad> loads, const BeamFreeStrains& freeStrains)
     : m_beam(&beam), m_loads(loads)
 {
     const std::array<ElementDof, 12> dofs = beam.geometry.dofs();
     std::array<double, 12> grid{};
     for (std::size_t i = 0; i < 12; ++i)
         grid[i] = displacements.valueAt(dofs[i]);
-    m_endForces = BeamEndForces(beam, loads, thermalStrain).of(grid);
+    m_endForces = BeamEndForces(beam, loads, freeStrains).of(grid);
 }
 
 BeamResponse::BeamResponse(const BeamData& beam, const std::array<double, 12>& endForces,

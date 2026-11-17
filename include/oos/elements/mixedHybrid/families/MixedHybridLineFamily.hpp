@@ -1,5 +1,6 @@
 #pragma once
 
+#include "oos/elements/bars_beams/BeamThermal.hpp"
 #include "oos/elements/core/ElementFamily.hpp"
 #include "oos/elements/core/ElementFormulation.hpp"
 
@@ -94,9 +95,12 @@ private:
         Beam // Beam2: the rows of its stations
     };
 
-    // The free axial strain α ΔT + D/L of a line under the temperatures of a subcase (0 without).
-    [[nodiscard]] static double freeStrainOf(const ElementBatchView& view, std::int64_t row, const MixedLine& line,
-                                             const ElementTemperatures* temperatures);
+    // The free deformation of a line under the temperatures of a subcase (zero without): its free axial strain
+    // α ΔT + D/L and, for a bar or a beam with temperature gradients across its section, its free curvatures (as
+    // the card's other family reads them: BeamThermal).
+    [[nodiscard]] static BeamFreeStrains freeStrainOf(const ElementBatchView& view, std::int64_t row,
+                                                      const MixedLine& line,
+                                                      const ElementTemperatures* temperatures);
 
     std::unique_ptr<ElementFamily> m_classic;
     Rows m_rows;

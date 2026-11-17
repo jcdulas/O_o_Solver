@@ -12,6 +12,7 @@ namespace
 {
 
 using beam_sizing::Direction;
+using beam_sizing::FreeStrains;
 using beam_sizing::Kernel;
 
 struct Directions
@@ -35,8 +36,10 @@ double selected(const MixedScalar& value, bool mixed)
     return mixed ? value.mixed : value.first;
 }
 
-MixedScalar thermalStrainOf(const BeamData& beam, const ElementBatchView& view, std::int64_t row,
-                           const Directions& directions, const ElementTemperatures* temperatures)
+// The free deformation of the element with the rates of the designed fields: the free axial strain α·ΔT + D/L (α
+// and the reference temperature may be designed) and the free curvatures −α·ΔT' of its temperature gradients.
+FreeStrains thermalStrainOf(const BeamData& beam, const ElementBatchView& view, std::int64_t row,
+                            const Directions& directions, const ElementTemperatures* temperatures)
 {
     if (temperatures == nullptr)
         return {};
@@ -49,7 +52,17 @@ MixedScalar thermalStrainOf(const BeamData& beam, const ElementBatchView& view, 
                                     usesReference ? -directions.other.material.referenceTemperature : 0.0};
     const MixedScalar expansion{beam.material.expansion, directions.first.material.expansion,
                                                         directions.other.material.expansion};
-    return strain + expansion * delta;
+    FreeStrains freeStrains(strain + expansion * delta);
+    const std::array<double, 4> gradients = beamGradientChange(view, row, *temperatures);
+    if (std::any_of(gradients.begin(), gradients.end(), [](double gradient) { return gradient != 0.0; }))
+    {
+        freeStrains.hasCurvatures = true;
+        freeStrains.curvatures.plane1 = {-(expansion * gradients[LINE_GRADIENT_Y_AT_A]),
+                                         -(expansion * gradients[LINE_GRADIENT_Y_AT_B])};
+        freeStrains.curvatures.plane2 = {-(expansion * gradients[LINE_GRADIENT_Z_AT_A]),
+                                         -(expansion * gradients[LINE_GRADIENT_Z_AT_B])};
+    }
+    return freeStrains;
 }
 
 void append(const BeamData& beam, std::int64_t row, const beam_sizing::Matrix<12>& rates,
@@ -84,7 +97,7 @@ bool supports(ElementOutput output)
 
 void appendRecovery(const Kernel& kernel, const ElementFamily& family, const ElementBatchView& view,
                      std::int64_t row, ElementOutput output, std::span<const double> grid,
-                     bool mixed, ElementResultBlock& block, MixedScalar thermalStrain = {},
+                     bool mixed, ElementResultBlock& block, const FreeStrains& thermalStrain = {},
                      std::span<const BeamLineLoad> lineLoads = {})
 {
     const auto forms = family.outputColumnForms(output);

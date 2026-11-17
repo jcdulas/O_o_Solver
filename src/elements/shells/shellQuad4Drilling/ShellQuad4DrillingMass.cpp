@@ -5,8 +5,9 @@ namespace oos::elements
 {
 
 // The lumped (row sums) or coupled mass of ShellQuad4DrillingPlate::mass, ρ t + NSM per unit area (PSHELL NSM and the NSM cards'
-// share), carried to the displacement systems of G1-G4: through the offset of ZOFFS under ModelParams OFFDEF LROFF or
-// ELMZ, at the grid points under ELMOFF, the default (ShellNodeFrames::massToDisplacementSystems).
+// share), carried to the displacement systems of G1-G4: through the offset of ZOFFS under ModelParams OffsetDefinition
+// LoadRecoveryOffsets or ElemOffsetZ, at the grid points under ElemOffsetsOnly, the default
+// (ShellNodeFrames::massToDisplacementSystems).
 void ShellQuad4DrillingElement::computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                                    ElementMatrixBlock& block) const
 {

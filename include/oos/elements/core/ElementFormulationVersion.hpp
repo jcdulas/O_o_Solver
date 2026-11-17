@@ -20,22 +20,18 @@ namespace oos::elements
 //
 // History:
 // - 1: the first formulations (never written in a cache file, whose format 3 had no such field);
-// - 2: the warped ShellQuad4 on its corrected in-plane field; a ShellTria3 with tied shortest edges takes the median by
-// the
-//   basic position of the edge's middle;
-// - 3: the mass of offset shells, bars and beams at their grid points by default, under ModelParams OFFDEF ELMOFF (on
-// the
-//   offsets under LROFF and ELMZ, as every formulation before).
+// - 2: the warped ShellQuad4 on its corrected in-plane field; a ShellTria3 with tied shortest edges takes the median
+//   by the basic position of the edge's middle;
+// - 3: the mass of offset shells, bars and beams at their grid points by default, under ModelParams OffsetDefinition
+//   ElemOffsetsOnly (on the offsets under LoadRecoveryOffsets and ElemOffsetZ, as every formulation before);
 // - 4: the thermal, pressure and BeamDistributedLoad loads of offset shells, bars and beams at their grid points under
-// ELMOFF, the
-//   default (through the offsets under LROFF and ELMZ).
+//   ElemOffsetsOnly, the default (through the offsets under LoadRecoveryOffsets and ElemOffsetZ);
 // - 5: a Beam2 on a BeamShapeProp has its axis at the shear centre of its section and its neutral axis offset from
-// it; a
-//   BeamProp's N1, N2 and M1, M2 taken (refused before);
+//   it; a BeamProp's N1, N2 and M1, M2 taken (refused before);
 // - 6: the ShellQuad4 and ShellTria3 of NASTRAN-95 (their former formulations kept for the ShellQuad4Drilling and
-// ShellTria3Drilling only); the ShellQuad8
-//   and ShellTria6 (MindlinShell); the defaults of the CHEXA8, CHEXA20 and CPENTA6; the fasteners; the warped
-//   ShellQuad4Drilling formed flat in its mean plane and joined to its grid points by rigid offsets.
+//   ShellTria3Drilling only); the ShellQuad8 and ShellTria6 (MindlinShell); the defaults of the SolidHexa of 8 and
+//   20 grid points and of the SolidPenta of 6; the fasteners; the warped ShellQuad4Drilling formed flat in its mean
+//   plane and joined to its grid points by rigid offsets.
 inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 6;
 
 } // namespace oos::elements

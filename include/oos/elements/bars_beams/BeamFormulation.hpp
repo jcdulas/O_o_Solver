@@ -49,18 +49,18 @@ struct BeamData
 [[nodiscard]] base::MatN<12> beamStiffness(const BeamData& beam);
 // The mass over the grid DOFs; `addedMassPerLength` is the NSM cards' share (MassOptions); a Beam2 carries the
 // torsional inertia of its section, a Bar2 does not (BeamMass.hpp). The mass of the element between its end points
-// (the offset ends), carried to the grid points through the offsets when `isMassOnOffsets` (MDLPRM OFFDEF LROFF,
-// ELMZ), by the rotations alone otherwise (ELMOFF, the default: BeamGeometry::rotationTransform). A Beam2 whose
-// neutral axis or NSM is off its axis has its structural mass on the neutral axis and its NSM (the NSM cards' share
-// with it) at the NSM's centre of gravity, rigidly attached to the axis at each end (under every OFFDEF: they
-// are offsets within the section, not WA, WB).
+// (the offset ends), carried to the grid points through the offsets when `isMassOnOffsets` (ModelParams
+// OffsetDefinition LoadRecoveryOffsets, ElemOffsetZ), by the rotations alone otherwise (ElemOffsetsOnly, the default:
+// BeamGeometry::rotationTransform). A Beam2 whose neutral axis or NSM is off its axis has its structural mass on the
+// neutral axis and its NSM (the NSM cards' share with it) at the NSM's centre of gravity, rigidly attached to the axis
+// at each end (under every OffsetDefinition: they are offsets within the section, not WA, WB).
 [[nodiscard]] base::MatN<12> beamGridMass(const BeamData& beam, double addedMassPerLength, MassFormulation formulation,
                                           TorsionalInertia torsionalInertia, bool isMassOnOffsets);
 // The equivalent nodal loads of the line loads of one element over the grid DOFs (pin flags condensed).
-// Through the offsets when `areLoadsOnOffsets` (MDLPRM OFFDEF LROFF, ELMZ); at the grid points by the rotations alone
-// otherwise (ELMOFF; a design choice for BeamDistributedLoad, a distributed load: treated as the pressure loads,
-// without the offsets, consistent with the default of ModelParams OFFDISLD that applies the distributed loads at the
-// grid points).
+// Through the offsets when `areLoadsOnOffsets` (ModelParams OffsetDefinition LoadRecoveryOffsets, ElemOffsetZ); at the
+// grid points by the rotations alone otherwise (ElemOffsetsOnly; a design choice for BeamDistributedLoad, a distributed
+// load: treated as the pressure loads, without the offsets, consistent with the default of ModelParams
+// OffsetDisplacementLoad that applies the distributed loads at the grid points).
 [[nodiscard]] std::array<double, 12> beamGridLoads(const BeamData& beam, std::span<const BeamLineLoad> loads,
                                                    bool areLoadsOnOffsets);
 

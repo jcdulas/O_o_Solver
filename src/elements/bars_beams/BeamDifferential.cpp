@@ -73,7 +73,7 @@ double beamPreloadAxialForce(const ElementBatchView& view, std::int64_t row, con
     // The end force at B along the element x axis: the force the grid point exerts on the element, positive in
     // tension.
     constexpr std::size_t AXIAL_AT_B = 6;
-    return BeamResponse(beam, preload, {}, beamThermalStrain(view, row, beam, preload)).endForces()[AXIAL_AT_B];
+    return BeamResponse(beam, preload, {}, beamFreeStrains(view, row, beam, preload)).endForces()[AXIAL_AT_B];
 }
 
 } // namespace oos::elements

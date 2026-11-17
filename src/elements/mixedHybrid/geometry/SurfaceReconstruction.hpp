@@ -112,6 +112,15 @@ private:
     [[nodiscard]] std::pair<std::vector<RingStep>, bool> ring(std::size_t e, std::size_t a, std::size_t b);
     [[nodiscard]] const std::map<std::size_t, bool>& candidates(std::size_t a, std::size_t b);
     [[nodiscard]] std::map<std::size_t, bool> candidatesAt(std::size_t a, std::size_t b);
+    // An edge at a mesh transition on a boundary that goes straight on (transitionEdge): the grid of the edge it goes
+    // on into (nothing: the edge ends there), and whether it does so without crossing a raw edge.
+    struct TransitionEdge
+    {
+        std::optional<std::size_t> goesOnTo;
+        bool smooth = false;
+    };
+    [[nodiscard]] std::optional<TransitionEdge> transitionEdge(std::size_t e, std::size_t a, std::size_t b);
+    [[nodiscard]] double cornerAngle(std::size_t e, std::size_t a) const;
     [[nodiscard]] bool informed(std::size_t a, std::size_t b);
     [[nodiscard]] std::optional<std::size_t> previous(std::size_t a, std::size_t b);
     [[nodiscard]] static std::optional<Circle> circle(const Vector3& x0, const Vector3& x1, const Vector3& x2);

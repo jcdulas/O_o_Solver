@@ -642,8 +642,7 @@ VolumeKernel::PressureField MixedHybridModel::solidFacePressure(const MixedSolid
     };
 }
 
-VolumeKernel MixedHybridModel::solidThermalKernel(const MixedSolid& solid, EntityLayout::Kind kind,
-                                                  std::span<const double> changes) const
+SolidLoad MixedHybridModel::solidThermalLoad(const MixedSolid& solid, std::span<const double> changes) const
 {
     std::vector<base::Vec3> corners;
     const std::span<const SolidPoint> grids = m_solidPart->gridPositions();
@@ -651,16 +650,42 @@ VolumeKernel MixedHybridModel::solidThermalKernel(const MixedSolid& solid, Entit
         corners.push_back({grids[grid][0], grids[grid][1], grids[grid][2]});
     const SolidShape shape = linearShapeOf(solid);
     const std::vector<double> values(changes.begin(), changes.end());
-    const SolidLoad load = m_solidPart->thermalLoad(solid.partIndex,
-                                                    [shape, corners, values](const SolidPoint& position)
-                                                    {
-                                                        const SolidShapeValues functions = cornerFunctionsAt(
-                                                            shape, corners, {position[0], position[1], position[2]});
-                                                        double change = 0.0;
-                                                        for (std::size_t i = 0; i < values.size(); ++i)
-                                                            change += functions.n[i] * values[i];
-                                                        return change;
-                                                    });
+    return m_solidPart->thermalLoad(solid.partIndex,
+                                    [shape, corners, values](const SolidPoint& position)
+                                    {
+                                        const SolidShapeValues functions = cornerFunctionsAt(
+                                            shape, corners, {position[0], position[1], position[2]});
+                                        double change = 0.0;
+                                        for (std::size_t i = 0; i < values.size(); ++i)
+                                            change += functions.n[i] * values[i];
+                                        return change;
+                                    });
+}
+
+void MixedHybridModel::addBodyForceStresses(const MixedSolid& solid, const BodyAcceleration* acceleration,
+                                            const VolumeKernel& kernel, Vector& beta)
+{
+    const double density = solid.part.material.density;
+    if (acceleration == nullptr || density == 0.0 || acceleration->isZero())
+        return;
+    // The body force ρ a(x), affine in the position (basic axes): its constants, then its gradient by columns
+    // (VolumeKernel::affineBodyStresses).
+    std::array<double, VolumeKernel::AFFINE_BODY_FIELDS> coefficients{};
+    for (std::size_t c = 0; c < 3; ++c)
+    {
+        coefficients[c] = density * acceleration->constant[c];
+        for (std::size_t m = 0; m < 3; ++m)
+            coefficients[3 + 3 * m + c] = density * acceleration->gradient(c, m);
+    }
+    const Vector particular = kernel.affineBodyStresses(coefficients);
+    for (std::size_t i = 0; i < beta.size(); ++i)
+        beta[i] += particular[i];
+}
+
+VolumeKernel MixedHybridModel::solidThermalKernel(const MixedSolid& solid, EntityLayout::Kind kind,
+                                                  std::span<const double> changes) const
+{
+    const SolidLoad load = solidThermalLoad(solid, changes);
     SolidResult<VolumeKernel> kernel =
         m_solidPart->buildKernel(solid.partIndex, kind, false, std::span<const SolidLoad>(&load, 1));
     if (!kernel.ok())
@@ -690,20 +715,27 @@ MixedHybridModel::SolidCaseStresses MixedHybridModel::solidStresses(const MixedS
     }
     SolidCaseStresses out;
     std::vector<double> changes = solidCornerChanges(solid, displacements.temperatures);
+    // The loads whose particular stresses the stresses take (spec section 10.3): the thermal strain of the case, with
+    // which the kernel is built (the kernel the part keeps has no load), and the body force of its accelerations,
+    // which every kernel has.
     if (takesThermalStrain(solid, changes))
     {
         out.kernel = std::make_shared<const VolumeKernel>(solidThermalKernel(solid, kind, changes));
         const std::array<double, 1> factors{1.0};
         out.beta = SolidPart::stressCoefficients(*out.kernel, x, factors);
         out.cornerChanges = std::move(changes);
-        return out;
     }
-    std::variant<SolidPart::SharedKernel, std::string> kernel = m_solidPart->kernelOf(solid.partIndex, kind, false);
-    if (const std::string* message = std::get_if<std::string>(&kernel))
-        throw std::logic_error(base::concatenate({"MixedHybridModel: solid ", std::to_string(solid.elementId), ": ",
-                                                  *message, " (its check accepted it: a bug of O_o_Solver)"}));
-    out.kernel = std::get<SolidPart::SharedKernel>(std::move(kernel));
-    out.beta = SolidPart::stressCoefficients(*out.kernel, x, {});
+    else
+    {
+        std::variant<SolidPart::SharedKernel, std::string> kernel = m_solidPart->kernelOf(solid.partIndex, kind, false);
+        if (const std::string* message = std::get_if<std::string>(&kernel))
+            throw std::logic_error(
+                base::concatenate({"MixedHybridModel: solid ", std::to_string(solid.elementId), ": ", *message,
+                                   " (its check accepted it: a bug of O_o_Solver)"}));
+        out.kernel = std::get<SolidPart::SharedKernel>(std::move(kernel));
+        out.beta = SolidPart::stressCoefficients(*out.kernel, x, {});
+    }
+    addBodyForceStresses(solid, displacements.bodyAcceleration, *out.kernel, out.beta);
     return out;
 }
 

@@ -76,6 +76,8 @@ struct CaseLoads
 {
     std::span<const std::vector<elements::ElementLineLoad>> lineLoads;
     const elements::ElementTemperatures* temperatures = nullptr;
+    // The acceleration field of its inertial loads (elements::BodyAcceleration), or null: none; not owned.
+    const elements::BodyAcceleration* bodyAcceleration = nullptr;
 };
 
 // The elements a build recovers and where it reads their displacements (the streamed path: the elements of
@@ -158,14 +160,17 @@ public:
     // Appends to `tables` the element tables of one subcase. displacementsG: ug, one value per g-set DOF of the DOF
     // map. lineLoads: the line loads of the subcase per batch of the set (LoadVectorBuilder::lineLoadsOf), or empty
     // when it has none. temperatures: those of the subcase's thermal load, or null (the recovery then subtracts no
-    // thermal strain). Throws std::invalid_argument when displacementsG is not of the g-set size or lineLoads neither
-    // empty nor of one entry per batch; MemoryBudgetError; OperationCancelledError between batches.
+    // thermal strain). bodyAcceleration: the acceleration field of its inertial loads
+    // (elements::BodyAcceleration), or null. Throws std::invalid_argument when displacementsG is not of the g-set size
+    // or lineLoads neither empty nor of one entry per batch; MemoryBudgetError; OperationCancelledError between
+    // batches.
     void build(std::int32_t subcase, std::span<const double> displacementsG,
                std::span<const std::vector<elements::ElementLineLoad>> lineLoads, base::MemoryBudget& budget,
                std::vector<ElementResultTable>& tables, base::ThreadPool* pool = nullptr,
                const base::CancellationToken* cancellation = nullptr,
                const elements::ElementTemperatures* temperatures = nullptr,
-               const ElementOutputSelection* selection = nullptr) const;
+               const ElementOutputSelection* selection = nullptr,
+               const elements::BodyAcceleration* bodyAcceleration = nullptr) const;
 
     // Appends to tables[c] the element tables of case c of a block of cases, those build() gives it, in its order
     // (class comment): `subcases` the labels of the cases, `displacementsG` their g-set displacements (one column per
@@ -182,21 +187,24 @@ public:
                     const ElementOutputSelection* selection = nullptr, std::span<const CaseLoads> loads = {}) const;
 
     // buildCases() on the elements of a window only (RecoveryWindow), `displacements` on its slots: each case's tables
-    // hold the rows of those elements, the rows buildCases() gives them (the same values to the bit). No line load and
-    // no temperature (the streamed path refuses them). Throws as buildCases().
+    // hold the rows of those elements, the rows buildCases() gives them (the same values to the bit). Of `loads` (one
+    // per case, or none) only the acceleration fields: no line load and no temperature (the streamed path refuses
+    // them). Throws as buildCases().
     void buildWindow(std::span<const std::int32_t> subcases, linalg::ConstDenseMatrixView displacements,
                      std::size_t vectorisedCases, const RecoveryWindow& window, base::MemoryBudget& budget,
                      std::span<std::vector<ElementResultTable>> tables, base::ThreadPool* pool = nullptr,
                      const base::CancellationToken* cancellation = nullptr,
-                     const ElementOutputSelection* selection = nullptr) const;
+                     const ElementOutputSelection* selection = nullptr, std::span<const CaseLoads> loads = {}) const;
 
     // The table of the stresses at the grid points of the solids of an element formulation (the means over its
     // solids the selection takes: "SolidGridPoints", docs/mixed-hybrid-formulation-spec.md section 10.3) from the
     // displacements of the whole g set, appended to `tables`: what build() adds to a case's tables, for the streamed
     // path, whose windows hold the solids of a region only. Nothing without such solids or stress request.
+    // bodyAcceleration: the acceleration field of the case's inertial loads, or null.
     void buildGridPointStresses(std::int32_t subcase, std::span<const double> displacementsG,
                                 base::MemoryBudget& budget, std::vector<ElementResultTable>& tables,
-                                const ElementOutputSelection* selection = nullptr) const;
+                                const ElementOutputSelection* selection = nullptr,
+                                const elements::BodyAcceleration* bodyAcceleration = nullptr) const;
 
 private:
     void buildCasesIn(std::span<const std::int32_t> subcases, linalg::ConstDenseMatrixView displacements,

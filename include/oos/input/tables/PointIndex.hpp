@@ -11,7 +11,7 @@ namespace oos::input
 {
 
 // The kinds of points an element connects: a grid point (six DOFs in its displacement system CD), a scalar point
-// (SPOINT, one DOF without a frame), or an entity: unknowns of an element formulation that belong to no grid point
+// (ScalarPoint, one DOF without a frame), or an entity: unknowns of an element formulation that belong to no grid point
 // (an edge, a face, an element interior of the mixed hybrid formulation; elements::EntityLayout), without an ID or a
 // frame. Grid points and scalar points share one ID space; entities have no ID.
 enum class PointKind : std::uint8_t

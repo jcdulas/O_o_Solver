@@ -60,6 +60,9 @@ public:
         const output::ElementResultBuilder* builder = nullptr;
         const linalg::DenseMatrix* coefficients = nullptr; // α: basis × cases
         std::span<const base::EntityId> caseLabels;        // the cases, in α's order
+        // The acceleration field of the inertial loads of each case, in α's order (elements::BodyAcceleration);
+        // empty: none (and for the vectors of a load basis, whose stresses take no particular stress).
+        std::span<const std::optional<elements::BodyAcceleration>> caseAccelerations;
         const output::OutputPlan* plan = nullptr;          // the plan every case shares
         output::EnvelopeAccumulator* envelopes = nullptr;  // null: none
         bool keepsCaseTables = true;                       // the tables of the kinds no envelope takes are kept anyway

@@ -18,8 +18,8 @@ void ShellQuad4DrillingElement::checkPressureLoads(const ElementBatchView& view,
 }
 
 // p(ξ, η) = Σ N_i p_i: F_i = ∫ N_i p dA on the mean plane, along +n or the direction of CID (ShellQuad4DrillingPlate::
-// pressureLoads), carried to the displacement systems of G1-G4 (through ZOFFS under ModelParams OFFDEF LROFF or ELMZ
-// only: ShellNodeFrames::loadsToDisplacementSystems).
+// pressureLoads), carried to the displacement systems of G1-G4 (through ZOFFS under ModelParams OffsetDefinition
+// LoadRecoveryOffsets or ElemOffsetZ only: ShellNodeFrames::loadsToDisplacementSystems).
 void ShellQuad4DrillingElement::computePressureLoads(const ElementBatchView& view, std::span<const ElementPressure> pressures,
                                             ElementVectorBlock& block) const
 {

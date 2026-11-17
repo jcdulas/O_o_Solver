@@ -25,9 +25,9 @@ namespace oos::elements
 // O_i = rigidOffset((0, 0, ZOFFS)) (or rigidOffset(d_i) for an offset d_i of its own at each grid point,
 // buildWithNodeOffsets). Local matrices and vectors are ordered node by node, six DOFs per node.
 //
-// The mass takes T_i under ModelParams OFFDEF LROFF or ELMZ (the mass on the offset) and the rotation alone,
-// diag(Eᵀ·R_i, Eᵀ·R_i), under ELMOFF, the default (input::OffsetDefinition: the offset leaves the mass properties
-// unchanged).
+// The mass takes T_i under ModelParams OffsetDefinition LoadRecoveryOffsets or ElemOffsetZ (the mass on the offset) and
+// the rotation alone, diag(Eᵀ·R_i, Eᵀ·R_i), under ElemOffsetsOnly, the default (input::OffsetDefinition: the offset
+// leaves the mass properties unchanged).
 template <std::size_t N>
 struct ShellNodeFrames
 {
@@ -89,7 +89,8 @@ struct ShellNodeFrames
     }
 
     // A mass matrix (or its rate) given on the local DOFs, carried to the grid points through the offset when the mass
-    // is on it (`isMassOnOffsets`: OFFDEF LROFF, ELMZ), through the rotations alone otherwise (ELMOFF).
+    // is on it (`isMassOnOffsets`: OffsetDefinition LoadRecoveryOffsets, ElemOffsetZ), through the rotations alone
+    // otherwise (ElemOffsetsOnly).
     [[nodiscard]] base::MatN<6 * N> massToDisplacementSystems(const base::MatN<6 * N>& local,
                                                               bool isMassOnOffsets) const
     {
@@ -117,9 +118,9 @@ struct ShellNodeFrames
     }
 
     // An element load vector (pressure, thermal) given on the local DOFs, carried to the grid points: through the
-    // offset when `areLoadsOnOffsets` (MDLPRM OFFDEF LROFF, ELMZ), f_CD,i = T_iᵀ·f_local,i (the work f·q is the same in
-    // both); by the rotations alone otherwise (ELMOFF, the default: the offset does not enter the thermal, pressure
-    // and gravity loads).
+    // offset when `areLoadsOnOffsets` (ModelParams OffsetDefinition LoadRecoveryOffsets, ElemOffsetZ), f_CD,i =
+    // T_iᵀ·f_local,i (the work f·q is the same in both); by the rotations alone otherwise (ElemOffsetsOnly, the
+    // default: the offset does not enter the thermal, pressure and gravity loads).
     [[nodiscard]] std::array<double, 6 * N> loadsToDisplacementSystems(const std::array<double, 6 * N>& local,
                                                                        bool areLoadsOnOffsets) const
     {

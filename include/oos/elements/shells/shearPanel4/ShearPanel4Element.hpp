@@ -20,8 +20,8 @@
 //
 // Not supported, and problems reported by check(): an unknown grid point, a grid point named twice, a PID that is not a
 // ShearPanelProp, a material other than IsoMat, a T or G that is not positive, parallel diagonals, a folded corner, a
-// warped panel (the kick forces are not formed; refused with its diagnostic), ModelParams SHEARP HARDER (not read: the
-// default Garvey panel is formed).
+// warped panel (the kick forces are not formed; refused with its diagnostic), ModelParams ShearPanelFormulation
+// HarderShearPanel (not read: the default Garvey panel is formed).
 
 #include "oos/elements/core/ElementFamily.hpp"
 #include "oos/elements/core/IsotropicMaterial.hpp"

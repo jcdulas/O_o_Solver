@@ -84,17 +84,65 @@ double beamThermalStrain(const ElementBatchView& view, std::int64_t row, const B
     return thermalStrain + beamDeformationStrain(view, row, beam, temperatures);
 }
 
-std::array<double, 12> beamThermalEndLoads(const BeamData& beam, double thermalStrain)
+std::array<double, 4> beamGradientChange(const ElementBatchView& view, std::int64_t row,
+                                         const ElementTemperatures& temperatures)
 {
+    std::array<double, 4> change{};
+    if (!temperatures.hasTemperatureLoad)
+        return change;
+    const std::int32_t elementId = view.elementId(row);
+    if (const ElementTemperature* load = temperatures.load.ofElement(elementId))
+        change = load->lineGradients;
+    // A reference temperature and the temperatures of the grid points are uniform across the section: only a
+    // LineElemTemperatureLoad of the initial set has gradients to subtract.
+    if (const ElementTemperature* initial = temperatures.initial.ofElement(elementId))
+        for (std::size_t k = 0; k < change.size(); ++k)
+            change[k] -= initial->lineGradients[k];
+    return change;
+}
+
+BeamFreeCurvatures beamFreeCurvatures(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
+                                      const ElementTemperatures& temperatures)
+{
+    BeamFreeCurvatures curvatures;
+    const double expansion = beam.material.expansion;
+    if (!temperatures.hasTemperatureLoad || expansion == 0.0)
+        return curvatures;
+    const std::array<double, 4> change = beamGradientChange(view, row, temperatures);
+    // κ1 = −α·ΔT'y, κ2 = −α·ΔT'z: the hotter side is the longer one.
+    curvatures.plane1 = {-expansion * change[LINE_GRADIENT_Y_AT_A], -expansion * change[LINE_GRADIENT_Y_AT_B]};
+    curvatures.plane2 = {-expansion * change[LINE_GRADIENT_Z_AT_A], -expansion * change[LINE_GRADIENT_Z_AT_B]};
+    return curvatures;
+}
+
+BeamFreeStrains beamFreeStrains(const ElementBatchView& view, std::int64_t row, const BeamData& beam,
+                                const NodalDisplacements& displacements)
+{
+    BeamFreeStrains freeStrains;
+    freeStrains.axial = beamThermalStrain(view, row, beam, displacements);
+    if (displacements.temperatures != nullptr)
+        freeStrains.curvatures = beamFreeCurvatures(view, row, beam, *displacements.temperatures);
+    return freeStrains;
+}
+
+std::array<double, 12> beamThermalEndLoads(const BeamData& beam, const BeamFreeStrains& freeStrains)
+{
+    // d_T: end B from end A in the free deformation. Without curvatures it is the axial expansion alone, as it
+    // always was (the same bits for a model without temperature gradients).
     std::array<double, 12> expansion{};
-    expansion[AXIAL_B] = thermalStrain * beam.geometry.length;
+    if (freeStrains.hasCurvatures())
+        expansion =
+            beamFreeCurvatureDisplacements(beam.section, beam.geometry.length, freeStrains.curvatures,
+                                           [&](double position) { return beam.section.at(position).neutralAxis; });
+    expansion[AXIAL_B] += freeStrains.axial * beam.geometry.length;
     const BeamFlexibility flexibility(beam.section, beam.material, beam.geometry.length);
     return flexibility.stiffness() * expansion;
 }
 
-std::array<double, 12> beamGridThermalLoads(const BeamData& beam, double thermalStrain, bool areLoadsOnOffsets)
+std::array<double, 12> beamGridThermalLoads(const BeamData& beam, const BeamFreeStrains& freeStrains,
+                                            bool areLoadsOnOffsets)
 {
-    std::array<double, 12> endLoads = beamThermalEndLoads(beam, thermalStrain);
+    std::array<double, 12> endLoads = beamThermalEndLoads(beam, freeStrains);
     if (beam.geometry.hasPinFlags())
     {
         const BeamFlexibility flexibility(beam.section, beam.material, beam.geometry.length);
@@ -105,7 +153,7 @@ std::array<double, 12> beamGridThermalLoads(const BeamData& beam, double thermal
                 "report it)");
         endLoads = release->condenseLoads(endLoads);
     }
-    // f_grid = Tᵀ·f_end (T without the offsets under ELMOFF).
+    // f_grid = Tᵀ·f_end (T without the offsets under ElemOffsetsOnly).
     const base::MatN<12> transform =
         areLoadsOnOffsets ? beam.geometry.endTransform() : beam.geometry.rotationTransform();
     return transform.transposed() * endLoads;

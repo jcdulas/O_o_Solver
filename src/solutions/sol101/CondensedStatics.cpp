@@ -456,7 +456,8 @@ struct CondensedStatics::Units
     // What every unit's equations, factorisation and cache key share.
     reduction::UnitModel unitModel;
     linalg::FactorOptions unitFactorOptions;
-    std::vector<reduction::CacheParameter> cacheParameters; // the MATRIX_PARAMETERS and ModelParams OFFDEF, by name
+    // the MATRIX_PARAMETERS and ModelParams OffsetDefinition, by name
+    std::vector<reduction::CacheParameter> cacheParameters;
     std::string kernelName;
     std::vector<CondensedUnit> units;                       // the condensed units, by plan order (bounded by the units)
     std::vector<reduction::InterfaceSpider> spiders;        // the absorbed fastener sides of the condensed units

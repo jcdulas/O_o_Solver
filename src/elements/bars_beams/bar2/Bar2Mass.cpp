@@ -4,8 +4,8 @@ namespace oos::elements
 {
 
 // The mass of each Bar2 (BeamMass: lumped or coupled with ρ·A + NSM per unit length; no torsional inertia),
-// through the offsets under ModelParams OFFDEF LROFF or ELMZ, at the grid points under ELMOFF, the default
-// (beamGridMass).
+// through the offsets under ModelParams OffsetDefinition LoadRecoveryOffsets or ElemOffsetZ, at the grid points under
+// ElemOffsetsOnly, the default (beamGridMass).
 void Bar2Element::computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                                  ElementMatrixBlock& block) const
 {

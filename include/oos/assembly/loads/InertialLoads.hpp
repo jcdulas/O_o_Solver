@@ -5,8 +5,10 @@
 #include "oos/base/arrow/DictionaryView.hpp"
 #include "oos/base/diagnostics/DiagnosticSink.hpp"
 #include "oos/base/ids/EntityId.hpp"
+#include "oos/base/math/Mat3.hpp"
 #include "oos/base/math/Vec3.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
+#include "oos/elements/core/ElementFamily.hpp"
 #include "oos/input/snapshot/ModelSnapshot.hpp"
 #include "oos/input/tables/CoordinateSystemTable.hpp"
 #include "oos/linalg/sparse/BlockSparseMatrix.hpp"
@@ -84,6 +86,12 @@ public:
     void addAccelerations(base::EntityId loadSetId, std::span<double> accelerationsG, base::MemoryBudget& budget,
                           base::DiagnosticSink& sink) const;
 
+    // Adds to `field` the acceleration field of the set where it is affine in the position (GravityLoad,
+    // RotationalForceLoad: elements::BodyAcceleration, without the mass factor), the field addAccelerations writes at
+    // the grid points; the rows whose field is not (AccelNodeLoad, AccelFieldLoad) add nothing. No diagnostic: those
+    // of the rows are reported where the loads are made.
+    void addAffineAcceleration(base::EntityId loadSetId, elements::BodyAcceleration& field) const;
+
     // The terms of the set's inertial rows (InertialTerm), in table order: the rows addLoads applies, with the same
     // diagnostics for those it does not.
     [[nodiscard]] std::vector<InertialTerm> termsOf(base::EntityId loadSetId, base::DiagnosticSink& sink) const;
@@ -125,6 +133,9 @@ private:
     [[nodiscard]] std::vector<RowSpec> gravityRowsOf(base::EntityId loadSetId) const;
     // The field of a row (factor 1), added to `field` (the g set) in the CD systems.
     void writeField(const RowSpec& spec, std::span<double> field) const;
+    // The gradient of the field of a RotationalForceLoad row: a(x) = A·(x − centre) with A = ω ωᵀ − |ω|² I + [α]×
+    // (ω × (ω × ρ) = (ω ωᵀ − |ω|² I)·ρ), its rotation the skew part α.
+    [[nodiscard]] static base::Mat3 rotationGradientOf(const RowSpec& spec);
 
     const input::ModelSnapshot* m_snapshot;
     const DofMap* m_dofMap;

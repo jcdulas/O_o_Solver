@@ -613,8 +613,17 @@ void StreamedOutputs::flush()
         if (m_hasStress)
         {
             std::vector<std::vector<output::ElementResultTable>> tables(count);
+            // Of the loads of the cases, their acceleration fields (the path refuses line loads and temperatures).
+            std::vector<output::CaseLoads> loads; // bounded by the block
+            if (!m_inputs.caseAccelerations.empty())
+            {
+                loads.resize(count);
+                for (std::size_t c = 0; c < count; ++c)
+                    if (m_inputs.caseAccelerations[c0 + c])
+                        loads[c].bodyAcceleration = &*m_inputs.caseAccelerations[c0 + c];
+            }
             m_inputs.builder->buildWindow(m_inputs.caseLabels.subspan(c0, count), cases.view(), m_caseCount, window,
-                                          m_budget, tables, m_inputs.pool, m_inputs.cancellation, &selection);
+                                          m_budget, tables, m_inputs.pool, m_inputs.cancellation, &selection, loads);
             for (std::size_t c = 0; c < count; ++c)
                 for (output::ElementResultTable& table : tables[c])
                 {
@@ -757,8 +766,11 @@ void StreamedOutputs::finishWholeVectors()
             for (std::size_t dof = 0; dof < gSize; ++dof)
                 caseValues[dof] = valueOf(static_cast<base::DofIndex>(dof));
             std::vector<output::ElementResultTable> tables;
+            const elements::BodyAcceleration* acceleration =
+                !m_inputs.caseAccelerations.empty() && m_inputs.caseAccelerations[c] ? &*m_inputs.caseAccelerations[c]
+                                                                                     : nullptr;
             m_inputs.builder->buildGridPointStresses(m_inputs.caseLabels[c], caseValues.span(), m_budget, tables,
-                                                     &selection);
+                                                     &selection, acceleration);
             for (output::ElementResultTable& table : tables)
             {
                 if (m_inputs.envelopes != nullptr)

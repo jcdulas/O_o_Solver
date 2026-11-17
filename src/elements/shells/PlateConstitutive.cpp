@@ -272,7 +272,17 @@ PlateConstitutive<T> plateConstitutiveOf(const PlateSectionValues<T>& section, d
     {
         // Spec §1.2: without MID3 the QUAD4 takes the bending card's G3 (with TS/T); the TRIA3 none (zero
         // compliance: its shear is then the bending relief alone).
-        const Matrix2<T> g3 = bendingCardShear(section);
+        // A laminate rigid in transverse shear in both directions (plies without G1Z and G2Z: a choice of this
+        // project, as the rigid direction above) is here too, with the G3 of a general card less its term between
+        // the two shears: that term is a Poisson term of the bending matrix, which the anisotropic factor of the
+        // QUAD4 multiplies, and the stiffness of an element a few thicknesses wide was no longer positive (negative
+        // pivots on a sandwich of 2D orthotropic plies).
+        Matrix2<T> g3 = bendingCardShear(section);
+        if (section.isLaminate)
+        {
+            g3(0, 1) = T(0.0);
+            g3(1, 0) = T(0.0);
+        }
         shear = scaledBy(g3, section.shearRatio);
         c.shearModulusX = g3(0, 0);
         c.shearModulusY = g3(1, 1);

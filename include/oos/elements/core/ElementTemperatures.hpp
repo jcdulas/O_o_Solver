@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -14,13 +15,22 @@ namespace oos::elements
 
 // The temperature an element-wise card gives to one element (TEMPP1: the mean temperature TBAR of a shell and its
 // gradient TPRIME through the thickness; LineElemTemperatureLoad: the temperature at end A of a bar and the change to
-// end B).
+// end B, and its gradients across the section).
 struct ElementTemperature
 {
     std::int32_t elementId = 0;
     double mean = 0.0;
     double gradient = 0.0;
+    // LineElemTemperatureLoad only (0 for the other cards): the temperature gradients across the section of a bar or
+    // beam, along the element y axis at ends A and B, then along z at ends A and B (per unit length).
+    std::array<double, 4> lineGradients{};
 };
+
+// The places of ElementTemperature::lineGradients.
+inline constexpr std::size_t LINE_GRADIENT_Y_AT_A = 0;
+inline constexpr std::size_t LINE_GRADIENT_Y_AT_B = 1;
+inline constexpr std::size_t LINE_GRADIENT_Z_AT_A = 2;
+inline constexpr std::size_t LINE_GRADIENT_Z_AT_B = 3;
 
 // The temperatures of one temperature set as the element facets read them: one value per grid point row (TEMP, the
 // DefaultTemperatureLoad default in place of a grid point the TEMP cards leave out; NaN for a grid point with neither)

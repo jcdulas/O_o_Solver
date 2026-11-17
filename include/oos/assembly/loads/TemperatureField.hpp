@@ -20,7 +20,8 @@ namespace oos::assembly
 //   out; a grid point with neither has none (NaN);
 // - PlateTemperatureLoad: the mean temperature and the gradient through the thickness of a shell (TEMPP1 TBAR, TPRIME);
 //   LineElemTemperatureLoad: the temperature at end A of a bar and its change to end B (as temperatureTable gives
-//   them).
+//   them), and its gradients across the section along the element y and z axes at each end (gradient1a, gradient1b,
+//   gradient2a, gradient2b; 0 when the table has no such columns).
 // The elements read it through elements::ElementTemperatures (their checkThermalLoads, computeThermalLoads and the
 // recovery).
 //

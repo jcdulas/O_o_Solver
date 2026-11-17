@@ -148,7 +148,7 @@ StaticPreflightReport StaticPreflight::run(base::MemoryBudget& budget) const
     const assembly::ElementSet elementSet(index, registry);
     elementSet.check(sink);
     // A buckling analysis also checks the differential stiffness of every element (as BucklingSolution: the types
-    // without it, the offset elements under ModelParams OFFDEF ELMOFF).
+    // without it, the offset elements under ModelParams OffsetDefinition ElemOffsetsOnly).
     if (m_options.analysis == AnalysisKind::Buckling)
         for (const std::size_t b : elementSet.batchesWith(elements::Facet::Stiffness))
         {

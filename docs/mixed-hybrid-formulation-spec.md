@@ -242,6 +242,15 @@ These are properties of the formulation; the port reproduces them and does not t
     opposite to the thick-wall solution (0.5 % at R / t = 100);
   - the rotary inertia of a line acts on the slope of its axis, not on the rotation of its section: the higher
     bending frequencies of a short shear-flexible beam are 0.3 to 1.1 % below Timoshenko's.
+- A force at a grid point of shells or solids is a concentrated force on a continuum of degree 4: the grid point
+  moves more than the section around it (the displacement under a point force has no limit as the element
+  resolves it), and the stresses at that grid point mean nothing. The rest of the structure is not affected, and the
+  resultants are exact. It shows where a load enters through a few grid points: the reference grid point of an
+  interpolation element or of a rigid spider on the end of a cylinder moves 3 % more than the section on a fine
+  mesh and 6 to 16 % more on coarse ones, a corner force on one solid several times more than the uniform traction
+  of the same resultant. `ClassicFormulation` elements, whose grid point forces are the consistent loads of a
+  traction, do not show it. Loads meant as tractions are given as pressures or line loads; a displacement wanted at
+  a load introduction is read a few elements away.
 - The offset of the axis of a line element is in its section law (the axial strain of the axis coupled to the
   curvatures), not a rigid arm: the torsion and the shear stay about the edge. A transverse force across the offset
   twists a `ClassicFormulation` bar through its rigid arm and not a bar of this formulation; in the plane of the
@@ -303,6 +312,20 @@ the surface is not smooth.
 | raw edge (two grid points) | a straight edge along which the surface may fold; the mesh lines that cross it end there |
 | raw element | its edges are raw: a facet |
 | sharp edge of a solid skin (two grid points) | the skin is not smooth across it (edges of a block, rim of a bore); the edge follows its own line and may be curved |
+
+Two rules of the reading of the mesh lines are not in the reference (`SurfaceReconstruction::candidatesAt`):
+
+- A mesh transition on a boundary that goes straight on. Between quadrilaterals a line goes on across one
+  quadrilateral on each side (a quadrilateral is a quarter of a turn), so three quadrilaterals between two edges
+  that no element faces across (the outline, or a junction seen from one of its sides) are a re-entrant corner. The
+  same three quadrilaterals are what a mesh transition leaves on a straight boundary. They are told apart by the
+  corners of the three elements at the grid point: under 225 degrees in all, the boundary goes on and the two lines
+  inside end there. Read as a corner, a transition of a rib on its junction with a skin bent the straight junction
+  towards the mesh line inside the rib (kinks of 27 degrees between coplanar shells, a skin seven times too stiff).
+- A side of a junction or of the outline that has quadrilaterals only at a grid point is read as between
+  quadrilaterals, whatever the other sides have. The reference takes the rule of the grid points that have a
+  triangle as soon as one element at the grid point is a triangle, on any side: a re-entrant corner of three
+  quadrilaterals beside a triangle of another surface was rounded (the outline going round the corner).
 
 The input format has no card for these declarations yet. Phase 2 takes them from the program, as the formulation
 choice is taken:
@@ -531,8 +554,13 @@ constraint) is read along the edges and faces as a held one is: an edge whose tw
 or dependent follows them. Its entity DOFs that the supports alone do not hold become dependent on those grid
 components, by the map that carries the values of a support along the edge (`FormulationConstraints`, the relations
 "that follow"): a rigid element on the grid points of the rim of a hole, or along a line of grid points, moves the
-edges between them rigidly, as it moves the straight sides of `ClassicFormulation` elements. The relations of the
-formulation name the independent DOFs of the model's relations in place of their dependent ones
+edges between them rigidly, as it moves the straight sides of `ClassicFormulation` elements. Such an edge must
+move with its grid points in every rigid motion, or the relation would act as a link to the ground. It therefore
+follows only when its two grid points have their three translations held or dependent, and, where it is curved (its
+points off its chord), their three rotations too: its trace is then that of the chord plus θ × δ, δ the offset of
+the edge from its chord and θ the rotation between its grid points (two translations do not tell the rotation about
+the chord, which moves the points of a curved edge). An edge that lacks them keeps to its grid points: its own
+unknowns stay free. The relations of the formulation name the independent DOFs of the model's relations in place of their dependent ones
 (`FormulationConstraints::addRelation`), so that no relation of the formulation chains through a relation of the
 model, which the condensed path may eliminate elsewhere.
 
@@ -879,8 +907,8 @@ preload displacements, not its loads; adding the loads (`ElementLoadContext`) to
 - `computeDifferentialStiffness` gives the second variation of the shells (membrane, moments, kinks) with the
   stresses recovered from the preload, the axial-force term of the lines, and the initial-stress matrix of the solids
   with their stresses (thermal part included).
-- Offsets: under `OFFDEF ELMOFF` the classic families refuse an offset element in buckling; the new formulation
-  carries offsets in its section law and is not refused.
+- Offsets: under `OffsetDefinition ElemOffsetsOnly` the classic families refuse an offset element in buckling; the
+  new formulation carries offsets in its section law and is not refused.
 
 ## 10. Output
 
@@ -921,10 +949,16 @@ same tables and columns, so that every client reads them unchanged. The resultan
 ### 10.3 Solids
 
 Rows of `solids/SolidRecovery` (the 20 columns) at the centre and corners, in CORDM, from the stresses of the element
-at those points. The particular stresses of a body force (GravityLoad, RotationalForceLoad) are not added yet: the
-recovery does not read the subcase's accelerations (later work, section 14), so the stresses of a solid under its
-weight are first order in the element size (0.2 % at the centres and up to 3 % at the corners of a 2 × 2 × 2 mesh;
-the displacements and the reactions are exact). The pressure of a `FacePressureLoad` given at the corners of a face
+at those points. The particular stresses of a body force are added to those of the unknowns: the inertial loads of
+this formulation are affine acceleration fields (GravityLoad uniform, RotationalForceLoad a(x) = A·(x − c), section
+5.7), which the recovery receives for each subcase as twelve numbers (`elements::BodyAcceleration`, the gradient and
+the constant in the basic system, times the mass factor; a SUBCOM combines those of its subcases), and the body
+force of a solid is ρ·a(x). Every kernel of a solid keeps the particular stresses of the twelve unit affine body
+forces (`VolumeKernel::affineBodyStresses`), so that a case with inertial loads costs no kernel of its own. The full path, the condensed path (its units recovered together or one by one) and the
+streamed path give the same stresses; without them the stresses of a solid under its weight were first order in the
+element size (0.2 % at the centres and up to 3 % at the corners of a 2 × 2 × 2 mesh). Not added: the inertia of an
+inertia relief (the rigid accelerations that balance the loads), of a trim analysis, and of the vectors of a kept
+load basis (later work, section 14). The pressure of a `FacePressureLoad` given at the corners of a face
 is interpolated by position (the functions of the corners of the straight element at the nearest point, as the
 temperatures), so that a pressure linear in the position is read as such on a face whose geometry the skin reads
 curved. The strain energy density divides the energy by the volume the element itself gives
@@ -977,6 +1011,7 @@ fold.
 | At a grid point of shells whose lines all lie on shell edges, the rotation follows the shells in the directions the lines do not stiffen (section 5.4) | The reference holds those directions at zero (tie 5): a couple or a rigid element at the end of a rod on a shell edge would act on nothing. |
 | A rotation held at one grid point of shells, or made dependent there by a relation of the model, is tied to the mean rotation of the shells (section 5.6); the edges and faces follow the relations of the model as they follow supports | The reference has no rigid element and reads a held rotation along the edges only: the six components held at one grid point would not hold a free body, and a rigid element joined at one grid point would hinge. |
 | Grid point force balance with the forces of the entity DOFs carried to the grid points (section 10.1) | The reference has no such table. |
+| A mesh transition on a straight outline or junction keeps it straight, and a side with quadrilaterals only is read as between quadrilaterals (section 4.4) | The reference reads three quadrilaterals at a boundary grid point as a re-entrant corner whatever their angles, and a quadrilateral side beside a triangle by the triangle rule. |
 
 Implementation notes. The rows of the element tables are those of section 10; the grid point stress table of section
 10.3 has the element type `SolidGridPoints` (one row per grid point, its ID as element and place, the columns of the
@@ -1059,8 +1094,8 @@ Each phase ends with the full test suite passing and its own checks of section 1
 | 4 | line elements on shell edges and alone, Λ, tie 5 and 6, line loads | the same, for lines |
 | 5 | solids of every shape, mid-side nodes, skin reading, ties 1 to 4, solid loads and recovery, the grid point stress table | the same, for solids and mixed models |
 | 6 | the extensions the owner chose (section 15): point interpolation facet (fasteners, welds, glue), pin flags of lines alone, membrane-only and bending-only shells, condensed and streamed paths, components, superelements and the condensation cache, design derivatives | each with its own checks |
-| 7 | finishing: supports read along the edges inside the shells and along directions that are no basic axis, rigid elements and multipoint constraints read along the edges, rotations no edge reads tied to the mean rotation of the shells, rotations the lines do not stiffen following the shells, grid point force balance and force tables carried to the grid points, entity names in the messages of the factorisations, the pivot ratio test at entity DOFs, the geometry report as warnings, the validation suite of section 13.3 (`wasm/test/validation`) and the defects it found | each with its own checks |
-| later | not chosen yet: supports along a direction that turns along an edge (a cylindrical CD along a circle, section 5.6), the particular stresses of body forces in the solids (section 10.3), loads in the differential stiffness facet (following pressure), the formulation's problems listed by the support check before a run, the pivot reference on the condensed and streamed paths | |
+| 7 | finishing: supports read along the edges inside the shells and along directions that are no basic axis, rigid elements and multipoint constraints read along the edges, rotations no edge reads tied to the mean rotation of the shells, rotations the lines do not stiffen following the shells, grid point force balance and force tables carried to the grid points, entity names in the messages of the factorisations, the pivot ratio test at entity DOFs, the geometry report as warnings, the validation suite of section 13.3 (`wasm/test/validation`) and the defects it found, the particular stresses of body forces in the solids (section 10.3), the formulation's refusals listed by the support check before a run (`api::checkSupport`), curved edges that follow a relation of the model (section 5.6), mesh transitions on straight boundaries and re-entrant corners beside triangles (section 4.4) | each with its own checks |
+| later | not chosen yet: supports along a direction that turns along an edge (a cylindrical CD along a circle, section 5.6), the particular stresses of the inertia of an inertia relief, of a trim analysis and of the vectors of a kept load basis in the solids (section 10.3), loads in the differential stiffness facet (following pressure), the pivot reference on the condensed and streamed paths | |
 
 ## 15. Decisions of the owner (15 November 2026)
 

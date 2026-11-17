@@ -4,8 +4,11 @@
 #include "oos/base/errors/ErrorMessage.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <limits>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -29,6 +32,43 @@ base::Diagnostic temperatureProblem(std::string code, std::string_view card, bas
     return diagnostic;
 }
 
+// The gradients of a LineElemTemperatureLoad across the section of its line, the columns gradient1a, gradient1b
+// (along the element y axis at ends A and B), gradient2a and gradient2b (along z) of temperatureTable, in the order of
+// ElementTemperature::lineGradients. A gradient is 0 where the table has no such column (a table built by hand), on
+// the row of another card (null) and where the value is not a number.
+class LineGradientColumns
+{
+public:
+    explicit LineGradientColumns(const base::ContractReader& table)
+    {
+        static constexpr std::array<const char*, 4> NAMES{"gradient1a", "gradient1b", "gradient2a", "gradient2b"};
+        for (std::size_t k = 0; k < NAMES.size(); ++k)
+        {
+            if (!table.hasColumn(NAMES[k]))
+                continue;
+            m_values[k] = table.values<double>(NAMES[k], base::NullPolicy::Allow);
+            m_isGiven[k] = table.validity(NAMES[k]);
+        }
+    }
+
+    [[nodiscard]] std::array<double, 4> at(std::int64_t row) const
+    {
+        std::array<double, 4> gradients{};
+        for (std::size_t k = 0; k < gradients.size(); ++k)
+        {
+            if (m_values[k].empty() || !m_isGiven[k].isValid(row))
+                continue;
+            const double value = m_values[k][static_cast<std::size_t>(row)];
+            gradients[k] = std::isfinite(value) ? value : 0.0;
+        }
+        return gradients;
+    }
+
+private:
+    std::array<std::span<const double>, 4> m_values{}; // empty: the table has no such column
+    std::array<base::ValidityView, 4> m_isGiven{};
+};
+
 } // namespace
 
 TemperatureField::Set TemperatureField::gather(const input::ModelSnapshot& snapshot, const input::PointIndex& points,
@@ -50,6 +90,7 @@ TemperatureField::Set TemperatureField::gather(const input::ModelSnapshot& snaps
     const std::span<const double> values = table.values<double>("temperature", base::NullPolicy::Allow);
     const std::span<const double> gradients = table.values<double>("gradient", base::NullPolicy::Allow);
     const base::ValidityView isGradientGiven = table.validity("gradient");
+    const LineGradientColumns lineGradients(table);
 
     double defaultTemperature = NO_TEMPERATURE;
     std::size_t elementCount = 0;
@@ -73,7 +114,8 @@ TemperatureField::Set TemperatureField::gather(const input::ModelSnapshot& snaps
         if (targetType == "element" && isTargetGiven.isValid(row))
         {
             const double gradient = isGradientGiven.isValid(row) ? gradients[index] : 0.0;
-            set.ofElements[next++] = {targets[index], values[index], std::isfinite(gradient) ? gradient : 0.0};
+            set.ofElements[next++] = {targets[index], values[index], std::isfinite(gradient) ? gradient : 0.0,
+                                      lineGradients.at(row)};
             continue;
         }
         if (targetType == "node" && isTargetGiven.isValid(row))
