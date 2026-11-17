@@ -28,7 +28,7 @@ struct SolidNodes
     std::array<base::Mat3, MAX_SOLID_NODES> cdFrames{};
 };
 
-// The two shapes of one solid card: without and with its mid-side nodes (CHEXA: Hexa8, Hexa20).
+// The two shapes of one solid card: without and with its mid-side nodes (SolidHexa: Hexa8, Hexa20).
 struct SolidCardShapes
 {
     SolidShape linear = SolidShape::Hexa8;

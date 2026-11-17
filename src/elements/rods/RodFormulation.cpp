@@ -133,7 +133,7 @@ base::MatN<6> rodMass(const RodData& rod, double massPerLength, MassFormulation 
             massInBasic(k, k) = totalMass / 2.0;
         return massInBasic;
     }
-    // The coupled mass of a rod (COUPMASS): along the axis x, the mean of the lumped and the consistent matrices,
+    // The coupled mass of a rod (CoupledMass): along the axis x, the mean of the lumped and the consistent matrices,
     // (m/2·I + m/6·[2 1; 1 2])/2 = m/12·[5 1; 1 5]; across it, the lumped m/2·I. So M = m/2·I₆ + m/12·[−1 1; 1 −1] ⊗
     // x·xᵀ. Not the consistent ∫ ρ Nᵀ N dx in every direction: the transverse mass stays lumped by design (on a
     // ten-bar truss with MassDofProperty masses, the fully consistent matrix gives eigenvalues 2.6 % to 19 % higher).

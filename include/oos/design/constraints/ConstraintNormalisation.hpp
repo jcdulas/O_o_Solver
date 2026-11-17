@@ -14,7 +14,7 @@ enum class BoundSide : std::uint8_t
     Upper
 };
 
-// The normalised constraint (DCONSTR bounds; DesignOptimParams GSCAL):
+// The normalised constraint (DesignConstr bounds; DesignOptimParams GSCAL):
 //
 //     lower bound L:  g = (L − r) / GNORM,      upper bound U:  g = (r − U) / GNORM,
 //     GNORM = |bound| when |bound| > GSCAL, GSCAL otherwise,

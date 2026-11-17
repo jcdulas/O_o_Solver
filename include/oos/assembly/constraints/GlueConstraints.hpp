@@ -92,12 +92,12 @@ struct GluedPairReport
 // - JGLUE (permanent in a linear analysis), ICOORD, ISEARCH and EulerMeshBias change nothing.
 //
 // Conflicts, after the manual's rule that a slave node is no dependent node of another constraint: a component of a
-// secondary point that an SPC, SinglePointConstrList or GRID PS holds is not tied (the face is never constrained
-// through it); a component another relation already makes dependent (rigid element, fastener, MPC) keeps that relation;
-// the other components are tied ("glue-components-left"). A point none of whose translations is free is left out
-// ("glue-points-left-out"); a grid point of the primary surface itself (shared by the bodies) has nothing to tie. A
-// point another pair already ties keeps the first tie (pairs in the order of contactPairsTable, points by increasing
-// ID; "glue-point-twice"), and an equation that would close a loop of glue equations is left out
+// secondary point that a SinglePointConstr, SinglePointConstrList or GRID PS holds is not tied (the face is never
+// constrained through it); a component another relation already makes dependent (rigid element, fastener, MPC) keeps
+// that relation; the other components are tied ("glue-components-left"). A point none of whose translations is free is
+// left out ("glue-points-left-out"); a grid point of the primary surface itself (shared by the bodies) has nothing to
+// tie. A point another pair already ties keeps the first tie (pairs in the order of contactPairsTable, points by
+// increasing ID; "glue-point-twice"), and an equation that would close a loop of glue equations is left out
 // ("glue-dependency-cycle"); chains of glue, rigid elements and MPCs are resolved by composition in RigidElimination,
 // whose own cycle check covers the mixed loops. A pair that ties one or two points only is a hinge, warned
 // ("glued-pair-hinge"; the singularity processor reports the mechanism, never hidden by a stiffness). A face that

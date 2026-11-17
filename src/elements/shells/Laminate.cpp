@@ -316,7 +316,7 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
         isRigidInY = isRigidInY || !(ply.material.transverseShear[1] > 0.0);
         laminate.plies.push_back(std::move(ply));
     }
-    // A blank Z0 is −T/2 and follows the plies' thicknesses (PCOMP); the card says whether it was given from data
+    // A blank Z0 is −T/2 and follows the plies' thicknesses (CompProp); the card says whether it was given from data
     // contract 54 (z0_given), before it a Z0 equal to −T/2 to the bit is taken as blank (as
     // design::DerivedProperties, whose overlays move the stack's z with the same rule).
     if (card.hasColumn("bottomOffsetGiven") && card.columnType("bottomOffsetGiven") == "uint8")

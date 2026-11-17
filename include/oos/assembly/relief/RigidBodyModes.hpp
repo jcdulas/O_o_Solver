@@ -38,7 +38,7 @@ public:
     [[nodiscard]] std::array<double, MODE_COUNT> resultantOf(std::span<const double> valuesG) const;
 
     // Dᵀ·M·D: the 6 × 6 rigid-body mass matrix of `mass` about the reference point (MO of the grid point weight
-    // generator, before any division by WTMASS).
+    // generator, before any division by WeightToMass).
     [[nodiscard]] base::MatN<6> rigidBodyMass(const linalg::BlockSparseMatrix& mass, base::MemoryBudget& budget) const;
 
 private:

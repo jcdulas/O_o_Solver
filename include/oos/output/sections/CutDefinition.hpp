@@ -15,9 +15,9 @@ namespace oos::output
 inline constexpr std::array<std::string_view, 6> CUT_COMPONENTS{"fx", "fy", "fz", "mx", "my", "mz"};
 
 // One cut: a set of grid points, the set of the elements on one side, a reference point and a coordinate system (the
-// fields GRIDSET, ELEMSET, CID and X, Y, Z, CD of a MONPNT3). The loads of the cut are the forces that the elements of
-// the set exert on the grid points of the set (the element rows of their grid point forces), summed with their moments
-// about the point, along the axes of CD.
+// fields GRIDSET, ELEMSET, CID and X, Y, Z, CD of a MonitorNodeForceSum3). The loads of the cut are the forces that the
+// elements of the set exert on the grid points of the set (the element rows of their grid point forces), summed with
+// their moments about the point, along the axes of CD.
 struct CutDefinition
 {
     std::int32_t id = 0;
@@ -26,8 +26,8 @@ struct CutDefinition
     std::vector<std::int32_t> grids;      // the grid points of the cut
     std::vector<std::int32_t> elements;   // the elements on one side
     base::Vec3 point;                     // in the system positionFrameId
-    std::int32_t positionFrameId = 0;     // the rectangular system of the point (MONPNT3 CID)
-    std::int32_t displacementFrameId = 0; // the rectangular system of the axes of the loads (MONPNT3 CD)
+    std::int32_t positionFrameId = 0;     // the rectangular system of the point (MonitorNodeForceSum3 CID)
+    std::int32_t displacementFrameId = 0; // the rectangular system of the axes of the loads (MonitorNodeForceSum3 CD)
 };
 
 } // namespace oos::output

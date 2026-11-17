@@ -6,7 +6,7 @@
 //
 // Formulation: a spring of stiffness K between the DOF (G1, C1) and the DOF (G2, C2), each in the displacement system
 // of its grid point (or the DOF of a scalar point, C blank); a blank G grounds that end. Element force f = K (u1 − u2),
-// element stress S · f (CELAS2 fields K, S).
+// element stress S · f (SpringDofInline fields K, S).
 //
 // Facets: stiffness, recovery (forces, stresses). No mass (a scalar spring has none). GE, the structural damping
 // coefficient, is read by dynamic solutions only and plays no part in SOL 101, 103, 105. The

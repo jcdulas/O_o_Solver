@@ -11,7 +11,8 @@ namespace
 {
 
 // The name of each type, as the responseKind of a DesignResp1 gives it; the extension types of the optimisation aids
-// and of the sizing tools get names of O_o_Solver's own, which the screening (DSCREEN types) and the messages use.
+// and of the sizing tools get names of O_o_Solver's own, which the screening (DesignConstrScreen types) and the
+// messages use.
 constexpr std::array<std::pair<std::string_view, ResponseType>, 26> RESPONSE_TYPES{{
     {"Weight", ResponseType::Weight},
     {"Volume", ResponseType::Volume},

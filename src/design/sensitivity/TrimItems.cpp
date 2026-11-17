@@ -166,10 +166,10 @@ void TrimItems::addElement(std::size_t /*quantity*/, const elements::ElementFami
             direction.isTouched = true;
         }
     }
-    // −dM_e·w_e, with the mass of each subcase as the trim assembled it (PARAM COUPMASS, WTMASS).
+    // −dM_e·w_e, with the mass of each subcase as the trim assembled it (PARAM CoupledMass, WeightToMass).
     if (use.changesMass && family.facets().has(elements::Facet::Mass))
     {
-        // The directions of one subcase share its mass: the derivative is taken once per formulation and WTMASS.
+        // The directions of one subcase share its mass: the derivative is taken once per formulation and WeightToMass.
         std::map<std::pair<int, double>, ElementMatrixDerivative> byOptions;
         for (std::size_t s = 0; s < m_subcases.size(); ++s)
         {

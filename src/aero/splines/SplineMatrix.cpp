@@ -24,7 +24,7 @@ const base::Vec3 FLOW{1.0, 0.0, 0.0};
 constexpr double DEFAULT_TORSION_RATIO = 1.0;
 constexpr double NOT_ATTACHED = -1.0;
 
-// The kind of interpolation of a spline card and its method (SPLINE1, AeroBeamSpline2, AeroSurfaceSpline4,
+// The kind of interpolation of a spline card and its method (AeroSurfaceSpline1, AeroBeamSpline2, AeroSurfaceSpline4,
 // AeroBeamSpline5).
 enum class SplineKind : std::uint8_t
 {
@@ -132,7 +132,7 @@ SplineMatrix::SplineMatrix(const input::ModelSnapshot& snapshot, const AeroRefer
         spline.loadsStructure = usage != "Displacement";
         const std::string name = base::concatenate({spline.card, " ", std::to_string(spline.elementId)});
 
-        // The boxes: BOX1 to BOX2 of a AeroSurfaceSpline1 or AeroBeamSpline2, the items of the AeroBoxList of a
+        // The boxes: BOX1 to BOX2 of an AeroSurfaceSpline1 or AeroBeamSpline2, the items of the AeroBoxList of a
         // AeroSurfaceSpline4 or AeroBeamSpline5.
         std::vector<std::int32_t> boxIds;
         if (hasAelist.isValid(row))

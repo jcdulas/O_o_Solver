@@ -22,7 +22,7 @@ struct ElementRef
 
 // The elements each designed field reaches (b_j = ∂f/∂x_j − ∂K/∂x_j·u is formed element by element on the
 // elements a variable drives): a property field the elements of that property (the property card and ID, as
-// ElementCatalog finds them), and for a shell property (PSHELL, CompProp, CompPropGlobal) the Weld whose sides read
+// ElementCatalog finds them), and for a shell property (ShellProp, CompProp, CompPropGlobal) the Weld whose sides read
 // its thickness (elements::weldSideProperty: the thickness may set the weld's beam length); a material field the
 // elements whose property or own card names the material in a column "matId", "matId1", "membraneMatId" ... (the plies
 // of laminatePliesTable included); an element field that element. The pseudo-loads and the explicit parts of the

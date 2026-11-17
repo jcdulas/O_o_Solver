@@ -25,7 +25,7 @@ struct ConstraintDefinition
     std::vector<std::int32_t> subcases;
 };
 
-// One DesignConstrUnion entry: the constraint set `setId` is the union of the sets `members` (DCONSTR sets or
+// One DesignConstrUnion entry: the constraint set `setId` is the union of the sets `members` (DesignConstr sets or
 // other DesignConstrUnion sets).
 struct ConstraintSetUnion
 {

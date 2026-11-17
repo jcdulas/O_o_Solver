@@ -8,8 +8,9 @@
 namespace oos::elements
 {
 
-// The parent shapes of the solid elements, with and without mid-side nodes (CTETRA, SolidPenta, SolidPyramid, SolidHexa).
-// The nodes are numbered as on the cards: the corners first, then the mid-side nodes edge by edge (solidEdges()).
+// The parent shapes of the solid elements, with and without mid-side nodes (SolidTetra, SolidPenta, SolidPyramid,
+// SolidHexa). The nodes are numbered as on the cards: the corners first, then the mid-side nodes edge by edge
+// (solidEdges()).
 enum class SolidShape : std::uint8_t
 {
     Tetra4,
@@ -22,7 +23,7 @@ enum class SolidShape : std::uint8_t
     Hexa20
 };
 
-// The most nodes of a solid element (CHEXA with its twelve mid-side nodes).
+// The most nodes of a solid element (SolidHexa with its twelve mid-side nodes).
 inline constexpr std::size_t MAX_SOLID_NODES = 20;
 
 // A point of the parent element. Its coordinates depend on the shape:
@@ -76,7 +77,7 @@ struct SolidEdge
     std::uint8_t second = 0;
     std::uint8_t middle = 0;
 };
-// The edges in the order of the mid-side nodes of the card (CTETRA G5-G10, SolidPenta G7-G15, SolidPyramid G6-G13,
+// The edges in the order of the mid-side nodes of the card (SolidTetra G5-G10, SolidPenta G7-G15, SolidPyramid G6-G13,
 // SolidHexa G9-G20), for either shape of a family (the linear shape gives the same edges, their middle being where the
 // mid-side node would be).
 [[nodiscard]] std::span<const SolidEdge> solidEdges(SolidShape shape) noexcept;

@@ -14,7 +14,7 @@ namespace oos::reduction
 
 // A pierced side of a Fastener or Weld as a spider (fastener sides are absorbed like spiders): on each side the
 // fastener ties its point P (GA or GB, given or generated) to the grid points of the shell element it pierces by the
-// interpolation of elements::interpolatePiercing (an RigidInterpolation weighted by the shape functions at P, through
+// interpolation of elements::interpolatePiercing (a RigidInterpolation weighted by the shape functions at P, through
 // elements::interpolateSide),
 //     (u_P, θ_P) = M·u_grids,
 // M the 6 × 6g map of the side (every form of the card; O_o_Reader's piercing rows, through

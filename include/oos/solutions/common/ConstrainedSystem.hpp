@@ -52,10 +52,11 @@ struct ConstrainedSystemOptions
     // The SpcSet of the selection when the caller built it already (the static solution builds those of every
     // subcase to group them): borrowed, it must outlive the system; null: built from the selection's SPC and LOAD.
     const assembly::SpcSet* spc = nullptr;
-    // The r set of FreeBodySupport (SUPORT, SUPORT1), out of the l set.
+    // The r set of FreeBodySupport (FreeBodySupport, FreeBodySupportSet), out of the l set.
     std::vector<base::DofIndex> supportDofs;
-    // PARAM INREL = −2: the supports are chosen among the free DOFs left by the grid point singularity processor
-    // (assembly::chooseAutomaticSupports on the rigid-body modes about referencePoint); supportDofs is then ignored.
+    // PARAM InertiaRelief = −2: the supports are chosen among the free DOFs left by the grid point singularity
+    // processor (assembly::chooseAutomaticSupports on the rigid-body modes about referencePoint); supportDofs is then
+    // ignored.
     bool choosesSupports = false;
     base::Vec3 referencePoint{};
     // The element stiffness matrices the connectivity pass kept (AnalysisModel::keptStiffness()), read by the assembly
@@ -88,13 +89,13 @@ struct ConstrainedSystemOptions
 // The stiffness of one constraint set (the steps of a solution that come before its factorisation,
 // src/solutions/README.md): Gm of the MPCs, rigid elements, fasteners and glued contact, the DOF sets (SPC, GRID PS,
 // the r set of FreeBodySupport), the node graph and pattern with the m-set couplings, Kgg, Knn = the m set eliminated
-// (MsetElimination), the grid point singularities constrained by AUTOSPC (PARAM AUTOSPC, EPZERO, PRGPST), and the
-// solved sets. reduce() brings any other g-set matrix assembled on the pattern (the mass, the differential stiffness)
-// to the n set the same way.
+// (MsetElimination), the grid point singularities constrained by AutoSingularityConstr (PARAM AutoSingularityConstr,
+// PivotZeroThreshold, PrintSingularities), and the solved sets. reduce() brings any other g-set matrix assembled on the
+// pattern (the mass, the differential stiffness) to the n set the same way.
 //
 // The eigenvalue solutions give no r set: in SOL 103 the rigid-body modes of a free structure are found by the
 // Lanczos solver from the free stiffness (a warning says so); in SOL 105 the stiffness must be positive definite. The
-// static solution gives the r set of FreeBodySupport, or asks for the supports of PARAM INREL = −2.
+// static solution gives the r set of FreeBodySupport, or asks for the supports of PARAM InertiaRelief = −2.
 //
 // Thread-safety: immutable once built. Ownership: owns its parts (budgeted); Gm, the solved sets, the pattern and Kgg
 // are shared with what outlives the system (a FactorisedSet kept by the static solution); borrows the model, which
@@ -117,9 +118,9 @@ public:
     [[nodiscard]] const assembly::SpcSet& spc() const noexcept { return *m_spc; }
     // The glued contact of the selection (its pairs and what it tied; no pair when the subcase selects none).
     [[nodiscard]] const assembly::GlueConstraints& glue() const noexcept { return *m_glue; }
-    // The sets solved: those of the constraints with the AUTOSPC DOFs constrained.
+    // The sets solved: those of the constraints with the AutoSingularityConstr DOFs constrained.
     [[nodiscard]] const assembly::DofSets& solveSets() const noexcept { return *m_solveSets; }
-    // The r set: the FreeBodySupport DOFs, or the supports chosen for PARAM INREL = −2.
+    // The r set: the FreeBodySupport DOFs, or the supports chosen for PARAM InertiaRelief = −2.
     [[nodiscard]] const std::vector<base::DofIndex>& supportDofs() const noexcept { return m_supportDofs; }
     // What the element formulation adds to the constraints (its ties, observer relations and excluded set x), or null
     // for a formulation with unknowns at the grid points only.
@@ -144,7 +145,8 @@ public:
     [[nodiscard]] const linalg::BlockSparseMatrix& knn() const noexcept { return *m_knn; }
     // The table of the singular components as text (empty when nothing was constrained or listed).
     [[nodiscard]] const std::string& singularityTable() const noexcept { return m_singularityTable; }
-    // One flag per g-set DOF: held (the s set, AUTOSPC included, and the r set): its SPC force is a result.
+    // One flag per g-set DOF: held (the s set, AutoSingularityConstr included, and the r set): its SPC force is a
+    // result.
     [[nodiscard]] std::span<const std::uint8_t> isConstrained() const noexcept { return m_isConstrained.span(); }
     // The time of its parts (AnalysisPartTimings::constraints, graph, stiffness, singularities).
     [[nodiscard]] const AnalysisPartTimings& timings() const noexcept { return m_timings; }

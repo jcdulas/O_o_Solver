@@ -32,9 +32,9 @@ struct SolidFaceNodes
 [[nodiscard]] std::optional<SolidFaceNodes> findSolidFace(SolidShape shape, std::span<const std::int32_t> elementIds,
                                                           std::span<const std::int32_t> faceCorners);
 
-// The consistent nodal loads F_i = −∫ N_i p n dA of a pressure on a face (PLOAD4: a positive pressure on a solid
-// face acts into the element, along −n with n the outward normal: P = 1 on the face z = 0 of a SolidTetra lying in z > 0
-// pushes it along +z). The pressure varies over
+// The consistent nodal loads F_i = −∫ N_i p n dA of a pressure on a face (FacePressureLoad: a positive pressure on a
+// solid face acts into the element, along −n with n the outward normal: P = 1 on the face z = 0 of a SolidTetra lying
+// in z > 0 pushes it along +z). The pressure varies over
 // the face with the linear (triangle) or bilinear (quadrilateral) functions of its corners, `cornerPressures[k]` at
 // the k-th corner of `face` (P1-P4 of the card at the corners as pressureTable gives them); N_i are the face's own
 // shape functions (3, 4, 6 or 8 nodes). Integration: 3 × 3 Gauss points on a quadrilateral, a degree-4 rule on a

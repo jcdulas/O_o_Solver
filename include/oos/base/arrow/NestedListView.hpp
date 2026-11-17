@@ -10,7 +10,7 @@ namespace oos::base
 {
 
 // A column of type "list<fixed_list<T>[n]>": per row a list of items of n values each (O_o_Reader gives the stations
-// of a PBEAM this way). One of the typed views of ContractReader (base/arrow/ColumnViews.hpp), in place for both
+// of a BeamProp this way). One of the typed views of ContractReader (base/arrow/ColumnViews.hpp), in place for both
 // offset widths.
 //
 // Thread-safety: copyable, immutable, safe to read from several threads. Valid while the ContractReader lives.

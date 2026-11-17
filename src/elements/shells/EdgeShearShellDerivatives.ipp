@@ -124,7 +124,7 @@ template <typename Shell, typename Data, typename Direction>
 
 } // namespace edge_shear_detail
 
-// The fields with a closed form: the ShellProp T when every corner follows it (the corner rates t_a/T), a AnisoMat2D
+// The fields with a closed form: the ShellProp T when every corner follows it (the corner rates t_a/T), an AnisoMat2D
 // stiffness term of the ShellProp's materials (shellSectionRate, in the material frame), a ply thickness of the
 // laminate (laminateSectionRate: the section's rate at fixed T and the rate of T at every corner).
 template <typename Shell>
@@ -257,7 +257,7 @@ bool EdgeShearShellFamily<Shell>::differentialStiffnessFieldMixedDerivative(
 }
 
 // The rows' rates at fixed displacements (no temperature). A ply thickness gives the forces only (the homogeneous
-// stresses and strains of a laminate under NOCOMPS read fibres the plies move: differenced).
+// stresses and strains of a laminate under NoCompositeStress read fibres the plies move: differenced).
 template <typename Shell>
 bool EdgeShearShellFamily<Shell>::recoveryFieldRates(const ElementBatchView& view, std::int64_t row,
                                                      const DesignedField& field, ElementOutput output,

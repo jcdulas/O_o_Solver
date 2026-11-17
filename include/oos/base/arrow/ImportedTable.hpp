@@ -80,10 +80,10 @@ public:
     // PERFORMANCE: the element families read their columns at every facet call (ElementBatchView, PropertyRows), and
     // a design sensitivity calls a facet for one element at a time; the checks cost O(rows of the batch) per call
     // (the dictionary of pid_type checked index by index, null bitmaps counted without POPCNT): 136 µs of the 155 µs
-    // of a one-element CQUAD4 stiffness on a batch of 40 000 CQUAD4, so that the derivatives of a field cost O(model)
-    // per element. Recorded, a check runs once per table (and once per base table for its overlays:
-    // inheritPassedChecks). Measured: the setup of a CQUAD4 facet call 136 µs → 6.7 µs; the full Jacobian of 200 × 200
-    // on 250 000 DOFs 32.6 s → 5.0 s (the same bits), of 2 000 × 2 000 on 1 M DOFs 423 s → 108 s.
+    // of a one-element ShellQuad4 stiffness on a batch of 40 000 ShellQuad4, so that the derivatives of a field cost
+    // O(model) per element. Recorded, a check runs once per table (and once per base table for its overlays:
+    // inheritPassedChecks). Measured: the setup of a ShellQuad4 facet call 136 µs → 6.7 µs; the full Jacobian of 200 ×
+    // 200 on 250 000 DOFs 32.6 s → 5.0 s (the same bits), of 2 000 × 2 000 on 1 M DOFs 423 s → 108 s.
     // Precondition (both): 0 <= index < columnCount(). Thread-safe: a check two threads run at once is recorded twice.
     [[nodiscard]] bool hasPassed(std::int64_t index, ColumnCheck check) const noexcept;
     void markPassed(std::int64_t index, ColumnCheck check) const noexcept;

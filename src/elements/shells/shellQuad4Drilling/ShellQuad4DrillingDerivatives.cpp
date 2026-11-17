@@ -10,7 +10,7 @@ namespace oos::elements
 namespace
 {
 
-// What a stiffness term of a AnisoMat2D changes in a shell: the stiffness, the thermal loads (N_T = t G1 α ΔT) and the
+// What a stiffness term of an AnisoMat2D changes in a shell: the stiffness, the thermal loads (N_T = t G1 α ΔT) and the
 // recovery; not the mass, which reads ρ and the thickness only (ShellQuad4DrillingPlate::massOf).
 constexpr FieldUse ANISO_MAT2D_TERM_USE{true, false, true, true, false};
 
@@ -58,7 +58,7 @@ FieldUse ShellQuad4DrillingElement::designFieldUse(const DesignedField& field) c
 }
 
 // The closed forms: dK/dT and dM/dT of the ShellProp thickness T when every corner thickness follows it
-// (ShellQuad4DrillingPlate::thicknessRate, massThicknessRate); dK/dG of a AnisoMat2D stiffness term of the ShellProp
+// (ShellQuad4DrillingPlate::thicknessRate, massThicknessRate); dK/dG of an AnisoMat2D stiffness term of the ShellProp
 // (ShellQuad4DrillingPlate::sectionRate, where shellSectionRate gives the section's rate); every other field and element is
 // differenced.
 bool ShellQuad4DrillingElement::stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
@@ -275,7 +275,7 @@ bool ShellQuad4DrillingElement::differentialStiffnessFieldMixedDerivative(
 }
 
 // The rows' rates with respect to T at fixed displacements (ShellQuad4DrillingPlate::placeStateRates, appendShellRowRates), or
-// to a AnisoMat2D stiffness term without a temperature change (placeStateSectionRates).
+// to an AnisoMat2D stiffness term without a temperature change (placeStateSectionRates).
 bool ShellQuad4DrillingElement::recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                                           ElementOutput output, const NodalDisplacements& displacements,
                                           ElementResultBlock& rates) const
@@ -283,7 +283,7 @@ bool ShellQuad4DrillingElement::recoveryFieldRates(const ElementBatchView& view,
     if (isPlyThickness(field))
     {
         // The forces (the stresses and strains of a laminate are its plies', layerRecoveryFieldRates; its
-        // homogeneous rows under NOCOMPS read fibres the plies move, not given).
+        // homogeneous rows under NoCompositeStress read fibres the plies move, not given).
         if (displacements.temperatures != nullptr || output != ElementOutput::Forces)
             return false;
         requireOutput(output);
@@ -355,7 +355,7 @@ bool ShellQuad4DrillingElement::recoveryFieldRates(const ElementBatchView& view,
 }
 
 // The rows' rates of several fields from one resolution, one plate and one set of place states (recoveryFieldRates',
-// field by field: a AnisoMat2D term or T; another field gets none here and is asked alone).
+// field by field: an AnisoMat2D term or T; another field gets none here and is asked alone).
 // PERFORMANCE: as stiffnessFieldDerivatives, for the explicit parts of the items of a lamination zone's elements.
 // Measured on a laminated design model with lamination zones.
 void ShellQuad4DrillingElement::recoveryFieldRatesOfFields(const ElementBatchView& view, std::int64_t row,

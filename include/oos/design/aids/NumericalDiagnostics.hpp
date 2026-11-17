@@ -15,12 +15,13 @@ namespace oos::design
 struct FactorisationDiagnostics
 {
     std::vector<std::int32_t> subcases;
-    double largestRatio = 0.0;       // the largest a_jj/d_j of the factorisation (PARAM MAXRATIO's ratio)
+    double largestRatio = 0.0;       // the largest a_jj/d_j of the factorisation (PARAM MaxDiagonalRatio's ratio)
     std::int32_t ratioGrid = 0;      // where: the point and component of its equation (0: unknown)
     std::int32_t ratioComponent = 0; //
-    double maxRatio = 0.0;           // the MAXRATIO the analysis tested against
-    std::int64_t pivotIssues = 0;    // the pivots above MAXRATIO
-    std::vector<std::pair<std::int32_t, std::int32_t>> autoSpc; // the (grid, component) AUTOSPC constrained
+    double maxRatio = 0.0;           // the MaxDiagonalRatio the analysis tested against
+    std::int64_t pivotIssues = 0;    // the pivots above MaxDiagonalRatio
+    // the (grid, component) AutoSingularityConstr constrained
+    std::vector<std::pair<std::int32_t, std::int32_t>> autoSpc;
 };
 
 // The checks of one subcase: EPSILON and the external work of the static solution.
@@ -41,11 +42,11 @@ struct NumericalDiagnosticsResult
 };
 
 // The numerical diagnostics of an analysis of a design point (an optimisation aid beyond gradients: per analysis,
-// the largest factor diagonal ratio (MAXRATIO) and where, the AUTOSPC applied, EPSILON, the external work; a
-// gradient computed on an analysis with a warning carries the warning). No computation
+// the largest factor diagonal ratio (MaxDiagonalRatio) and where, the AutoSingularityConstr applied, EPSILON, the
+// external work; a gradient computed on an analysis with a warning carries the warning). No computation
 // beyond reading the analysis: the pivot diagnostics of the factorisations the analysis kept (StaticResults::systems;
-// without them the largest ratio only, with no place), the AUTOSPC DOFs of their solved sets, the checks of the
-// subcases and the warnings.
+// without them the largest ratio only, with no place), the AutoSingularityConstr DOFs of their solved sets, the checks
+// of the subcases and the warnings.
 //
 // Thread-safety: stateless. Ownership: none kept.
 class NumericalDiagnostics

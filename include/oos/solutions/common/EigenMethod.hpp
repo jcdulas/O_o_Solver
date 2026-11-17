@@ -20,22 +20,22 @@ enum class EigenNormalization : std::uint8_t
 {
     Mass, // unit generalised mass φᵀ·M·φ = 1 (the default of a vibration analysis)
     Max,  // the component of largest magnitude in the analysis set is +1 (the default of a buckling analysis)
-    Point // the component C of point G is +1 (EIGR and BucklingEigenMethod)
+    Point // the component C of point G is +1 (RealEigenMethod and BucklingEigenMethod)
 };
 
-// The eigenvalue method a subcase selects with METHOD (EIGRL, RealEigenMethod, BucklingEigenMethod), as the solver uses
-// it.
+// The eigenvalue method a subcase selects with METHOD (LanczosEigenMethod, RealEigenMethod, BucklingEigenMethod), as
+// the solver uses it.
 //
-// The range is in the units of the card: cycles per unit time for a vibration analysis (EIGRL V1, V2 and
-// RealEigenMethod F1, F2), load factors for a buckling analysis (EIGRL V1, V2 and BucklingEigenMethod L1, L2). An empty
-// bound is a blank field.
+// The range is in the units of the card: cycles per unit time for a vibration analysis (LanczosEigenMethod V1, V2 and
+// RealEigenMethod F1, F2), load factors for a buckling analysis (LanczosEigenMethod V1, V2 and BucklingEigenMethod L1,
+// L2). An empty bound is a blank field.
 struct EigenMethod
 {
     std::string card; // "LanczosEigenMethod", "RealEigenMethod" or "BucklingEigenMethod"
     base::EntityId setId = 0;
     std::optional<double> lower;
     std::optional<double> upper;
-    std::size_t modeCount = 0;     // ND (EIGB: NDP and NDN of the range); 0 for a blank field
+    std::size_t modeCount = 0;     // ND (BucklingEigenMethod: NDP and NDN of the range); 0 for a blank field
     std::size_t blockSize = 0;     // LanczosEigenMethod MAXSET; 0 for a blank field (the solver's default)
     std::int32_t messageLevel = 0; // LanczosEigenMethod MSGLVL: above 0 the Lanczos shifts are reported
     EigenNormalization normalization = EigenNormalization::Mass;
@@ -44,8 +44,8 @@ struct EigenMethod
 };
 
 // The method of a subcase: the LanczosEigenMethod, RealEigenMethod (vibration) or BucklingEigenMethod (buckling) card
-// of set ID `setId` (an LanczosEigenMethod wins when both an LanczosEigenMethod and the other card have the ID). The
-// fields the solver cannot honour are diagnostics: an RealEigenMethod method other than LAN (AHOU, INV, SINV, GIV,
+// of set ID `setId` (a LanczosEigenMethod wins when both a LanczosEigenMethod and the other card have the ID). The
+// fields the solver cannot honour are diagnostics: a RealEigenMethod method other than LAN (AHOU, INV, SINV, GIV,
 // MGIV, HOU, MHOU, AGIV) is refused naming it; BucklingEigenMethod's inverse power methods (INV, SINV) are replaced by
 // the block Lanczos solver over the same range (information); NORM = MASS in a buckling analysis is replaced by MAX
 // (MASS is not available for buckling; warning). No card of the ID is an error, and so is a range the solver cannot

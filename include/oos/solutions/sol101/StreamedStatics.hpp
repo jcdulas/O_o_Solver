@@ -219,8 +219,8 @@ struct StreamedSetRecord
 // further streamed solves when it can be held whole), the solve without the factor
 // (linalg::StreamedSolve on the front source) and the outputs region by region (StreamedOutputs).
 //
-// Refused before any numeric work, each with the path that gives it: glued contact, PARAM INREL = −2, a free body
-// that a constraint or a grounded element holds besides its six supports, cases of one set with different output
+// Refused before any numeric work, each with the path that gives it: glued contact, PARAM InertiaRelief = −2, a free
+// body that a constraint or a grounded element holds besides its six supports, cases of one set with different output
 // requests, outputs other than the displacements and the element tables (SPC and MPC forces, applied loads, grid point
 // forces, strain energies), and the loads StreamedLoads refuses.
 //

@@ -18,11 +18,11 @@
 // a modelling choice of this project). A Beam2 of uniform section is a Bar2 (same matrices). Orientation,
 // offsets, OFFT and pin flags as Bar2.
 //
-// Facets: stiffness, mass (lumped and coupled with ρ·A(x) + NSM(x) and the NSM cards), loads (PLOAD1), recovery at the
-// stations (end A, the intermediate stations whose SO is not NO, end B; one row per station with the grid point ID at
-// the ends, 0 between, the station number as the layer and X/XB as the position): forces (bending moments, shears,
-// axial force, total torque, warping torque 0) and stresses (the longitudinal stresses at C, D, E, F — axial plus
-// bending — their maximum and minimum and the margins of safety). Thermal loads (BeamThermal, as Bar2). The
+// Facets: stiffness, mass (lumped and coupled with ρ·A(x) + NSM(x) and the NSM cards), loads (BeamDistributedLoad),
+// recovery at the stations (end A, the intermediate stations whose SO is not NO, end B; one row per station with the
+// grid point ID at the ends, 0 between, the station number as the layer and X/XB as the position): forces (bending
+// moments, shears, axial force, total torque, warping torque 0) and stresses (the longitudinal stresses at C, D, E, F —
+// axial plus bending — their maximum and minimum and the margins of safety). Thermal loads (BeamThermal, as Bar2). The
 // differential stiffness (BeamDifferential) and design derivatives (Beam2Derivatives.cpp).
 //
 // The element axis is the axis of the shear centres (the offsets WA, WB go from the grid points to the ends of the

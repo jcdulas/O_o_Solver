@@ -166,7 +166,7 @@ base::MatN<12> ShearPanel4Panel::stiffness() const
     for (std::size_t i = 0; i < 12; ++i)
         for (std::size_t j = 0; j < 12; ++j)
             k(i, j) = m_cornerForces[i] * m_cornerForces[j] / m_flexibility;
-    // The extensional rods on the edges (PSHEAR F1, F2).
+    // The extensional rods on the edges (ShearPanelProp F1, F2).
     const std::array<double, 2> areas{rodArea(m_section.f1, m_section.thickness, m_area, m_lengths[0], m_lengths[2]),
                                       rodArea(m_section.f2, m_section.thickness, m_area, m_lengths[1], m_lengths[3])};
     for (std::size_t e = 0; e < 4; ++e)

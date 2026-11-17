@@ -1,6 +1,6 @@
 #pragma once
 
-// Weld — weld or fastener between two shells (CWELD, WeldProp):
+// Weld — weld or fastener between two shells (Weld, WeldProp):
 //
 //   | Weld | EWID | PWID | GS   | TYPE  | GA    | GB    |      | MCID |
 //   |       | (PARTPAT, ELPAT: PIDA/SHIDA, PIDB/SHIDB; ELEMID: SHIDA, SHIDB; GRIDID: SPTYP, GA1-GA8, GB1-GB8)    |
@@ -8,12 +8,12 @@
 //   |       | LDMIN| LDMAX|
 //
 // Connectivity (fasteners/FastenerConnection, the fastener piercing table the reader computes): each piercing point
-// moves with the reference point of an RigidInterpolation interpolation element whose independent points are the grid
+// moves with the reference point of a RigidInterpolation interpolation element whose independent points are the grid
 // points of the shell element it pierces (PARTPAT: a shell of PIDA or PIDB; ELPAT: SHIDA, SHIDB or a neighbour; ELEMID:
 // SHIDA, SHIDB; GRIDID: the face of the grid points GA1-GA8, GB1-GB8), weighted by the shape functions of that element
 // at the point (fasteners/PiercingInterpolation); ALIGN connects GA and GB directly, and ELEMID without SHIDB or GRIDID
 // with SPTYP Q or T (a point-to-patch connection) connects GS directly as side B. The auxiliary points are eliminated
-// at element level (PWELD MSET = OFF, the default; MSET = ON puts the same constraint equations in the m set, which
+// at element level (WeldProp MSET = OFF, the default; MSET = ON puts the same constraint equations in the m set, which
 // gives the same solution and is treated alike).
 //
 // Stiffness: a shear-deformable (Timoshenko) beam of circular section of diameter D between A and B (A = πD²/4,
@@ -31,8 +31,8 @@
 // the thicknesses of the shells the card names (weldSideThickness: PARTPAT the properties PIDA, PIDB; ELPAT and
 // ELEMID the elements SHIDA, SHIDB; ShellProp T, or the total thickness of a CompProp or CompPropGlobal); when a side
 // has none (ALIGN, GRIDID, ELEMID without SHIDB, a shell without T) L = |AB|. L is then kept between LDMIN·D and
-// LDMAX·D (PWELD: the smallest and largest ratio of length to diameter used in the stiffness). When L differs from |AB|
-// the beam of length L sits at the middle of A-B with rigid arms to A and B, so that a rigid motion still gives no
+// LDMAX·D (WeldProp: the smallest and largest ratio of length to diameter used in the stiffness). When L differs from
+// |AB| the beam of length L sits at the middle of A-B with rigid arms to A and B, so that a rigid motion still gives no
 // force (a choice of this implementation).
 //
 // Facets: stiffness; mass (ρ·A·|AB| lumped half at A, half at B on the translations, carried to the grid points of the
@@ -77,9 +77,9 @@ namespace oos::elements
 [[nodiscard]] std::optional<double> weldSideThickness(const input::ModelSnapshot& snapshot, std::string_view type,
                                                       std::int32_t id);
 // The shell property whose thickness side `id` of a Weld of form `type` reads (PARTPAT: PIDA or PIDB itself; ELPAT,
-// ELEMID: the property of the element SHIDA or SHIDB), or nothing. A designed thickness of that property (PSHELL T, the
-// plies of a CompProp or CompPropGlobal) changes the weld when the mean thickness sets its length (design/sensitivity/
-// AffectedElements reaches the weld through it).
+// ELEMID: the property of the element SHIDA or SHIDB), or nothing. A designed thickness of that property (ShellProp T,
+// the plies of a CompProp or CompPropGlobal) changes the weld when the mean thickness sets its length
+// (design/sensitivity/ AffectedElements reaches the weld through it).
 [[nodiscard]] std::optional<std::int32_t> weldSideProperty(const input::ModelSnapshot& snapshot, std::string_view type,
                                                            std::int32_t id);
 

@@ -6,8 +6,9 @@
 namespace oos::linalg
 {
 
-// The roots asked of the eigenvalue solver, in eigenvalue units (λ = ω², the solution sequence converts the EIGRL
-// frequencies V1, V2 in cycles per unit time: λ = (2π·f)²). The combinations of the EIGRL fields V1, V2, ND:
+// The roots asked of the eigenvalue solver, in eigenvalue units (λ = ω², the solution sequence converts the
+// LanczosEigenMethod frequencies V1, V2 in cycles per unit time: λ = (2π·f)²). The combinations of the
+// LanczosEigenMethod fields V1, V2, ND:
 //
 //   lowerBound, upperBound, modeCount = 0   every root in [lowerBound, upperBound]
 //   upperBound = +∞, modeCount > 0         the lowest modeCount roots above lowerBound
@@ -18,7 +19,7 @@ namespace oos::linalg
 // which must all be found. A stiffness with negative roots (negative springs) then has them reported as well.
 //
 // For a buckling pencil (SpectralTransform::Buckling) the roots are load factors of either sign and the request reads
-// (EIGRL V1, V2, ND in load-factor units): every root in
+// (LanczosEigenMethod V1, V2, ND in load-factor units): every root in
 // [lowerBound, upperBound], or, with modeCount > 0, the modeCount roots of smallest magnitude there (an infinite bound
 // leaves that side open: the default request with ND alone gives the ND roots nearest 0, of both signs). A request
 // without a mode count needs both bounds finite.

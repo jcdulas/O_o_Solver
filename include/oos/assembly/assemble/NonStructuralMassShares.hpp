@@ -16,11 +16,11 @@ namespace oos::assembly
 {
 
 // The non-structural mass that the NSM and NonStructMass1 cards of one NSM set add to each element (MassOptions::
-// addedNonStructuralMass of the element families), from the nonStructMassTable of O_o_Reader (NSMADD expanded): per
-// unit length for the line elements (CROD, Rod2InlineSection, Tube2, Bar2, Beam2: kind per_length), per unit
-// area for the shells (CQUAD4, ShellTria3: kind per_area). A row names a property (every element of that PID: on an NSM
-// card the property IDs are unique across the property types) or an element; the values of several rows on one element
-// add up.
+// addedNonStructuralMass of the element families), from the nonStructMassTable of O_o_Reader (NonStructMassUnion
+// expanded): per unit length for the line elements (Rod2, Rod2InlineSection, Tube2, Bar2, Beam2: kind per_length), per
+// unit area for the shells (ShellQuad4, ShellTria3: kind per_area). A row names a property (every element of that PID:
+// on an NSM card the property IDs are unique across the property types) or an element; the values of several rows on
+// one element add up.
 //
 // Refused with an error Diagnostic: the lumped kinds NonStructMassLumped and NonStructMassLumped1
 // ("nsm-lumped-unsupported": their mass is shared in proportion to the lengths or areas of the elements, which the

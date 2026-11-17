@@ -33,9 +33,9 @@ namespace oos::solutions
 // element's terms in its DOFs' order), so a front's terms do not depend on the threads: the streamed solve gives the
 // same bits whatever they are.
 //
-// The diagonal of the matrix (the MAXRATIO ratio of the pivot diagnostics) is the n-set diagonal the singularity
-// pass summed (nodeDiagonals), held in single precision: the ratio is compared with MAXRATIO and reported, its
-// digits beyond the seventh are not read.
+// The diagonal of the matrix (the MaxDiagonalRatio ratio of the pivot diagnostics) is the n-set diagonal the
+// singularity pass summed (nodeDiagonals), held in single precision: the ratio is compared with MaxDiagonalRatio and
+// reported, its digits beyond the seventh are not read.
 //
 // Thread-safety: addTerms() and diagonal() are safe concurrently (each call has its own scratch). Ownership: borrows
 // everything it is given, which outlives it.
@@ -96,7 +96,7 @@ public:
     // The refinement of a relieved solution (linalg::IterativeRefinement), element by element (their
     // mass or stiffness made again, in pieces of a fixed size on the pool, each piece's terms added in element order
     // after each wave: the same values whatever the threads). `solution`: equations × columns, the held DOFs at rest.
-    // Φᵀ·M·u of each column (RigidBodyModes' convention about the basic origin, the rows of reliefRowOf; WTMASS
+    // Φᵀ·M·u of each column (RigidBodyModes' convention about the basic origin, the rows of reliefRowOf; WeightToMass
     // applied, as reliefSums' Φᵀ·M·Φ).
     [[nodiscard]] std::vector<std::array<double, 6>> rigidMotionSums(linalg::ConstDenseMatrixView solution,
                                                                      base::ThreadPool* pool,

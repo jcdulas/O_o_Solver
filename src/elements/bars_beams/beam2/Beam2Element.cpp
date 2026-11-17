@@ -192,7 +192,7 @@ Resolution<BeamData> Beam2Element::resolve(const ElementBatchView& view, const C
     // (1 − ξ)·A + ξ·B: the end values exactly at the ends.
     const auto between = [](std::span<const double> ends, std::size_t component, double position)
     { return (1.0 - position) * ends[component] + position * ends[2 + component]; };
-    // The recovery points of the card are from the shear centre (PBEAM), those of
+    // The recovery points of the card are from the shear centre (BeamProp), those of
     // end A in that frame for a YESA station; a BeamStation's are from its neutral axis.
     std::array<std::array<double, 2>, 4> endAPoints{};
     for (std::size_t i = 0; i < count; ++i)

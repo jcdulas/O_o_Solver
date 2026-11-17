@@ -18,8 +18,8 @@ namespace oos::solutions
 {
 
 // What a reduced superelement brings to the residual structure, placed on its g set (the residual structure is the
-// interface problem): its matrices on the residual DOFs its boundary points are (SECONCT: a boundary point of the
-// superelement is a point of the residual structure), its rows in this order:
+// interface problem): its matrices on the residual DOFs its boundary points are (SuperelementConnection: a boundary
+// point of the superelement is a point of the residual structure), its rows in this order:
 // - its boundary DOFs (the rows of K*: a part's reduced boundary, or the a set of an external superelement), each the
 //   DOF of the same component of the residual point its point is;
 // - the generalised coordinates of its q set (Craig-Bampton), each the residual scalar point its q set point is.

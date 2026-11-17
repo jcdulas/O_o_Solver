@@ -42,7 +42,7 @@ void stopOnErrors(const base::DiagnosticSink& sink)
     throw base::SolverError(message);
 }
 
-// PARAM MAXRATIO (default 1e7) and BAILOUT (default 0), as the static solution reads them.
+// PARAM MaxDiagonalRatio (default 1e7) and SingularityBailOut (default 0), as the static solution reads them.
 linalg::PivotPolicy pivotPolicyOf(const input::ParamTable* params, std::optional<std::int32_t> subcase,
                                   base::DiagnosticSink& sink)
 {

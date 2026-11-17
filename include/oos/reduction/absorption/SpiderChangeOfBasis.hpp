@@ -21,7 +21,7 @@ enum class SpiderDofKind : std::uint8_t
 };
 
 // The weighting matrix of a spider: the reference DOFs as a combination of the leg
-// DOFs, u_ref = W·u_legs. For an RigidInterpolation, W is the weighted least-squares rigid fit of the legs (the rows of
+// DOFs, u_ref = W·u_legs. For a RigidInterpolation, W is the weighted least-squares rigid fit of the legs (the rows of
 // Gm of its REFC DOFs, assembly::RigidElementEquations); for a pierced side of a Fastener or Weld, the
 // interpolation of the piercing point from the grid points of the pierced element (elements::interpolatePiercing).
 // Row-major, referenceDofCount rows of legDofCount values; the DOFs in the displacement system of their point. Sized by

@@ -1,6 +1,6 @@
 #pragma once
 
-// Rod2 — rod with its section on a RodProp (CROD, RodProp):
+// Rod2 — rod with its section on a RodProp (Rod2, RodProp):
 //
 //   | Rod2 | EID | PID | G1 | G2 |
 //   | RodProp | PID | MID | A  | J  | C | NSM |

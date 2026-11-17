@@ -15,16 +15,16 @@ namespace oos::elements
 {
 
 // How a Fastener or Weld reaches the model: its two piercing points A and B (GA and GB, given on the card or
-// found by projection on the shells), each moving with the reference point of an RigidInterpolation interpolation
+// found by projection on the shells), each moving with the reference point of a RigidInterpolation interpolation
 // element whose independent points are the grid points of the shell element it pierces, weighted by the shape functions
 // of that element at the point (PiercingInterpolation), so that the motions of A and B in the basic system are
 //     w = (u_A, θ_A, u_B, θ_B) = M·u,   u the DOFs of the grid points of both pierced elements (six each, in their
 //     displacement systems, each grid point once; the interpolation reads their translations only).
-// A side connected directly (CWELD ALIGN, the GS of a Weld ELEMID without SHIDB) is that grid point itself. A side
+// A side connected directly (Weld ALIGN, the GS of a Weld ELEMID without SHIDB) is that grid point itself. A side
 // that pierces a shell of a formulation with unknowns besides its grid points reads the displacement and the rotation
 // of that shell at the point over its own DOFs instead (resolveSideMotion, FormulationModel::shellPointMotion).
 //
-// The auxiliary points GA and GB of a fastener are eliminated at element level by default (PWELD MSET = OFF, the
+// The auxiliary points GA and GB of a fastener are eliminated at element level by default (WeldProp MSET = OFF, the
 // default: the constraint equations are condensed into the element, whose matrix couples the grid points of the
 // pierced elements directly): the element matrix is K = Mᵀ·k·M, k the 12 × 12 stiffness of the fastener over w. This is
 // the linear elimination of the m set done inside the element (exact, a change of basis: never a flexibility form or a
@@ -54,7 +54,7 @@ struct FastenerConnection
 
 // The connection of the fastener of batch row `row` from the fastener piercing table of the snapshot (the piercing
 // points of O_o_Reader's fastenerPiercings and the shape functions of the elements they pierce). A side without a row
-// in the table is the grid point `directGrids[side]` of the card itself (CWELD ALIGN: GA and GB connect directly, and
+// in the table is the grid point `directGrids[side]` of the card itself (Weld ALIGN: GA and GB connect directly, and
 // no table is read; the GS end of a point-to-patch Weld), or a problem when that is 0.
 //
 // Problems (field PID for a missing table; for a side the reader did not place, the field and the reason it gives:
@@ -67,7 +67,7 @@ struct FastenerConnection
 // The piercing points A and B closer than this (model length units) give no fastener axis.
 inline constexpr double FASTENER_COINCIDENT_DISTANCE = 1.0e-8;
 
-// The axes of a fastener whose x-axis runs from A to B, when the property gives no system (PFAST MCID = −1, Weld
+// The axes of a fastener whose x-axis runs from A to B, when the property gives no system (FastenerProp MCID = −1, Weld
 // MCID = −1): y is the basic axis least aligned with x, made perpendicular to it, z = x × y (the first of the basic
 // axes X, Y, Z wins a tie): the input format places the element y-axis perpendicular to the element axis, towards the
 // closest basic axis. The columns of the result are x, y, z in the basic system.

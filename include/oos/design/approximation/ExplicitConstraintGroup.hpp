@@ -13,9 +13,9 @@ namespace oos::design
 // it; the caller's keep_constraints(...), a deck run's keep_constraints= option). A
 // constraint belongs to the group when any of these selects it:
 //   constraintSets: its DesignConstr set (DCID; a DesignConstrUnion set stands for its members, expanded by the
-//   caller); responses:      its response (DRESP1, DesignResp2 or DesignResp3 ID); regions:        the REGION of its
-//   response; elements:       the element of an element response's item (STRESS ... CSTRAT); grids:          the grid
-//   point of a grid response's item (DISP, SPCFORCE).
+//   caller); responses:      its response (DesignResp1, DesignResp2 or DesignResp3 ID); regions:        the REGION of
+//   its response; elements:       the element of an element response's item (STRESS ... CSTRAT); grids:          the
+//   grid point of a grid response's item (DISP, SPCFORCE).
 // The group's constraints are never screened, always evaluated, differentiated and handed to the optimiser, and they
 // take no NSTR place of the others (ConstraintScreening).
 //

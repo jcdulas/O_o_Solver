@@ -42,7 +42,7 @@ double fieldStep(double value, double scale) noexcept
 
 double fieldStepScale(const input::ModelSnapshot& point, const FieldTarget& target)
 {
-    // The diagonal of a AnisoMat2D's [[G11, G12, G13], [G12, G22, G23], [G13, G23, G33]]: its items 0, 3 and 5.
+    // The diagonal of an AnisoMat2D's [[G11, G12, G13], [G12, G22, G23], [G13, G23, G33]]: its items 0, 3 and 5.
     constexpr std::array<std::size_t, 3> DIAGONAL{0, 3, 5};
     double scale = 0.0;
     for (const TargetCell& cell : target.cells)

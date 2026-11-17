@@ -33,12 +33,12 @@ struct SolidElementData
 // The formulation a card chooses for one element (from its shape and its integration): fills the response.
 using SolidFormulation = void (*)(const SolidElementData&, SolidResponseParts, SolidResponse&);
 
-// The facets shared by the four solid families (CHEXA, SolidPenta, SolidTetra, SolidPyramid): the families differ only by
-// their shapes and by the formulation they choose; each family's facet files call these. The response of an element is
-// formed in its material system and carried to the displacement systems of its grid points through T_a = axesᵀ·R_a
-// (u_material = T_a·u_CD at node a): K_CD(a, b) = T_aᵀ·K(a, b)·T_b, loads F_CD = R_aᵀ·F_basic.
+// The facets shared by the four solid families (SolidHexa, SolidPenta, SolidTetra, SolidPyramid): the families differ
+// only by their shapes and by the formulation they choose; each family's facet files call these. The response of an
+// element is formed in its material system and carried to the displacement systems of its grid points through T_a =
+// axesᵀ·R_a (u_material = T_a·u_CD at node a): K_CD(a, b) = T_aᵀ·K(a, b)·T_b, loads F_CD = R_aᵀ·F_basic.
 //
-// Mass: the consistent mass ∫ ρ NᵀN dV, or (PARAM COUPMASS ≤ 0, the default) the lumped mass of the HRZ method
+// Mass: the consistent mass ∫ ρ NᵀN dV, or (PARAM CoupledMass ≤ 0, the default) the lumped mass of the HRZ method
 // (Hinton, Rock & Zienkiewicz, Earthquake Eng. Struct. Dyn. 4, 1976: the diagonal of the consistent mass scaled to
 // the element's mass ρV; for the linear tetrahedron and pentahedron and for a parallelepiped SolidHexa this is ρV shared
 // equally between the nodes). The NSM cards do not apply to solids (an NSM entry names no solid property):

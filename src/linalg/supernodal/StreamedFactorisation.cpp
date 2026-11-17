@@ -44,7 +44,7 @@ DenseKernelOptions withFactorisation(DenseKernelOptions options, const base::Can
     return options;
 }
 
-// The diagonal of column j of the matrix (0 when it is not stored): the a_jj of the MAXRATIO ratio.
+// The diagonal of column j of the matrix (0 when it is not stored): the a_jj of the MaxDiagonalRatio ratio.
 double matrixDiagonal(const SymmetricCsc& matrix, std::int32_t column) noexcept
 {
     const auto begin = toSize(matrix.columnOffsets()[static_cast<std::size_t>(column)]);

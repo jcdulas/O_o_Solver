@@ -153,8 +153,8 @@ inline void checkVariables(const aero::TrimCase& trimCase, const aero::TrimVaria
         if (isKnown)
             continue;
         // An AeroController, another AeroRigidTrimVariable label or an undefined one acts only through user matrices
-        // (AEDW, AeroForceVector, AeroPressureVector, DirectMatrixAeroJ: not supported): no aerodynamic or inertial
-        // effect here.
+        // (AeroDownwash, AeroForceVector, AeroPressureVector, DirectMatrixAeroJ: not supported): no aerodynamic or
+        // inertial effect here.
         if (setting.state == aero::TrimVariableState::Free || setting.state == aero::TrimVariableState::Linked)
             sink.report(subcaseProblem(
                 trimCase.subcase, base::Severity::Error, "trim-user-variable",
@@ -320,7 +320,7 @@ inline aero::AeroResultant scaled(aero::AeroResultant resultant, double factor)
 // left the trim equations singular; then
 //     D_r = Ψ_S·(Ψ_r,S)⁻¹,
 // so that D_rᵀ·F = 0 is the equilibrium of the supported components of the resultant. As rigid-body modes of the a set,
-// they are zero on the s set (SPC, AUTOSPC: a held DOF does not move, and its mass is not accelerated: an
+// they are zero on the s set (SPC, AutoSingularityConstr: a held DOF does not move, and its mass is not accelerated: an
 // unconnected grid point with a mass carries none of the inertia) and Gm·u_n on the m set. `supportRows` receives
 // Ψ_r. Throws SolverError when the supports do not hold r independent rigid-body motions.
 struct SupportModes

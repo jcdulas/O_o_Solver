@@ -10,10 +10,11 @@
 namespace oos::assembly
 {
 
-// The grid point weight generator (PARAM GRDPNT; its table in the text report): the rigid-body mass properties of the
-// g-set mass about a reference point, in the units of the input masses (the mass matrix is divided by WTMASS):
+// The grid point weight generator (PARAM WeightReferenceNode; its table in the text report): the rigid-body mass
+// properties of the g-set mass about a reference point, in the units of the input masses (the mass matrix is divided by
+// WeightToMass):
 //
-// - MO = Dᵀ·M·D / WTMASS, the 6 × 6 rigid-body mass matrix about the reference point in the basic system (D the
+// - MO = Dᵀ·M·D / WeightToMass, the 6 × 6 rigid-body mass matrix about the reference point in the basic system (D the
 //   rigid-body modes, RigidBodyModes);
 // - S, the principal directions of the translational mass Mt = MO[0:3, 0:3] (rows: the mass axes in the basic system;
 //   the identity when Mt is diagonal, as for every isotropic mass);
@@ -31,7 +32,8 @@ namespace oos::assembly
 // Thread-safety: an immutable value.
 struct GridPointWeight
 {
-    std::int32_t referencePoint = 0; // the grid point of PARAM GRDPNT, 0 for the origin of the basic system
+    // the grid point of PARAM WeightReferenceNode, 0 for the origin of the basic system
+    std::int32_t referencePoint = 0;
     base::Vec3 referencePosition;    // in the basic system
     base::MatN<6> rigidBodyMass;     // MO
     base::Mat3 massAxes = base::Mat3::identity();      // S
@@ -41,7 +43,7 @@ struct GridPointWeight
     std::array<double, 3> principalInertia{};          // I(Q)
     base::Mat3 principalAxes = base::Mat3::identity(); // Q
 
-    // From MO (already divided by WTMASS) about `referencePosition`.
+    // From MO (already divided by WeightToMass) about `referencePosition`.
     [[nodiscard]] static GridPointWeight fromRigidBodyMass(const base::MatN<6>& rigidBodyMass,
                                                            std::int32_t referencePoint, base::Vec3 referencePosition);
 

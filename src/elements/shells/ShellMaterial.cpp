@@ -29,15 +29,15 @@ namespace
     return std::nullopt;
 }
 
-// The value O_o_Reader kept for a blank G1Z or G2Z of a OrthoMat2D before its contract 45 (its Mat8Card::
+// The value O_o_Reader kept for a blank G1Z or G2Z of an OrthoMat2D before its contract 45 (its Mat8Card::
 // DEFAULT_TRANSVERSE_SHEAR): the field was not null but 1.0E8, and O_o_Reader wrote 1.0E8 back as a blank field, so in
-// its data model the value meant "blank". A blank G1Z or G2Z of a OrthoMat2D is an infinite transverse shear modulus
+// its data model the value meant "blank". A blank G1Z or G2Z of an OrthoMat2D is an infinite transverse shear modulus
 // (zero or blank: no transverse shear flexibility). Read as a modulus, 1.0E8 is a soft transverse shear in SI units
 // (Pa), which on a laminated wing model lowers the buckling roots by 1 % to 13 % against the rigid reading. Since
 // contract 45 a blank is NaN and an explicit 1.0E8 a modulus.
 constexpr double READER_BLANK_TRANSVERSE_SHEAR = 1.0e8;
 
-// A transverse shear modulus of a OrthoMat2D: 0 (rigid) when blank (null or NaN), zero, or, in the tables
+// A transverse shear modulus of an OrthoMat2D: 0 (rigid) when blank (null or NaN), zero, or, in the tables
 // of a contract before 45, O_o_Reader's blank value.
 [[nodiscard]] double orthoMat2DTransverseShear(const base::ContractReader& card, const char* column, std::int64_t row,
                                                std::int64_t contractVersion)
@@ -96,8 +96,8 @@ constexpr double READER_BLANK_TRANSVERSE_SHEAR = 1.0e8;
     material.matId = matId;
     material.type = ShellMaterialType::IsoMat;
     material.planeStress = planeStressMatrix(isotropic.youngModulus, isotropic.poissonRatio);
-    // ShellProp: a IsoMat as MID3 gives the transverse shear modulus G in both directions; G = 0 leaves the shear rigid
-    // (G3 blank or zero, no saturation).
+    // ShellProp: an IsoMat as MID3 gives the transverse shear modulus G in both directions; G = 0 leaves the shear
+    // rigid (G3 blank or zero, no saturation).
     material.transverseShear = {isotropic.shearModulus, isotropic.shearModulus};
     material.inPlaneShearModulus = isotropic.shearModulus;
     material.density = isotropic.density;

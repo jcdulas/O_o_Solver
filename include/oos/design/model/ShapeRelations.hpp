@@ -42,19 +42,19 @@ struct ShapeBasis
     std::vector<ShapeMove> moves;
 };
 
-// The shape variables of a design model (DVGRID: grid point positions along basis vectors).
+// The shape variables of a design model (DesignNodeMove: grid point positions along basis vectors).
 //
 // A grid point moves by g − g0 = Σ_j COEFF_j·(X_DVIDj − X⁰_DVIDj)·N_j, the sum over the DesignNodeMove
-// entries that name it, X⁰ the initial value of the variable (XINIT of its DESVAR). So each shaped variable v gives one
-// designed quantity, its shape value s_v = X_v − XINIT_v (the value of the "field" that moves its basis vector), and
-// the position of a grid point at a design point is g = g0 + Σ_v s_v·T_v(g), T_v the basis vector of v. The derivative
-// of s_v with respect to x is that of X_v: 1 for an independent variable, CMULT·Ci through a DesignVarLink.
+// entries that name it, X⁰ the initial value of the variable (XINIT of its DesignVar). So each shaped variable v gives
+// one designed quantity, its shape value s_v = X_v − XINIT_v (the value of the "field" that moves its basis vector),
+// and the position of a grid point at a design point is g = g0 + Σ_v s_v·T_v(g), T_v the basis vector of v. The
+// derivative of s_v with respect to x is that of X_v: 1 for an independent variable, CMULT·Ci through a DesignVarLink.
 //
 // N is taken as written: the format determines N from CID and Ni, nothing more (N is not made a unit vector), and
 // O_o_Reader's model.design.apply moves the grid points by COEFF·(X − XINIT)·N with N as written (src/design/README.md
 // gives the rules), so that the overlay of a design point and the model `apply` writes are the same geometry.
 //
-// Checks (check()): every DVID names a DESVAR; N was resolved (finite: O_o_Reader gives NaN for a grid point or a
+// Checks (check()): every DVID names a DesignVar; N was resolved (finite: O_o_Reader gives NaN for a grid point or a
 // system CID it does not know) and is not zero (at least one Ni ≠ 0.0); COEFF is finite. The grid points are
 // bound to a snapshot by FieldTargets, which refuses the moves the overlay cannot make.
 //

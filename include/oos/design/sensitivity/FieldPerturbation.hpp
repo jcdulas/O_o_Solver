@@ -46,7 +46,7 @@ inline constexpr double FIELD_STEP_AT_ZERO = 1.0e-3;
 
 [[nodiscard]] double fieldStep(double value) noexcept;
 
-// A field whose own value is no measure of its size: an off-diagonal term of a AnisoMat2D (G12, G13, G23)
+// A field whose own value is no measure of its size: an off-diagonal term of an AnisoMat2D (G12, G13, G23)
 // is zero or a rounding of zero in a balanced laminate (A16 = A26 = 0: a lamination parameter at 2.8e-17 gave G13 at
 // 8.8e-13 where G11 is 5.7e4), so that its relative step, 1e-2·|v|, moved the stiffness by 1.5e-19 of its matrix and
 // the differences of the section loads were rounding (764 for 44 on the composite tiny barrel); and its step at zero,
@@ -61,7 +61,7 @@ inline constexpr double FIELD_STEP_SCALE_FRACTION = 1.0e-2;
 
 // The size of the matrix a field is a term of, for fieldStep(value, scale): the largest |G11|, |G22|, |G33| of the
 // AnisoMat2D row of a "stiffness" cell of `target` in `point` (the design point's snapshot); 0 for any other field, or
-// a AnisoMat2D whose diagonal is zero.
+// an AnisoMat2D whose diagonal is zero.
 [[nodiscard]] double fieldStepScale(const input::ModelSnapshot& point, const FieldTarget& target);
 
 // The sides of a perturbation: v + h, v − h, v + h/2, v − h/2.

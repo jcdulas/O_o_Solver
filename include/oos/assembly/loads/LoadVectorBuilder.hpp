@@ -29,13 +29,12 @@ namespace oos::assembly
 // of a combination then listed under its SID with its factors applied; or, when O_o_Reader lists each set once,
 // a LOAD entry the sets it reaches with their combined_factor); each value is the row's times its term's factor, and
 // the terms are read in their order, the rows of each in table order:
-// - loadsTable: FORCE, PointForceLoad1, PointForceLoad2, MOMENT, PointMomentLoad1, PointMomentLoad2 per grid point, the
-// force and the moment in the basic
-//   system, scaled; they are turned into the displacement system CD of the grid point (f_cd = Rᵀ·f_basic, R the CD
-//   axes in basic). ScalarPointLoad on a scalar point (its value in fx);
-// - the inertial loads GravityLoad, ACCEL, AccelNodeLoad, RotationalForceLoad (InertialLoads: Mgg times an acceleration
-// field; Mgg with WTMASS
-//   applied);
+// - loadsTable: PointForceLoad, PointForceLoad1, PointForceLoad2, PointMomentLoad, PointMomentLoad1, PointMomentLoad2
+//   per grid point, the force and the moment in the basic system, scaled; they are turned into the displacement system
+//   CD of the grid point (f_cd = Rᵀ·f_basic, R the CD axes in basic). ScalarPointLoad on a scalar point (its value in
+//   fx);
+// - the inertial loads GravityLoad, AccelFieldLoad, AccelNodeLoad, RotationalForceLoad (InertialLoads: Mgg times an
+//   acceleration field; Mgg with WeightToMass applied);
 // - pressureTable: ShellPressureLoad and FacePressureLoad on an element, the corner pressures scaled, through the
 // pressure facet of the
 //   element's family;
@@ -52,10 +51,10 @@ namespace oos::assembly
 // (concentratedEntries), the pressures and line loads per element and card value (distributedValues).
 //
 // A load the solver cannot apply is an error Diagnostic, nothing is ignored: a card of loadsTable outside the list
-// ("load-unsupported"; RotationalForceLoad, ACCEL, AccelNodeLoad without inertialLoadsTable), a ShellPressureLoad or
-// FacePressureLoad row without an element ("load-unsupported"), an element ID that no supported batch holds
-// ("load-unknown-element"), a point the model does not have ("load-unknown-point"), a FORCE or MOMENT on a scalar
-// point, an ScalarPointLoad or a PointsPressureLoad on a grid point that is not one ("load-bad-point"), a
+// ("load-unsupported"; RotationalForceLoad, AccelFieldLoad, AccelNodeLoad without inertialLoadsTable), a
+// ShellPressureLoad or FacePressureLoad row without an element ("load-unsupported"), an element ID that no supported
+// batch holds ("load-unknown-element"), a point the model does not have ("load-unknown-point"), a FORCE or MOMENT on a
+// scalar point, a ScalarPointLoad or a PointsPressureLoad on a grid point that is not one ("load-bad-point"), a
 // PointsPressureLoad whose points do not make a triangle or a quadrilateral of non-zero area ("load-bad-face"), and the
 // element-level refusals of the families' load facets.
 //
@@ -73,8 +72,8 @@ public:
     [[nodiscard]] bool needsMass(base::EntityId loadSetId) const;
 
     // Adds the loads of the set to `loadsG` (one value per g-set DOF): the concentrated, distributed and inertial
-    // families. `mass` is Mgg with WTMASS applied, needed when needsMass(); an inertial load without it is reported
-    // ("load-needs-mass"). Throws std::invalid_argument when the size of `loadsG` is not the g-set size.
+    // families. `mass` is Mgg with WeightToMass applied, needed when needsMass(); an inertial load without it is
+    // reported ("load-needs-mass"). Throws std::invalid_argument when the size of `loadsG` is not the g-set size.
     void addLoads(base::EntityId loadSetId, const linalg::BlockSparseMatrix* mass, std::span<double> loadsG,
                   base::MemoryBudget& budget, base::DiagnosticSink& sink) const;
 
@@ -163,9 +162,9 @@ public:
     // found no error. Throws std::invalid_argument when the size of `loadsG` is not the g-set size.
     void addThermalLoads(const elements::ElementTemperatures& temperatures, std::span<double> loadsG) const;
 
-    // The line loads of the set (PLOAD1), per batch of the set (indexed as ElementSet::batches()), the loads of one
-    // element contiguous and the elements in their batch order: what the recovery facets under line loads take
-    // (ElementFamily::recoverUnderLineLoads). Loads on unknown elements are left out (addLoads() reports them).
+    // The line loads of the set (BeamDistributedLoad), per batch of the set (indexed as ElementSet::batches()), the
+    // loads of one element contiguous and the elements in their batch order: what the recovery facets under line loads
+    // take (ElementFamily::recoverUnderLineLoads). Loads on unknown elements are left out (addLoads() reports them).
     [[nodiscard]] std::vector<std::vector<elements::ElementLineLoad>> lineLoadsOf(base::EntityId loadSetId) const;
 
     // The rows of loadsTable under the SID of a load set, in table order: with tables that expand the LOAD
@@ -178,7 +177,8 @@ public:
     }
     // The card column of loadsTable, read once (empty without load tables).
     [[nodiscard]] const base::DictionaryView& loadTableCards() const noexcept { return m_loadCards; }
-    // Whether a load set has line loads (PLOAD1: lineLoadsTable, which the loads table does not list), its terms'.
+    // Whether a load set has line loads (BeamDistributedLoad: lineLoadsTable, which the loads table does not list), its
+    // terms'.
     [[nodiscard]] bool hasLineLoads(base::EntityId loadSetId) const;
     // The family of a load card of loadsTable (FORCE: concentrated, FacePressureLoad: distributed, GravityLoad:
     // inertial); nothing for a card outside the families (refused by addLoads).
@@ -201,10 +201,10 @@ public:
     };
     [[nodiscard]] std::optional<FormulationPressure> formulationPressureOf(const PressureRow& row) const;
 
-    // The pressures (PLOAD2, FacePressureLoad) and line loads (PLOAD1) of a load set on elements, per batch of the set,
-    // in the order of the table rows, as addLoads applies them (the PLOADs on the faces of grid points left out; the
-    // rows it cannot apply reported into `sink`). They borrow the load tables of the set's snapshot. The sensitivities
-    // difference them element by element.
+    // The pressures (ShellPressureLoad, FacePressureLoad) and line loads (BeamDistributedLoad) of a load set on
+    // elements, per batch of the set, in the order of the table rows, as addLoads applies them (the PointsPressureLoads
+    // on the faces of grid points left out; the rows it cannot apply reported into `sink`). They borrow the load tables
+    // of the set's snapshot. The sensitivities difference them element by element.
     struct ElementDistributedLoads
     {
         std::vector<std::vector<elements::ElementPressure>> pressures;

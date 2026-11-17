@@ -38,10 +38,10 @@ struct EvaluationResult
 // no truncation error. A value that depends on no free argument (a constant, an argument bound by `constants`) carries
 // no tangent at all, decided once when the evaluator is built.
 //
-// Arithmetic (DEQATN follows Fortran rules): Fortran precedence is the producer's job; the evaluator runs the postfix
-// program. Integer constants combine in integer arithmetic (1/2 = 0, 7/2 = 3, 2**3 = 8, 2**-1 = 0), any real operand
-// makes the operation real, every function and every variable is real. A negative base to a real power is refused
-// unless the exponent is a whole number (then it is computed as for an integer exponent).
+// Arithmetic (DesignEquation follows Fortran rules): Fortran precedence is the producer's job; the evaluator runs the
+// postfix program. Integer constants combine in integer arithmetic (1/2 = 0, 7/2 = 3, 2**3 = 8, 2**-1 = 0), any real
+// operand makes the operation real, every function and every variable is real. A negative base to a real power is
+// refused unless the exponent is a whole number (then it is computed as for an integer exponent).
 //
 // Refusals: a point where a function or an operator leaves its domain (SQRT of a negative, a division by zero, ACOS
 // of 1.5), where a value overflows, or (when derivatives are asked) where a partial derivative with respect to a free

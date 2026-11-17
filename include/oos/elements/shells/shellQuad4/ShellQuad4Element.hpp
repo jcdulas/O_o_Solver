@@ -1,6 +1,6 @@
 #pragma once
 
-// ShellQuad4 — four-node shell (CQUAD4, ShellProp, CompProp, CompPropGlobal; IsoMat, AnisoMat2D, OrthoMat2D):
+// ShellQuad4 — four-node shell (ShellQuad4, ShellProp, CompProp, CompPropGlobal; IsoMat, AnisoMat2D, OrthoMat2D):
 //
 //   | ShellQuad4 | EID   | PID | G1 | G2 | G3 | G4 | THETA or MCID | ZOFFS |
 //   |        | TFLAG | T1  | T2 | T3 | T4 |

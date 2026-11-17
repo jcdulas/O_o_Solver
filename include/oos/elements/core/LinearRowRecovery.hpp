@@ -11,18 +11,19 @@
 namespace oos::elements
 {
 
-// The vectorised recovery of the families whose rows are linear maps of their displacements: the springs (CELAS1 to
-// SpringScalarInline, Bushing, Bushing1D, Gap2) and the fasteners (CFAST, Weld's forces) give one row per element
-// whose every column is a fixed matrix times the element's DOFs, value(0) zero (a static analysis' spring has no
-// thermal or initial force here). Their slopes are that matrix, in closed form from one resolution of the element
-// (ElementFamily::recoverySlopes, recoverySlopesOfOutputs), and their rows need no completion.
+// The vectorised recovery of the families whose rows are linear maps of their displacements: the springs
+// (SpringDofProperty to SpringScalarInline, Bushing, Bushing1D, Gap2) and the fasteners (Fastener, Weld's forces) give
+// one row per element whose every column is a fixed matrix times the element's DOFs, value(0) zero (a static analysis'
+// spring has no thermal or initial force here). Their slopes are that matrix, in closed form from one resolution of the
+// element (ElementFamily::recoverySlopes, recoverySlopesOfOutputs), and their rows need no completion.
 
-// The fewest cases of a block from which the springs' rows (CELAS1 to SpringScalarInline, Bushing, Bushing1D, Gap2) are
-// made from their slopes (ElementFamily::vectorisedRecoveryMinCases). Calibrated on a spring network (81 000 springs of
-// every kind, six threads, every output): case by case 19 ms a case, by blocks 39 ms once and 5.4 ms a case, even
-// from 2.8 cases; 4 leaves a margin for a block asking for fewer outputs (the slopes then shared by fewer rows).
+// The fewest cases of a block from which the springs' rows (SpringDofProperty to SpringScalarInline, Bushing,
+// Bushing1D, Gap2) are made from their slopes (ElementFamily::vectorisedRecoveryMinCases). Calibrated on a spring
+// network (81 000 springs of every kind, six threads, every output): case by case 19 ms a case, by blocks 39 ms once
+// and 5.4 ms a case, even from 2.8 cases; 4 leaves a margin for a block asking for fewer outputs (the slopes then
+// shared by fewer rows).
 inline constexpr std::size_t SPRING_VECTORISED_RECOVERY_MIN_CASES = 4;
-// The same for the fasteners (CFAST, Weld): their resolution (the piercing points' interpolation) is most of a
+// The same for the fasteners (Fastener, Weld): their resolution (the piercing points' interpolation) is most of a
 // recovery, which a case recovered alone pays for each output (two) and the recovery by blocks three times once (the
 // rows at rest of each output, the slopes): even from about 1.5 cases. Measured on an assembly of 3 000
 // RigidInterpolation-Bushing-RigidInterpolation, Fastener and Weld joints: their tables 0.26 s for 32 cases

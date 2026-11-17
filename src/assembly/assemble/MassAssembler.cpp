@@ -41,7 +41,7 @@ void MassAssembler::assemble(linalg::BlockSparseMatrix& target, base::ThreadPool
         .assemble(
             source.elementCount(), [&source](std::size_t begin, std::size_t end, linalg::ContributionBlock& block)
             { source.writeContributions(begin, end, block); }, target, pool, cancellation);
-    // PARAM WTMASS multiplies the structural mass matrix once assembled.
+    // PARAM WeightToMass multiplies the structural mass matrix once assembled.
     if (m_options.weightToMass != 1.0)
         for (double& value : target.values())
             value *= m_options.weightToMass;

@@ -21,9 +21,9 @@ namespace
 
 // The elements of a batch formed per facet call: bounds the matrices held at once.
 constexpr std::int64_t ELEMENTS_PER_CALL = 256;
-// The columns of the orientation point of the line elements and connectors (CBAR, Beam2: G0; Bushing, Gap2: GO).
+// The columns of the orientation point of the line elements and connectors (Bar2, Beam2: G0; Bushing, Gap2: GO).
 constexpr std::array<const char*, 1> ORIENTATION_COLUMNS{"orientationNode"};
-// The columns of the coordinate systems an element reads: its own (CBUSH CID and OCID, Gap2 and Bushing1D CID,
+// The columns of the coordinate systems an element reads: its own (Bushing CID and OCID, Gap2 and Bushing1D CID,
 // PointMassMatrix and PointMassInertia CID, the MCID of the shells and of Weld) and its property's (the MCID of a
 // FastenerProp, the CORDM of a SolidProp).
 constexpr std::array<const char*, 3> ELEMENT_FRAME_COLUMNS{"frameId", "offsetFrameId", "matFrameId"};

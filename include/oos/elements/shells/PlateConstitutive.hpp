@@ -16,7 +16,7 @@
 // D/T³, G4 = −B/T², the transverse shear H/T): this project's choice, since how NASTRAN-95 forms the equivalent
 // materials of a laminate was not specified.
 //
-// Deviation from NASTRAN-95 (deliberate): NASTRAN-95 multiplies γyz by G1Z and γxz by G2Z of a OrthoMat2D (its two
+// Deviation from NASTRAN-95 (deliberate): NASTRAN-95 multiplies γyz by G1Z and γxz by G2Z of an OrthoMat2D (its two
 // words are swapped against the card's order). This implementation takes the physical reading of the card, G1Z on γxz
 // and G2Z on γyz, as ShellSection already does.
 
@@ -33,8 +33,8 @@ namespace oos::elements
 {
 
 // The card that gives the bending material: the QUAD4 shear-correction factors read its moduli the way the card
-// defines them (spec §2.4: E of a IsoMat, the raw G11 and G22 of a AnisoMat2D, E1 and E2 of a OrthoMat2D). A laminate
-// counts as a AnisoMat2D (its equivalent G2 is a general matrix).
+// defines them (spec §2.4: E of an IsoMat, the raw G11 and G22 of an AnisoMat2D, E1 and E2 of an OrthoMat2D). A
+// laminate counts as an AnisoMat2D (its equivalent G2 is a general matrix).
 enum class BendingCard : std::uint8_t
 {
     Isotropic,  // IsoMat
@@ -58,7 +58,8 @@ struct PlateSectionValues
     // κ·G per unit thickness of the transverse shears along the material axes x, y (MID3, κ = TS/T); 0 for a direction
     // left rigid.
     std::array<T, 2> transverseShear{};
-    // The transverse shear moduli of a OrthoMat2D bending card (its G1Z, G2Z, G12 where blank): the shear without MID3.
+    // The transverse shear moduli of an OrthoMat2D bending card (its G1Z, G2Z, G12 where blank): the shear without
+    // MID3.
     std::array<double, 2> bendingCardShear{};
     T bendingRatio = T(SHELL_PROP_DEFAULT_BENDING_RATIO); // 12I/T³
     T shearRatio = T(SHELL_PROP_DEFAULT_SHEAR_RATIO);     // TS/T
@@ -88,7 +89,7 @@ struct PlateConstitutive
     bool hasShearFlexibility = false;
     Matrix3<T> membrane; // G1 in the element frame
     Matrix3<T> bending;  // G2
-    Matrix3<T> coupling; // G4 (PSHELL MID4 sign)
+    Matrix3<T> coupling; // G4 (ShellProp MID4 sign)
     // κ·G of the transverse shear on (γxz, γyz) in the element frame: with MID3 its moduli (a rigid direction
     // taking the in-plane shear modulus of the bending card, see the .cpp); without MID3 TS/T times the bending card's
     // G3, which NASTRAN-95's QUAD4 uses then (spec §1.2).

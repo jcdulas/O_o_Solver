@@ -37,9 +37,9 @@ struct MechanismShape
     std::vector<double> amplitudes; // one per entry of dofs
 };
 
-// The stiffness matrix is singular or too ill-conditioned to be factorised (a pivot below the threshold, a MAXRATIO
-// above its limit); the message names the grid points and components, the error also carries them and the mechanism
-// shapes found, so that the caller can show them.
+// The stiffness matrix is singular or too ill-conditioned to be factorised (a pivot below the threshold, a
+// MaxDiagonalRatio above its limit); the message names the grid points and components, the error also carries them and
+// the mechanism shapes found, so that the caller can show them.
 class SingularityError : public SolverError
 {
 public:

@@ -1,6 +1,6 @@
 #pragma once
 
-// SolidTetra — four-sided solid with 4 corners and up to 6 mid-side nodes (CTETRA, SolidProp):
+// SolidTetra — four-sided solid with 4 corners and up to 6 mid-side nodes (SolidTetra, SolidProp):
 //
 //   | SolidTetra | EID | PID | G1 | G2 | G3 | G4 | G5 | G6 |
 //   |        | G7  | G8  | G9 | G10 |
@@ -12,7 +12,7 @@
 // the stiffness of a straight-edged element needs: the patch test with curved edges). SolidProp IN and ISOP: blank,
 // ISOP also FULL; with 4 nodes also IN = TWO and ISOP = REDUCED (every rule gives the constant strain element), and
 // STRESS = GAUSS, whose one Gauss point is the centroid (the values at the centre and the corners are equal). The
-// material (MAT1 or AnisoMat3D) in the system CORDM (SolidSection).
+// material (IsoMat or AnisoMat3D) in the system CORDM (SolidSection).
 //
 // Mass: lumped (HRZ: ρV/4 at each corner for 4 nodes) or coupled (SolidElementKernel). Loads: FacePressureLoad on a
 // face (G1 and the node G4 opposite to it on the card), uniform or with corner pressures (SolidPressure); GravityLoad

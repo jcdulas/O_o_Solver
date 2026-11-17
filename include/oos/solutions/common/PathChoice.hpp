@@ -57,8 +57,8 @@ struct PathChoiceInputs
     // whole model, StaticPreflight); nothing when not estimated (a model above maxFullPathDofs needs no estimate).
     std::optional<std::uint64_t> fullFactorBytes;
     std::uint64_t budgetBytes = 0;
-    // PARAM INREL = −2 (the supports chosen by the solver), which the condensed path refuses: such a static model stays
-    // on the full path, said so.
+    // PARAM InertiaRelief = −2 (the supports chosen by the solver), which the condensed path refuses: such a static
+    // model stays on the full path, said so.
     bool hasAutomaticInertiaRelief = false;
     // FULL_PATH_MAX_DOFS unless the caller tests the rule with another size.
     std::int64_t maxFullPathDofs = FULL_PATH_MAX_DOFS;
@@ -92,8 +92,8 @@ struct PathChoice
 // - statics without the costs (the size rule): the full path when the model has at most maxFullPathDofs DOFs and its
 //   estimated full factorisation takes at most FULL_PATH_BUDGET_SHARE of the budget; the condensed path otherwise (the
 //   caller then makes the plan of every unit, those the plan recommends keeping full excepted; a model of one unit
-//   stays on the full path, which the plan says); the full path whatever its size with PARAM INREL = −2, which the
-//   condensed path refuses;
+//   stays on the full path, which the plan says); the full path whatever its size with PARAM InertiaRelief = −2, which
+//   the condensed path refuses;
 // - modes: the rule of statics, the reason of the condensed path saying that its modes are approximate (Craig-Bampton),
 //   each unit keeping its fixed-interface modes up to reduction::CB_CUTOFF_FACTOR times the highest frequency
 //   requested;

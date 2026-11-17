@@ -28,7 +28,8 @@ public:
     [[nodiscard]] std::int64_t rowCount() const noexcept { return m_reader.rowCount(); }
     [[nodiscard]] std::span<const std::int32_t> ids() const;
 
-    // The property of each element, for the cards that have one (not CONM2, CELAS2, RBE2...).
+    // The property of each element, for the cards that have one (not PointMassInertia, SpringDofInline,
+    // RigidBodyStar...).
     [[nodiscard]] bool hasProperty() const;
     [[nodiscard]] std::span<const std::int32_t> propertyIds() const;
     // The row of each element's property in the table of its type, and that type; for the cards with a property.
@@ -36,7 +37,7 @@ public:
     [[nodiscard]] std::span<const std::int32_t> propertyRows() const;
     [[nodiscard]] base::DictionaryView propertyTypes() const;
 
-    // The grid point IDs of each element, for the cards with a "nodes" column (CBAR and the springs name theirs GA,
+    // The grid point IDs of each element, for the cards with a "nodes" column (Bar2 and the springs name theirs GA,
     // GB, G1, G2: their own code reads them). Nulls are allowed here (validity() of the reader tells them).
     [[nodiscard]] bool hasNodes() const { return m_reader.hasColumn("nodes"); }
     [[nodiscard]] ConnectivityView nodes() const { return connectivity("nodes"); }

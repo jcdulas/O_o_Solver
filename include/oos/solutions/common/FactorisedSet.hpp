@@ -35,7 +35,7 @@ struct FactorisedSetParts
     std::unique_ptr<const FsetSolver> solver; // the l-set factor of the run
     linalg::KernelKind kernel = linalg::KernelKind::Reference;
     std::vector<base::EntityId> subcases; // the subcases solved on it, in solve order
-    // The inertia relief of the set (PARAM INREL = −1), null without one.
+    // The inertia relief of the set (PARAM InertiaRelief = −1), null without one.
     std::shared_ptr<const KeptRelief> relief;
     // What the element formulation adds to the constraints (its excluded DOFs filled in a solution), null without one.
     std::shared_ptr<const assembly::FormulationConstraints> formulation;
@@ -91,8 +91,8 @@ public:
         m_parts.solver->solve(rightHandSides, kernels, cancellation);
     }
 
-    // The pivot diagnostics of the factorisation (the largest MAXRATIO ratio and its equation), and the grid point and
-    // component of an equation: what the numerical diagnostics of a design point report (design/aids).
+    // The pivot diagnostics of the factorisation (the largest MaxDiagonalRatio ratio and its equation), and the grid
+    // point and component of an equation: what the numerical diagnostics of a design point report (design/aids).
     [[nodiscard]] const linalg::PivotDiagnostics& pivotDiagnostics() const noexcept
     {
         return m_parts.solver->pivotDiagnostics();

@@ -88,7 +88,8 @@ public:
         const solutions::BucklingResults* buckling = nullptr;
         const assembly::DofMap* dofMap = nullptr;
         const assembly::ElementSet* set = nullptr; // the design point's
-        const input::ParamTable* params = nullptr; // the design point's PARAMs (COUPMASS, WTMASS of the MODES subcases)
+        // the design point's PARAMs (CoupledMass, WeightToMass of the MODES subcases)
+        const input::ParamTable* params = nullptr;
         std::size_t variableCount = 0;
         base::MemoryBudget* budget = nullptr;
         // The design point's snapshot and the pool, for the constraints of the solves under a shape that moves the

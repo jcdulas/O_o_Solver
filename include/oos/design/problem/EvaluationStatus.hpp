@@ -13,7 +13,7 @@ namespace oos::design
 // a failure of the analysis at that point gives NaN values and one of these, never an exception, so that an
 // optimiser goes on with its next point.
 // - Ok: the analysis and the responses were computed;
-// - Singular: a mechanism or a singularity (SingularityError: a zero or too small pivot, MAXRATIO exceeded);
+// - Singular: a mechanism or a singularity (SingularityError: a zero or too small pivot, MaxDiagonalRatio exceeded);
 // - Nonlinear: the point leaves the linear domain (the linearity indicators; not raised yet);
 // - Budget: the memory budget or an output volume was exhausted (MemoryBudgetError, OutputVolumeError, an allocation
 //   the system refused);

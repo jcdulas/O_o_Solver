@@ -20,7 +20,7 @@ enum class SolidResponseParts : std::uint8_t
     Recovery
 };
 
-// The linear response of one solid element in its material system (PSOLID CORDM), over the translations of its nodes
+// The linear response of one solid element in its material system (SolidProp CORDM), over the translations of its nodes
 // in that system (u1, v1, w1, u2, ...): its stiffness matrix, and for each recovery place the operators that give the
 // stress and the engineering strain from the nodal displacements (σ = stress[p]·u, ε = strain[p]·u). Each formulation
 // (the isoparametric solids, the incompatible-modes SolidHexa) fills one.

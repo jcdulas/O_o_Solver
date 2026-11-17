@@ -18,10 +18,10 @@ namespace oos::output
 // the estimate and the remedies (OutputVolumeError).
 //
 // The rows of each element type are counted by recovering its first element once with zero displacements (the rows
-// and columns of each kind: a CQUAD4 has its centre and four corners at two fibres, a laminate its plies), times the
-// elements of the request; the nodal tables have one row per point of the request; the grid point forces one row per
-// element and grid point plus the applied load, constraint and total rows of each grid point; the strain energy one row
-// per element.
+// and columns of each kind: a ShellQuad4 has its centre and four corners at two fibres, a laminate its plies), times
+// the elements of the request; the nodal tables have one row per point of the request; the grid point forces one row
+// per element and grid point plus the applied load, constraint and total rows of each grid point; the strain energy one
+// row per element.
 //
 // Thread-safety: none (filled case by case by one thread). Ownership: borrows the element set and the DOF map.
 class OutputVolumeEstimate

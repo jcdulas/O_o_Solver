@@ -14,10 +14,11 @@
 namespace oos::elements
 {
 
-// The DOFs of a scalar element (CELAS1-4, MassDofProperty-4): one or two (point, component) pairs, each with the sign it has
-// in the relative motion the element acts on, δ = u1 − u2 (the spring force is k (u1 − u2); an end left blank is
-// grounded, its displacement zero). The element matrix of a scalar value v (stiffness or mass) is then v · s·sᵀ over
-// the present DOFs, s their signs: v·[1 −1; −1 1] for two ends, [v] for one (CELAS1, MassDofProperty).
+// The DOFs of a scalar element (SpringDofProperty-4, MassDofProperty-4): one or two (point, component) pairs, each with
+// the sign it has in the relative motion the element acts on, δ = u1 − u2 (the spring force is k (u1 − u2); an end left
+// blank is grounded, its displacement zero). The element matrix of a scalar value v (stiffness or mass) is then v ·
+// s·sᵀ over the present DOFs, s their signs: v·[1 −1; −1 1] for two ends, [v] for one (SpringDofProperty,
+// MassDofProperty).
 struct ScalarConnection
 {
     std::array<ElementDof, 2> dofs{};

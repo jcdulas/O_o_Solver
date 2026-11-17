@@ -13,11 +13,11 @@
 namespace oos::solutions
 {
 
-// The inertia relief of a constraint set (PARAM INREL = −1 on its FreeBodySupport or SUPORT1 DOFs), kept with the set
-// for the sensitivities of a design point: the support motions D (g × r), M·D, (Dᵀ·M·D)⁻¹ and the accelerations ü_r of
-// each subcase solved on the set (assembly::InertiaRelief). The relieved loads of a subcase are P' = Q·P, Q = I −
-// M·D·(Dᵀ·M·D)⁻¹·Dᵀ; with support motions that are rigid-body motions (D does not depend on the stiffness nor on the
-// mass), their derivative with respect to a designed field is
+// The inertia relief of a constraint set (PARAM InertiaRelief = −1 on its FreeBodySupport or FreeBodySupportSet DOFs),
+// kept with the set for the sensitivities of a design point: the support motions D (g × r), M·D, (Dᵀ·M·D)⁻¹ and the
+// accelerations ü_r of each subcase solved on the set (assembly::InertiaRelief). The relieved loads of a subcase are P'
+// = Q·P, Q = I − M·D·(Dᵀ·M·D)⁻¹·Dᵀ; with support motions that are rigid-body motions (D does not depend on the
+// stiffness nor on the mass), their derivative with respect to a designed field is
 //     dP' = Q·(dP − dM·D·ü_r),
 // which the sensitivities form as the pseudo-load of the unrelieved loads and of the mass, corrected by the low-rank
 // term −M·D·c, c = (Dᵀ·M·D)⁻¹·Dᵀ·(dP − dM·D·ü_r) (design/sensitivity/PseudoLoads).

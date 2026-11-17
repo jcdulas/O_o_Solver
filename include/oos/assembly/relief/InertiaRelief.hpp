@@ -47,8 +47,9 @@ inline constexpr double RIGID_SUPPORT_TOLERANCE = 1.0e-8;
 [[nodiscard]] std::optional<std::array<double, MAX_SUPPORT_DOFS * MAX_SUPPORT_DOFS>> rigidSupportCoefficients(
     std::span<const double> phiAtSupports, std::size_t supportCount);
 
-// PARAM INREL: 0 no inertia relief (a FreeBodySupport then holds its DOFs as a constraint), −1 inertia relief on the
-// FreeBodySupport/SUPORT1 DOFs, −2 inertia relief without FreeBodySupport (the supports chosen by the solver).
+// PARAM InertiaRelief: 0 no inertia relief (a FreeBodySupport then holds its DOFs as a constraint), −1 inertia relief
+// on the FreeBodySupport/FreeBodySupportSet DOFs, −2 inertia relief without FreeBodySupport (the supports chosen by the
+// solver).
 enum class InertiaReliefMode : std::int8_t
 {
     None = 0,
@@ -56,14 +57,14 @@ enum class InertiaReliefMode : std::int8_t
     Automatic = -2
 };
 
-// The r-set DOFs of a subcase (SUPORT, and the SUPORT1 set the subcase selects), from O_o_Reader's dofSetsTable (the
-// selection of a SUPORT1 set given in the table as the subcases that select it). A point the model does not have, or a
-// component a scalar point does not have, is an error Diagnostic; an empty result without the table. Sorted, each DOF
-// once.
+// The r-set DOFs of a subcase (FreeBodySupport, and the FreeBodySupportSet set the subcase selects), from O_o_Reader's
+// dofSetsTable (the selection of a FreeBodySupportSet set given in the table as the subcases that select it). A point
+// the model does not have, or a component a scalar point does not have, is an error Diagnostic; an empty result without
+// the table. Sorted, each DOF once.
 [[nodiscard]] std::vector<base::DofIndex> supportDofsOf(const input::ModelSnapshot& snapshot, const DofMap& dofMap,
                                                         base::EntityId subcase, base::DiagnosticSink& sink);
 
-// The supports of PARAM INREL = −2: six DOFs of the a set (exclusive set b) on which the rigid-body modes are
+// The supports of PARAM InertiaRelief = −2: six DOFs of the a set (exclusive set b) on which the rigid-body modes are
 // independent, chosen by a pivoted Gram-Schmidt on the rows of D (the rigid-body modes of `modes`): at each step the
 // DOF whose row is the farthest from the span of the rows taken (the farthest points, which make the best conditioned
 // statically determinate support), on a tie the lowest DOF. Fewer than six when the model does not let six motions
@@ -121,9 +122,9 @@ void addRigidMotionAt(const DofMap& dofMap, const std::array<double, RigidBodyMo
 // D (g × r) the rigid-body motions of a unit motion of each support DOF (computed from the stiffness by the solution:
 // D_l = −K_ll⁻¹·K_lr, D_r = I, expanded to the m set by Gm, zero on the s set), M = Mgg. The structure is then solved
 // under P' with the supports held (u_r = 0): the displacements are relative to the supports, and the support reactions
-// vanish to round-off. With PARAM INREL = −2 the displacements are then made orthogonal to the rigid-body motions in
-// the mass metric, u ← u − D·(Dᵀ·M·D)⁻¹·Dᵀ·M·u, which does not depend on the supports chosen (this project's choice of
-// normalisation).
+// vanish to round-off. With PARAM InertiaRelief = −2 the displacements are then made orthogonal to the rigid-body
+// motions in the mass metric, u ← u − D·(Dᵀ·M·D)⁻¹·Dᵀ·M·u, which does not depend on the supports chosen (this project's
+// choice of normalisation).
 //
 // Thread-safety: const methods are safe concurrently. Ownership: owns D, M·D and the reduced mass; borrows M.
 class InertiaRelief
@@ -144,7 +145,7 @@ public:
     [[nodiscard]] std::array<double, MAX_SUPPORT_DOFS> accelerationsOf(std::span<const double> loadsG) const;
     // P ← P − M·D·ü_r.
     void relieve(std::span<double> loadsG) const;
-    // u ← u − D·(Dᵀ·M·D)⁻¹·Dᵀ·M·u (PARAM INREL = −2).
+    // u ← u − D·(Dᵀ·M·D)⁻¹·Dᵀ·M·u (PARAM InertiaRelief = −2).
     void removeRigidMotion(std::span<double> displacementsG, base::MemoryBudget& budget) const;
     // The amplitudes of the rigid motion of u in the mass metric, (Dᵀ·M·D)⁻¹·(M·D)ᵀ·u (from M·D, without a product
     // with M): u − D·amplitudes is M-orthogonal to D (the gauge of the refinement's residuals).

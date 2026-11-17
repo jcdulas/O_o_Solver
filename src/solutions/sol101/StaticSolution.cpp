@@ -91,7 +91,8 @@ constexpr std::uint64_t STORED_CASE_VECTORS = 5;
 // 1.56-1.59 s without the store, 1.15-1.25 s with it (the assembly 0.68-0.73 s -> 0.32-0.41 s); the budget peak
 // unchanged (5.12 GB, in the factorisation).
 constexpr double KEPT_STIFFNESS_BUDGET_FRACTION = 0.25;
-// PARAM GRDPNT: −1 (the default) no grid point weight generator; 0 about the origin; a grid point about it.
+// PARAM WeightReferenceNode: −1 (the default) no grid point weight generator; 0 about the origin; a grid point about
+// it.
 constexpr std::int32_t NO_WEIGHT_REFERENCE_NODE = -1;
 // The stiffness products of the basis vectors made together (basisProductGroup): at most this share of the memory left
 // for their blocks (the products and the l-set displacements: two g-set vectors each), and at most this many vectors
@@ -101,7 +102,7 @@ constexpr std::uint64_t BASIS_PRODUCT_GROUP_MAX = 64;
 
 // The quantities combined from the basis for each case (ResultCombination): displacements, applied loads, SPC
 // forces, MPC forces, the reduced loads of the solve and its residual, and the displacements before the rigid motion
-// of INREL = −2 is removed.
+// of InertiaRelief = −2 is removed.
 enum Quantity : std::size_t
 {
     Displacements,
@@ -141,7 +142,7 @@ base::ProgressCounter* beginStage(ProgressMonitor* monitor, const char* stage, s
     return monitor == nullptr ? nullptr : &monitor->beginStage(stage, total);
 }
 
-// The pivot policy of a subcase: PARAM MAXRATIO (default 1e7) and BAILOUT (default 0).
+// The pivot policy of a subcase: PARAM MaxDiagonalRatio (default 1e7) and SingularityBailOut (default 0).
 linalg::PivotPolicy pivotPolicyOf(const input::ParamTable* params, std::optional<std::int32_t> subcase,
                                   base::DiagnosticSink& sink)
 {
@@ -159,7 +160,7 @@ linalg::PivotPolicy pivotPolicyOf(const input::ParamTable* params, std::optional
     return policy;
 }
 
-// PARAM INREL: 0 (default), −1, −2.
+// PARAM InertiaRelief: 0 (default), −1, −2.
 assembly::InertiaReliefMode reliefModeOf(const input::ParamTable* params, std::optional<std::int32_t> subcase,
                                          base::DiagnosticSink& sink)
 {
@@ -218,9 +219,9 @@ std::size_t basisProductGroup(std::size_t gSize, std::size_t basisSize, bool has
 
 // The l-set factorisation; a stiffness that cannot be factorised (a mechanism, a free body: a failed ratio test or a
 // zero pivot) stops the run with its SingularityError carrying the zero-energy shapes:
-// MechanismShapes factorises the slightly shifted stiffness with the failed pivots kept (BAILOUT −1) and finds the
-// shapes from that factor. When the shifted factorisation fails too, or the shapes do not fit the budget, the error is
-// the first one, without shapes.
+// MechanismShapes factorises the slightly shifted stiffness with the failed pivots kept (SingularityBailOut −1) and
+// finds the shapes from that factor. When the shifted factorisation fails too, or the shapes do not fit the budget, the
+// error is the first one, without shapes.
 std::unique_ptr<FsetSolver> factoriseWithShapes(const linalg::BlockSparseMatrix& knn, const linalg::NodeGraph& graph,
                                                 const assembly::DofMap& dofMap, const assembly::DofSets& sets,
                                                 const linalg::DenseKernels& kernels, const FsetSolverOptions& options,
@@ -615,7 +616,7 @@ RigidSupports rigidSupportModes(const assembly::DofMap& dofMap, const linalg::Bl
             column[static_cast<std::size_t>(support)] = phi(static_cast<std::size_t>(support), a);
         // Knn·Φ_n on the n set: Knn keeps the rows and columns of the m DOFs as Kgg has them (MsetElimination), so the
         // product takes Φ on the n set alone and is read on the n set alone (with Φ_m in the column, K̄nm·Φ_m would be
-        // added a second time: a model with an RigidBodyStar or an MPC equation on stiff points would fail the test).
+        // added a second time: a model with a RigidBodyStar or an MPC equation on stiff points would fail the test).
         for (const base::DofIndex dependent : gm.mDofs())
             column[static_cast<std::size_t>(dependent)] = 0.0;
         knn.multiply(column, std::span<double>(&forces(0, a), g));
@@ -846,7 +847,8 @@ std::shared_ptr<const KeptRelief> keptReliefOf(
 
 // The load basis handed over (StaticOptions::keepsLoadBasis): the basis of each constraint set, chosen
 // before any factorisation or condensation (the full path's StaticLoadCases, the same on both paths), and the mass of
-// its inertial loads on the pattern of the model's elements (one per mass option of the sets: COUPMASS, WTMASS).
+// its inertial loads on the pattern of the model's elements (one per mass option of the sets: CoupledMass,
+// WeightToMass).
 struct LoadBasisPlan
 {
     std::unique_ptr<linalg::NodeGraph> massGraph;
@@ -882,7 +884,7 @@ std::string megabytesOf(std::uint64_t bytes)
 // Chooses the basis of each constraint set (`groups`, indices into `subcases`) and checks what its units keep against
 // the share of the budget the result tables may take (StaticOptions::outputLimitBytes, else OUTPUT_BUDGET_FRACTION of
 // what is available): the basis replaces those tables. Refuses on the condensed path, naming the subcases, PARAM
-// INREL = −2 and enforced displacements (SolverError). Throws MemoryBudgetError with the estimate.
+// InertiaRelief = −2 and enforced displacements (SolverError). Throws MemoryBudgetError with the estimate.
 LoadBasisPlan planLoadBasis(const input::ModelSnapshot& snapshot, const StaticOptions& options,
                             const AnalysisModel& model, const assembly::LoadVectorBuilder& loadBuilder,
                             std::span<const StaticSubcase> subcases, std::span<const assembly::SpcSet> spcSets,
@@ -896,7 +898,7 @@ LoadBasisPlan planLoadBasis(const input::ModelSnapshot& snapshot, const StaticOp
     {
         for (const std::vector<std::size_t>& group : groups)
         {
-            // Inertia relief is taken but PARAM INREL = −2, which the condensed path refuses.
+            // Inertia relief is taken but PARAM InertiaRelief = −2, which the condensed path refuses.
             if (reliefModes[group.front()] == assembly::InertiaReliefMode::Automatic)
                 sink.report(subcaseProblem(
                     subcases[group.front()].label, base::Severity::Error, "load-basis-condensed-relief",
@@ -1375,8 +1377,8 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
     const output::StiffnessRecovery stiffnessRecovery(elementSet, dofMap, pool);
     if (m_options.keepsLoadBasis)
     {
-        // A bar or beam under a line load (PLOAD1) is recovered in the station layout of its loaded case, which the
-        // superposition of the units' tables does not give: refused.
+        // A bar or beam under a line load (BeamDistributedLoad) is recovered in the station layout of its loaded case,
+        // which the superposition of the units' tables does not give: refused.
         for (const StaticSubcase& subcase : subcases)
         {
             if (subcase.isCombination || !subcase.load)
@@ -1452,7 +1454,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                            temperatures ? &temperatures->temperatures() : nullptr, budget, given);
     };
 
-    // PARAM GRDPNT, and the reference point of the resultants (that grid point, the origin otherwise).
+    // PARAM WeightReferenceNode, and the reference point of the resultants (that grid point, the origin otherwise).
     const std::int32_t weightReferenceNode =
         assembly::findIntegerParam(params, "WeightReferenceNode", std::nullopt, sink)
             .value_or(NO_WEIGHT_REFERENCE_NODE);
@@ -1465,8 +1467,8 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             sink.report(assembly::badParamDiagnostic("WeightReferenceNode", "-1, 0 or a grid point of the model"));
     }
 
-    // 3. The constraint sets of the solved subcases (SPC, MPC, BCONTACT, FreeBodySupport and PARAM INREL), and the
-    // groups of subcases that share one: one assembly and one factorisation per group.
+    // 3. The constraint sets of the solved subcases (SPC, MPC, BCONTACT, FreeBodySupport and PARAM InertiaRelief), and
+    //    the groups of subcases that share one: one assembly and one factorisation per group.
     std::vector<std::size_t> solved; // indices into subcases
     for (std::size_t s = 0; s < subcases.size(); ++s)
         if (!subcases[s].isCombination)
@@ -1847,7 +1849,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         {
             // The MonitorNodeForceSum3 of the case (output::MonitorPoint3): the element rows of its ELEMSET with the
             // thermal part of its load, and the rows appliedLoad, singlePointConstrForce and multiPointConstrForce that
-            // XFLAG keeps at its GRIDSET.
+            // TemperatureLoadFlag keeps at its GRIDSET.
             const output::MonitorNodalLoads nodal{state.applied, state.spcForces, state.mpcForces};
             MonitorPoint3Loads loads;
             loads.subcase = subcase.label;
@@ -2054,7 +2056,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         const std::vector<base::DofIndex>& userSupports = supports[group.front()];
 
         // 4. Gm, the sets, the pattern, Kgg and Knn (ConstrainedSystem), with the r set of FreeBodySupport or the
-        // supports PARAM INREL = −2 chooses.
+        //    supports PARAM InertiaRelief = −2 chooses.
         const assembly::SpcSet& groupSpc = spcSets[group.front()];
         if (reliefMode == assembly::InertiaReliefMode::Automatic)
         {
@@ -2474,7 +2476,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                               : nullptr;
         if (!system.singularityTable().empty())
             results.singularityTables.push_back(system.singularityTable());
-        // PARAM USETPRT >= 0 (-1, the default, prints nothing) asks for the USET table of the DOF sets solved.
+        // PARAM DofSetPrint >= 0 (-1, the default, prints nothing) asks for the USET table of the DOF sets solved.
         if (assembly::findIntegerParam(params, "DofSetPrint", paramSubcase, sink).value_or(-1) >= 0)
         {
             constexpr std::array<assembly::DofSet, 6> PRINTED_SETS{assembly::DofSet::G, assembly::DofSet::M,
@@ -2495,8 +2497,8 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         // refined (refineRelievedSolution), the element results made from it, the displacements then moved by the rigid
         // motion that brings the FreeBodySupport DOFs back to rest (u ← u − D·u_r, D = Φ·C): the balanced loads give
         // the same deformation on any statically determinate support, and a thin body held at one point is
-        // ill-conditioned. Otherwise (a body a constraint holds besides its supports, fewer than six of them, INREL =
-        // −2, a design point's analysis) the FreeBodySupport DOFs held and D solved from the stiffness.
+        // ill-conditioned. Otherwise (a body a constraint holds besides its supports, fewer than six of them,
+        // InertiaRelief = −2, a design point's analysis) the FreeBodySupport DOFs held and D solved from the stiffness.
         const bool hasRelief = reliefMode != assembly::InertiaReliefMode::None && !rSet.empty();
         RigidSupports rigid;
         if (hasRelief && reliefMode == assembly::InertiaReliefMode::OnSupports && !m_options.keepsSystems)
@@ -2582,14 +2584,15 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             assembly::MassAssembler(elementSet, dofMap, shares,
                                     assembly::MassAssemblyOptions::fromParams(params, paramSubcase, sink))
                 .assemble(*mass, pool, cancellation);
-            // The reduced mass of the external units, as given (in consistent units: WTMASS scales the elements'
+            // The reduced mass of the external units, as given (in consistent units: WeightToMass scales the elements'
             // mass only, and a mass given as a matrix is added after it, unscaled).
             if (externalPath)
                 externalPath->addMass(*mass);
         }
         if (weightReferenceNode != NO_WEIGHT_REFERENCE_NODE && !hasGridPointWeight)
         {
-            // PARAM GRDPNT: the rigid-body mass properties, in the units of the input masses (WTMASS removed).
+            // PARAM WeightReferenceNode: the rigid-body mass properties, in the units of the input masses (WeightToMass
+            // removed).
             const double weightToMass =
                 assembly::findRealParam(params, "WeightToMass", paramSubcase, sink).value_or(1.0);
             const assembly::RigidBodyModes modes(dofMap, referencePoint, budget);

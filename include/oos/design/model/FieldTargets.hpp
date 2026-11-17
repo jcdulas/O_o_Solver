@@ -78,7 +78,7 @@ struct ShapeTarget
 // "matId", "matId1", "membraneMatId" ... (plies of laminatePliesTable included). Without unit tables, unitIds() is
 // empty and no stamp is computed.
 //
-// Shape variables (DVGRID): the grid points of each basis are bound to the rows of the node table, and a
+// Shape variables (DesignNodeMove): the grid points of each basis are bound to the rows of the node table, and a
 // design point overlays the column xyzGlobal of "nodes" at those rows with g = g0 + Σ_v s_v·T_v(g) (ShapeRelations).
 // A grid point changes the unit (component) componentNodes gives it, or every unit when the snapshot has the units but
 // not componentNodes (a moved grid point must never leave a stamp unchanged). Refused

@@ -1,6 +1,6 @@
 #pragma once
 
-// ShellTria3 — three-node shell (CTRIA3, ShellProp, CompProp, CompPropGlobal; IsoMat, AnisoMat2D, OrthoMat2D):
+// ShellTria3 — three-node shell (ShellTria3, ShellProp, CompProp, CompPropGlobal; IsoMat, AnisoMat2D, OrthoMat2D):
 //
 //   | ShellTria3 | EID   | PID | G1 | G2 | G3 | THETA or MCID | ZOFFS |
 //   |        | TFLAG | T1  | T2 | T3 |

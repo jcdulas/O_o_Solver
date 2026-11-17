@@ -5,7 +5,7 @@
 //   | PointMassInertia | EID | G   | CID | M   | X1  | X2 | X3 |     |
 //   |       | I11 | I21 | I22 | I31 | I32 | I33 |    |     |
 //
-// Formulation (CONM2): a rigid body of mass M whose centre of gravity is offset from the grid point G by
+// Formulation (PointMassInertia): a rigid body of mass M whose centre of gravity is offset from the grid point G by
 // d = (X1, X2, X3), with the inertia matrix at the centre of gravity
 //
 //   J = [ I11 −I21 −I31 ; −I21 I22 −I32 ; −I31 −I32 I33 ]

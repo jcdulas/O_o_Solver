@@ -13,9 +13,10 @@
 namespace oos::input
 {
 
-// The glue parameters in force for one pair of contact bodies (the glue fields of BCONPRG and of a BCTABLE section, as
-// O_o_Reader resolves them from the pair's BCONPRG/BCONPRP, the fields of its BCTABLE section and the BCPARA defaults).
-// Nothing for a field O_o_Reader leaves null; an IGLUE left null is blank, that is 0: touching contact.
+// The glue parameters in force for one pair of contact bodies (the glue fields of ContactPairGeomParams and of a
+// ContactTable section, as O_o_Reader resolves them from the pair's ContactPairGeomParams/ContactPairPhysicalParams,
+// the fields of its ContactTable section and the ContactParams defaults). Nothing for a field O_o_Reader leaves null;
+// an IGLUE left null is blank, that is 0: touching contact.
 struct GlueParameters
 {
     std::optional<std::int32_t> glueOption;
@@ -42,7 +43,7 @@ struct ContactNodePair
     std::int32_t secondaryBody = 0;
     std::int32_t primaryBody = 0;
     std::int32_t nodeId = 0;
-    std::optional<std::int32_t> primaryElementId; // nothing on a BLSEG segment
+    std::optional<std::int32_t> primaryElementId; // nothing on a SlidelineSegments segment
     std::span<const std::int32_t> face;
     bool isSearchedFromPrimary = false; // a row of the search from the primary body: its bodies are swapped
 };
@@ -54,10 +55,10 @@ struct ContactNodePair
 // missingGlueColumns() lists those absent, and a glued contact is refused with them (assembly::requireGlueContract),
 // never guessed.
 //
-// Which pairs a subcase glues: BCONTACT = n selects the contact table n of the Bulk Data: a BCTABLE n, whose pairs are
-// those whose `table` is "ContactTable n", or a BCTABL1 n, which lists BCONECT entries, whose pairs only
-// contactTablesTable names; without that table, a BCONTACT that matches no BCTABLE while the model has BCONECT pairs
-// is a ContractError naming contactTablesTable (selectedPairRows).
+// Which pairs a subcase glues: BCONTACT = n selects the contact table n of the Bulk Data: a ContactTable n, whose pairs
+// are those whose `table` is "ContactTable n", or a ContactTable1 n, which lists ContactPair entries, whose pairs only
+// contactTablesTable names; without that table, a BCONTACT that matches no ContactTable while the model has ContactPair
+// pairs is a ContractError naming contactTablesTable (selectedPairRows).
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns the imported tables (buffers borrowed).
 class ContactTable
@@ -89,7 +90,7 @@ public:
     [[nodiscard]] bool hasFace(std::int64_t row) const;
 
     // The pair rows a BCONTACT ID selects, increasing. Throws ContractError (naming contactTablesTable) when the
-    // model has BCONECT pairs and no contactTablesTable, and the ID is not that of a BCTABLE.
+    // model has ContactPair pairs and no contactTablesTable, and the ID is not that of a ContactTable.
     [[nodiscard]] std::vector<std::int64_t> selectedPairRows(std::int32_t bcontactId) const;
 
     [[nodiscard]] const base::ContractReader& nodePairReader() const noexcept { return m_nodePairs; }

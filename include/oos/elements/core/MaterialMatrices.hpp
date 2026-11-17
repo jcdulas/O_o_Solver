@@ -9,9 +9,9 @@ namespace oos::elements
 {
 
 // The constitutive matrices of the surface elements, in Voigt order (εx, εy, γxy) with the engineering shear strain
-// γxy = 2εxy (MAT1, AnisoMat2D: the stress-strain relation of a plate is written on γxy).
+// γxy = 2εxy (IsoMat, AnisoMat2D: the stress-strain relation of a plate is written on γxy).
 
-// The plane-stress matrix of an isotropic material (MAT1): E/(1 − ν²)·[[1, ν, 0], [ν, 1, 0], [0, 0, (1 − ν)/2]].
+// The plane-stress matrix of an isotropic material (IsoMat): E/(1 − ν²)·[[1, ν, 0], [ν, 1, 0], [0, 0, (1 − ν)/2]].
 // Precondition: |ν| < 1 (the input format bounds NU to (−1, 0.5]).
 [[nodiscard]] base::Mat3 planeStressMatrix(double youngModulus, double poissonRatio);
 

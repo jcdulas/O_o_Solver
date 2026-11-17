@@ -13,12 +13,12 @@
 namespace oos::solutions
 {
 
-// The number of the residual structure (SEBULK, SUPER: superelement 0).
+// The number of the residual structure (SuperelementBulkOptions, SUPER: superelement 0).
 inline constexpr std::int32_t RESIDUAL_STRUCTURE = 0;
 
 // A boundary point of a superelement (O_o_Reader's part_boundaries): the point in the superelement's own ID space and
-// the point of the residual structure it is (an SuperelementConnection pair, the automatic search of
-// SuperelementBulkOptions AUTO, an SuperelementExternalBoundary point of an external superelement).
+// the point of the residual structure it is (a SuperelementConnection pair, the automatic search of
+// SuperelementBulkOptions AUTO, a SuperelementExternalBoundary point of an external superelement).
 struct SuperelementBoundaryPoint
 {
     base::EntityId nodeId = 0;
@@ -48,9 +48,9 @@ struct SuperelementPart
     // An external superelement: its matrices. Null for a part.
     std::shared_ptr<const ExternalSuperelementMatrices> external;
     std::vector<SuperelementBoundaryPoint> boundary; // sorted by nodeId
-    // The q set of a part (QSET, GeneralizedDofSet1, SuperelementGeneralizedDofSet, SuperelementGeneralizedDofSet1 of
-    // its scalar points): its generalised coordinates, the fixed-interface modes of its Craig-Bampton reduction in a
-    // modal analysis, increasing. Empty: the part is reduced statically (Guyan) there.
+    // The q set of a part (GeneralizedDofSet, GeneralizedDofSet1, SuperelementGeneralizedDofSet,
+    // SuperelementGeneralizedDofSet1 of its scalar points): its generalised coordinates, the fixed-interface modes of
+    // its Craig-Bampton reduction in a modal analysis, increasing. Empty: the part is reduced statically (Guyan) there.
     std::vector<base::EntityId> modalPoints;
 };
 

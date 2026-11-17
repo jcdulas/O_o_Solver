@@ -323,7 +323,8 @@ CacheKey makeUnitKey(const UnitKeySources& sources, base::MemoryBudget& budget)
     }
     key.parameters.assign(sources.parameters.begin(), sources.parameters.end());
 
-    // The DOFs held in every subcase, by label (before the singularity processor: its AUTOSPC follows from the rest).
+    // The DOFs held in every subcase, by label (before the singularity processor: its AutoSingularityConstr follows
+    // from the rest).
     {
         CacheHasher hasher;
         const base::BudgetedBuffer<std::int32_t> nodes = unitPointNodes(dofMap, description, budget);

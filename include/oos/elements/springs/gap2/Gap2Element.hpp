@@ -1,13 +1,13 @@
 #pragma once
 
-// Gap2 — gap element, in a linear analysis (CGAP, GapProp):
+// Gap2 — gap element, in a linear analysis (Gap2, GapProp):
 //
 //   | Gap2 | EID | PID | GA | GB | X1/GO | X2  | X3  | CID   |
 //   | GapProp | PID | U0  | F0 | KA | KB    | KT  | MU1 | MU2   |
 //   |      | TMAX| MAR | TRMIN |
 //
 // Formulation: in a linear solution sequence the gap is a linear spring in the state the initial opening
-// U0 gives it (PGAP: the gap is closed when U0 ≤ 0, open when U0 > 0; the nonlinear contact is for SOL 106 and
+// U0 gives it (GapProp: the gap is closed when U0 ≤ 0, open when U0 > 0; the nonlinear contact is for SOL 106 and
 // 400): closed, the axial stiffness KA and the transverse stiffness KT (O_o_Reader gives KT = MU1·KA when blank) in the
 // element y and z directions; open, the axial stiffness KB and no transverse stiffness. The springs act on the
 // translations of GA and GB only (the Gap2 has no rotational stiffness), on the relative displacement

@@ -10,7 +10,7 @@ namespace oos::elements
 namespace
 {
 
-// What a stiffness term of a AnisoMat2D changes in a shell: the stiffness, the thermal loads and the recovery; not the
+// What a stiffness term of an AnisoMat2D changes in a shell: the stiffness, the thermal loads and the recovery; not the
 // mass, which reads ρ and the thickness only (ShellTria3DrillingPlate::mass).
 constexpr FieldUse ANISO_MAT2D_TERM_USE{true, false, true, true, false};
 
@@ -52,7 +52,7 @@ FieldUse ShellTria3DrillingElement::designFieldUse(const DesignedField& field) c
 }
 
 // The closed forms: dK/dT and dM/dT of the ShellProp thickness T when every corner thickness follows it
-// (ShellTria3DrillingPlate::thicknessRate, massThicknessRate); dK/dG of a AnisoMat2D stiffness term of the ShellProp
+// (ShellTria3DrillingPlate::thicknessRate, massThicknessRate); dK/dG of an AnisoMat2D stiffness term of the ShellProp
 // (ShellTria3DrillingPlate::sectionRate); every other field and element is differenced.
 bool ShellTria3DrillingElement::stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
                                                 const DesignedField& field, ElementMatrixBlock& block) const
@@ -264,7 +264,7 @@ bool ShellTria3DrillingElement::differentialStiffnessFieldMixedDerivative(
 }
 
 // The rows' rates with respect to T at fixed displacements (ShellTria3DrillingPlate::centreStateRates, appendShellRowRates), or
-// to a AnisoMat2D stiffness term without a temperature change (centreStateSectionRates).
+// to an AnisoMat2D stiffness term without a temperature change (centreStateSectionRates).
 bool ShellTria3DrillingElement::recoveryFieldRates(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                                           ElementOutput output, const NodalDisplacements& displacements,
                                           ElementResultBlock& rates) const

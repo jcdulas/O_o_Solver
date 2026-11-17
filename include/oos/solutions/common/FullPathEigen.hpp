@@ -34,7 +34,7 @@ enum class EigenSolver : std::uint8_t
 
 // Where multilevel substructuring and the factor out of core take their pencil: from the elements, front by front and
 // product by product, no matrix of the analysis set assembled (the default); or the assembled matrices (the reference,
-// and the outputs that need Kgg or Mgg: SPCFORCES, MPCFORCES, MEFFMASS, PARAM GRDPNT).
+// and the outputs that need Kgg or Mgg: SPCFORCES, MPCFORCES, MEFFMASS, PARAM WeightReferenceNode).
 enum class EigenPencil : std::uint8_t
 {
     Elements,

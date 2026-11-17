@@ -20,7 +20,7 @@ namespace oos::assembly
 {
 
 // Two grid points closer than this share of the model's extent (DofMap::extent) are at one place for the geometry of
-// the relations: an RigidInterpolation leg on its reference point takes no lever arm. Far above the round-off of
+// the relations: a RigidInterpolation leg on its reference point takes no lever arm. Far above the round-off of
 // coordinates (1e-16 of the extent, a point given in metres to 1e-6 and written in mm: 1e-12 mm off, the
 // engine hub of a test model), far below any meshed length (a 40 m aircraft: 4e-6 mm).
 inline constexpr double GEOMETRIC_COINCIDENCE_RATIO = 1.0e-10;

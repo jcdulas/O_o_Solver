@@ -11,7 +11,7 @@
 namespace oos::elements
 {
 
-// The differential stiffness of a bar or beam (CBAR, Beam2; SOL 105) under the axial force N of
+// The differential stiffness of a bar or beam (Bar2, Beam2; SOL 105) under the axial force N of
 // the preload (positive in tension), over the end DOFs d = [u θ]_A [u θ]_B in the element system, from the second
 // variation of ½ ∫ N (v'² + w'²) dx with the cubic (Hermite) deflections of the Euler-Bernoulli bar (Przemieniecki,
 // Theory of Matrix Structural Analysis, §15.3; Cook, Malkus, Plesha & Witt, 4th ed., §18.2): in plane 1 on

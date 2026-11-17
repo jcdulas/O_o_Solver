@@ -24,7 +24,7 @@ enum class TableRole
     LineLoads,          // lineLoadsTable
     Temperatures,       // temperatureTable
     Deformations,       // deformations: cardTable(deck, "AxialDeformationLoad"), the DEFORM cards
-    InertialLoads,      // inertialLoadsTable: GRAV, ACCEL, ACCEL1, RFORCE
+    InertialLoads,      // inertialLoadsTable: GravityLoad, AccelFieldLoad, AccelNodeLoad, RotationalForceLoad
     LoadCombinations,   // loadCombinationsTable: the terms of every LOAD entry
     Subcases,           // subcasesTable
     Params,             // paramsTable: the typed PARAM table
@@ -36,24 +36,27 @@ enum class TableRole
     OutputRequests,     // outputRequestsTable: the Case Control output requests of each subcase
     CaseSets,           // caseSetsTable: one row per member of each Case Control SET
     CoordinateSystems,  // coordsTable: the CORDij systems resolved to the basic system
-    LaminatePlies,      // laminatePliesTable: the ply stack of each PCOMP and PCOMPG, the SYM option expanded
+    // laminatePliesTable: the ply stack of each CompProp and CompPropGlobal, the SYM option expanded
+    LaminatePlies,
     LaminateSummary,    // laminateSummary: one row per laminate, with its lamination option LAM
-    Sections,           // sectionsTable(types=PBARL, PBEAML): section properties
-    FastenerPiercings,  // fastenerPiercings: where CFAST and CWELD pierce the shells (contract 60)
-    Supports,           // dofSetsTable(cards=SUPORT, SUPORT1): the DOFs of SUPORT and SUPORT1
+    Sections,           // sectionsTable(types=BarShapeProp, BeamShapeProp): section properties
+    FastenerPiercings,  // fastenerPiercings: where Fastener and Weld pierce the shells (contract 60)
+    // dofSetsTable(cards=FreeBodySupport, FreeBodySupportSet): the DOFs of FreeBodySupport and FreeBodySupportSet
+    Supports,
     ConnectionNodes,    // componentNodes: connectedComponents(detail="nodes") (contract 34)
     ConnectionClusters, // connectionList: connectionClusters(detail="connections"), every connection (contract 40)
     ContactNodePairs,   // contactNodePairs: the grid points of glued contact
     ContactPairs,       // contactPairsTable: the pairs of contact bodies and their glue parameters
     ContactTables,      // contactTablesTable: the pairs each BCONTACT ID selects (optional)
-    Spiders,            // spiders: the RBE2 and RBE3 as spiders of a component, their eligibility (contract 34)
+    // spiders: the RigidBodyStar and RigidInterpolation as spiders of a component, their eligibility (contract 34)
+    Spiders,
     ConnectionSharing,  // connectionSharing: per grid point, the connections that touch it (contract 34)
-    AeroReference,      // aeroReferenceTable: AERO and AEROS
-    AeroPanels,         // aeroPanelsTable: the CAERO1 to CAERO5 panels
+    AeroReference,      // aeroReferenceTable: AERO and AeroStaticParams
+    AeroPanels,         // aeroPanelsTable: the AeroLiftingPanel1 to AeroPistonPanel5 panels
     AeroBoxes,          // aeroBoxesTable: the boxes of the doublet-lattice panels, in the basic system
-    ControlSurfaces,    // controlSurfacesTable: the AESURF cards with their boxes
+    ControlSurfaces,    // controlSurfacesTable: the AeroControlSurface cards with their boxes
     TrimCases,          // aeroTrimCasesTable: the TRIM cards, one row per trim variable
-    Splines,            // splinesTable: the SPLINE1 to SPLINE7 cards
+    Splines,            // splinesTable: the AeroSurfaceSpline1 to AeroFiniteBeamSpline7 cards
     SplineNodes,        // splineNodes: the structural points of each spline
     DirectMatrixShapes, // directMatrixShapes: directMatricesTable(detail="matrices"), a row a matrix (contract 57)
     DirectMatrices,     // directMatricesTable(full=True): the terms of DownwashMatrix, AeroPressureMatrix,

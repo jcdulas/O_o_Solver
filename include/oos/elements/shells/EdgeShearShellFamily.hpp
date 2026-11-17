@@ -6,7 +6,7 @@
 // pressureLoads, thermalLoads, differentialStiffness).
 //
 // What the family adds to the kernels:
-// - the inputs: grid points and their displacement systems, the section (PSHELL with IsoMat, AnisoMat2D, OrthoMat2D;
+// - the inputs: grid points and their displacement systems, the section (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D;
 // CompProp and CompPropGlobal
 //   as their equivalent section: PlateConstitutive.hpp), the corner thicknesses (T1-T4, TFLAG), the material axis
 //   (THETA from the user x axis, or the projection of MCID's x axis), the offset ZOFFS;
@@ -35,13 +35,13 @@
 //   elements; here the membrane forces recovered by the element (ShellCentreRecovery, the thermal force removed) act on
 //   the in-plane gradients of u, v, w (ShellDifferential), ∫ (Nx w,x² + 2 Nxy w,x w,y + Ny w,y²) dA and the same terms
 //   on u and v;
-// - no K6ROT: these elements have no drilling stiffness (the solver's automatic constraint of singular DOFs, PARAM
-//   AUTOSPC, removes θz of a flat mesh).
+// - no ShellDrillingStiffness: these elements have no drilling stiffness (the solver's automatic constraint of singular
+//   DOFs, PARAM AutoSingularityConstr, removes θz of a flat mesh).
 //
 // Design derivatives: the kernels are templates on the scalar and are evaluated in complex numbers along the rates of
 // their inputs (the section values and the corner thicknesses), which gives the exact first derivatives (complex step,
 // h = 1e-30). The second thickness rates use SecondOrderScalar to propagate the chain rule exactly. Fields
-// with closed forms: the ShellProp T when every corner follows it, a AnisoMat2D stiffness term of the ShellProp's
+// with closed forms: the ShellProp T when every corner follows it, an AnisoMat2D stiffness term of the ShellProp's
 // materials, a ply thickness of a CompProp or CompPropGlobal (forces and ply rows only); none under a temperature
 // change. The others are differenced by the sensitivity analysis on the facets.
 //

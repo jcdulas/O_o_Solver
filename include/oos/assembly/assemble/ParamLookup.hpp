@@ -16,7 +16,8 @@ namespace oos::assembly
 // the format's defaults apply); a value of the wrong kind is reported as a Warning "bad-param" naming what was
 // expected, and nothing is returned, so that the caller keeps the default.
 
-// A real PARAM (an integer value is accepted and converted, so that "PARAM,WTMASS,1" is read as 1.0 for WeightToMass).
+// A real PARAM (an integer value is accepted and converted, so that "PARAM,WeightToMass,1" is read as 1.0 for
+// WeightToMass).
 [[nodiscard]] std::optional<double> findRealParam(const input::ParamTable* params, const std::string& name,
                                                   std::optional<std::int32_t> subcase, base::DiagnosticSink& sink);
 

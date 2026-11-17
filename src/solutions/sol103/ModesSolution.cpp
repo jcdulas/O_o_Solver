@@ -44,7 +44,8 @@ constexpr double TWO_PI = 6.283185307179586;
 // The share of the memory budget left when the recovery starts that the result tables may take when the caller gives
 // no limit (as the static solution).
 constexpr double OUTPUT_BUDGET_FRACTION = 0.5;
-// PARAM GRDPNT: −1 (the default) no grid point weight generator; 0 about the origin; a grid point about it.
+// PARAM WeightReferenceNode: −1 (the default) no grid point weight generator; 0 about the origin; a grid point about
+// it.
 constexpr std::int32_t NO_WEIGHT_REFERENCE_NODE = -1;
 constexpr std::size_t RIGID_MODES = 6;
 
@@ -325,8 +326,9 @@ void solveCondensedGroup(const CondensedGroupContext& context)
 }
 
 // The pencil from the elements assembles neither Kgg nor Mgg: the SPC and MPC forces of
-// the modes (Kgg·φ − λ·Mgg·φ) are not asked of the recovery, MEFFMASS (Mgg on the analysis set) and PARAM GRDPNT (Mgg)
-// are not produced; one information diagnostic each, naming the assembled pencil that gives them.
+// the modes (Kgg·φ − λ·Mgg·φ) are not asked of the recovery, MEFFMASS (Mgg on the analysis set) and PARAM
+// WeightReferenceNode (Mgg) are not produced; one information diagnostic each, naming the assembled pencil that gives
+// them.
 void reportElementPencilOutputs(std::vector<ModalSubcase>& subcases, std::span<const std::size_t> group,
                                 bool hasGridPointWeight, base::DiagnosticSink& sink)
 {
@@ -600,7 +602,8 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
         }
         if (weightReferenceNode != NO_WEIGHT_REFERENCE_NODE && !results.gridPointWeight && mgg)
         {
-            // PARAM GRDPNT: the rigid-body mass properties, in the units of the input masses (WTMASS removed).
+            // PARAM WeightReferenceNode: the rigid-body mass properties, in the units of the input masses (WeightToMass
+            // removed).
             base::Vec3 referencePoint{};
             if (weightReferenceNode > 0)
             {

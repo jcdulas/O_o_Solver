@@ -38,11 +38,11 @@ struct VariableValues
     std::vector<std::vector<std::pair<std::size_t, double>>> derivatives;
 };
 
-// The DLINKs of a design model and the split of the variables into independent ones (the columns of x, the vector the
-// optimiser moves) and dependent ones (computed by their link). The optimisers move the independent variables only;
-// the links derive the others (variable linking).
+// The DesignVarLinks of a design model and the split of the variables into independent ones (the columns of x, the
+// vector the optimiser moves) and dependent ones (computed by their link). The optimisers move the independent
+// variables only; the links derive the others (variable linking).
 //
-// Checks (check()): every IDVi and DDVID names a DESVAR; a variable is dependent in one DesignVarLink at most; a
+// Checks (check()): every IDVi and DDVID names a DesignVar; a variable is dependent in one DesignVarLink at most; a
 // dependent variable is never an independent variable of a link (a DDVID cannot be an IDVi), so one pass computes every
 // dependent variable; a link has at least one term.
 //

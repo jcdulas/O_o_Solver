@@ -162,8 +162,8 @@ public:
     virtual ~FrontSource() = default;
     // Adds the terms of the front of supernode s (FrontTerms; cleared before).
     virtual void addTerms(FrontTerms& front) = 0;
-    // The diagonal of the matrix (every term on it summed) on the columns of supernode s, for the MAXRATIO ratio of the
-    // pivot diagnostics (a_jj / d_j): `values` holds columnCount(s) values.
+    // The diagonal of the matrix (every term on it summed) on the columns of supernode s, for the MaxDiagonalRatio
+    // ratio of the pivot diagnostics (a_jj / d_j): `values` holds columnCount(s) values.
     virtual void diagonal(std::int32_t supernode, std::span<double> values) const = 0;
 };
 

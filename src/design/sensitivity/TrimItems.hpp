@@ -35,7 +35,7 @@ namespace oos::design::detail
 // each SAERO subcase (u, w = D_r·ü_r), and the elastic coefficients of each variable a STABDER item reads (u_x, w_x)
 // — the pseudo-loads −∂K/∂v·u_d and −∂M/∂v·w_d are formed element by element on the elements v reaches (the
 // semi-analytic differences of their stiffness and mass facets, ElementDerivatives; the mass with the
-// formulation and WTMASS the trim assembled it with), then the linearisation gives
+// formulation and WeightToMass the trim assembled it with), then the linearisation gives
 //     the trimmed state: dx (TRIM items), du (the static items of the subcase: dr = cᵀ·du, c their displacement
 //     weights, the explicit part at fixed u being the static linearisation's);
 //     the elastic coefficients of a variable (STABDER items).
@@ -56,7 +56,7 @@ public:
     {
         const solutions::TrimResults* trim = nullptr; // with its linearisation
         const assembly::DofMap* dofMap = nullptr;
-        const input::ParamTable* params = nullptr; // the design point's PARAMs (COUPMASS, WTMASS)
+        const input::ParamTable* params = nullptr; // the design point's PARAMs (CoupledMass, WeightToMass)
         base::MemoryBudget* budget = nullptr;
     };
 

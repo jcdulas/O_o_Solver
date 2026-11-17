@@ -13,8 +13,8 @@
 namespace oos::elements
 {
 
-// The direction of a pressure on a shell (PLOAD4 fields CID, N1-N3: the pressure acts along N in CID when N is given,
-// else along the element normal): a normal pressure (nothing), or the unit vector N
+// The direction of a pressure on a shell (FacePressureLoad fields CID, N1-N3: the pressure acts along N in CID when N
+// is given, else along the element normal): a normal pressure (nothing), or the unit vector N
 // of the rectangular system CID written in the element frame (columns of `elementAxes`: x, y, n in basic). The
 // pressure p then acts as a traction p·N/|N| per unit area of the element's mean surface.
 struct PressureDirection

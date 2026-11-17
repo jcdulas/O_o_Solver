@@ -44,7 +44,7 @@ base::DictionaryView ElementBatch::propertyTypes() const
 
 ConnectivityView ElementBatch::connectivity(const std::string& column) const
 {
-    // Nulls are allowed: an absent midside grid point (CQUAD8), or the row of a grid point that does not exist
+    // Nulls are allowed: an absent midside grid point (ShellQuad8), or the row of a grid point that does not exist
     // (O_o_Reader in tolerant mode), is a problem of the model the element code reports as a diagnostic.
     const base::NullPolicy nulls = base::NullPolicy::Allow;
     if (m_reader.columnType(column).starts_with("fixed_list"))

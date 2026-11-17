@@ -23,8 +23,9 @@ struct ConstraintTerm
 };
 
 // The MPC equations of one MPC set (MPC: Σ_j A_j·u_j = 0, the first term's DOF dependent, put in the m set), from
-// the multiPointConstrTable of O_o_Reader (MPCADD resolved: the rows of an MultiPointConstrUnion set carry its ID in
-// `setId`; one row per term, the equations in the order of the cards). A term on a scalar point has component 0.
+// the multiPointConstrTable of O_o_Reader (MultiPointConstrUnion resolved: the rows of a MultiPointConstrUnion set
+// carry its ID in `setId`; one row per term, the equations in the order of the cards). A term on a scalar point has
+// component 0.
 //
 // An equation with a problem is dropped and reported: a point the model does not define ("mpc-unknown-point"), a
 // component the point does not have ("mpc-bad-component"), a dependent coefficient of zero
@@ -34,10 +35,10 @@ struct ConstraintTerm
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns its terms (budgeted); the budget must outlive
 // it. Movable, not copyable.
 //
-// The MPC card of each equation: the equations of an MultiPointConstrUnion set are those of the MPC
+// The MPC card of each equation: the equations of a MultiPointConstrUnion set are those of the MPC
 // cards whose SIDs it lists. multiPointConstrTable names the card's own SID of each row in an optional `source_sid`
 // column (asked of O_o_Reader, as singlePointConstrTable and loadsTable have it); without it the selected set stands
-// for the card (sourceSetIdOf() is setId()), which is exact for a set of MPC cards and keys an MultiPointConstrUnion by
+// for the card (sourceSetIdOf() is setId()), which is exact for a set of MPC cards and keys a MultiPointConstrUnion by
 // its own ID.
 class MpcEquations
 {

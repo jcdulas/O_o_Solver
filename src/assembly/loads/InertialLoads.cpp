@@ -181,7 +181,7 @@ void InertialLoads::addFromLoadTable(base::EntityId loadSetId, const FieldApplie
         writeField(spec, field.span());
         apply(field.span(), spec.factor);
     }
-    // RotationalForceLoad, ACCEL, AccelNodeLoad rows of loadsTable are refused by LoadVectorBuilder (they need
+    // RotationalForceLoad, AccelFieldLoad, AccelNodeLoad rows of loadsTable are refused by LoadVectorBuilder (they need
     // inertialLoadsTable).
 }
 
@@ -254,12 +254,12 @@ std::vector<InertialLoads::RowSpec> InertialLoads::inertialRowsOf(base::EntityId
         {
             const auto index = static_cast<std::size_t>(row);
             const std::string_view card = cards[row];
-            // The unit direction of the table: the acceleration of GravityLoad, ACCEL, AccelNodeLoad, the axis of
-            // RotationalForceLoad.
+            // The unit direction of the table: the acceleration of GravityLoad, AccelFieldLoad, AccelNodeLoad, the axis
+            // of RotationalForceLoad.
             const base::Vec3 unit{directions[0][index], directions[1][index], directions[2][index]};
-            // GravityLoad, ACCEL, AccelNodeLoad: the acceleration vector, the LOAD factors in its magnitude: the
-            // expanded tables' (the row's), or the term's factor times the set's (a rounding from the expanded rows,
-            // which multiply the card's magnitude by the factor before the direction).
+            // GravityLoad, AccelFieldLoad, AccelNodeLoad: the acceleration vector, the LOAD factors in its magnitude:
+            // the expanded tables' (the row's), or the term's factor times the set's (a rounding from the expanded
+            // rows, which multiply the card's magnitude by the factor before the direction).
             const double magnitude = (hasMagnitude.isValid(row) ? magnitudes[index] : 0.0) * term.factor;
             RowSpec spec;
             spec.direction = card == "RotationalForceLoad" ? unit : magnitude * unit;
@@ -529,7 +529,8 @@ std::vector<InertialTerm> InertialLoads::termsOf(base::EntityId loadSetId, base:
     for (const RowSpec& spec : specs)
     {
         // The generator of the row's field and its coefficients (InertialTerm): the field is linear in the acceleration
-        // vector (GRAV, AccelNodeLoad, ACCEL: three components) or in the row's factor (RFORCE: its own field).
+        // vector (GravityLoad, AccelNodeLoad, AccelFieldLoad: three components) or in the row's factor
+        // (RotationalForceLoad: its own field).
         InertialTerm term;
         term.generator.push_back(static_cast<double>(spec.kind));
         switch (spec.kind)

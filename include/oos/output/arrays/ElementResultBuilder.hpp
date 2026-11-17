@@ -109,9 +109,9 @@ struct RecoveryWindow
 //   - for the families with layers (the laminated shells), "stress", "strain" and "failureIndices" from
 //     recoverLayers() (LayerOutput), under ElementFamily::layerResultElementType() ("ShellQuad4Composite").
 // The element type of a table is ElementFamily::resultElementType(). The elements of a subcase loaded by line loads
-// (PLOAD1 on a CBAR or CBEAM) are recovered by recoverUnderLineLoads(), in the station layout, which can show the
-// forces between the ends (a CBAR under PLOAD1: its own element type); when that layout is the element's
-// ordinary one (CBEAM), its rows join the ordinary table in the element order.
+// (BeamDistributedLoad on a Bar2 or Beam2) are recovered by recoverUnderLineLoads(), in the station layout, which can
+// show the forces between the ends (a Bar2 under BeamDistributedLoad: its own element type); when that layout is the
+// element's ordinary one (Beam2), its rows join the ordinary table in the element order.
 //
 // The selection (from the Case Control requests and SETs: OutputPlan) limits each kind to its elements and,
 // for the shells, to their centre rows (an element whose rows hold a centre row, grid point 0, and corner rows keeps
@@ -124,7 +124,7 @@ struct RecoveryWindow
 // temperatures): the Linear columns of a row are rest + Σ_d S_e(row, column, d)·u_d, d over the element's DOFs in their
 // order, for every case of the block (the element's slopes made once for the block, its rows at rest once per set of
 // temperatures), the other columns completed by the family with the functions of its recovery (a ply's failure indices
-// from the rows of its ply states: ElementFamily::vectorisedLayerSource; a CWELD's stresses from its forces:
+// from the rows of its ply states: ElementFamily::vectorisedLayerSource; a Weld's stresses from its forces:
 // ElementFamily::vectorisedSource); equal to build()'s values to round-off. The elements of a case under line loads are
 // recovered under their loads, as build() recovers them, in place of their vectorised rows. Every other kind is
 // recovered case by case, with build()'s bits.
@@ -140,16 +140,16 @@ class ElementResultBuilder
 {
 public:
     // The most elements recovered by one task: large enough to amortise the virtual call and the column reads, small
-    // enough to bound the block of a task (a CQUAD4 has 10 stress rows of 8 values: 2 048 elements make a block of
+    // enough to bound the block of a task (a ShellQuad4 has 10 stress rows of 8 values: 2 048 elements make a block of
     // about 1.3 MB).
     static constexpr std::int64_t RANGE_ELEMENTS = 2048;
     // With a pool, a batch is cut into about RANGES_PER_THREAD ranges per thread, so that a mid-size batch is shared
-    // between the threads too (2 464 CQUAD4 made two ranges of 2 048: two threads), but none shorter than
+    // between the threads too (2 464 ShellQuad4 made two ranges of 2 048: two threads), but none shorter than
     // MIN_RANGE_ELEMENTS, whose virtual calls and column reads would weigh. The rows do not depend on the ranges.
     static constexpr std::int64_t RANGES_PER_THREAD = 4;
     static constexpr std::int64_t MIN_RANGE_ELEMENTS = 64;
     // The most elements of one task of the vectorised recovery: a task holds the rows of its range for every case of
-    // the block (a CQUAD4's 25 rows of 8 values, 256 elements and 32 cases: about 13 MB).
+    // the block (a ShellQuad4's 25 rows of 8 values, 256 elements and 32 cases: about 13 MB).
     static constexpr std::int64_t VECTORISED_RANGE_ELEMENTS = 256;
 
     // rangeElements: the elements of one task, RANGE_ELEMENTS but in the tests of the threaded recovery, which lower it

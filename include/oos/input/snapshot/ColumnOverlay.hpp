@@ -13,9 +13,9 @@ namespace oos::input
 {
 
 // One value given to one cell of a real column: the row of the table, the item of a fixed-list column
-// ("fixed_list<float64>[n]", from 0), of a list ("list<float64>", the plies of a PCOMP, the dimensions of a PBARL: the
-// position in the list of the row) or of a list of fixed lists ("list<fixed_list<float64>[n]>", the stations of a
-// PBEAM: station · n + component) or SCALAR_ITEM for a "float64" column, and the value.
+// ("fixed_list<float64>[n]", from 0), of a list ("list<float64>", the plies of a CompProp, the dimensions of a
+// BarShapeProp: the position in the list of the row) or of a list of fixed lists ("list<fixed_list<float64>[n]>", the
+// stations of a BeamProp: station · n + component) or SCALAR_ITEM for a "float64" column, and the value.
 struct CellValue
 {
     static constexpr std::int32_t SCALAR_ITEM = -1;

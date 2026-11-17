@@ -19,9 +19,9 @@ namespace oos::elements
 
 // The lookups by ID that the element families need and the snapshot's row-index columns do not give: grid and scalar
 // points (for the cards without nodesRows), materials (a property names its material by MID),
-// coordinate systems (CBUSH CID and OCID, PointMassMatrix and PointMassInertia CID). Built once per snapshot and shared by every
-// batch view; shared too by the index of an overlay of the snapshot that changes no ID (a design perturbation), see the
-// second constructor.
+// coordinate systems (Bushing CID and OCID, PointMassMatrix and PointMassInertia CID). Built once per snapshot and
+// shared by every batch view; shared too by the index of an overlay of the snapshot that changes no ID (a design
+// perturbation), see the second constructor.
 //
 // Thread-safety: immutable once built; concurrent lookups are safe (computedOnce builds its values under a lock).
 // Ownership: shares its indices (budgeted) with the indices made from it; borrows the snapshot, which must outlive it.

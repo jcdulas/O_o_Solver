@@ -25,7 +25,7 @@ struct SingularBlock
     bool isAligned = true;
 
     // block: the 9 values of the block, row-major (its two triangles averaged); isFree: the components in neither the m
-    // nor the s set (only those are analysed); pivotZeroThreshold: PARAM EPZERO.
+    // nor the s set (only those are analysed); pivotZeroThreshold: PARAM PivotZeroThreshold.
     [[nodiscard]] static SingularBlock analyse(std::span<const double, 9> block, const std::array<bool, 3>& isFree,
                                                double pivotZeroThreshold);
 };

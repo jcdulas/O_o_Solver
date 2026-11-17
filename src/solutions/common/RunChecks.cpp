@@ -63,7 +63,7 @@ void reportKeptPivots(const linalg::PivotDiagnostics& pivots, const linalg::Equa
 {
     if (!pivots.hasIssues())
         return;
-    // MAXRATIO as the SingularityError of a stopping policy writes it (PivotDiagnostics::enforce).
+    // MaxDiagonalRatio as the SingularityError of a stopping policy writes it (PivotDiagnostics::enforce).
     constexpr std::size_t RATIO_TEXT_SIZE = 32;
     char ratio[RATIO_TEXT_SIZE];
     std::snprintf(ratio, sizeof(ratio), "%.3e", pivots.maxRatio());

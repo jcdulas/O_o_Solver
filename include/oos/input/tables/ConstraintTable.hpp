@@ -11,11 +11,13 @@ namespace oos::input
 {
 
 // The constraints of the model, expanded by O_o_Reader:
-// - singlePointConstrTable: one row per constrained grid point and SPC set (SPC, SPC1, SPCD, SPCADD expanded), and
-//   the permanent constraints of the grid points (card PERMANENT_CONSTRAINT_CARD, set null: they apply to every set);
-//   the card by its neutral name (SinglePointConstr, SinglePointConstrList, EnforcedMotionConstr); the components as
-//   a text of digits ("123456"), the enforced value (null for a SinglePointConstrList and the permanent constraints);
-// - multiPointConstrTable: one row per term of each MPC equation (MPCADD resolved), the dependent term flagged.
+// - singlePointConstrTable: one row per constrained grid point and SPC set (SinglePointConstr, SinglePointConstrList,
+//   EnforcedMotionConstr, SinglePointConstrUnion expanded), and the permanent constraints of the grid points (card
+//   PERMANENT_CONSTRAINT_CARD, set null: they apply to every set); the card by its neutral name (SinglePointConstr,
+//   SinglePointConstrList, EnforcedMotionConstr); the components as a text of digits ("123456"), the enforced value
+//   (null for a SinglePointConstrList and the permanent constraints);
+// - multiPointConstrTable: one row per term of each MPC equation (MultiPointConstrUnion resolved), the dependent term
+//   flagged.
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns the imported tables (buffers borrowed).
 // The card of the rows of singlePointConstrTable that hold the permanent constraints of the grid points (their PS

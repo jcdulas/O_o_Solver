@@ -19,8 +19,9 @@
 namespace oos::design
 {
 
-// What a relation designs: a property field (DVPREL1, DesignPropRelation2), a material field (DVMREL1,
-// DesignMatRelation2), or a connection or element field (DVCREL1, DesignElemRelation2).
+// What a relation designs: a property field (DesignPropRelation1, DesignPropRelation2), a material field
+// (DesignMatRelation1, DesignMatRelation2), or a connection or element field (DesignElemRelation1,
+// DesignElemRelation2).
 enum class TargetKind
 {
     Property,
@@ -32,7 +33,7 @@ enum class TargetKind
 enum class RelationForm
 {
     Linear,   // DVxREL1: field = C0 + Σ COEFi · DESVARi
-    Equation, // DVxREL2: field = DEQATN(arguments), the DESVARs then the DesignConstants constants
+    Equation, // DVxREL2: field = DesignEquation(arguments), the DesignVars then the DesignConstants constants
     Supplied  // add_relation(function=, gradient=): the value and gradient are supplied per design point by the caller
 };
 
@@ -48,7 +49,8 @@ struct RelationTerm
 };
 
 // One argument of an equation relation, in the order of the DesignEquation header: a design variable, or a
-// DesignConstants constant named by its label (DVPREL2: the DESVAR values, then the DesignConstants values).
+// DesignConstants constant named by its label (DesignPropRelation2: the DesignVar values, then the DesignConstants
+// values).
 struct RelationArgument
 {
     std::int32_t variableId = 0; // when `constantLabel` is empty
@@ -78,7 +80,7 @@ struct DesignRelation
     std::optional<double> lowerBound;        // PMIN, MPMIN, CPMIN: kept for the optimiser
     std::optional<double> upperBound;        // PMAX, MPMAX, CPMAX
 
-    // "DesignPropRelation1 12 (PSHELL 3 t)", as messages name the relation.
+    // "DesignPropRelation1 12 (ShellProp 3 t)", as messages name the relation.
     [[nodiscard]] std::string label() const;
 };
 
@@ -101,16 +103,16 @@ struct FieldValue
 
 // The relations of a design model, and their evaluation with derivatives.
 //
-// Values: Linear, field = C0 + Σ COEFi·x_i (DVPREL1, DesignMatRelation1, DesignElemRelation1); Equation, field =
-// f(arguments) with f the DesignEquation program evaluated with exact forward-mode derivatives (ExpressionEvaluator),
-// the DesignConstants constants bound by position (DVPREL2: the DESVAR IDs then the DesignConstants labels, matched to
-// the DesignEquation arguments in order). Derivatives with respect to the independent variables by the chain rule
-// through the links:
+// Values: Linear, field = C0 + Σ COEFi·x_i (DesignPropRelation1, DesignMatRelation1, DesignElemRelation1); Equation,
+// field = f(arguments) with f the DesignEquation program evaluated with exact forward-mode derivatives
+// (ExpressionEvaluator), the DesignConstants constants bound by position (DesignPropRelation2: the DesignVar IDs then
+// the DesignConstants labels, matched to the DesignEquation arguments in order). Derivatives with respect to the
+// independent variables by the chain rule through the links:
 //     d(field)/d(x_k) = Σ_v ∂(field)/∂(v) · d(v)/d(x_k),
 // with ∂(field)/∂(v) = COEF (Linear), the evaluator's exact partials (Equation), or the supplied gradient, and
 // d(v)/d(x_k) from DesignLinks::expand (1 for v = x_k, CMULT·Ci for a dependent variable).
 //
-// Checks (check()): relation IDs unique per card; every DESVAR, DesignEquation and DesignConstants named exists; an
+// Checks (check()): relation IDs unique per card; every DesignVar, DesignEquation and DesignConstants named exists; an
 // equation has as many arguments as its header; a linear relation has at least one term; a field driven by two
 // relations is refused (a field driven by several variables is one relation with several terms), the field identified
 // by its target kind, card, ID, column and item.

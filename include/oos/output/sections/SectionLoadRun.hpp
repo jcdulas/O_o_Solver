@@ -55,8 +55,8 @@ struct SectionLoadRequest
 //     its temperatures: the loads are affine in the displacements), then offered to the accumulators (envelopes, sink,
 //     kept values);
 //  4. a case known by its displacements only (a SUBCOM, the condensed path) gives its values from the rows directly.
-// A bar or beam of a section under a line load (PLOAD1) is refused for that subcase (checkLineLoads): its forces are
-// then given at the stations of the element, a layout the sections do not read.
+// A bar or beam of a section under a line load (BeamDistributedLoad) is refused for that subcase (checkLineLoads): its
+// forces are then given at the stations of the element, a layout the sections do not read.
 //
 // Thread-safety: none (driven by the analysis, in case order). Ownership: owns its sections, cuts and accumulators;
 // borrows the element set and the DOF map, which must outlive it.

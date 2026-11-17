@@ -18,7 +18,7 @@ inline constexpr const char* INVALID_VARIABLE = "invalid-design-variable";     /
 inline constexpr const char* INVALID_LINK = "invalid-design-link";             // DesignVarLink
 inline constexpr const char* INVALID_RELATION = "invalid-design-relation";     // DVxRELi
 inline constexpr const char* MISSING_REFERENCE =
-    "missing-design-reference"; // a DESVAR, DesignEquation or DesignConstants not defined
+    "missing-design-reference"; // a DesignVar, DesignEquation or DesignConstants not defined
 inline constexpr const char* MISSING_TARGET = "missing-design-target";         // a card, ID or field the model lacks
 inline constexpr const char* FIELD_DRIVEN_TWICE = "field-driven-twice";        // two relations on one field
 inline constexpr const char* INVALID_RESPONSE = "invalid-design-response";     // DesignResp1/2/3 fields, cycles
@@ -26,7 +26,7 @@ inline constexpr const char* UNSUPPORTED_RESPONSE = "unsupported-design-response
 inline constexpr const char* MISSING_RESPONSE_TARGET = "missing-response-target";  // a grid, element, property absent
 inline constexpr const char* INVALID_CONSTRAINT =
     "invalid-design-constraint";                                     // DesignConstr, DesignConstrUnion, DESSUB, DESOBJ
-inline constexpr const char* INVALID_SHAPE = "invalid-design-shape"; // DesignNodeMove: its vector, its DESVAR
+inline constexpr const char* INVALID_SHAPE = "invalid-design-shape"; // DesignNodeMove: its vector, its DesignVar
 inline constexpr const char* SHAPE_DISTORTION = "shape-distortion"; // a design point that degenerates an element
 } // namespace design_code
 

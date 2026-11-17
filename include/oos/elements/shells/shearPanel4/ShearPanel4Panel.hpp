@@ -19,7 +19,7 @@ inline constexpr double SHEAR_PANEL_MIN_CORNER_RATIO = 1.0e-10;
 // ShearPanelProp F1, F2: F at or below this is a fraction of the panel, above it a width in thicknesses.
 inline constexpr double SHEAR_PANEL_EFFECTIVENESS_LIMIT = 1.01;
 
-// The section of a shear panel (PSHEAR: T, NSM, F1, F2; the IsoMat of MID).
+// The section of a shear panel (ShearPanelProp: T, NSM, F1, F2; the IsoMat of MID).
 struct ShearPanelSection
 {
     double thickness = 0.0;
@@ -40,9 +40,9 @@ enum class ShearPanelProblem : std::uint8_t
     Warped      // the four grid points off one plane
 };
 
-// One shear panel (CSHEAR, ShearPanelProp; the panel of Garvey, The quadrilateral shear panel, Aircraft Engineering
-// 1951), formulated in its element frame: x along the projection of G1→G2 on the mean plane, n along d13 × d24 (the
-// diagonals), y = n × x.
+// One shear panel (ShearPanel4, ShearPanelProp; the panel of Garvey, The quadrilateral shear panel, Aircraft
+// Engineering 1951), formulated in its element frame: x along the projection of G1→G2 on the mean plane, n along d13 ×
+// d24 (the diagonals), y = n × x.
 //
 // - Shear flows (statically determinate, Garvey): the panel carries tangential shear flows q1 ... q4 on its edges
 //   1-2, 2-3, 3-4, 4-1, whose edge forces F_e = s_e q_e L_e u_e (s = −1, +1, −1, +1: a positive shear acts along
@@ -54,7 +54,7 @@ enum class ShearPanelProblem : std::uint8_t
 // - Stiffness: the generalised displacement Δ = bᵀ u is conjugate to q̄; with the strain energy of the mean flow
 //   U = q̄² A / (2 G t) (A the panel area ½ |d13 × d24|), q̄ = Δ / f, f = A / (G t), and K = b bᵀ / f. On a
 //   parallelogram the state is the exact uniform shear τ = G γ.
-// - Extensional rods (PSHEAR F1, F2): on edges 1-2 and 3-4 of area F1 T A / (L12 + L34) when F1 ≤ 1.01, else
+// - Extensional rods (ShearPanelProp F1, F2): on edges 1-2 and 3-4 of area F1 T A / (L12 + L34) when F1 ≤ 1.01, else
 //   0.5 F1 T², and likewise with F2 on edges 2-3 and 1-4; axial stiffness E A_rod / L each (no Poisson coupling).
 //
 // Design choices of this project: the energy of the mean flow on a panel that is not a parallelogram (Garvey's flows

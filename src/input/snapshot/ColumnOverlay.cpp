@@ -233,7 +233,7 @@ std::unique_ptr<OwnedColumn> copyFixedListColumn(const ArrowArray& source, std::
     return static_cast<const std::int32_t*>(list.buffers[1])[slot];
 }
 
-// The copy of a "list<fixed_list<float64>[width]>" column (the stations of a PBEAM): the list array keeps the base's
+// The copy of a "list<fixed_list<float64>[width]>" column (the stations of a BeamProp): the list array keeps the base's
 // validity and offsets (borrowed: `keepAlive` holds the base), its child of fixed lists and their values are copied
 // whole (the child keeps its offset, so that the list offsets stay right) with the cells set. The item of a cell is
 // station · width + component, as O_o_Reader's design_relations_table flattens a list of vectors (field_item).
@@ -297,10 +297,10 @@ std::unique_ptr<OwnedColumn> copyNestedListColumn(const ArrowArray& source, bool
     return column;
 }
 
-// The copy of a "list<float64>" column (the plies of a PCOMP, the dimensions of a PBARL or of the stations of a
-// PBEAML): the list array keeps the base's validity and offsets (borrowed: `keepAlive` holds the base), its child of
-// values is copied whole from its logical start (offset 0 in the copy, so that the list offsets stay right) with the
-// cells set. The item of a cell is its position in the list of its row.
+// The copy of a "list<float64>" column (the plies of a CompProp, the dimensions of a BarShapeProp or of the stations of
+// a BeamShapeProp): the list array keeps the base's validity and offsets (borrowed: `keepAlive` holds the base), its
+// child of values is copied whole from its logical start (offset 0 in the copy, so that the list offsets stay right)
+// with the cells set. The item of a cell is its position in the list of its row.
 std::unique_ptr<OwnedColumn> copyListColumn(const ArrowArray& source, bool isLarge, std::int64_t lead,
                                             const std::vector<CellValue>& cells)
 {
@@ -456,7 +456,7 @@ base::ImportedTable shareTable(const std::string& name, const base::ImportedTabl
         }
         else if (type.starts_with("list<fixed_list<float64>"))
         {
-            // The stations of a PBEAM (design/model/FieldTargets): "+L" (O_o_Reader) or "+l" offsets.
+            // The stations of a BeamProp (design/model/FieldTargets): "+L" (O_o_Reader) or "+l" offsets.
             const ArrowSchema& schema = source.columnSchema(index);
             const bool isLarge = std::string_view(schema.format) == "+L";
             const std::int64_t width = base::fixedListWidth(*schema.children[0]);
@@ -467,8 +467,8 @@ base::ImportedTable shareTable(const std::string& name, const base::ImportedTabl
         }
         else if (type == "list<float64>")
         {
-            // The plies of a PCOMP, the dimensions of a PBARL or of the stations of a PBEAML (design/model/
-            // FieldTargets): "+L" (O_o_Reader) or "+l" offsets; the item within the list of its row.
+            // The plies of a CompProp, the dimensions of a BarShapeProp or of the stations of a BeamShapeProp
+            // (design/model/ FieldTargets): "+L" (O_o_Reader) or "+l" offsets; the item within the list of its row.
             const bool isLarge = std::string_view(source.columnSchema(index).format) == "+L";
             checkNestedCells(*columnEdits, array, isLarge, 1, source.offset(), source.rowCount());
             copy = copyListColumn(array, isLarge, source.offset(), columnEdits->cells);
@@ -610,8 +610,8 @@ ModelSnapshot ColumnOverlay::applyTo(const ModelSnapshot& base, const std::share
         builder.addMaterialCardTable(table.card(), share(MATERIALS_PREFIX + table.card(), table.reader()));
     for (const CardTable& table : base.loadCardTables())
         builder.addLoadCardTable(table.card(), share(LOAD_CARDS_PREFIX + table.card(), table.reader()));
-    // Every card table of the aeroelastic model: the AESTAT IDs of the trim variables a SAERO response names among
-    // them, not only the splines' and the lists'.
+    // Every card table of the aeroelastic model: the AeroRigidTrimVariable IDs of the trim variables a SAERO response
+    // names among them, not only the splines' and the lists'.
     for (const CardTable& table : base.aeroCardTables())
         builder.addAeroCardTable(table.card(), table.idColumn(),
                                  share(AERO_CARDS_PREFIX + table.card(), table.reader()));

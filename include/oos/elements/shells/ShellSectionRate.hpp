@@ -1,11 +1,11 @@
 #pragma once
 
-// The rate of a shell section with respect to one stiffness term of a AnisoMat2D of its ShellProp: what the
+// The rate of a shell section with respect to one stiffness term of an AnisoMat2D of its ShellProp: what the
 // closed-form derivatives of the shells in their section terms (ShellQuad4DrillingPlate::sectionRate,
-// ShellTria3DrillingPlate::sectionRate) differentiate along. A AnisoMat2D term enters the section as written (ShellSection.cpp:
-// G1 = the MID1 matrix, G2 = the MID2 matrix, B/t² = −G4 of the MID4, the G = G33 of MID1 of the drilling membranes'
-// rotation penalty, κG = TS/T·G11 and TS/T·G22 of the MID3 along the material axes), so its rate is a unit matrix (or
-// unit modulus) in each part the material acts on, turned into the element frame as the section is
+// ShellTria3DrillingPlate::sectionRate) differentiate along. An AnisoMat2D term enters the section as written
+// (ShellSection.cpp: G1 = the MID1 matrix, G2 = the MID2 matrix, B/t² = −G4 of the MID4, the G = G33 of MID1 of the
+// drilling membranes' rotation penalty, κG = TS/T·G11 and TS/T·G22 of the MID3 along the material axes), so its rate is
+// a unit matrix (or unit modulus) in each part the material acts on, turned into the element frame as the section is
 // (ShellSection::rotatedToElementFrame, linear in the matrices).
 //
 //   | AnisoMat2D | MID | G11 | G12 | G13 | G22 | G23 | G33 | RHO | ... |    stiffness items 0 to 5
@@ -40,13 +40,13 @@ struct ShellSectionRate
     bool movesShear = false;
 };
 
-// The fields of a section of which the shells give these rates: a stiffness term G11 ... G33 of a AnisoMat2D (its
+// The fields of a section of which the shells give these rates: a stiffness term G11 ... G33 of an AnisoMat2D (its
 // "stiffness" items 0 to 5) named by its MID.
 [[nodiscard]] bool isAnisoMat2DStiffnessTerm(const DesignedField& field) noexcept;
 
 // The rate of `section` (in the element frame: turned by `materialAngle` from the material frame) with respect to the
 // AnisoMat2D stiffness term `field`. Nothing where the closed forms do not hold, the caller then differencing the
-// facets: a field that is not a AnisoMat2D stiffness term, a laminate, a section none of whose MIDs is the field's
+// facets: a field that is not an AnisoMat2D stiffness term, a laminate, a section none of whose MIDs is the field's
 // AnisoMat2D, a MID3 term of a direction that is rigid at the point (G11 or G22 not positive: the shear saturation is
 // not differentiable there), a MID4 term of a coupling that is zero at the point on a family that takes no coupling
 // (`takesCoupling` false: the drilling membranes of the ShellQuad4Drilling and ShellTria3Drilling refuse a MID4 with a

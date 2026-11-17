@@ -21,7 +21,7 @@ namespace
 // moves (almost) no mass, so that the acceleration of the supports is not defined.
 constexpr double MASSLESS_SUPPORT_RATIO = 1.0e-12;
 // A row of D whose remaining norm is at most this fraction of the largest row norm adds no direction (the automatic
-// supports of INREL = −2).
+// supports of InertiaRelief = −2).
 constexpr double DEPENDENT_SUPPORT_RATIO = 1.0e-8;
 
 base::Diagnostic supportProblem(std::string code, std::string_view card, base::EntityId id, std::string message)
@@ -115,7 +115,7 @@ std::vector<base::DofIndex> supportDofsOf(const input::ModelSnapshot& snapshot, 
         }
         else if (card != "FreeBodySupport")
         {
-            continue; // the other DOF set cards of dofSetsTable (ASET, OmittedDofSet, ...): not the r set
+            continue; // the other DOF set cards of dofSetsTable (AnalysisDofSet, OmittedDofSet, ...): not the r set
         }
         const std::optional<input::PointRef> point = dofMap.points().find(nodeIds[index]);
         base::ComponentCode code;

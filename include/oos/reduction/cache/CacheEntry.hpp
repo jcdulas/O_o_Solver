@@ -30,9 +30,10 @@ enum class CacheEntryKind : std::uint8_t
 // - patternWork G = F_oᵀ·K_oo⁻¹·F_o (patterns × patterns, symmetric), the interior work of the condensed load
 //   patterns, with which the external work of a case is known without recovering the unit
 //   (StaticCondensation::patternWork); a few numbers per pair of patterns, a quantity of the condensed patterns;
-// - largestPivotRatio, the MAXRATIO diagnostic of the interior factorisation, reported as the factorisation would.
-// Never an interior factor, never a recovery matrix K_oo⁻¹·K_oa: the recovery of a unit taken from the cache factorises
-// its interior again (StaticCondensation::recomputeInteriorFactor), to the same bits.
+// - largestPivotRatio, the MaxDiagonalRatio diagnostic of the interior factorisation, reported as the factorisation
+//   would.
+// Never an interior factor, never a recovery matrix K_oo⁻¹·K_oa: the recovery of a unit taken from the cache
+// factorises its interior again (StaticCondensation::recomputeInteriorFactor), to the same bits.
 //
 // Thread-safety: immutable once made; shared between the cache's memory layer and the analyses that use it. Ownership:
 // owns its matrices, budgeted in the budget given when it was made, which must outlive it.

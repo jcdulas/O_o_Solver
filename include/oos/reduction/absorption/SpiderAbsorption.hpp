@@ -37,10 +37,10 @@ struct FreedReference
 // it) and whose legs are all on one unit is decided by AbsorptionEligibility (O_o_Reader's topological rule, the
 // exclusions of the analysis, the numerical safeguard). An absorbed spider:
 // - RigidInterpolation or RigidBodyStar: becomes part of its unit (its element ID among the unit's elements, its
-// revision in the unit's
-//   stamp); its reference point joins the unit's points as a boundary point, its legs leave the boundary (unless
-//   something else keeps them there); an RigidInterpolation's REFC DOFs become free DOFs of the unit (the reference
-//   DOFs of the change of basis, FreedReference); an RigidBodyStar is eliminated inside the unit by its own equations;
+//   revision in the unit's stamp); its reference point joins the unit's points as a boundary point, its legs leave the
+//   boundary (unless something else keeps them there); a RigidInterpolation's REFC DOFs become free DOFs of the unit
+//   (the reference DOFs of the change of basis, FreedReference); a RigidBodyStar is eliminated inside the unit by its
+//   own equations;
 // - fastener side: the grid points of its pierced element leave the boundary, the fastener stays a connection (its
 //   stiffness between P_A and P_B); P has no model point when it is generated, so the plan puts the smallest grid
 //   point of the pierced element on the boundary to stand for it (SpiderDecision::boundaryNodeId).

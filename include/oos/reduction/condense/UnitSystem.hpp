@@ -44,8 +44,9 @@ enum class UnitDofRole : std::uint8_t
 {
     Interior,    // an interior equation: eliminated by the partial factorisation (the o set of the unit)
     Boundary,    // a boundary equation: kept in K* (the a set of the unit)
-    Constrained, // held in every subcase (SPC, GRID PS, AUTOSPC of the full path aside): removed, its enforced value a
-                 // load
+    // held in every subcase (SPC, GRID PS, AutoSingularityConstr of the full path aside): removed, its enforced value
+    // a load
+    Constrained,
     Dependent,   // made dependent by a relation eliminated inside the unit (a row of the units' Gm)
     Absent       // a leg slot an absorbed spider frees: its m reference values live at the reference point
 };
@@ -85,11 +86,12 @@ struct UnitModel
     const assembly::RigidElimination* unitRelations = nullptr;
     // One flag per g-set DOF: nonzero when held in every subcase (a DOF held in some subcases only is on a boundary).
     std::span<const std::uint8_t> isConstrainedEverywhere;
-    // The non-structural mass of the NSM set (null: none) and the mass options (COUPMASS, WTMASS).
+    // The non-structural mass of the NSM set (null: none) and the mass options (CoupledMass, WeightToMass).
     const assembly::NonStructuralMassShares* nonStructuralMass = nullptr;
     assembly::MassAssemblyOptions massOptions;
     linalg::AssemblyOptions assembly;
-    // The grid point singularity processor of the unit's interior points (PARAM AUTOSPC, EPZERO).
+    // The grid point singularity processor of the unit's interior points (PARAM AutoSingularityConstr,
+    // PivotZeroThreshold).
     assembly::SingularityOptions singularity;
     // The six rigid-body motions of UnitSystem::makeRigidBodyModes on the DOFs of the entities of the element
     // formulation (the entity DOFs of the g set × 6, column-major: assembly::DofMap::addAffineEntityField); empty
@@ -104,7 +106,7 @@ struct UnitModel
 // assembly and the relations eliminated inside the unit leave it, before the spider change of basis and the
 // condensation: the unit's contribution to the blocks of the full model's Knn at its boundary, which the interface
 // problem sums with the others to check the singularities of the boundary points on the blocks the full path sees
-// ("the AUTOSPC of boundary nodes decided on the summed contributions"). The nodes are those of the
+// ("the AutoSingularityConstr of boundary nodes decided on the summed contributions"). The nodes are those of the
 // model (assembly::DofMap); the values rowDofCount × columnDofCount, column-major, at valueOffset in
 // UnitSystem::rawBoundaryValues(); the rows and columns of the DOFs folded by the unit's relations (dependent DOFs,
 // the reference DOFs of its spiders) are zero.
@@ -117,12 +119,12 @@ struct RawBoundaryBlock
 
 // What an analysis reads of a unit's build beside its equations, for a unit taken from the condensation
 // cache whose equations the analysis does not read (UnitSystem's constructor without equations): the singularity rows
-// of its interior points (and so the DOFs AUTOSPC holds), its largest free diagonal, its raw boundary blocks, its
-// elements with a point on the boundary, whether each DOF held in every subcase is coupled, its boundary labels and the
-// local DOFs of its boundary equations, its interior equation count, its rigid-body mass properties. Made by a build
-// with the equations (UnitSystem::boundaryData), a deterministic function of the unit's inputs: the build of an equal
-// cache key gives the same values to the bit. Never in the condensation cache (it may be large): kept in memory
-// between analyses by the structure cache of the solutions.
+// of its interior points (and so the DOFs AutoSingularityConstr holds), its largest free diagonal, its raw boundary
+// blocks, its elements with a point on the boundary, whether each DOF held in every subcase is coupled, its boundary
+// labels and the local DOFs of its boundary equations, its interior equation count, its rigid-body mass properties.
+// Made by a build with the equations (UnitSystem::boundaryData), a deterministic function of the unit's inputs: the
+// build of an equal cache key gives the same values to the bit. Never in the condensation cache (it may be large): kept
+// in memory between analyses by the structure cache of the solutions.
 //
 // Thread-safety: immutable once made. Ownership: owns its buffers (budgeted in the budget given, which must outlive
 // it).
@@ -163,11 +165,11 @@ struct UnitBoundaryData
 // 3b. Singularities: the grid point singularity processor of the full path (assembly::SingularBlock, the
 //    rules of GridPointSingularities) on the diagonal blocks of the interior points, which hold every contribution the
 //    full model's Knn has there (no element or relation outside the unit reaches an interior point): with PARAM
-//    AUTOSPC YES the singular components are held (role Constrained, value 0), as the full path holds them. A scalar
-//    point is singular when its diagonal is at most EPZERO times the largest free diagonal of the unit (the full path
-//    takes the largest of the whole model: the one difference, documented in the step report). The boundary points
-//    are checked by the interface problem on the summed blocks (rawBoundaryBlocks()), and an absorbed spider's leg
-//    found singular is refused (the spider is then kept on its legs).
+//    AutoSingularityConstr YES the singular components are held (role Constrained, value 0), as the full path holds
+//    them. A scalar point is singular when its diagonal is at most PivotZeroThreshold times the largest free diagonal
+//    of the unit (the full path takes the largest of the whole model: the one difference, documented in the step
+//    report). The boundary points are checked by the interface problem on the summed blocks (rawBoundaryBlocks()), and
+//    an absorbed spider's leg found singular is refused (the spider is then kept on its legs).
 // 4. Spiders (only by change of basis, applied to the assembled rows of the legs, equal to the
 //    element-level form, without a dense element fill): for each absorbed spider of W (m reference DOFs, n leg DOFs),
 //    u_legs = W⁺·u_ref + N·q = T·[u_ref; q] (SpiderChangeOfBasis). After step 3 the reference DOFs are dependent
@@ -279,7 +281,7 @@ public:
     [[nodiscard]] const linalg::SymmetricCsc& matrix() const;
 
     // Craig-Bampton (UnitModel::keepsMass). The mass M on the equations, in the order and with the structure
-    // of matrix(): the unit's elements' mass (WTMASS applied), its relations eliminated like the m set
+    // of matrix(): the unit's elements' mass (WeightToMass applied), its relations eliminated like the m set
     // (Mnn = M̄nn + M̄nm·Gm + Gmᵀ·M̄mn + Gmᵀ·M̄mm·Gm) and its spiders absorbed (M ← Tᵀ·M·T), as the stiffness.
     [[nodiscard]] bool hasMass() const noexcept { return m_hasMass; }
     // Throws std::logic_error when the mass was not kept.
@@ -323,7 +325,7 @@ public:
     // points' positions and displacement systems each time they are asked (the same bits; not kept,
     // 48 bytes a local DOF), with or without the equations. Throws MemoryBudgetError.
     [[nodiscard]] linalg::DenseMatrix makeRigidBodyModes(base::MemoryBudget& budget) const;
-    // Φ_rᵀ·M·Φ_r about the basic origin, M the unit's mass (WTMASS applied): its rigid-body mass properties.
+    // Φ_rᵀ·M·Φ_r about the basic origin, M the unit's mass (WeightToMass applied): its rigid-body mass properties.
     [[nodiscard]] const base::MatN<6>& rigidBodyMass() const noexcept { return m_rigidBodyMass; }
     // −M·Φ_r on the local DOFs (localDofCount() × 6): the loads of a unit rigid-body acceleration (d'Alembert), the six
     // inertial load patterns of inertia relief. Throws base::InternalError without equations or built again without
@@ -334,7 +336,7 @@ public:
     [[nodiscard]] std::size_t spiderCount() const noexcept { return m_spiders.size(); }
 
     // The rows of the grid point singularity table of the interior points (step 3b), by point ID then component: the
-    // DOFs AUTOSPC holds (isConstrained) or, with PARAM AUTOSPC NO, reports.
+    // DOFs AutoSingularityConstr holds (isConstrained) or, with PARAM AutoSingularityConstr NO, reports.
     [[nodiscard]] std::span<const assembly::SingularityRow> interiorSingularities() const noexcept
     {
         return m_singularities.span();
@@ -352,7 +354,8 @@ public:
         return m_boundaryElements.span();
     }
 
-    // The local DOFs held in every subcase (role Constrained: SPC, GRID PS, the AUTOSPC of step 3b), increasing.
+    // The local DOFs held in every subcase (role Constrained: SPC, GRID PS, the AutoSingularityConstr of step 3b),
+    // increasing.
     [[nodiscard]] std::span<const std::int64_t> heldDofs() const noexcept { return m_constrainedDofs.span(); }
     // Whether the held DOF heldDofs()[k] has a stiffness term in the unit (its reaction then comes from the unit too).
     [[nodiscard]] bool isHeldDofCoupled(std::size_t k) const noexcept { return m_isHeldCoupled[k] != 0; }

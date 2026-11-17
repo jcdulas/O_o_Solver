@@ -1,6 +1,6 @@
 #pragma once
 
-// Fastener — fastener between two shells (CFAST, FastenerProp):
+// Fastener — fastener between two shells (Fastener, FastenerProp):
 //
 //   | Fastener | EID | PID  | TYPE  | IDA | IDB | GS   | GA    | GB    |
 //   |       | XS  | YS   | ZS    |     |     |      |       |       |
@@ -9,24 +9,24 @@
 //
 // Connectivity (fasteners/FastenerConnection): the piercing points A and B on the shells of sides A and B (TYPE PROP:
 // the shells of properties IDA, IDB; ELEM: the shell elements IDA, IDB; located by GS, by XS-ZS or given as GA, GB),
-// each moving with the reference point of an RigidInterpolation interpolation element whose independent points are the
+// each moving with the reference point of a RigidInterpolation interpolation element whose independent points are the
 // grid points of the shell element it pierces, weighted by the shape functions of that element at the point
 // (fasteners/PiercingInterpolation): the piercing points, their elements and shape functions come from the fastener
 // piercing table the reader computes. The auxiliary points are eliminated at element level: the element matrix couples
 // the grid points of the two pierced elements (FastenerConnection::condense). FastenerProp D plays no part in the
 // stiffness.
 //
-// Stiffness (PFAST: KT1-KT3, KR1-KR3 the translational and rotational stiffnesses in the fastener system): six
+// Stiffness (FastenerProp: KT1-KT3, KR1-KR3 the translational and rotational stiffnesses in the fastener system): six
 // uncoupled springs on the relative motion of B and A at the middle point p of A-B, in the fastener system E (x from
 // A to B; MCID = −1: y the basic axis least aligned with x, fastenerAxes; MCID ≥ 0 with MFLAG = 1: the axes of MCID),
 //   Δu = Eᵀ·((u_B + θ_B × (p − x_B)) − (u_A + θ_A × (p − x_A))),   Δθ = Eᵀ·(θ_B − θ_A),   f = diag(KT, KR)·(Δu, Δθ),
 // as a Bushing whose spring point is the middle of the fastener (so that a rigid motion gives no force; the spring
 // point is a choice of this implementation).
 //
-// Facets: stiffness; mass (PFAST MASS lumped on the translations of A and B, half each, carried to the grid points of
-// the pierced elements by the same map; not validated); recovery: forces fx, fy, fz, mx, my, mz in the fastener system
-// (f above), and the "stresses" of the data contract (stress.fastener), filled with the same forces (the stress and
-// force tables of a Fastener are identical). GE plays no part in SOL 101, 103, 105.
+// Facets: stiffness; mass (FastenerProp MASS lumped on the translations of A and B, half each, carried to the grid
+// points of the pierced elements by the same map; not validated); recovery: forces fx, fy, fz, mx, my, mz in the
+// fastener system (f above), and the "stresses" of the data contract (stress.fastener), filled with the same forces
+// (the stress and force tables of a Fastener are identical). GE plays no part in SOL 101, 103, 105.
 //
 // Not supported, refused by check(): MCID ≥ 0 with MFLAG = 0 (a relative fastener system, whose construction is not
 // implemented); a curvilinear MCID. Problems: a PID that is not a FastenerProp, the problems of FastenerConnection (no

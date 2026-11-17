@@ -17,8 +17,8 @@
 namespace oos::reduction
 {
 
-// A PARAM that changes the matrices of a unit (WTMASS, COUPMASS, AUTOSPC and the like), with its value as text
-// ("" when the model does not give it: the default).
+// A PARAM that changes the matrices of a unit (WeightToMass, CoupledMass, AutoSingularityConstr and the like), with its
+// value as text ("" when the model does not give it: the default).
 struct CacheParameter
 {
     std::string name;
@@ -27,11 +27,11 @@ struct CacheParameter
     friend bool operator==(const CacheParameter&, const CacheParameter&) = default;
 };
 
-// The PARAMs whose value changes what a unit is condensed from: WTMASS and COUPMASS (the mass of the inertial patterns
-// and of the rigid-body mass properties), AUTOSPC and EPZERO (which interior DOFs the unit's singularity processor
-// holds). MAXRATIO and BAILOUT only test the pivots (the same bits when the factorisation goes through) and stay out,
-// as does K6ROT, which changes no matrix (solutions::checkSupport reports it ignored).
-// By their neutral names (the names of the params table).
+// The PARAMs whose value changes what a unit is condensed from: WeightToMass and CoupledMass (the mass of the inertial
+// patterns and of the rigid-body mass properties), AutoSingularityConstr and PivotZeroThreshold (which interior DOFs
+// the unit's singularity processor holds). MaxDiagonalRatio and SingularityBailOut only test the pivots (the same bits
+// when the factorisation goes through) and stay out, as does ShellDrillingStiffness, which changes no matrix
+// (solutions::checkSupport reports it ignored). By their neutral names (the names of the params table).
 inline constexpr std::array<std::string_view, 4> MATRIX_PARAMETERS{"AutoSingularityConstr", "CoupledMass",
                                                                    "PivotZeroThreshold", "WeightToMass"};
 
@@ -57,7 +57,8 @@ inline constexpr std::string_view OFFSET_DEFINITION_PARAMETER = "ModelParams Off
 //   (design::computeDesignStamps; EMPTY_DESIGN_STAMP, 0, when no variable drives it): a design point is applied as an
 //   overlay, which O_o_Reader's stamps do not see;
 // - constraintStamp: the DOFs of the unit held in every subcase (the constraints applied before reducing; the enforced
-//   values are loads, in the patterns), before the singularity processor (whose AUTOSPC is a function of the rest);
+//   values are loads, in the patterns), before the singularity processor (whose AutoSingularityConstr is a function of
+//   the rest);
 // - boundaryStamp: its boundary points (the rows of K* follow from them, the DOFs held and the relations);
 // - spiderStamp: its spiders absorbed by change of basis, their keys and the bits of their weighting matrices (the
 //   absorption decisions and the stamps of the absorbed spiders);
@@ -107,8 +108,9 @@ struct CacheKey
 
     // Why this key does not take an entry stored with `stored` (the same unit), as the report says it: the first part
     // that differs, in the order version, kernel, element formulation, parameters, then the unit's revision, design,
-    // constraints, boundary, spiders, reduction, patterns and inputs ("parameter WTMASS changed (1.0 -> 0.00259)", "the
-    // unit's revision stamp changed (an edit of its cards or of what they depend on)"); empty when the keys are equal.
+    // constraints, boundary, spiders, reduction, patterns and inputs ("parameter WeightToMass changed (1.0 ->
+    // 0.00259)", "the unit's revision stamp changed (an edit of its cards or of what they depend on)"); empty when the
+    // keys are equal.
     [[nodiscard]] std::string differenceFrom(const CacheKey& stored) const;
 
     // Whether an entry stored with `stored` serves this key: every part equal but unitId (the same unit may have

@@ -1,6 +1,6 @@
 #pragma once
 
-// A laminate of the shells (PCOMP, CompPropGlobal):
+// A laminate of the shells (CompProp, CompPropGlobal):
 //
 //   | CompProp | PID  | Z0 | NSM    | SB    | FT   | TREF | GE     | LAM   |
 //   |       | MID1 | T1 | THETA1 | SOUT1 | MID2 | T2   | THETA2 | SOUT2 | ...
@@ -19,7 +19,7 @@
 // + T' ⅓ (z_k³ − z_{k−1}³)), ᾱ_k = T(θ_k)⁻¹ α_k. Every matrix and vector is in the material frame of the element
 // (θ = 0 along the material axis of THETA or MCID); the strains carry the engineering shear.
 //
-// LAM (PCOMP): blank and SYM (the stack as above), MEM (membrane only: B, D left out), BEND (bending
+// LAM (CompProp): blank and SYM (the stack as above), MEM (membrane only: B, D left out), BEND (bending
 // only: A, B left out), SMEAR (the stacking ignored: D = A t²/12, B = 0, the transverse shear rigid); SMCORE is
 // refused. Failure theories (FT): HILL, HOFF, TSAI, STRN; the Hashin criteria are refused.
 

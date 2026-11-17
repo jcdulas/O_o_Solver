@@ -39,7 +39,7 @@ inline constexpr double SAME_FRAME_TOLERANCE = 1.0e-12;
 // on it: O_o_Reader's boundary of the zone as a group of elements (zoneBoundaries: the elements, rigid elements, MPC
 // equations and connectors outside, the grid points of the element a fastener pierces when its other side is outside),
 // with the components through which they act; the enclosed elements kept outside (enclosed="warn" or "exclude": the
-// components their stiffness uses there, by kind, the exact ones for a spring or a CBUSH); and the grid points
+// components their stiffness uses there, by kind, the exact ones for a spring or a Bushing); and the grid points
 // constrained in some of the subcases only (the components constrained in some but not in every subcase), so that the
 // contour does not change from one subcase to the next. The other grid points of the zone are interior; the
 // components constrained in every subcase are held constraints of the zone (its local model is held there too).
@@ -50,9 +50,10 @@ inline constexpr double SAME_FRAME_TOLERANCE = 1.0e-12;
 //  - the contour forces (the grid point forces of the elements of the zone at that point):
 //    F_g = Σ_{e∈zone} (K_e·u_e − f_e,T)|_g, f_e,T the thermal load of the element (the element rows of the grid point
 //    forces, as for the cut loads), minus the force q_g the zone's constraint rows
-//    exert on the point (the MPC forces there) when only rows of the zone act on it: an RBE2 or RBE3 of the zone with a
-//    point on the contour, the reference point of an absorbed spider. A point on which constraint rows of the zone and
-//    of the outside both act is refused (their forces cannot be told apart from the MPC forces);
+//    exert on the point (the MPC forces there) when only rows of the zone act on it: a RigidBodyStar or
+//    RigidInterpolation of the zone with a point on the contour, the reference point of an absorbed spider. A point on
+//    which constraint rows of the zone and of the outside both act is refused (their forces cannot be told apart from
+//    the MPC forces);
 //  - the loads of the zone: the applied loads (OLOAD) on its interior grid points, forces and moments (which hold the
 //    pressure, line and inertial loads of its elements there);
 //  - the equilibrium: the zone is a free body made of its elements, its constraint rows and its interior grid points,

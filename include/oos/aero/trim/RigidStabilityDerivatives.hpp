@@ -23,9 +23,9 @@ struct StabilityCoefficients
 // variable: its normalwash (TrimVariables), the pressures Δcp = D⁻¹ w (DoubletLatticeSteady), the force q Δcp_j A_j
 // along the normal of each box at its force point, summed and divided by the reference values (AeroReference). The
 // intercept (DownwashMatrix, AeroPressureMatrix: TrimCorrections) is the trim's reference row, not computed here. A
-// half model (AEROS SYMXZ or SYMXY) gives half of the forces and moments of the whole configuration (the boxes and
-// their images): the components its symmetry doubles are those of the half model, those it cancels are zero (for SYMXZ
-// = +1, CY, CMX, CMZ = 0).
+// half model (AeroStaticParams SYMXZ or SYMXY) gives half of the forces and moments of the whole configuration (the
+// boxes and their images): the components its symmetry doubles are those of the half model, those it cancels are zero
+// (for SYMXZ = +1, CY, CMX, CMZ = 0).
 //
 // Thread-safety: stateless.
 class RigidStabilityDerivatives

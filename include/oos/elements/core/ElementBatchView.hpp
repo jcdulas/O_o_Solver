@@ -87,7 +87,7 @@ public:
     // rotations and the grid point has a CD other than 0.
     [[nodiscard]] base::Mat3 displacementFrame(std::int32_t gridRow) const;
 
-    // The table of a property card (PROD, SpringProp...), or nullptr when the model has none.
+    // The table of a property card (RodProp, SpringProp...), or nullptr when the model has none.
     [[nodiscard]] const input::CardTable* propertyTable(std::string_view card) const noexcept
     {
         return snapshot().findPropertyTable(card);

@@ -152,7 +152,7 @@ EquationResponse::EquationResponse(EquationResponseDefinition definition, const 
             const auto row = static_cast<std::int64_t>(found - grids.begin());
             const auto component = static_cast<std::size_t>(argument.component - 1);
             m_coordinates.back() = snapshot.nodes().positionsInBasic()[row][component];
-            // The shape variables that move the grid point (DVGRID: g = g0 + Σ s·T(g)).
+            // The shape variables that move the grid point (DesignNodeMove: g = g0 + Σ s·T(g)).
             const std::vector<ShapeBasis>& bases = model.shapes().bases();
             for (std::size_t b = 0; b < bases.size(); ++b)
                 for (const ShapeMove& move : bases[b].moves)

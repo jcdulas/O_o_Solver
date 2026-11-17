@@ -414,7 +414,7 @@ void reduceSuperelements(const SuperelementOptions& options, const linalg::Dense
                         for (std::size_t b = 0; b < boundary; ++b)
                             loads(b, c) = condensedLoads(b, s);
             placed->setLoads(std::move(loads));
-            // The generalised coordinates are never singular (the q set: no AUTOSPC on them).
+            // The generalised coordinates are never singular (the q set: no AutoSingularityConstr on them).
             for (std::size_t q = 0; q < modes; ++q)
                 if (placed->dofs()[boundary + q] >= 0)
                     residual.modalDofs.push_back(placed->dofs()[boundary + q]);
@@ -1076,7 +1076,7 @@ void solveModes(const SuperelementOptions& options, const linalg::DenseKernels& 
             factorOptions.cancellation = options.cancellation;
             linalg::SparsePencil pencil(ordering.symbolic(), stiffness, mass, kernels, factorOptions, budget);
             linalg::EigenRequest request = eigenRequestOf(method, AnalysisKind::Modes);
-            // A request of more roots than the analysis set has (an LanczosEigenMethod ND above the size of the reduced
+            // A request of more roots than the analysis set has (a LanczosEigenMethod ND above the size of the reduced
             // residual): every root there is, without an error.
             const auto size = static_cast<std::size_t>(ordering.equationCount());
             if (request.modeCount > size)

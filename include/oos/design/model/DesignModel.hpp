@@ -37,12 +37,12 @@ struct DesignValues
     std::vector<FieldValue> shapes;
 };
 
-// A design model: the design variables (DESVAR), the links (DLINK), the relations to the property,
-// material and element fields (DVPREL1/2, DesignMatRelation1/2, DesignElemRelation1/2), the DesignEquation equations
-// and DesignConstants constants they use, and the shape variables (DVGRID: ShapeRelations). It maps a vector x of the
-// independent variables to the value of every designed field and every shape value with their exact derivatives with
-// respect to x (chain rule through the links and the equations). It knows nothing of the snapshot: FieldTargets binds
-// its fields and its moved grid points to the snapshot's columns, DesignPoint applies them.
+// A design model: the design variables (DesignVar), the links (DesignVarLink), the relations to the property,
+// material and element fields (DesignPropRelation1/2, DesignMatRelation1/2, DesignElemRelation1/2), the DesignEquation
+// equations and DesignConstants constants they use, and the shape variables (DesignNodeMove: ShapeRelations). It maps a
+// vector x of the independent variables to the value of every designed field and every shape value with their exact
+// derivatives with respect to x (chain rule through the links and the equations). It knows nothing of the snapshot:
+// FieldTargets binds its fields and its moved grid points to the snapshot's columns, DesignPoint applies them.
 //
 // Invariant: checked at construction; every reference resolves, so evaluate() needs no check.
 //
@@ -50,8 +50,8 @@ struct DesignValues
 class DesignModel
 {
 public:
-    // Throws UnsupportedCardError when the model uses a card or field that is not supported (DDVAL), OptimisationError
-    // for any other problem; the message lists every diagnostic of checkDesignModel().
+    // Throws UnsupportedCardError when the model uses a card or field that is not supported (DesignDiscreteValues),
+    // OptimisationError for any other problem; the message lists every diagnostic of checkDesignModel().
     explicit DesignModel(DesignModelParts parts);
 
     [[nodiscard]] const DesignVariables& variables() const noexcept { return m_variables; }

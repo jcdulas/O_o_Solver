@@ -21,8 +21,9 @@ namespace
 
 constexpr std::array<std::string_view, 6> NODAL_CARDS{"PointForceLoad",  "PointForceLoad1",  "PointForceLoad2",
                                                       "PointMomentLoad", "PointMomentLoad1", "PointMomentLoad2"};
-// The pressures of loadsTable are applied from pressureTable, which gives them per element with all corners (PLOAD2,
-// FacePressureLoad), or per face of grid points (PLOAD: elementId null, face_nodes G1-G3 or G1-G4).
+// The pressures of loadsTable are applied from pressureTable, which gives them per element with all corners
+// (ShellPressureLoad, FacePressureLoad), or per face of grid points (PointsPressureLoad: elementId null, face_nodes
+// G1-G3 or G1-G4).
 constexpr std::array<std::string_view, 3> PRESSURE_CARDS{"PointsPressureLoad", "ShellPressureLoad", "FacePressureLoad"};
 constexpr std::string_view GRID_PRESSURE_CARD = "PointsPressureLoad";
 // PointsPressureLoad: each of the two sets of overlapping triangles of a quadrilateral takes half of the pressure.
@@ -34,7 +35,7 @@ constexpr double TRIANGLE_POINT_SHARE = 1.0 / 3.0;
 constexpr double DEGENERATE_FACE_RATIO = 1.0e-12;
 // The line loads of loadsTable are applied from lineLoadsTable.
 constexpr std::array<std::string_view, 1> LINE_LOAD_CARDS{"BeamDistributedLoad"};
-// The inertial loads, applied by InertialLoads (GRAV from loadsTable, all four from inertialLoadsTable when the
+// The inertial loads, applied by InertialLoads (GravityLoad from loadsTable, all four from inertialLoadsTable when the
 // snapshot has it).
 constexpr std::array<std::string_view, 4> INERTIAL_CARDS{"GravityLoad", "AccelFieldLoad", "AccelNodeLoad",
                                                          "RotationalForceLoad"};

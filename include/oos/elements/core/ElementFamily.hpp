@@ -67,7 +67,7 @@ struct ElementRange
     std::int64_t last = 0;
 };
 
-// The mass formulation of PARAM COUPMASS (COUPMASS > 0 asks for the coupled mass of the elements that have one;
+// The mass formulation of PARAM CoupledMass (CoupledMass > 0 asks for the coupled mass of the elements that have one;
 // the default, -1, the lumped mass).
 enum class MassFormulation : std::uint8_t
 {
@@ -75,15 +75,15 @@ enum class MassFormulation : std::uint8_t
     Coupled
 };
 
-// What the mass facet needs besides the batch. PARAM WTMASS is not applied by the elements: the element masses are in
-// the model's mass units, and MassAssembler (assembly) multiplies the assembled mass matrix by WTMASS.
+// What the mass facet needs besides the batch. PARAM WeightToMass is not applied by the elements: the element masses
+// are in the model's mass units, and MassAssembler (assembly) multiplies the assembled mass matrix by WeightToMass.
 struct MassOptions
 {
     MassFormulation formulation = MassFormulation::Lumped;
-    // The non-structural mass that NSM, NonStructMass1, NonStructMassLumped, NonStructMassLumped1 cards add to each
-    // element (nonStructMassTable of O_o_Reader, distributed to the elements by the assembler), indexed by batch row:
-    // per unit length for a line element. Empty when none; the NSM field of the element's own property is read by the
-    // element and is not included here.
+    // The non-structural mass that NonStructMass, NonStructMass1, NonStructMassLumped, NonStructMassLumped1 cards add
+    // to each element (nonStructMassTable of O_o_Reader, distributed to the elements by the assembler), indexed by
+    // batch row: per unit length for a line element. Empty when none; the NSM field of the element's own property is
+    // read by the element and is not included here.
     std::span<const double> addedNonStructuralMass;
 };
 
@@ -279,7 +279,7 @@ struct NodalDisplacements
 // of a batch, never per element). One family handles every element of one card type; its facets are hand-written in
 // the files of the element's folder and loop over the rows of the range with the batch's columns read once, in place.
 //
-// Matrices are given in the displacement systems of the element's grid points. Masses are given without WTMASS
+// Matrices are given in the displacement systems of the element's grid points. Masses are given without WeightToMass
 // (MassOptions). A facet the family does not offer throws std::invalid_argument.
 //
 // The facets assume a batch that check() accepted: check() reports every problem of every element as a Diagnostic

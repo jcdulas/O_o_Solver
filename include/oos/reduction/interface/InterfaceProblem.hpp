@@ -195,22 +195,23 @@ inline constexpr double FASTENER_FACTOR_TOLERANCE = 1.0e-8;
 // 1. Matrices: the elements of the interface (InterfaceInputs::elementIds) in the model's order of batches and rows,
 //    those on the legs of an absorbed spider carried to its reference (InterfaceSpider), through
 //    linalg::SparseAssembler; then the K* of each unit, in the order of the units, added onto its labels.
-// 2. Singularities ("the AUTOSPC of boundary nodes decided on the summed contributions"): a second
+// 2. Singularities ("the AutoSingularityConstr of boundary nodes decided on the summed contributions"): a second
 //    matrix on the same pattern sums what the full path's Knn holds at these points, the interface elements on their
 //    own DOFs and each unit's raw boundary blocks (UnitSystem::rawBoundaryBlocks: its stiffness before the
 //    condensation); its relations are eliminated and the grid point singularity processor (assembly::SingularBlock)
 //    runs on its diagonal blocks, the DOFs of the full path's f set only (a spider's reference is in its m set; a
 //    generated point is not a point of the model). A scalar point is checked against the largest free diagonal of the
-//    interface and of every unit (UnitSystem::largestFreeDiagonal). The components found are held (AUTOSPC YES).
+//    interface and of every unit (UnitSystem::largestFreeDiagonal). The components found are held
+//    (AutoSingularityConstr YES).
 // 3. Relations: the rows of InterfaceInputs::relations on the local DOFs, eliminated in place by linear elimination
 //    (LocalRelations: Knn = K̄nn + K̄nm·Gm + Gmᵀ·K̄mn + Gmᵀ·K̄mm·Gm), chains resolved in dependency order by
 //    assembly::RigidElimination (a cycle or a DOF dependent twice is its error, reported before).
-// 4. Constraints: the held DOFs (the s and r sets of the full path, the AUTOSPC of step 2) removed, their enforced
-//    values loads −K_ls·u_s; their rows kept for their reactions (heldReactions).
+// 4. Constraints: the held DOFs (the s and r sets of the full path, the AutoSingularityConstr of step 2) removed, their
+//    enforced values loads −K_ls·u_s; their rows kept for their reactions (heldReactions).
 // 5. Ordering: a nested dissection on the quotient graph of the units (each condensed unit's boundary one vertex,
 //    InterfaceEstimate::orderOnUnits, the rule of the plan's estimate), the symbolic factor, the SymmetricCsc and the
-//    supernodal factorisation (positive definite, MAXRATIO: a mechanism of the assembly is a SingularityError naming
-//    its points; a generated fastener point is named by its fastener's ID).
+//    supernodal factorisation (positive definite, MaxDiagonalRatio: a mechanism of the assembly is a SingularityError
+//    naming its points; a generated fastener point is named by its fastener's ID).
 //
 // Eigenvalue analyses (Craig-Bampton for SOL 103 and SOL 105): the modal coordinates of the
 // Craig-Bampton units are points of their own after the others (up to six coordinates a point, the q set; no point

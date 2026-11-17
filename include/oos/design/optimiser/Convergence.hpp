@@ -51,8 +51,8 @@ struct ConvergenceCriteria
 };
 
 // The tests of one cycle against the previous one. A relative change with a zero previous value is the absolute
-// change. The changes of the variables and properties are reported, not tested (DOPTPRM CONVDV and CONVPR have no
-// effect: the public criteria rest on the objective and the feasibility).
+// change. The changes of the variables and properties are reported, not tested (DesignOptimParams CONVDV and CONVPR
+// have no effect: the public criteria rest on the objective and the feasibility).
 struct ConvergenceCheck
 {
     std::size_t cycle = 0;

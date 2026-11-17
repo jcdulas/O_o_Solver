@@ -25,10 +25,10 @@ void stopOnErrors(const base::DiagnosticSink& sink, const std::string& stage);
 void reportSupport(const input::ModelSnapshot& snapshot, const elements::ElementRegistry& registry,
                    AnalysisKind analysis, base::DiagnosticSink& sink);
 
-// A factor kept with failed pivots (PARAM BAILOUT -1; a stopping policy throws SingularityError instead): the run goes
-// on, and a warning of `subcase` names the ill-conditioned DOFs (through `namer`), so that an inaccurate result is
-// never silent (a singular or ill-conditioned system is reported with its location). Nothing when the ratio test
-// passed.
+// A factor kept with failed pivots (PARAM SingularityBailOut -1; a stopping policy throws SingularityError instead):
+// the run goes on, and a warning of `subcase` names the ill-conditioned DOFs (through `namer`), so that an inaccurate
+// result is never silent (a singular or ill-conditioned system is reported with its location). Nothing when the ratio
+// test passed.
 void reportKeptPivots(const linalg::PivotDiagnostics& pivots, const linalg::EquationNamer& namer,
                       base::EntityId subcase, base::DiagnosticSink& sink);
 

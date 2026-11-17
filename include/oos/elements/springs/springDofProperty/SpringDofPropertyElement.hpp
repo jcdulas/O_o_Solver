@@ -1,6 +1,6 @@
 #pragma once
 
-// SpringDofProperty — scalar spring with its stiffness on a SpringProp (CELAS1, SpringProp):
+// SpringDofProperty — scalar spring with its stiffness on a SpringProp (SpringDofProperty, SpringProp):
 //
 //   | SpringDofProperty | EID | PID | G1 | C1 | G2 | C2 |
 //   | SpringProp  | PID | K   | GE | S  |

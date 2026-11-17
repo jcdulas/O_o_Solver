@@ -1,11 +1,11 @@
 #pragma once
 
-// ShellTria6 — six-node shell (CTRIA6, ShellProp, CompProp, CompPropGlobal).
+// ShellTria6 — six-node shell (ShellTria6, ShellProp, CompProp, CompPropGlobal).
 //
 // Formulation: MindlinShell<QuadraticTriangleShape>, the six-node degenerated shell, flat or curved (the quadratic
 // membrane and Reissner-Mindlin bending of a flat element, three-point integration, the membrane-bending coupling,
-// no stiffness for the rotation about the nodal director: no K6ROT), through the facets shared with the other
-// higher-order shell (HigherOrderShell.hpp, which says what is supported and refused).
+// no stiffness for the rotation about the nodal director: no ShellDrillingStiffness), through the facets shared with
+// the other higher-order shell (HigherOrderShell.hpp, which says what is supported and refused).
 // Covered by the patch, rigid-body and convergence tests.
 //
 // Facets: stiffness, mass, loads (pressure, thermal), recovery (centre and corner grid points; the plies of a
@@ -29,7 +29,7 @@ public:
         return {Facet::Stiffness, Facet::Mass, Facet::Differential, Facet::Loads, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
-    // The closed forms in a AnisoMat2D stiffness term (HigherOrderShell's); every other field differenced.
+    // The closed forms in an AnisoMat2D stiffness term (HigherOrderShell's); every other field differenced.
     bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                                   ElementMatrixBlock& block) const override;
     bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,

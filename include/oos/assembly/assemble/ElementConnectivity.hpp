@@ -61,7 +61,8 @@ public:
     [[nodiscard]] std::span<const PointElement> pointElements() const noexcept { return m_pointElements.span(); }
     // Per node of the DOF map, the components an element's stiffness has DOFs on (bit c − 1 for component c of a grid
     // point, bit 0 for a scalar point; 0: no stiffness element): a grid point of solids alone has its translations
-    // only (its rotations held by AUTOSPC in the analysis; used by the factor estimate made before the analysis).
+    // only (its rotations held by AutoSingularityConstr in the analysis; used by the factor estimate made before the
+    // analysis).
     [[nodiscard]] std::span<const std::uint8_t> stiffenedComponents() const noexcept
     {
         return m_stiffenedComponents.span();

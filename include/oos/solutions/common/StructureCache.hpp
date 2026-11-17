@@ -123,9 +123,9 @@ struct StructurePattern
 // - the sparse pattern of a node graph and its node DOF counts (linalg::SparsePattern), keyed by the graph and the
 //   counts;
 // - the ordering and the symbolic factor of a solved set (FsetOrdering) and the plan of the solves (SolvePlan), keyed
-//   besides by the solved set (its elimination flags: the SPCs, the m set, AUTOSPC and the r set), the positions of
-//   the grid points (the ordering's geometric dissection reads them: a shape variable builds it again) and the ordering
-//   method.
+//   besides by the solved set (its elimination flags: the SPCs, the m set, AutoSingularityConstr and the r set), the
+//   positions of the grid points (the ordering's geometric dissection reads them: a shape variable builds it again) and
+//   the ordering method.
 // - the panels' storage of the factors freed (FactorStorageSlot): a factorisation of the same shape writes
 //   its panels in that memory, mapped already, instead of a fresh allocation's pages;
 // - the boundary data of the condensed units (reduction::UnitBoundaryData), keyed by their cache key

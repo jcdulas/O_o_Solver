@@ -74,7 +74,7 @@ public:
 
     // The formulation of every element of one card type ("ShellQuad4", "ClassicFormulation"; elementFormulations()
     // lists them), before the model's <Card>Formulation parameter; a second call for the same card replaces the first.
-    // The card is the neutral card type exactly as elementFormulations() names it: a deck keyword ("CQUAD4") is
+    // The card is the neutral card type exactly as elementFormulations() names it: a deck keyword ("ShellQuad4") is
     // refused, so that a program names a card one way only. A formulation the card does not have is reported by the
     // support check. Throws std::invalid_argument for an empty name or a card that is not an element card type of the
     // solver.

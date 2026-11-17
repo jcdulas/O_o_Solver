@@ -589,7 +589,7 @@ DesignEvaluation DesignProblem::evaluateResponses(StaticDesignEvaluation analysi
         context.cutLoads = analysis.results.cutLoads ? &*analysis.results.cutLoads : nullptr;
         context.zones = analysis.results.zones;
         context.analysedSubcases = analysis.subcases;
-        base::DiagnosticSink ignored; // a bad COUPMASS is reported by the analysis itself
+        base::DiagnosticSink ignored; // a bad CoupledMass is reported by the analysis itself
         const input::ParamTable* params =
             analysis.snapshot->hasTable(input::TableRole::Params) ? &analysis.snapshot->params() : nullptr;
         context.massFormulation = assembly::MassAssemblyOptions::fromParams(params, std::nullopt, ignored).formulation;
@@ -638,7 +638,7 @@ StaticSensitivityInputs DesignProblem::sensitivityInputs(
     const solutions::StaticOptions& analysisOptions, std::size_t blockItems, const ExternalRegistry* externals) const
 {
     const StaticDesignEvaluation& analysis = evaluation.analysis;
-    base::DiagnosticSink ignored; // a bad COUPMASS is reported by the analysis itself
+    base::DiagnosticSink ignored; // a bad CoupledMass is reported by the analysis itself
     const input::ParamTable* params =
         analysis.snapshot->hasTable(input::TableRole::Params) ? &analysis.snapshot->params() : nullptr;
     StaticSensitivityInputs inputs;

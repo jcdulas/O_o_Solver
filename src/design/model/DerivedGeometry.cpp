@@ -73,7 +73,7 @@ struct Placement
 };
 
 // RectFrame1: the origin A = G1, the z axis from A to B = G2, C = G3 in the x-z plane: k = (B − A)/|B − A|,
-// j = k × (C − A)/|k × (C − A)|, i = j × k (CORD1C and SphericalFrame1 define their reference frames alike).
+// j = k × (C − A)/|k × (C − A)|, i = j × k (CylindricalFrame1 and SphericalFrame1 define their reference frames alike).
 [[nodiscard]] Placement frameFromPoints(base::Vec3 a, base::Vec3 b, base::Vec3 c)
 {
     const base::Vec3 k = base::normalized(b - a);
@@ -532,8 +532,8 @@ private:
         m_loads.push_back(std::move(load));
     }
 
-    // inertialLoadsTable: the direction of a GravityLoad, ACCEL, AccelNodeLoad or RotationalForceLoad given in a moved
-    // system.
+    // inertialLoadsTable: the direction of a GravityLoad, AccelFieldLoad, AccelNodeLoad or RotationalForceLoad given in
+    // a moved system.
     void bindInertialTable()
     {
         if (m_frames.empty() || !m_snapshot.hasTable(input::TableRole::InertialLoads) ||

@@ -25,14 +25,14 @@ enum class AnalysisKind : std::uint8_t
 
 // The support catalog of a linear static run: input::SupportCatalog::current(), the element, property and material
 // cards of the registry with their field rules (ElementRegistry::addSupportTo, which input cannot call itself, being
-// below elements), and the constraint and load cards the assembly applies: SPC, SinglePointConstrList,
+// below elements), and the constraint and load cards the assembly applies: SinglePointConstr, SinglePointConstrList,
 // EnforcedMotionConstr (singlePointConstrTable, SinglePointConstrUnion expanded), GRID.PS (the permanent constraints),
-// MPC (multiPointConstrTable, MultiPointConstrUnion expanded), FORCE, PointForceLoad1, PointForceLoad2, MOMENT,
-// PointMomentLoad1, PointMomentLoad2, ScalarPointLoad, GravityLoad (loadsTable, LOAD expanded), ACCEL, AccelNodeLoad,
-// RotationalForceLoad (inertialLoadsTable), PointsPressureLoad, ShellPressureLoad, FacePressureLoad (pressureTable),
-// BeamDistributedLoad (lineLoadsTable), the temperature cards, FreeBodySupport and SUPORT1 (dofSetsTable), and the
-// rigid elements RigidBodyMulti, RigidBodyStar, RigidInterpolation, RigidBar, RigidRod (rigidElementsTable;
-// RigidElimination refuses what it cannot eliminate).
+// MPC (multiPointConstrTable, MultiPointConstrUnion expanded), PointForceLoad, PointForceLoad1, PointForceLoad2,
+// PointMomentLoad, PointMomentLoad1, PointMomentLoad2, ScalarPointLoad, GravityLoad (loadsTable, LOAD expanded), ACCEL,
+// AccelNodeLoad, RotationalForceLoad (inertialLoadsTable), PointsPressureLoad, ShellPressureLoad, FacePressureLoad
+// (pressureTable), BeamDistributedLoad (lineLoadsTable), the temperature cards, FreeBodySupport and FreeBodySupportSet
+// (dofSetsTable), and the rigid elements RigidBodyMulti, RigidBodyStar, RigidInterpolation, RigidBar, RigidRod
+// (rigidElementsTable; RigidElimination refuses what it cannot eliminate).
 [[nodiscard]] input::SupportCatalog staticSupportCatalog(const elements::ElementRegistry& registry);
 
 // Whether a static run ignores the card (the cards with no effect on the analysis are ignored with a warning, never
@@ -50,8 +50,8 @@ enum class AnalysisKind : std::uint8_t
 // The support check of a run of `analysis`: that of a static run, with the eigenvalue method cards the analysis reads
 // accepted (SOL 103: LanczosEigenMethod and RealEigenMethod; SOL 105: LanczosEigenMethod and BucklingEigenMethod) and
 // the others ignored as a static run ignores them. The loads of a SOL 103 run are accepted and not applied (a vibration
-// analysis has no load). The PARAMs that change nothing in this version (K6ROT: no shell has a drilling penalty) are
-// listed in SupportReport::ignored as warnings
+// analysis has no load). The PARAMs that change nothing in this version (ShellDrillingStiffness: no shell has a
+// drilling penalty) are listed in SupportReport::ignored as warnings
 // ("ignored-parameter"), whether given in the Bulk Data or in the Case Control.
 [[nodiscard]] base::SupportReport checkSupport(const input::ModelSnapshot& snapshot,
                                                const elements::ElementRegistry& registry, AnalysisKind analysis);

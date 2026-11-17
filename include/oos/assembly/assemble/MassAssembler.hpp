@@ -17,14 +17,15 @@
 namespace oos::assembly
 {
 
-// The mass parameters of a subcase (PARAM COUPMASS, PARAM WTMASS).
+// The mass parameters of a subcase (PARAM CoupledMass, PARAM WeightToMass).
 struct MassAssemblyOptions
 {
-    static constexpr double DEFAULT_WEIGHT_TO_MASS = 1.0; // default of PARAM WTMASS
+    static constexpr double DEFAULT_WEIGHT_TO_MASS = 1.0; // default of PARAM WeightToMass
 
-    // COUPMASS: a value > 0 asks for the coupled mass of the elements that have one; the default -1 the lumped.
+    // CoupledMass: a value > 0 asks for the coupled mass of the elements that have one; the default -1 the lumped.
     elements::MassFormulation formulation = elements::MassFormulation::Lumped;
-    // WTMASS: the factor of every term of the structural mass matrix (mass units of the deck to consistent units).
+    // WeightToMass: the factor of every term of the structural mass matrix (mass units of the deck to consistent
+    // units).
     double weightToMass = DEFAULT_WEIGHT_TO_MASS;
 
     // The options of a subcase from the PARAM table (a Case Control PARAM overrides the Bulk Data one); `params` may be
@@ -36,8 +37,8 @@ struct MassAssemblyOptions
 
 // The mass matrix Mgg of the g set: the element mass matrices (lumped or coupled) of
 // every batch whose family has the mass facet, with the non-structural mass of the NSM set, added by
-// linalg::SparseAssembler on the node pattern of the model, then multiplied by WTMASS (PARAM WTMASS applies to the
-// assembled mass, the elements give their mass in the units of the deck). The order of the sums is that of
+// linalg::SparseAssembler on the node pattern of the model, then multiplied by WeightToMass (PARAM WeightToMass applies
+// to the assembled mass, the elements give their mass in the units of the deck). The order of the sums is that of
 // StiffnessAssembler.
 //
 // Thread-safety: assemble() is const. Ownership: borrows the set, the DOF map and the shares, which must outlive it.
@@ -50,7 +51,7 @@ public:
     {
     }
 
-    // Adds Mgg to `target`, which must be zero when called (the WTMASS factor scales every value of the target).
+    // Adds Mgg to `target`, which must be zero when called (the WeightToMass factor scales every value of the target).
     // Precondition: as StiffnessAssembler::assemble.
     void assemble(linalg::BlockSparseMatrix& target, base::ThreadPool* pool = nullptr,
                   const base::CancellationToken* cancellation = nullptr) const;

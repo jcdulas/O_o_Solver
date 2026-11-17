@@ -40,9 +40,9 @@ inline constexpr double SECTION_AXIS_MIN_PROJECTION = 1.0e-8;
 //     S = Σ_e w_e·T_e·F_e / Σ_e w_e   (reduce "average"),   S = Σ_e w_e·T_e·F_e   (reduce "sum"),
 // T_e the rotation from the frame of the element into the section frame for a shell (identity otherwise): with
 // x_s the projection of the section axis on the plane of the element, c = x_s·x_e and s = x_s·y_e (x_e, y_e the axes of
-// the element frame of the shell family, the frame of the corners for CQUAD8 and CTRIA6), the tensor rotation of the
-// membrane forces and of the moments (Timoshenko and Goodier, plane stress transformation; the force resultants per
-// unit length are the components of symmetric tensors in the element plane)
+// the element frame of the shell family, the frame of the corners for ShellQuad8 and ShellTria6), the tensor rotation
+// of the membrane forces and of the moments (Timoshenko and Goodier, plane stress transformation; the force resultants
+// per unit length are the components of symmetric tensors in the element plane)
 //     N'x = c²Nx + s²Ny + 2csNxy,  N'y = s²Nx + c²Ny − 2csNxy,  N'xy = −csNx + csNy + (c² − s²)Nxy,
 // and the vector rotation of the transverse shears, Q'x = cQx + sQy, Q'y = −sQx + cQy. The y_s of an element whose
 // normal opposes the section's (the area-weighted mean of its shells' normals) is turned to point as the section's
@@ -134,13 +134,14 @@ public:
     // The coefficients of the element forces in the rows of section s on `set`: per member, w·T/W (W the total weight
     // for "average", 1 for "sum"), components × components of its family, row-major in an array of
     // MAX_SECTION_COMPONENTS columns: row k of the section is Σ_m Σ_l C_m(k, l)·F_m(l). The design module
-    // uses them as the constant coefficients of a DRESP2 of DRESP1 FORCE items.
+    // uses them as the constant coefficients of a DesignResp2 of DesignResp1 FORCE items.
     using Coefficients = std::array<double, MAX_SECTION_COMPONENTS * MAX_SECTION_COMPONENTS>;
     [[nodiscard]] std::vector<Coefficients> memberCoefficients(std::size_t section,
                                                                const assembly::ElementSet& set) const;
 
     // The section of a bar or beam member at row `row` of batch `batch`, if any: such a member under a line load
-    // (PLOAD1) gives its forces at its stations, a layout the sections do not read (the caller refuses the case).
+    // (BeamDistributedLoad) gives its forces at its stations, a layout the sections do not read (the caller refuses the
+    // case).
     [[nodiscard]] std::optional<std::size_t> lineSectionOf(std::size_t batch, std::int64_t row) const;
 
 private:

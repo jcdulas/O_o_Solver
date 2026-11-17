@@ -121,7 +121,7 @@ struct ConnectionSummary
 // with the absorbed RigidInterpolation references freed (solutions::CondensationPlanner).
 //
 // A boundary point with no DOF for its unit is not dropped blindly: constrained in every subcase
-// it has nothing to condense; made dependent by a relation eliminated inside the unit (an RigidBodyStar absorbed with
+// it has nothing to condense; made dependent by a relation eliminated inside the unit (a RigidBodyStar absorbed with
 // its cluster whose leg a connection uses), the relation's independent points of the unit take its place, with its
 // reasons, since the connection acts on them once the relation is eliminated. A point two units hold (element lists
 // splitting a component) stays on both boundaries (BoundaryPromotion), and a relation eliminated inside one unit that

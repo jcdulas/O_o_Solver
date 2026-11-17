@@ -10,13 +10,13 @@ namespace oos::elements
 namespace
 {
 
-// The stress and strain allowables of the material cards (MAT1 ST, SC, SS; AnisoMat2D ST, SC, SS; OrthoMat2D XT, XC,
+// The stress and strain allowables of the material cards (IsoMat ST, SC, SS; AnisoMat2D ST, SC, SS; OrthoMat2D XT, XC,
 // YT, YC, S, F12, STRN): they enter the margins of safety and the failure indices only.
 constexpr std::array<std::string_view, 11> ALLOWABLES{
     "tensionAllowable",     "compressionAllowable", "shearAllowable",       "tensionStrength1",
     "compressionStrength1", "tensionStrength2",     "compressionStrength2", "shearStrength",
     "interactionTerm12",    "strainAllowables",     "bondAllowable"};
-// The expansion coefficients of the material cards (MAT1 A; AnisoMat2D A1-A3; OrthoMat2D A1, A2; AnisoMat3D A1-A6).
+// The expansion coefficients of the material cards (IsoMat A; AnisoMat2D A1-A3; OrthoMat2D A1, A2; AnisoMat3D A1-A6).
 constexpr std::array<std::string_view, 7> EXPANSIONS{
     "thermalExpansion",  "thermalExpansion1", "thermalExpansion2", "thermalExpansion3", "a",
     "thermalExpansionX", "thermalExpansionZ"};

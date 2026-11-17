@@ -20,7 +20,8 @@ enum class BoundaryReason : std::uint8_t
     SharedPoint = 2,       // another unit holds it too (an element list sharing a point with its neighbour)
     Retained = 4,          // the caller retains it (a measurement point, a design response)
     PartialConstraint = 8, // one of its DOFs is constrained in some subcases only
-    Support = 16,          // a FreeBodySupport or SUPORT1 point (inertia relief is solved on the interface problem)
+    // a FreeBodySupport or FreeBodySupportSet point (inertia relief is solved on the interface problem)
+    Support = 16,
     AbsorbedSpider = 32    // the reference point of a spider absorbed into the unit, or the pierced element's grid
                            // point standing for the point of an absorbed fastener side
                            // (reduction/absorption/SpiderAbsorption)

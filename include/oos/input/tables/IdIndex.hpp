@@ -13,8 +13,9 @@ namespace oos::input
 
 // The row of each ID of a table column (grid points, scalar points, materials, coordinate systems), found by binary
 // search in a copy of the (ID, row) pairs sorted by ID. O_o_Reader gives the row-index columns nodesRows and propIdRow
-// for most element cards, but not for the grid points of the springs, CBUSH, CONM1, CONM2 and the scalar masses
-// (these come without a row-index column), nor for the material of a property: the elements find those rows here.
+// for most element cards, but not for the grid points of the springs, Bushing, PointMassMatrix, PointMassInertia and
+// the scalar masses (these come without a row-index column), nor for the material of a property: the elements find
+// those rows here.
 //
 // The pairs grow with the model, so they live in a BudgetedBuffer of the budget given at construction (8 bytes per
 // ID). Building is O(n log n), a lookup O(log n).

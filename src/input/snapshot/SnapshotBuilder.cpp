@@ -37,12 +37,14 @@ std::vector<std::string> cardsOf(const std::vector<Entry>& entries)
     return cards;
 }
 
-// The card of the enforced displacements (SPCD), whose rows singlePointConstrTable holds with the constraints.
+// The card of the enforced displacements (EnforcedMotionConstr), whose rows singlePointConstrTable holds with the
+// constraints.
 constexpr std::string_view ENFORCED_DISPLACEMENT_CARD = "EnforcedMotionConstr";
 
-// With loadCombinationsTable the SPCD rows of singlePointConstrTable list each load set once, as the load tables do: an
-// SPCD row whose set is not its card's (a combination expanded) would be added twice, under its LOAD and through the
-// set the LOAD reaches (SpcSet reads the SPCD of a LOAD by its terms, LoadTable::termsOf).
+// With loadCombinationsTable the EnforcedMotionConstr rows of singlePointConstrTable list each load set once, as the
+// load tables do: an EnforcedMotionConstr row whose set is not its card's (a combination expanded) would be added
+// twice, under its LOAD and through the set the LOAD reaches (SpcSet reads the EnforcedMotionConstr of a LOAD by its
+// terms, LoadTable::termsOf).
 void requireOwnEnforcedRows(const ConstraintTable& constraints)
 {
     const base::ContractReader& table = constraints.spcReader();

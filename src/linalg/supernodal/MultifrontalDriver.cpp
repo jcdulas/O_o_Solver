@@ -33,7 +33,7 @@ std::int64_t squared(std::int64_t value) noexcept
     return value * value;
 }
 
-// The diagonal of column j of the matrix (0 when it is not stored): the a_jj of the MAXRATIO ratio.
+// The diagonal of column j of the matrix (0 when it is not stored): the a_jj of the MaxDiagonalRatio ratio.
 double matrixDiagonal(const SymmetricCsc& matrix, std::int32_t column) noexcept
 {
     const auto begin = toSize(matrix.columnOffsets()[static_cast<std::size_t>(column)]);
@@ -728,8 +728,8 @@ void MultifrontalDriver::finish(SupernodalFactor& factor)
             ++(pivot > 0.0 ? inertia.positive : pivot < 0.0 ? inertia.negative : inertia.zero);
             if (m_options.pivoting == PivotingMode::PositiveDefinite)
             {
-                // The ratio a_jj / d_j that PARAM MAXRATIO bounds (a_jj the reference of the equation when the options
-                // give one).
+                // The ratio a_jj / d_j that PARAM MaxDiagonalRatio bounds (a_jj the reference of the equation when the
+                // options give one).
                 const std::int32_t equation = panel.rows[k];
                 const double diagonal =
                     ratioTestDiagonal(m_options.referenceDiagonal, equation, matrixDiagonal(*m_matrix, equation));

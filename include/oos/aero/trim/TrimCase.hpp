@@ -27,7 +27,7 @@ enum class TrimVariableKind : std::uint8_t
 };
 
 // How a trim case sets a variable (aeroTrimCasesTable "state"): fixed to a value by the TRIM, solved for, given by an
-// AeroTrimLink from others, or scheduled by a AeroControlSchedule.
+// AeroTrimLink from others, or scheduled by an AeroControlSchedule.
 enum class TrimVariableState : std::uint8_t
 {
     Fixed,
@@ -66,9 +66,9 @@ struct AeroLink
 // Read the owned card columns exported by Reader. Empty when the model has no trim links.
 [[nodiscard]] std::vector<AeroLink> trimLinks(const input::ModelSnapshot& snapshot);
 
-// The trim case of a subcase of a static aeroelastic analysis (TRIM, AeroTrim2): the TRIM set its Case Control selects,
-// as O_o_Reader's aeroTrimCasesTable gives it: the Mach number, the dynamic pressure, AEQR, and every variable of the
-// model with its state; the AeroTrimLink cards of the set (and those of ID 0 or ALWAYS).
+// The trim case of a subcase of a static aeroelastic analysis (AeroTrim, AeroTrim2): the TRIM set its Case Control
+// selects, as O_o_Reader's aeroTrimCasesTable gives it: the Mach number, the dynamic pressure, AEQR, and every variable
+// of the model with its state; the AeroTrimLink cards of the set (and those of ID 0 or ALWAYS).
 //
 // Thread-safety: an immutable value. Ownership: plain data.
 struct TrimCase
@@ -80,16 +80,16 @@ struct TrimCase
     // TRIM AEQR (0 to 1, default 1): the share of the aerodynamic loads of the deformation that act on the structure, 0
     // for a rigid trim (the structure deforms under the loads of its rigid shape, without feedback).
     double aeqr = 1.0;
-    std::vector<TrimSetting>
-        settings; // in the order of aeroTrimCasesTable (AESTAT, AeroControlSurface, AeroController by ID)
+    // in the order of aeroTrimCasesTable (AeroRigidTrimVariable, AeroControlSurface, AeroController by ID)
+    std::vector<TrimSetting> settings;
     std::vector<AeroLink> links; // those of the linked variables, one per linked variable
 
     // The trim case that the Case Control of `subcase` selects (its SUBCASE label, or `tableId`, its row of
     // O_o_Reader's subcasesTable: 0 for the global section of a deck without SUBCASE), or nothing when no TRIM selects
     // it. Its problems are error diagnostics of `sink`: two TRIM sets for the subcase, a Mach number of 1 or more, a
-    // dynamic pressure not positive, AEQR outside [0, 1], a scheduled variable (CSSCHD, not supported), a linked
-    // variable without its AeroTrimLink or with two, an AeroTrimLink that names a variable the model does not have or
-    // that is itself linked.
+    // dynamic pressure not positive, AEQR outside [0, 1], a scheduled variable (AeroControlSchedule, not supported), a
+    // linked variable without its AeroTrimLink or with two, an AeroTrimLink that names a variable the model does not
+    // have or that is itself linked.
     [[nodiscard]] static std::optional<TrimCase> forSubcase(const input::ModelSnapshot& snapshot,
                                                             base::EntityId subcase, base::EntityId tableId,
                                                             std::span<const AeroLink> links,

@@ -16,10 +16,10 @@
 namespace oos::elements
 {
 
-// The output rows of the shells (CQUAD4, ShellTria3, ShellQuad8, ShellTria6, ShellQuad4Drilling, ShellTria3Drilling), shared:
-// from the generalised strains and forces at one place of an element (its centre or a corner) to the rows of the
-// O_o_Reader result tables (stress.shellQuad4, strain.shellQuad4, forces.shellQuad4, stress.shellQuad4_composite ...), in
-// the element frame (the plies in their own frame).
+// The output rows of the shells (ShellQuad4, ShellTria3, ShellQuad8, ShellTria6, ShellQuad4Drilling,
+// ShellTria3Drilling), shared: from the generalised strains and forces at one place of an element (its centre or a
+// corner) to the rows of the O_o_Reader result tables (stress.shellQuad4, strain.shellQuad4, forces.shellQuad4,
+// stress.shellQuad4_composite ...), in the element frame (the plies in their own frame).
 //
 // Sign conventions: the fibre at distance z from the reference plane strains as ε(z) = ε_m − z·κ, κ the shell
 // curvature (κx = −∂θy/∂x, κy = ∂θx/∂y, 2κxy = ∂θx/∂x − ∂θy/∂y, which follows from u(z) = u + z·θy,
@@ -38,9 +38,10 @@ namespace oos::elements
 inline constexpr double SHELL_COUPLING_SIGN = -1.0;
 
 // The temperature change of a shell element from its initial state: ΔT at the reference plane and the gradient T'
-// through the thickness (TEMPP1 field TPRIME). ΔT is uniform (a PlateTemperatureLoad, or a deck without grid point
-// temperatures) or given at the corners from the grid point temperatures (TEMP, DefaultTemperatureLoad), interpolated
-// over the element by its shape functions; `deltaT` is then the value at the centre.
+// through the thickness (PlateTemperatureLoad field TPRIME). ΔT is uniform (a PlateTemperatureLoad, or a deck without
+// grid point temperatures) or given at the corners from the grid point temperatures (NodeTemperatureLoad,
+// DefaultTemperatureLoad), interpolated over the element by its shape functions; `deltaT` is then the value at the
+// centre.
 struct ShellTemperatureChange
 {
     double deltaT = 0.0;
@@ -72,7 +73,7 @@ struct ShellPlaceState
     ShellTemperatureChange temperature;     // of the element, for the ply stresses
 };
 
-// How a laminated shell writes its stresses and strains (PARAM NOCOMPS, default +1): the plies only (+1), the
+// How a laminated shell writes its stresses and strains (PARAM NoCompositeStress, default +1): the plies only (+1), the
 // plies and the equivalent homogeneous element (0), the homogeneous element only (−1).
 enum class CompositeOutput : std::uint8_t
 {
@@ -81,7 +82,7 @@ enum class CompositeOutput : std::uint8_t
     HomogeneousOnly
 };
 
-// PARAM NOCOMPS of the snapshot (default +1), read once per facet call.
+// PARAM NoCompositeStress of the snapshot (default +1), read once per facet call.
 [[nodiscard]] CompositeOutput compositeOutputOf(const input::ModelSnapshot& snapshot);
 
 // The columns of each output kind in the data contract: stresses fiber_distance, oxx, oyy, txy, angle, omax, omin,
@@ -190,7 +191,7 @@ void appendShellRowSecondRates(ElementResultBlock& block, std::int64_t row, std:
 //   itself at section.frameAngle from the element x axis), and the ply stresses σ = Q_k (ε − α_k ΔT(z_k)) (the plies
 //   are evaluated at their mid-thickness);
 // - the transverse shear of the plies from the element's shear forces (see laminatePlyShear);
-// - the failure indices of the plies by the theory FT (PCOMP field FT), the bond indices max(|τ1z|, |τ2z|)/SB at the
+// - the failure indices of the plies by the theory FT (CompProp field FT), the bond indices max(|τ1z|, |τ2z|)/SB at the
 //   interface above each ply (NaN above the last), and the element index, the largest of them, on the last ply (NaN on
 //   the others), by the convention of the failure index table. No rows
 //   without FT, or when a ply's material lacks its allowables.

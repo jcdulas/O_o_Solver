@@ -32,7 +32,7 @@ std::string_view textAt(const base::ContractReader& reader, const std::string& c
 }
 
 // The cards that pair contact bodies, as the `table` texts of the contact tables name them with their ID
-// ("ContactTable 5", "ContactPair 3"): BCTABLE, and BCONECT, which only a BCTABL1 selects.
+// ("ContactTable 5", "ContactPair 3"): ContactTable, and ContactPair, which only a ContactTable1 selects.
 constexpr std::string_view CONTACT_TABLE_CARD = "ContactTable";
 constexpr std::string_view CONTACT_PAIR_PREFIX = "ContactPair ";
 
@@ -152,8 +152,8 @@ bool ContactTable::hasFace(std::int64_t row) const
 
 std::vector<std::int64_t> ContactTable::selectedPairRows(std::int32_t bcontactId) const
 {
-    // The `table` texts the ID selects: the pair cards contactTablesTable gives for that table ID (a BCTABLE itself,
-    // the BCONECTs of a BCTABL1), else the BCTABLE of that ID.
+    // The `table` texts the ID selects: the pair cards contactTablesTable gives for that table ID (a ContactTable
+    // itself, the ContactPairs of a ContactTable1), else the ContactTable of that ID.
     std::vector<std::string> selected; // bounded by the pairs of one contact table
     if (m_tables)
     {
@@ -167,7 +167,7 @@ std::vector<std::int64_t> ContactTable::selectedPairRows(std::int32_t bcontactId
         }
     }
     // Without contactTablesTable, or with an empty one (O_o_Reader's for a model built without contact cards, whose
-    // pairs a caller hands over), the BCTABLE of that ID (BCONTACT names a BCTABLE or a BCTABL1). A
+    // pairs a caller hands over), the ContactTable of that ID (BCONTACT names a ContactTable or a ContactTable1). A
     // non-empty table lists every contact table of the model: an ID it does not name selects nothing.
     if (!m_tables || m_tables->rowCount() == 0)
     {

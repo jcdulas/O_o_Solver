@@ -26,7 +26,7 @@ struct FieldRule
 // card of the model that is not supported, and every field value a rule refuses, becomes a diagnostic of the
 // SupportReport, so that the user sees all of them in one pass before any analysis starts. The cards are known by
 // their neutral names (addCard("ShellQuad4")); the diagnostics, and the list of supported cards of the report, name
-// them by their deck keywords (CQUAD4).
+// them by their deck keywords (ShellQuad4).
 //
 // current() is empty: the modules that implement cards add them (the element registry, solutions::RunCatalog), and
 // every element, property, material, load and constraint card none of them adds is refused with its name and IDs.

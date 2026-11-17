@@ -3,7 +3,7 @@
 namespace oos::elements
 {
 
-// Mass per unit length ρA + NSM (PROD NSM, plus the NSM cards' share of MassOptions), lumped or coupled (rodMass).
+// Mass per unit length ρA + NSM (RodProp NSM, plus the NSM cards' share of MassOptions), lumped or coupled (rodMass).
 void Rod2Element::computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                                  ElementMatrixBlock& block) const
 {

@@ -40,8 +40,8 @@ template <typename T>
     return u;
 }
 
-// Spec §2.4: Ex (or Ey) of the bending card. A IsoMat or OrthoMat2D gives the modulus of its plane-stress matrix along
-// the axis, G11 − G12²/G22 (E of a IsoMat, E1 of a OrthoMat2D, exactly); a AnisoMat2D or a laminate its raw diagonal
+// Spec §2.4: Ex (or Ey) of the bending card. An IsoMat or OrthoMat2D gives the modulus of its plane-stress matrix along
+// the axis, G11 − G12²/G22 (E of an IsoMat, E1 of an OrthoMat2D, exactly); an AnisoMat2D or a laminate its raw diagonal
 // term.
 template <typename T>
 [[nodiscard]] T bendingYoungModulus(const PlateSectionValues<T>& section, std::size_t axis)
@@ -53,8 +53,8 @@ template <typename T>
 }
 
 // The transverse shear moduli G3 (on γxz, γyz, material frame) of the bending card, which NASTRAN-95's QUAD4 uses
-// without MID3 (spec §1.2): diag(G, G) of a IsoMat, [[G11, G12], [G12, G22]] of a AnisoMat2D (a laminate alike),
-// diag(G1Z, G2Z) of a OrthoMat2D (G12 for a blank one).
+// without MID3 (spec §1.2): diag(G, G) of an IsoMat, [[G11, G12], [G12, G22]] of an AnisoMat2D (a laminate alike),
+// diag(G1Z, G2Z) of an OrthoMat2D (G12 for a blank one).
 template <typename T>
 [[nodiscard]] Matrix2<T> bendingCardShear(const PlateSectionValues<T>& section)
 {
@@ -258,7 +258,7 @@ PlateConstitutive<T> plateConstitutiveOf(const PlateSectionValues<T>& section, d
         for (std::size_t k = 0; k < 2; ++k)
         {
             const bool isRigid = !(realPart(section.transverseShear[k]) > 0.0);
-            // A direction MID3 leaves rigid (a blank G1Z or G2Z of a OrthoMat2D) has no shear compliance (the TRIA3
+            // A direction MID3 leaves rigid (a blank G1Z or G2Z of an OrthoMat2D) has no shear compliance (the TRIA3
             // compliance counts 0 there); the QUAD4, whose shear-correction factors need a modulus, takes the
             // in-plane shear modulus of the bending card there, the replacement NASTRAN-95 applies to a zero G1Z/G2Z
             // in those factors (spec §2.4). A choice of this project: NASTRAN-95 has no rigid direction.

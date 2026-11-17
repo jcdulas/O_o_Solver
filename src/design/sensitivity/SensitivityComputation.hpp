@@ -153,7 +153,7 @@ struct SubcaseState
     solutions::StaticSubcase subcase;
     std::size_t group = 0;
     base::BudgetedBuffer<double> displacements;
-    // Inertia relief (PARAM INREL = −1): the relief of its constraint set (null: none) and its relief
+    // Inertia relief (PARAM InertiaRelief = −1): the relief of its constraint set (null: none) and its relief
     // acceleration field D·ü_r (one value per g-set DOF).
     const solutions::KeptRelief* relief = nullptr;
     base::BudgetedBuffer<double> reliefAccelerations;
@@ -166,7 +166,7 @@ struct SubcaseState
     bool hasInertialLoads = false;
     bool hasDistributedLoads =
         false; // a PointsPressureLoad, BeamDistributedLoad, ShellPressureLoad or FacePressureLoad in its load set
-    bool hasConcentratedLoads = false;                         // a FORCE, MOMENT or their variants, an ScalarPointLoad
+    bool hasConcentratedLoads = false;                         // a FORCE, MOMENT or their variants, a ScalarPointLoad
     bool hasEnforcedDisplacements = false;                     // SPC D or EnforcedMotionConstr not zero
     std::optional<base::BudgetedBuffer<double>> elementForces; // Kgg·u, for ESE item 3 and the self-adjoint items
     double totalEnergy = 0.0;
@@ -881,8 +881,8 @@ protected:
 
     // The relief of constraint set `group` at the moved point: D that of the point (rigid
     // support motions: the analysis refused supports that are not statically determinate, so D does not depend on the
-    // design; on the condensed path the geometric rigid-body modes Φ·C), M'·D = M·D + WTMASS·Σ_e ΔM_e·D over the
-    // moved elements, and (Dᵀ·M'·D)⁻¹ = (Dᵀ·M·D + ΔR)⁻¹, ΔR = WTMASS·Σ_e Dᵀ·ΔM_e·D; made once per group.
+    // design; on the condensed path the geometric rigid-body modes Φ·C), M'·D = M·D + WeightToMass·Σ_e ΔM_e·D over the
+    // moved elements, and (Dᵀ·M'·D)⁻¹ = (Dᵀ·M·D + ΔR)⁻¹, ΔR = WeightToMass·Σ_e Dᵀ·ΔM_e·D; made once per group.
     // PERFORMANCE (accuracy): the changes ΔR and Dᵀ·ΔP are summed over the moved elements alone and added to the
     // point's Dᵀ·M·D, formed the same way at both moved states, so that the round-off of the sums over the model (some
     // 1e-9 of ü on the free barrels in millimetres) is common to the two sides of the central difference and cancels.
@@ -921,7 +921,7 @@ protected:
             if (!mass)
                 continue;
             const std::size_t n = mass->dofs.size();
-            std::vector<double> rows(n * r, 0.0); // WTMASS·ΔM_e·D on the element's DOFs, bounded by them
+            std::vector<double> rows(n * r, 0.0); // WeightToMass·ΔM_e·D on the element's DOFs, bounded by them
             for (std::size_t a = 0; a < n; ++a)
                 for (std::size_t k = 0; k < r; ++k)
                 {
@@ -960,8 +960,8 @@ protected:
 
     // ü' = (Dᵀ·M'·D)⁻¹·Dᵀ·P' of relieved subcase s at the moved point: Dᵀ·P = (Dᵀ·M·D)·ü of the point's
     // relief (its accelerations: Dᵀ·(P − M·D·ü) = 0), plus Dᵀ·ΔP of the moved elements (their inertial loads
-    // WTMASS·ΔM_e·a, their pressures and line loads on both sets). The thermal loads are self-equilibrated (Dᵀ·P_T = 0
-    // on rigid D) and add nothing.
+    // WeightToMass·ΔM_e·a, their pressures and line loads on both sets). The thermal loads are self-equilibrated
+    // (Dᵀ·P_T = 0 on rigid D) and add nothing.
     [[nodiscard]] std::optional<std::array<double, assembly::MAX_SUPPORT_DOFS>> movedAccelerationsOf(std::size_t s)
     {
         const SubcaseState& state = m_subcases[s];
@@ -2526,10 +2526,10 @@ protected:
     // each variable its plugin gives derivatives for: ∂K*/∂x_j as the plugin gives it (symmetrised,
     // ExternalUnitAssembly), ∂f*/∂x_j from its load source on the zone loads of the load basis of each constraint set
     // (the basis the analysis gave it), combined with the coefficients α of each subcase; and the inertial loads of
-    // ∂M*/∂x_j in a subcase with inertial loads (the loads of the subcase's GravityLoad, ACCEL, RotationalForceLoad
-    // with ∂M*/∂x_j as the mass: they are linear in it). A variable may drive no field of the model (a fillet radius of
-    // the local model): its pseudo-load is then the unit's alone. The SPC force items get the explicit part −wᵀ·b_j (r
-    // = wᵀ·(K·u − P), K holding K*, P holding f* and −M*·a).
+    // ∂M*/∂x_j in a subcase with inertial loads (the loads of the subcase's GravityLoad, AccelFieldLoad,
+    // RotationalForceLoad with ∂M*/∂x_j as the mass: they are linear in it). A variable may drive no field of the model
+    // (a fillet radius of the local model): its pseudo-load is then the unit's alone. The SPC force items get the
+    // explicit part −wᵀ·b_j (r = wᵀ·(K·u − P), K holding K*, P holding f* and −M*·a).
     void addExternalUnitLoads()
     {
         if (!hasExternalUnits())
@@ -3173,7 +3173,7 @@ protected:
             }
             addExplicit(item.key, quantity, -product);
         }
-        // A field that changes no mass of the elements it reaches (a AnisoMat2D stiffness term of a shell) leaves
+        // A field that changes no mass of the elements it reaches (an AnisoMat2D stiffness term of a shell) leaves
         // WEIGHT, VOLUME and FRMASS where they are: no differences of them.
         const bool changesMass =
             isShape || std::any_of(elements.begin(), elements.end(), [&](const ElementRef& element)
@@ -3494,7 +3494,7 @@ protected:
                     dofs.push_back(m_dofMap.dofOf(dof));
                 out.terms.push_back({LoadTerm::Kind::Load, s, std::move(dofs), std::move(loads.values), 0.0});
             }
-        // The pressures and line loads on the element (the element's own); a shape moves the PLOADs on
+        // The pressures and line loads on the element (the element's own); a shape moves the PointsPressureLoads on
         // grid points too, so its distributed loads are differenced on the whole load vectors (differenceQuantity).
         // A field that does not move them (a section or material field of a family that says so: FieldUse) gives
         // none.
@@ -3512,7 +3512,7 @@ protected:
                 out.terms.push_back({LoadTerm::Kind::AppliedLoad, s, std::move(dofs), std::move(loads.values), 0.0});
             }
         // The inertial loads of a field that changes the mass, element by element (addInertialLoadRate); a shape
-        // moves the acceleration field too (an RotationalForceLoad radius), so its inertial loads are differenced on
+        // moves the acceleration field too (a RotationalForceLoad radius), so its inertial loads are differenced on
         // the whole load vectors.
         if (!isShape && use.changesMass && family.facets().has(elements::Facet::Mass))
             for (std::size_t s = 0; s < m_subcases.size(); ++s)
@@ -3820,8 +3820,8 @@ protected:
 
     // The explicit parts of WEIGHT, VOLUME and FRMASS for one quantity: the mass property of the elements it reaches on
     // each side (the others do not change; MassProperties is linear in the fields, exact on the extrapolation). A shape
-    // that moves the reference point of WEIGHT (PARAM GRDPNT) changes the moments of every element about it: then
-    // every element is taken, about the reference of each side.
+    // that moves the reference point of WEIGHT (PARAM WeightReferenceNode) changes the moments of every element about
+    // it: then every element is taken, about the reference of each side.
     void differenceMassItems(const FieldValue& quantity, const LazyFieldPerturbation& perturbation,
                              const std::set<ElementRef>& affectedSet, bool isShape)
     {
@@ -3898,8 +3898,8 @@ protected:
 
     // ∂P/∂v of the inertial loads of subcase `subcase` on one element whose mass a designed field changes: the inertial
     // loads are P = Mgg·a (InertialLoads), linear in the mass, and a field moves no grid point, so the acceleration
-    // field a is that of the design point and ∂P/∂v = WTMASS·(∂M_e/∂v)·a_e on the element's DOFs (∂M_e/∂v the
-    // extrapolated differences of ElementDerivatives::mass, the formulation of the subcase's PARAM COUPMASS), an
+    // field a is that of the design point and ∂P/∂v = WeightToMass·(∂M_e/∂v)·a_e on the element's DOFs (∂M_e/∂v the
+    // extrapolated differences of ElementDerivatives::mass, the formulation of the subcase's PARAM CoupledMass), an
     // applied load of the pseudo-load. A selected non-structural mass share is constant with respect to a material or
     // section field; a shape can change its geometry, so shape directions difference the complete selected mass.
     // PERFORMANCE: the derivative was formed on the whole load vectors of the four perturbed snapshots, each with the

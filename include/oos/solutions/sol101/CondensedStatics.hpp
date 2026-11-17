@@ -206,9 +206,10 @@ struct CondensedSetRecord
     // the units whose equations were built again for their recovery.
     std::int64_t recoveryWaveCount = 0;
     std::int64_t rebuiltUnitCount = 0;
-    // The seconds of its phases: the relations and the interface problem (assembled, its AUTOSPC, factorised); the
-    // boundary basis (its solves); the recoveries (the interior factors made again and the units' basis solutions); the
-    // cases (their batches: the combinations, the recovered interiors, the g-set vectors and the caller's tables).
+    // The seconds of its phases: the relations and the interface problem (assembled, its AutoSingularityConstr,
+    // factorised); the boundary basis (its solves); the recoveries (the interior factors made again and the units'
+    // basis solutions); the cases (their batches: the combinations, the recovered interiors, the g-set vectors and the
+    // caller's tables).
     double interfaceSeconds = 0.0;
     double basisSeconds = 0.0;
     double recoverySeconds = 0.0;
@@ -379,26 +380,27 @@ struct CondensedRunRecord
 //    here, before any unit is condensed, with the estimate and the largest consumers (base::MemoryBudgetError);
 // 5. the units condensed in waves (reduction::UnitScheduler: by decreasing work, several units on one thread each while
 //    their estimated peaks fit the budget left, a large unit or the only one the budget admits alone with every thread
-//    the memory of its factorisation allows): per wave, their equations (reduction::UnitSystem: its interior AUTOSPC),
-//    then in order their patterns, every vector's g-set loads split by rows (the interior rows of a unit are its
-//    patterns, the rows of the interface points the interface's loads, so that each load acts once; the enforced
-//    displacements of a DOF held in every subcase are a pattern of every unit holding it and of the interface) and
-//    their cache lookups, then the condensation of those not in the cache (reduction::StaticCondensation, with the six
-//    inertial patterns −M·Φ_r when some subcase has inertia relief, and the work of the patterns G = F_oᵀ·K_oo⁻¹·F_o
-//    for the external work of the checks), then in order their stores and the decision on their interior factors
-//    (reduction::FactorRetention: kept for the recovery while the budget allows, released otherwise and named);
+//    the memory of its factorisation allows): per wave, their equations (reduction::UnitSystem: its interior
+//    AutoSingularityConstr), then in order their patterns, every vector's g-set loads split by rows (the interior rows
+//    of a unit are its patterns, the rows of the interface points the interface's loads, so that each load acts once;
+//    the enforced displacements of a DOF held in every subcase are a pattern of every unit holding it and of the
+//    interface) and their cache lookups, then the condensation of those not in the cache
+//    (reduction::StaticCondensation, with the six inertial patterns −M·Φ_r when some subcase has inertia relief, and
+//    the work of the patterns G = F_oᵀ·K_oo⁻¹·F_o for the external work of the checks), then in order their stores and
+//    the decision on their interior factors (reduction::FactorRetention: kept for the recovery while the budget allows,
+//    released otherwise and named);
 // 6. the interface's own load basis, on the rows of the interface points and the elements touching them.
 // Each condensation is the same whatever the wave, the threads or the units beside it: the results have the same bits
 // with any budget that fits and any number of threads.
 // Per constraint set (solveGroup): the full path's Gm and DOF sets of the subcases (their errors reported as the full
 // path reports them: a cycle of relations, a DOF dependent twice, an SPC on a dependent DOF), the relations eliminated
-// at the interface (PlannedUnits::interfaceRowFilter), the interface problem with its AUTOSPC (its factorisation on one
-// thread when the threaded one does not fit the budget), inertia relief from the units' rigid-body mass properties and
-// inertial patterns (no unit recovered), the boundary basis, the recovered units one after the other (a released or
-// never made interior factor computed again, to the bits of the condensation, and released again once the unit's
-// basis solutions are made), and the cases by batches whose size the budget left decides (lowered from the largest
-// batch when needed, named in the set's record): the displacements, applied loads, SPC forces, MPC forces and check
-// values of each.
+// at the interface (PlannedUnits::interfaceRowFilter), the interface problem with its AutoSingularityConstr (its
+// factorisation on one thread when the threaded one does not fit the budget), inertia relief from the units' rigid-body
+// mass properties and inertial patterns (no unit recovered), the boundary basis, the recovered units one after the
+// other (a released or never made interior factor computed again, to the bits of the condensation, and released again
+// once the unit's basis solutions are made), and the cases by batches whose size the budget left decides (lowered from
+// the largest batch when needed, named in the set's record): the displacements, applied loads, SPC forces, MPC forces
+// and check values of each.
 //
 // The memory mode (Inputs::memoryMode, reduction::CondensedMemoryPlan) decides, in step 4, what the analysis keeps:
 // every recovery made before the cases ("all at once", as above), or the units recovered in sequence: per batch of
@@ -723,11 +725,11 @@ public:
         std::unique_ptr<assembly::FormulationConstraints> formulation;
     };
     // The pencil of the constraint set on the interface: K (the units' K* and K_qq, the interface elements, the
-    // relations and constraints of the full path's sets, AUTOSPC on the summed boundary blocks, as solveGroup), and
-    // the mass (vibration: the interface elements' and each unit's M_CB) or the differential stiffness (buckling: the
-    // interface elements' and each unit's T_CBᵀ·K_d·T_CB from the preload, never cached), solved by the block Lanczos
-    // solver (linalg::SparsePencil or BucklingPencil on the interface's symbolic factor). Throws as solveGroup and the
-    // Lanczos solver.
+    // relations and constraints of the full path's sets, AutoSingularityConstr on the summed boundary blocks, as
+    // solveGroup), and the mass (vibration: the interface elements' and each unit's M_CB) or the differential stiffness
+    // (buckling: the interface elements' and each unit's T_CBᵀ·K_d·T_CB from the preload, never cached), solved by the
+    // block Lanczos solver (linalg::SparsePencil or BucklingPencil on the interface's symbolic factor). Throws as
+    // solveGroup and the Lanczos solver.
     [[nodiscard]] EigenGroup solveEigenGroup(const EigenGroupInputs& inputs, base::MemoryBudget& budget,
                                              base::DiagnosticSink& sink);
     // The mode request of the units for the eigenvalue analysis of a constraint set: the plan's count per unit; with
@@ -769,7 +771,8 @@ public:
         std::shared_ptr<const GroupConstraints> constraints;
         const assembly::RigidElimination* gm = nullptr; // the full path's Gm of the set (in `constraints`)
         std::string singularityTable;                   // its table of the singular components (empty: none)
-        // Per g-set DOF: held by the interface or by a unit (the s and r sets of the full path, the AUTOSPC).
+        // Per g-set DOF: held by the interface or by a unit (the s and r sets of the full path, the
+        // AutoSingularityConstr).
         base::BudgetedBuffer<std::uint8_t> isConstrained;
         // Φ_rᵀ·M·Φ_r about the basic origin of the whole structure: the units' and the interface elements'.
         base::MatN<6> rigidBodyMass{};
@@ -823,7 +826,7 @@ public:
     [[nodiscard]] std::vector<ReducedUnitResult> reducedUnits(base::MemoryBudget& budget) const;
     // The labels of the solved subcases, in the order of the load cases (the columns of the coefficients).
     [[nodiscard]] std::vector<base::EntityId> caseLabels() const;
-    // The largest MAXRATIO ratio of the factorisations (units' interiors and interface problems).
+    // The largest MaxDiagonalRatio ratio of the factorisations (units' interiors and interface problems).
     [[nodiscard]] double largestPivotRatio() const noexcept { return m_largestPivotRatio; }
     // The right-hand sides solved: the patterns of every unit and the interface's vectors.
     [[nodiscard]] std::int64_t solvedVectorCount() const noexcept { return m_solvedVectorCount; }

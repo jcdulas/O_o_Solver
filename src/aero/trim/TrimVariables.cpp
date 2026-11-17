@@ -121,7 +121,8 @@ TrimVariables::TrimVariables(const input::ModelSnapshot& snapshot, const AeroRef
             m_surfaces.push_back(std::move(surface));
         }
     }
-    // The rigid-body variables the model declares (AESTAT, in the trim cases), all of them without a TRIM.
+    // The rigid-body variables the model declares (AeroRigidTrimVariable, in the trim cases), all of them without a
+    // TRIM.
     std::vector<std::string> declared;
     if (snapshot.hasTable(input::TableRole::TrimCases))
     {

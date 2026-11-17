@@ -45,7 +45,7 @@ std::vector<std::int64_t> resolveAll(const ClusterAbsorption& absorption, const 
 
 // The relations eliminated inside a unit whose dependent points another unit holds too, sorted: they must be
 // eliminated at the interface. An element list of Solver.regroup that splits a component shares the points of its
-// edge with its neighbour (UnitBoundaries, SharedPoint); a rigid element, an RigidInterpolation or an MPC set of one
+// edge with its neighbour (UnitBoundaries, SharedPoint); a rigid element, a RigidInterpolation or an MPC set of one
 // side that makes such a point dependent would leave the other side with element terms on DOFs it cannot eliminate
 // (their independent points are not its points: UnitSystem refuses it). Eliminated at the interface, the relation
 // leaves the dependent DOFs to every unit that holds them as boundary DOFs (PlanGraph::unitDofCount) and puts its

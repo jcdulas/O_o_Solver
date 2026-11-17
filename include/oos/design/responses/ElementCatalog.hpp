@@ -27,7 +27,7 @@ struct ElementEntry
     std::string propertyCard;
 };
 
-// The elements of a snapshot by ID, and the elements of the properties a DesignResp1 names (DRESP1: ownerKind =
+// The elements of a snapshot by ID, and the elements of the properties a DesignResp1 names (DesignResp1: ownerKind =
 // "Elements", the ATTi are elements; PTYPE a property card, the ATTi are property IDs of that card, since property IDs
 // are unique within a property card only).
 //

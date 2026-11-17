@@ -39,7 +39,7 @@ namespace oos::elements
 //
 // A component whose stiffness is zero along the whole element (A, J, I1 or I2 zero, or E, G zero) is left out of F,
 // and k is zero there: the element carries no load in it. A shear factor ≤ 0, or a zero K·A·G, means no shear
-// flexibility (PBAR: 0.0 or blank for K1, K2 is an infinite shear stiffness; extended to A or G zero).
+// flexibility (BarProp: 0.0 or blank for K1, K2 is an infinite shear stiffness; extended to A or G zero).
 //
 // Thread-safety: immutable. Precondition: findSectionProblem(section) found nothing; length > 0.
 class BeamFlexibility

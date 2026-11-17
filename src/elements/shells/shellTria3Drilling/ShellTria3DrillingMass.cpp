@@ -4,9 +4,9 @@
 namespace oos::elements
 {
 
-// The lumped (HRZ) or coupled mass of ShellTria3DrillingPlate::mass, ρ t + NSM per unit area (PSHELL NSM and the NSM cards'
-// share), carried to the displacement systems of G1-G3: through the offset of ZOFFS under ModelParams OffsetDefinition
-// LoadRecoveryOffsets or ElemOffsetZ, at the grid points under ElemOffsetsOnly, the default
+// The lumped (HRZ) or coupled mass of ShellTria3DrillingPlate::mass, ρ t + NSM per unit area (ShellProp NSM and the NSM
+// cards' share), carried to the displacement systems of G1-G3: through the offset of ZOFFS under ModelParams
+// OffsetDefinition LoadRecoveryOffsets or ElemOffsetZ, at the grid points under ElemOffsetsOnly, the default
 // (ShellNodeFrames::massToDisplacementSystems).
 void ShellTria3DrillingElement::computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                                    ElementMatrixBlock& block) const

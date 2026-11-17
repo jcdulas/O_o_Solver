@@ -31,7 +31,7 @@ struct Diagnostic
 [[nodiscard]] const char* severityName(Severity severity) noexcept;
 
 // A one-line text of a diagnostic: "error [unsupported-card] ShellQuad4 12, field offset: message", in keywords once
-// labelled ("error [unsupported-card] CQUAD4 12, field ZOFFS: message").
+// labelled ("error [unsupported-card] ShellQuad4 12, field ZOFFS: message").
 [[nodiscard]] std::string formatDiagnostic(const Diagnostic& diagnostic);
 
 } // namespace oos::base

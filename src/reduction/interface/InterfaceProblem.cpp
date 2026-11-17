@@ -1254,7 +1254,7 @@ void InterfaceProblem::computeMassProperties(const InterfaceInputs& inputs, base
                     false, contributions);
             },
             mass, pool);
-    // PARAM WTMASS multiplies the structural mass once assembled (as assembly::MassAssembler).
+    // PARAM WeightToMass multiplies the structural mass once assembled (as assembly::MassAssembler).
     if (massOptions.weightToMass != 1.0)
         for (double& value : mass.values())
             value *= massOptions.weightToMass;

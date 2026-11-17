@@ -16,7 +16,7 @@ namespace oos::design
 namespace
 {
 
-constexpr const char* DVGRID = "DesignNodeMove";
+constexpr const char* DESIGN_NODE_MOVE = "DesignNodeMove";
 
 [[nodiscard]] bool isFinite(const std::array<double, 3>& vector) noexcept
 {
@@ -63,25 +63,25 @@ void ShapeRelations::check(const DesignVariables& variables, std::vector<base::D
     {
         if (!variables.findIndex(term.variableId))
             diagnostics.push_back(
-                designProblem(design_code::MISSING_REFERENCE, DVGRID, term.variableId, "designVarId",
+                designProblem(design_code::MISSING_REFERENCE, DESIGN_NODE_MOVE, term.variableId, "designVarId",
                               base::concatenate({"expected a DesignVar ", std::to_string(term.variableId),
                                                  " for the DesignNodeMove of ", gridText(term),
                                                  ", found none; define the design variable"})));
         if (!isFinite(term.direction))
             diagnostics.push_back(designProblem(
-                design_code::INVALID_SHAPE, DVGRID, term.variableId, "directionX",
+                design_code::INVALID_SHAPE, DESIGN_NODE_MOVE, term.variableId, "directionX",
                 base::concatenate({"expected the vector of the DesignNodeMove of ", gridText(term),
                                    " in the basic system, found none: O_o_Reader could not resolve it (the grid point "
                                    "or the system DesignNodeMove.frameId does not exist); correct "
                                    "DesignNodeMove.nodeId or DesignNodeMove.frameId"})));
         else if (term.direction[0] == 0.0 && term.direction[1] == 0.0 && term.direction[2] == 0.0)
             diagnostics.push_back(designProblem(
-                design_code::INVALID_SHAPE, DVGRID, term.variableId, "directionX",
+                design_code::INVALID_SHAPE, DESIGN_NODE_MOVE, term.variableId, "directionX",
                 base::concatenate({"expected a vector N with at least one Ni other than 0.0 for ", gridText(term),
                                    ", found (0, 0, 0); give the direction of the move"})));
         if (!std::isfinite(term.coefficient))
             diagnostics.push_back(designProblem(
-                design_code::INVALID_SHAPE, DVGRID, term.variableId, "coefficient",
+                design_code::INVALID_SHAPE, DESIGN_NODE_MOVE, term.variableId, "coefficient",
                 base::concatenate({"expected a finite DesignNodeMove.coefficient for the DesignNodeMove of ",
                                    gridText(term), ", found ", std::to_string(term.coefficient)})));
     }

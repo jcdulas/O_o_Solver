@@ -8,7 +8,7 @@
 //
 // Formulation (ShellTria3DrillingGeometry, ShellTria3DrillingPlate): the membrane with a drilling DOF (ShellTria3DrillingMembrane), the
 // bending on linear rotations with the edge shear of the NASTRAN-95 TRIA3 (MID3 in its compliance); the sections
-// (PSHELL with IsoMat, AnisoMat2D, OrthoMat2D, MID1 to MID3, MID2 = −1; CompProp, CompPropGlobal with no
+// (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D, MID1 to MID3, MID2 = −1; CompProp, CompPropGlobal with no
 // membrane-bending coupling), ZOFFS, the corner thicknesses and THETA/MCID as in ShellQuad4DrillingElement.hpp, the element x
 // axis along G1→G2.
 //

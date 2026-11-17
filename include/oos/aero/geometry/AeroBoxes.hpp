@@ -42,7 +42,7 @@ class AeroBoxes
 {
 public:
     // Throws SolverError when the snapshot has no boxes table or a panel has no boxes (an AeroFactorList missing), and
-    // UnsupportedCardError for a panel other than AeroLiftingPanel1 (CAERO2 bodies, AeroMachBoxPanel3 Mach boxes,
+    // UnsupportedCardError for a panel other than AeroLiftingPanel1 (AeroBody2 bodies, AeroMachBoxPanel3 Mach boxes,
     // AeroStripPanel4 and AeroPistonPanel5 strips: not supported yet).
     AeroBoxes(const input::ModelSnapshot& snapshot, const AeroReference& reference, base::MemoryBudget& budget);
     // From given boxes (tests, and the image models of the symmetry checks).

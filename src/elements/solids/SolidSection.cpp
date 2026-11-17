@@ -15,7 +15,7 @@ namespace
 
 // The snapshot table of the AnisoMat3D cards (the material card tables "materials/<CARD>" of the snapshot).
 constexpr std::string_view ANISO_MAT3D_TABLE = "materials/AnisoMat3D";
-// The number of terms of a AnisoMat3D matrix (the upper triangle of 6 × 6), and of its expansion coefficients A1-A6.
+// The number of terms of an AnisoMat3D matrix (the upper triangle of 6 × 6), and of its expansion coefficients A1-A6.
 constexpr std::size_t ANISO_MAT3D_TERM_COUNT = 21;
 constexpr std::size_t ANISO_MAT3D_EXPANSION_COUNT = 6;
 // SolidProp CORDM −1 and −2: the element coordinate systems of the solids.

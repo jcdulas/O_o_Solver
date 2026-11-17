@@ -13,9 +13,9 @@
 namespace oos::elements
 {
 
-// The temperature an element-wise card gives to one element (TEMPP1: the mean temperature TBAR of a shell and its
-// gradient TPRIME through the thickness; LineElemTemperatureLoad: the temperature at end A of a bar and the change to
-// end B, and its gradients across the section).
+// The temperature an element-wise card gives to one element (PlateTemperatureLoad: the mean temperature TBAR of a shell
+// and its gradient TPRIME through the thickness; LineElemTemperatureLoad: the temperature at end A of a bar and the
+// change to end B, and its gradients across the section).
 struct ElementTemperature
 {
     std::int32_t elementId = 0;
@@ -34,7 +34,7 @@ inline constexpr std::size_t LINE_GRADIENT_Z_AT_B = 3;
 
 // The temperatures of one temperature set as the element facets read them: one value per grid point row (TEMP, the
 // DefaultTemperatureLoad default in place of a grid point the TEMP cards leave out; NaN for a grid point with neither)
-// and the element-wise temperatures (TEMPP1, LineElemTemperatureLoad), sorted by element ID.
+// and the element-wise temperatures (PlateTemperatureLoad, LineElemTemperatureLoad), sorted by element ID.
 struct TemperatureSet
 {
     std::span<const double> atGrid; // empty: the set gives no temperature

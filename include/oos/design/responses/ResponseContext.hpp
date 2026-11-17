@@ -29,7 +29,7 @@ namespace oos::design
 
 // What the responses of one design point read: the overlaid snapshot the analysis ran on (and what owns it), the
 // snapshot of the initial design (FRMASS), the result tables, the values of the design point, the mass formulation of
-// the analysis (PARAM COUPMASS), the budget. Built by DesignProblem for one evaluation.
+// the analysis (PARAM CoupledMass), the budget. Built by DesignProblem for one evaluation.
 //
 // The response kinds of the optimisation aids read more: the checks of the analysis (the external work of
 // the compliance), its result arrays (the applied loads of the mean displacement), the subcases with enforced

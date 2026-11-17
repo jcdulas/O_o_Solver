@@ -47,7 +47,7 @@ UnitBoundaries::UnitBoundaries(const ClusterAbsorption& absorption, const Bounda
     std::sort(interfaceUse.begin(), interfaceUse.end());
     interfaceUse.erase(std::unique(interfaceUse.begin(), interfaceUse.end()), interfaceUse.end());
 
-    // The points of each unit: its own, and the points its absorbed spiders put on its boundary (an RigidInterpolation
+    // The points of each unit: its own, and the points its absorbed spiders put on its boundary (a RigidInterpolation
     // reference that was a connection-only point becomes a point of the unit).
     std::vector<std::vector<base::EntityId>> unitNodes(absorption.units().size());
     std::map<base::EntityId, int> holders;

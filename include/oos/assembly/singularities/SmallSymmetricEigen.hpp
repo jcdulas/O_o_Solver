@@ -19,7 +19,7 @@ struct SmallEigenDecomposition
 };
 
 // The eigen decomposition of a symmetric matrix of a few rows (the 3 × 3 node blocks of the singularity processor, the
-// 6 × 6 normal matrix of an RigidInterpolation) by the cyclic Jacobi method (Golub and Van Loan, Matrix Computations,
+// 6 × 6 normal matrix of a RigidInterpolation) by the cyclic Jacobi method (Golub and Van Loan, Matrix Computations,
 // 4th ed., §8.5.3; the rotation of Numerical Recipes §11.1: θ = (a_qq − a_pp)/(2·a_pq), t = sgn(θ)/(|θ| + √(θ² + 1)),
 // c = 1/√(t² + 1), s = t·c). Accurate to the round-off of the largest eigenvalue, also for the zero and nearly zero
 // eigenvalues the singularity test looks at; the sweeps run in a fixed order, so the result has the same bits

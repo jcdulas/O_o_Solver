@@ -17,8 +17,8 @@ namespace oos::assembly
 // The mutually exclusive sets a g-set DOF belongs to (the exclusive sets of the structural DOFs that SOL 101, 103 and
 // 105 use): m (dependent of an MPC or a rigid element), sb (single-point constraint of the subcase: SPC,
 // SinglePointConstrList, SinglePointConstrUnion, EnforcedMotionConstr), sg (permanent constraint GRID PS), autoSpc
-// (constrained by the grid point singularity processor; reported in sb), o (omitted), r (SUPORT reference), b (the
-// rest: the a-set DOFs that no card names belong to the exclusive set b, written "B" in the USET and singularity
+// (constrained by the grid point singularity processor; reported in sb), o (omitted), r (FreeBodySupport reference), b
+// (the rest: the a-set DOFs that no card names belong to the exclusive set b, written "B" in the USET and singularity
 // tables) and x (excluded by the element formulation: the grid rotations of the mixed hybrid shells that nothing else
 // uses, which carry no stiffness and are filled after the solution, docs/mixed-hybrid-formulation-spec.md section
 // 5.4; neither a support nor a dependent DOF, so never reported among the constrained DOFs or their forces).
@@ -34,8 +34,8 @@ enum class ExclusiveSet : std::uint8_t
     X
 };
 
-// The sets of the format, exclusive and combined: g = n + m, n = f + s + x, s = sb + sg (+ the AUTOSPC DOFs, reported
-// in sb), f = a + o, a = l + r (with no q set here), l = b here (no c set yet).
+// The sets of the format, exclusive and combined: g = n + m, n = f + s + x, s = sb + sg (+ the AutoSingularityConstr
+// DOFs, reported in sb), f = a + o, a = l + r (with no q set here), l = b here (no c set yet).
 enum class DofSet : std::uint8_t
 {
     G,
@@ -53,7 +53,8 @@ enum class DofSet : std::uint8_t
 
 // The name of a set, upper case as the text report prints it ("G", "SB"...).
 [[nodiscard]] std::string_view nameOf(DofSet set) noexcept;
-// The name the text report prints for an exclusive set ("M", "SB", "SG", "O", "R", "B"; an AUTOSPC DOF prints "SB").
+// The name the text report prints for an exclusive set ("M", "SB", "SG", "O", "R", "B"; an AutoSingularityConstr DOF
+// prints "SB").
 [[nodiscard]] std::string_view nameOf(ExclusiveSet set) noexcept;
 // Whether a DOF of an exclusive set is a member of a set.
 [[nodiscard]] bool isMemberOf(ExclusiveSet exclusive, DofSet set) noexcept;
@@ -66,7 +67,7 @@ struct DofSetInputs
     std::span<const base::DofIndex> sb; // SpcSet::sbDofs()
     std::span<const base::DofIndex> sg; // SpcSet::sgDofs()
     std::span<const base::DofIndex> o;  // OmittedDofSet, OmittedDofSet1 (refused: no o-set reduction before step 5)
-    std::span<const base::DofIndex> r;  // FreeBodySupport, SUPORT1
+    std::span<const base::DofIndex> r;  // FreeBodySupport, FreeBodySupportSet
     std::span<const base::DofIndex> x;  // the element formulation's excluded DOFs (FormulationRelations)
 };
 

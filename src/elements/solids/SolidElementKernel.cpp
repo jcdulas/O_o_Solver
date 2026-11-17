@@ -26,7 +26,7 @@ namespace
 constexpr double SOLID_JACOBIAN_TOLERANCE = 1.0e-6;
 
 // The response of one element by its formulation, the thermal modes cleared first (a formulation without internal
-// modes leaves them so; the response is reused across the elements of a range, whose PSOLIDs may differ).
+// modes leaves them so; the response is reused across the elements of a range, whose SolidProps may differ).
 void formulate(SolidFormulation formulation, const SolidElementData& data, SolidResponseParts parts,
                SolidResponse& response)
 {

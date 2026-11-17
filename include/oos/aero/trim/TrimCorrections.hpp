@@ -25,9 +25,8 @@ namespace oos::aero
 //   pressure coefficient lifts its box along its normal).
 // - Each is a single vector that applies to every subcase: one column, whatever the Mach number.
 // - A DirectMatrix is in the j set: its row i (from 1) is the box at position i of AeroBoxes (the order of the j set),
-// its row
-//   count the number of boxes. A DirectMatrixAeroJ is in the js set: each term's row is a box ID with the component 3
-//   (a AeroLiftingPanel1 box).
+//   its row count the number of boxes. A DirectMatrixAeroJ is in the js set: each term's row is a box ID with the
+//   component 3 (an AeroLiftingPanel1 box).
 // - AeroWeightingMatrix and AeroWeightingFactor, the weighting of the theoretical forces in the k set (two rows a box),
 // are accepted only as the
 //   identity, which changes nothing; a true weighting is not applied by this version.

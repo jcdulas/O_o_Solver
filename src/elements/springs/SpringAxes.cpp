@@ -37,7 +37,7 @@ Resolution<base::Mat3> resolveSpringAxes(const ElementBatchView& view, std::int6
     const base::Vec3 xAxis = span / length;
     if (!input.needsOrientation)
     {
-        // Only the axis matters (CBUSH1D): any y, z completing it.
+        // Only the axis matters (Bushing1D): any y, z completing it.
         const base::Vec3 helper = std::abs(xAxis[0]) < 0.9 ? base::Vec3{1.0, 0.0, 0.0} : base::Vec3{0.0, 1.0, 0.0};
         const base::Vec3 zAxis = base::normalized(base::cross(xAxis, helper));
         return Result::success(base::matrixFromRows(xAxis, base::cross(zAxis, xAxis), zAxis).transposed());

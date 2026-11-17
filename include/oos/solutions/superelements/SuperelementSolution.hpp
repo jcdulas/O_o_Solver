@@ -93,9 +93,9 @@ struct SuperelementResults
 // 2. The residual structure is the interface problem: its own elements, constraints and loads with the reduced
 //    superelements' matrices and loads added (ConstrainedSystemOptions: their nodes coupled, K added to Kgg; their
 //    mass to Mgg), the boundary DOFs a superelement holds held there too (the union of the permanent constraints),
-//    solved by the full path's steps on the residual (the m set eliminated, AUTOSPC on its Knn, the f set factorised:
-//    FsetSolver for statics; SparsePencil and BlockLanczos with the METHOD of its subcases for modes, normalised by
-//    it).
+//    solved by the full path's steps on the residual (the m set eliminated, AutoSingularityConstr on its Knn, the f set
+//    factorised: FsetSolver for statics; SparsePencil and BlockLanczos with the METHOD of its subcases for modes,
+//    normalised by it).
 // 3. Each superelement is recovered from the residual's displacements (its boundary values and generalised
 //    coordinates) and its tables made on its own model, in the subcases its SUPER selects (an external superelement
 //    has no table).
@@ -106,10 +106,10 @@ struct SuperelementResults
 // load sequences of SUPER = n in statics are not supported by this version), the loads of each subcase those of every
 // superelement's own Bulk Data.
 //
-// Not supported, refused before any solve (errors): SUBCOM, thermal loads, inertia relief (SUPORT, PARAM INREL) in a
-// deck with superelements; a superelement downstream of another one (several levels), and the refusals of
-// PartReduction and PlacedSuperelement. Not produced: GPFORCE and the grid point weight generator (PARAM GRDPNT) of a
-// part, OLOAD of a modal analysis (an information diagnostic).
+// Not supported, refused before any solve (errors): SUBCOM, thermal loads, inertia relief (FreeBodySupport, PARAM
+// InertiaRelief) in a deck with superelements; a superelement downstream of another one (several levels), and the
+// refusals of PartReduction and PlacedSuperelement. Not produced: GPFORCE and the grid point weight generator (PARAM
+// WeightReferenceNode) of a part, OLOAD of a modal analysis (an information diagnostic).
 //
 // Determinism: the parts reduced one after the other, every step deterministic: the same bits for any number of
 // threads, for a kernel family.

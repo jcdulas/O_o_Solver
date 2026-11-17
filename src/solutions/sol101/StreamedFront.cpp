@@ -149,7 +149,7 @@ void computeRun(const StreamedFront::Inputs& inputs, std::size_t batchIndex, ele
     }
 }
 
-// The loads of one element's mass for every vector (WTMASS applied): f_b = W·M_e·field_b on the mass's DOFs, the
+// The loads of one element's mass for every vector (WeightToMass applied): f_b = W·M_e·field_b on the mass's DOFs, the
 // field of a vector at a DOF its GravityLoad acceleration (a uniform translation, in the CD system) less its rigid
 // relief D·ü = row·w (reliefRowOf).
 void massLoads(const StreamedFront::Inputs& inputs, std::span<const elements::ElementDof> dofs,

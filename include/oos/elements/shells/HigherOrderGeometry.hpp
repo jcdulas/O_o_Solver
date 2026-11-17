@@ -66,8 +66,9 @@ template <typename Shape>
 //   element's own normal there is already within its interpolation error of the surface's, so a weighting by angle
 //   or by area would move the director by less than that error);
 // the director of the group then has no stiffness about it at that grid point, exactly, and the automatic constraint
-// of singular DOFs removes it there. The elements of other cards (CQUAD4 ...) keep their own normals: at a grid point
-// they share with a higher-order shell the two normals differ by an angle of the order of their facets', a stiff pivot.
+// of singular DOFs removes it there. The elements of other cards (ShellQuad4 ...) keep their own normals: at a grid
+// point they share with a higher-order shell the two normals differ by an angle of the order of their facets', a stiff
+// pivot.
 //
 // Thread-safety: immutable once built. Built once per snapshot index (higherOrderShellDirectors).
 inline constexpr double HIGHER_ORDER_SHELL_SHARP_EDGE_DEGREES = 30.0;

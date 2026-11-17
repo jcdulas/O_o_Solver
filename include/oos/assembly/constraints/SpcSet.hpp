@@ -43,8 +43,8 @@ struct DerivedSupportDof
 };
 
 // The single-point constraints of one subcase, from the singlePointConstrTable of O_o_Reader
-// (SPCADD expanded: the rows of an SinglePointConstrUnion set carry its ID in `setId`) and the permanent constraints of
-// the grid points:
+// (SinglePointConstrUnion expanded: the rows of a SinglePointConstrUnion set carry its ID in `setId`) and the
+// permanent constraints of the grid points:
 // - sg: the PS field of every GRID (read from the node table; singlePointConstrTable repeats them as rows "GRID.PS"
 // with a null setId,
 //   which are skipped here);

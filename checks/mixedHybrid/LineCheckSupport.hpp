@@ -159,7 +159,7 @@ inline mh::Matrix lawAtEdge(const mh::LineSectionPoint& point, const Vec3& offse
 // in section axes: by the unit load method, q = ∫_0^L Pᵀ C P ds Q, with C = D⁻¹ the section compliance and P(s) the
 // section forces of a unit tip load, (F, M + (L − s) x × F) (the Timoshenko beam: S. P. Timoshenko, J. M. Gere,
 // Mechanics of Materials, 1972). With P = P0 + (L − s) P1,
-//   ∫ Pᵀ C P ds = L P0ᵀCP0 + L²/2 (P0ᵀCP1 + P1ᵀCP0) + L³/3 P1ᵀCP1.
+//   ∫ Pᵀ C P ds = L P0ᵀCP0 + L²/2 (P0ᵀLoadScale1 + P1ᵀCP0) + L³/3 P1ᵀLoadScale1.
 inline std::optional<mh::Matrix> cantileverFlexibility(const mh::Matrix& law, double length)
 {
     const std::optional<mh::Matrix> compliance = mh::inverse(law);

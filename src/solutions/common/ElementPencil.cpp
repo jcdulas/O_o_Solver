@@ -24,8 +24,8 @@ constexpr std::int64_t PIECE_ROWS = 1024;
 // of its points).
 constexpr std::uint64_t TERMS_PER_ELEMENT = 128;
 // A lumped mass is held on the equations while its terms off the diagonal are at most this many a DOF (the relations'
-// couplings: a PointMassInertia on an RigidInterpolation's reference point, the legs of an RigidBodyStar); a coupled
-// mass (COUPMASS) has tens.
+// couplings: a PointMassInertia on a RigidInterpolation's reference point, the legs of a RigidBodyStar); a coupled
+// mass (CoupledMass) has tens.
 constexpr std::size_t MASS_OFF_DIAGONAL_TERMS = 4;
 
 // The facets a combination needs.
@@ -69,7 +69,7 @@ void computeRun(const ElementPencil::Inputs& inputs, const elements::NodalDispla
 }
 
 // Calls take(dofs, matrix, scale) for each matrix of the run in element order (each element's stiffness, mass, then
-// differential stiffness), the scale the combination's coefficient (PARAM WTMASS on the mass).
+// differential stiffness), the scale the combination's coefficient (PARAM WeightToMass on the mass).
 template <typename Take>
 void forEachMatrix(const RunMatrices& work, elements::ElementRange range, Combination combination, double weightToMass,
                    Take&& take)

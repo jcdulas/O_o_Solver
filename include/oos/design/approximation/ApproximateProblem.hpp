@@ -32,7 +32,7 @@ struct ApproximationVariable
     std::optional<double> moveLimit;
 };
 
-// A dependent design variable (DLINK): x_d = value + gradient·(x − x0), linear, with its own bounds and DELXV.
+// A dependent design variable (DesignVarLink): x_d = value + gradient·(x − x0), linear, with its own bounds and DELXV.
 struct ApproximationLinkedVariable
 {
     std::string label;

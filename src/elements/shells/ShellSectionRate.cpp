@@ -10,7 +10,7 @@ namespace oos::elements
 namespace
 {
 
-// The "stiffness" items of a AnisoMat2D: G11, G12, G13, G22, G23, G33 (ShellMaterial.cpp).
+// The "stiffness" items of an AnisoMat2D: G11, G12, G13, G22, G23, G33 (ShellMaterial.cpp).
 constexpr std::int32_t ANISO_MAT2D_TERMS = 6;
 constexpr std::int32_t G11 = 0;
 constexpr std::int32_t G22 = 3;

@@ -13,8 +13,8 @@ namespace oos::input
 
 // One coordinate system, resolved to the basic system by O_o_Reader (CORD1x, CORD2x and their RID chains): its kind,
 // its origin and its axes in the basic system. For a cylindrical (C) or spherical (S) system the axes are those of the
-// rectangular system the card defines (i, j, k from the points A, B, C of a CORD2C); the local directions at a point
-// (radial, tangential, axial) depend on the point.
+// rectangular system the card defines (i, j, k from the points A, B, C of a CylindricalFrame2); the local directions at
+// a point (radial, tangential, axial) depend on the point.
 struct CoordinateFrame
 {
     enum class Kind : std::uint8_t
@@ -31,8 +31,8 @@ struct CoordinateFrame
 };
 
 // The coordinate systems of the model (coordsTable of O_o_Reader): one row per CORDij card, with the origin and the
-// axes i, j, k already resolved to the basic system. The elements read it for the systems their cards name (CBUSH CID
-// and OCID, CONM1 and CONM2 CID); the basic system (CID 0) has no row.
+// axes i, j, k already resolved to the basic system. The elements read it for the systems their cards name (Bushing CID
+// and OCID, PointMassMatrix and PointMassInertia CID); the basic system (CID 0) has no row.
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns the imported table (buffers borrowed).
 class CoordinateSystemTable

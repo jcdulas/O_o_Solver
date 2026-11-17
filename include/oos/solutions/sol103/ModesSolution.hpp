@@ -136,7 +136,7 @@ struct ModesResults
     std::int64_t largestAnalysisSetSize = 0;
     std::string kernel;
     ModesTimings timings;
-    std::optional<assembly::GridPointWeight> gridPointWeight; // with PARAM GRDPNT
+    std::optional<assembly::GridPointWeight> gridPointWeight; // with PARAM WeightReferenceNode
     // The path taken, and on the condensed path its report (the units, their modes and the cut-off: the report states
     // that the modes are approximate, with the cut-off and the number of modes per unit).
     AnalysisPath path = AnalysisPath::Full;
@@ -152,23 +152,22 @@ struct ModesResults
 
 // The real eigenvalue solution on the full model (SOL 103): for each subcase,
 // K·φ = λ·M·φ on the analysis set (the constraints, MPCs and rigid elements eliminated as in the static solution, the
-// grid point singularities constrained by AUTOSPC), the roots of its METHOD (EIGRL, or RealEigenMethod with METHOD =
-// LAN) by the block shift-invert Lanczos solver with Sturm checks (linalg::BlockLanczos), the rigid-body modes of a
-// free structure included.
+// grid point singularities constrained by AutoSingularityConstr), the roots of its METHOD (LanczosEigenMethod, or
+// RealEigenMethod with METHOD = LAN) by the block shift-invert Lanczos solver with Sturm checks (linalg::BlockLanczos),
+// the rigid-body modes of a free structure included.
 //
 // The steps:
-//  1. the support check (EIGRL and RealEigenMethod read), the element check, the subcases (SUBCASE rows; a SUBCOM has
-//  no meaning
-//     here and is refused), their METHOD (readEigenMethod: an RealEigenMethod method other than LAN is refused naming
-//     it) and their output plans; FreeBodySupport is not separated (the rigid-body modes come from the free stiffness:
-//     a warning);
+//  1. the support check (LanczosEigenMethod and RealEigenMethod read), the element check, the subcases (SUBCASE rows; a
+//     SUBCOM has no meaning here and is refused), their METHOD (readEigenMethod: a RealEigenMethod method other than
+//     LAN is refused naming it) and their output plans; FreeBodySupport is not separated (the rigid-body modes come
+//     from the free stiffness: a warning);
 //  2. the subcases are grouped by constraint set and method: one solve per group;
-//  3. per group: the constrained system (ConstrainedSystem: Gm, sets, Kgg, Knn, AUTOSPC), Mgg (assembly::MassAssembler:
-//     lumped or coupled by PARAM COUPMASS, the non-structural mass, PARAM WTMASS) on the pattern of K and reduced to
-//     the n set, the analysis-set ordering and symbolic factor (FsetOrdering), K and M converted with the same
-//     selection, the pencil (linalg::SparsePencil) and the solve (the LanczosEigenMethod V1, V2 in cycles converted to
-//     λ = (2πf)², ND, MAXSET as the block size: eigenRequestOf); the grid point weight generator (PARAM GRDPNT) from
-//     the first Mgg;
+//  3. per group: the constrained system (ConstrainedSystem: Gm, sets, Kgg, Knn, AutoSingularityConstr), Mgg
+//     (assembly::MassAssembler: lumped or coupled by PARAM CoupledMass, the non-structural mass, PARAM WeightToMass) on
+//     the pattern of K and reduced to the n set, the analysis-set ordering and symbolic factor (FsetOrdering), K and M
+//     converted with the same selection, the pencil (linalg::SparsePencil) and the solve (the LanczosEigenMethod V1, V2
+//     in cycles converted to λ = (2πf)², ND, MAXSET as the block size: eigenRequestOf); the grid point weight generator
+//     (PARAM WeightReferenceNode) from the first Mgg;
 //  4. the eigenvectors normalised (scaleEigenvectors: MASS, MAX, POINT), the eigenvalue table (λ, radians, cycles,
 //     generalised mass and stiffness), the output volume checked against the limit (OutputVolumeError before the
 //     recovery), then the tables of each mode for each subcase of the group (ModeRecovery), and the modal effective
@@ -181,7 +180,7 @@ struct ModesResults
 // interface (CondensedStatics::solveEigenGroup), the shapes on the interface and in the recovered units, normalised on
 // the components of the full path's analysis set they know (scaleEigenvectorsOnSet), and their tables. The modes are
 // approximate but with every mode of each unit (equal to the full path's then to round-off); the SPC and MPC forces,
-// MEFFMASS and GRDPNT are not produced there (an information diagnostic).
+// MEFFMASS and WeightReferenceNode are not produced there (an information diagnostic).
 //
 // Determinism: the assembly, the Lanczos solver (seeded starts, deterministic factor, solves and products), the
 // normalisation and the recovery have the same bits for any number of threads, for a given kernel family.

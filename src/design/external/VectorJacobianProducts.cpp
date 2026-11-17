@@ -1880,7 +1880,7 @@ public:
             if (use.changesMass && family.facets().has(elements::Facet::Mass) && state.hasInertialLoads &&
                 state.subcase.load)
             {
-                // P = WTMASS·M·a (InertialLoads, addInertialLoadRate): ∂²P/∂p² = WTMASS·(∂²M/∂p²)·a.
+                // P = WeightToMass·M·a (InertialLoads, addInertialLoadRate): ∂²P/∂p² = WeightToMass·(∂²M/∂p²)·a.
                 const InertialRate& rate = *m_inertialRates[subcase];
                 elements::MassOptions options;
                 options.formulation = rate.options.formulation;

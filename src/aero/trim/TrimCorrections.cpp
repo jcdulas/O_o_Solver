@@ -30,9 +30,9 @@ constexpr std::string_view DIRECT_MATRIX_CARD = "DirectMatrix";
 constexpr std::string_view DIRECT_MATRIX_AERO_J_CARD = "DirectMatrixAeroJ";
 constexpr std::string_view DIRECT_MATRIX_AERO_J_INTERFERENCE_CARD = "DirectMatrixAeroJInterference";
 constexpr std::string_view DIRECT_MATRIX_AERO_K_CARD = "DirectMatrixAeroK";
-// On a DirectMatrixAeroJ, a AeroLiftingPanel1 box is a point of the js set with the component 3 (its normal motion).
+// On a DirectMatrixAeroJ, an AeroLiftingPanel1 box is a point of the js set with the component 3 (its normal motion).
 constexpr std::int32_t BOX_COMPONENT = 3;
-// The k set of a AeroLiftingPanel1 box: its normal force and its pitching moment (T3 and R5 of the box's aerodynamic
+// The k set of an AeroLiftingPanel1 box: its normal force and its pitching moment (T3 and R5 of the box's aerodynamic
 // grid point).
 constexpr std::size_t K_SET_ROWS_PER_BOX = 2;
 // The weight of an identity AeroWeightingMatrix: 1 exactly (the deck gives 1.0; any other value is a weighting, not

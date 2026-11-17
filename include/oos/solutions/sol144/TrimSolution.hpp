@@ -202,19 +202,19 @@ struct TrimResults
 };
 
 // The static aeroelastic trim on the full model (SOL 144, subsonic). The structure K_ll (the l set: the f set without
-// the r set of FreeBodySupport, SUPORT1) and the doublet lattice at k = 0 (aero::DoubletLatticeSteady: D·Δcp = w) are
-// coupled through the splines (aero::SplineMatrix): the pressures load the structure by P = q·T·Δcp, and its
+// the r set of FreeBodySupport, FreeBodySupportSet) and the doublet lattice at k = 0 (aero::DoubletLatticeSteady: D·Δcp
+// = w) are coupled through the splines (aero::SplineMatrix): the pressures load the structure by P = q·T·Δcp, and its
 // deformation adds the normalwash of its slopes, w_e = S·u (w = +∂h/∂x: aero::SplineMatrix). With the structure held at
 // the supports (u_r = 0),
 //     u_l = K_ll⁻¹·(q·T·Δcp + f),    (D − AEQR·q·E)·Δcp = w_x·u_x + AEQR·S·K_ll⁻¹·f,    E = S·K_ll⁻¹·T,
 // f = −M·D_r·ü_r the inertial loads of the rigid-body acceleration of the supports (ü_r of the rigid acceleration
-// variables in the reference frame, divided by PARAM AUNITS; D_r the rigid-body motions of a unit motion of each
-// FreeBodySupport DOF, from the geometry about the RCSID origin on the supported directions, zero on the s set and
+// variables in the reference frame, divided by PARAM AccelUnitsFactor; D_r the rigid-body motions of a unit motion of
+// each FreeBodySupport DOF, from the geometry about the RCSID origin on the supported directions, zero on the s set and
 // Gm·u_n on the m set: exact rigid-body motions, not −K_ll⁻¹·K_lr, which an improperly specified FreeBodySupport makes
 // elastic; with them the inertial derivatives do not depend on the quality of the supports, and an unconnected grid
-// point with a mass, held by AUTOSPC, carries no inertia), w_x the normalwash of each aerodynamic variable
-// (aero::TrimVariables). The problem is solved in the space of the boxes: one structural solve per box gives E (n²
-// terms for n boxes) and the products with T, then each variable's pressures come from one dense LU of D − AEQR·q·E
+// point with a mass, held by AutoSingularityConstr, carries no inertia), w_x the normalwash of each aerodynamic
+// variable (aero::TrimVariables). The problem is solved in the space of the boxes: one structural solve per box gives E
+// (n² terms for n boxes) and the products with T, then each variable's pressures come from one dense LU of D − AEQR·q·E
 // (the formulation in the a set, K_aa − q·Q_aa, is the same system after the boxes are eliminated).
 //
 // The trim (aero::TrimSystem): the equilibrium of the supported motions, D_rᵀ·(q·T·Δcp + f) = 0, one equation per

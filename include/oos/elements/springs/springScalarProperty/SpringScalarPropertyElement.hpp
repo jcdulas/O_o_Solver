@@ -1,6 +1,7 @@
 #pragma once
 
-// SpringScalarProperty — scalar spring between scalar points, its stiffness on a SpringProp (CELAS3, SpringProp):
+// SpringScalarProperty — scalar spring between scalar points, its stiffness on a SpringProp (SpringScalarProperty,
+// SpringProp):
 //
 //   | SpringScalarProperty | EID | PID | S1 | S2 |
 //   | SpringProp  | PID | K   | GE | S  |

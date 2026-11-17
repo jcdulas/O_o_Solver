@@ -1,6 +1,6 @@
 #pragma once
 
-// SolidPyramid — five-sided solid (a pyramid) with 5 corners and up to 8 mid-side nodes (CPYRAM, SolidProp):
+// SolidPyramid — five-sided solid (a pyramid) with 5 corners and up to 8 mid-side nodes (SolidPyramid, SolidProp):
 //
 //   | SolidPyramid | EID | PID | G1  | G2  | G3  | G4  | G5  | G6  |
 //   |        | G7  | G8  | G9  | G10 | G11 | G12 | G13 |
@@ -12,7 +12,7 @@
 // & Taylor vol. 1 §8.9, degenerate elements), isoparametric with 2 × 2 × 2 (5 nodes) or 3 × 3 × 3 (13 nodes) Gauss
 // points; the corner stresses are extrapolated from the 2 × 2 × 2 points (the apex has no Jacobian), the apex taking
 // the mean of the four collapsed corners, and the centre is the centre of the parent hexahedron. Not validated against
-// reference results: not_validated. SolidProp IN blank, ISOP blank or FULL. The material (MAT1 or AnisoMat3D) in the
+// reference results: not_validated. SolidProp IN blank, ISOP blank or FULL. The material (IsoMat or AnisoMat3D) in the
 // system CORDM (SolidSection).
 //
 // Mass: lumped (HRZ) or coupled (SolidElementKernel). Loads: FacePressureLoad on the base or a triangular face, uniform

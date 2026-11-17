@@ -41,7 +41,7 @@ class FrontSource;
 //
 // The matrix is a SymmetricCsc, or a FrontSource (the pencils from the elements: each front's own terms
 // added by the source, assembleFrontInPhases, in indefinite mode only: the positive definite factorisation of a source
-// is StreamedSolve's, and its MAXRATIO diagonal is not read here).
+// is StreamedSolve's, and its MaxDiagonalRatio diagonal is not read here).
 //
 // Thread-safety: run() once; the tasks it starts write only the supernodes they own. Ownership: references its
 // arguments, which outlive it.

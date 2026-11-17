@@ -58,15 +58,15 @@ struct EquationPartials
     std::vector<std::vector<std::pair<ArgumentSource, double>>> items;
 };
 
-// One equation response (DRESP2, DesignResp3, or a caller's add_equation_response) resolved against the design model
-// and the snapshot.
+// One equation response (DesignResp2, DesignResp3, or a caller's add_equation_response) resolved against the design
+// model and the snapshot.
 //
 // By the card rules (byLabel false), the response has, in each subcase it is evaluated in (or once, subcase 0, when it
 // is global), the values of its equation at the point made of its arguments in their order (the arguments fill the
-// variables of the equation's header x1, x2, x3... in that order): a DESVAR its value, a DesignConstants its constant,
-// a DesignResp1 or a DesignResp2 every item of that response in the subcase (the items of a global response when it is
-// global), a DNODE the basic coordinate, a DVxRELi the value of the designed field. A DesignResp1 of several items
-// gives one argument per item, in its item order (it contributes them all; src/design/README.md). An Expression
+// variables of the equation's header x1, x2, x3... in that order): a DesignVar its value, a DesignConstants its
+// constant, a DesignResp1 or a DesignResp2 every item of that response in the subcase (the items of a global response
+// when it is global), a DNODE the basic coordinate, a DVxRELi the value of the designed field. A DesignResp1 of several
+// items gives one argument per item, in its item order (it contributes them all; src/design/README.md). An Expression
 // response checks that the arguments fill the header of its DesignEquation; a Callable response gives its callable one
 // argument per argument kind of a deck DesignResp3 ("desvar", "dtable", "designResp1", "dnode", "dvprel1" ... "dresp2",
 // each (n, c) with c the values of that kind) or one per named argument of a caller's declaration.
@@ -85,13 +85,13 @@ struct EquationPartials
 class EquationResponse
 {
 public:
-    // The problems (an unknown DESVAR, DesignConstants label, relation, grid point, DesignEquation; a DNODE component
-    // outside 1-3) are appended to `problems` as diagnostics of the card with its ID.
+    // The problems (an unknown DesignVar, DesignConstants label, relation, grid point, DesignEquation; a DNODE
+    // component outside 1-3) are appended to `problems` as diagnostics of the card with its ID.
     EquationResponse(EquationResponseDefinition definition, const DesignModel& model,
                      const input::ModelSnapshot& snapshot, std::vector<base::Diagnostic>& problems);
 
     [[nodiscard]] const EquationResponseDefinition& definition() const noexcept { return m_definition; }
-    // The IDs of the responses it reads (DRESP1 and DesignResp2 arguments), in argument order.
+    // The IDs of the responses it reads (DesignResp1 and DesignResp2 arguments), in argument order.
     [[nodiscard]] std::vector<std::int32_t> responseArguments() const;
 
     // The values in `subcases` (card rules: {0} for a global response) or for the labels of its arguments (by label).
@@ -124,7 +124,7 @@ public:
         const std::function<double(const ArgumentSource&)>& directionOf) const;
 
     // The shape variables that move the coordinate of a DNODE argument (its position `argument`), as (shape basis,
-    // ∂coordinate/∂s): the component of the basis vector at its grid point (DVGRID); empty for another
+    // ∂coordinate/∂s): the component of the basis vector at its grid point (DesignNodeMove); empty for another
     // argument or a grid point no shape moves. The coordinate at a design point is the base one plus Σ s·∂c/∂s.
     [[nodiscard]] const std::vector<std::pair<std::size_t, double>>& coordinateShapes(std::size_t argument) const
     {
@@ -164,7 +164,7 @@ private:
 
     EquationResponseDefinition m_definition;
     std::shared_ptr<const ExpressionEvaluator> m_evaluator; // an Expression (immutable, shared by copies)
-    std::vector<std::size_t> m_variableIndices;             // per argument: the variable index of a DESVAR argument
+    std::vector<std::size_t> m_variableIndices;             // per argument: the variable index of a DesignVar argument
     std::vector<double> m_constants;                        // per argument: the value of a DesignConstants argument
     std::vector<std::size_t> m_relationIndices;             // per argument: the relation index of a DVxRELi argument
     std::vector<double> m_coordinates;                      // per argument: the coordinate of a DNODE argument

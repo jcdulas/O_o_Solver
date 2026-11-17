@@ -11,9 +11,9 @@ namespace oos::input
 {
 
 // A column of type "list<fixed_list<float64>[n]>", read in place: per row a list of items of n values each. O_o_Reader
-// gives the stations of a PBEAM this way (station_section: A, I1, I2, I12, J, NSM of each station; station_stress: C1
-// to F2 of each station). The reading and its checks are base::ContractReader::nestedLists, the one validator of list
-// offsets; this class keeps the element code's view of a float64 column with no nulls.
+// gives the stations of a BeamProp this way (station_section: A, I1, I2, I12, J, NSM of each station; station_stress:
+// C1 to F2 of each station). The reading and its checks are base::ContractReader::nestedLists, the one validator of
+// list offsets; this class keeps the element code's view of a float64 column with no nulls.
 //
 // Same lifetime and thread-safety as the views of base/arrow/ColumnViews.hpp: valid while the reader lives; immutable.
 class NestedListView

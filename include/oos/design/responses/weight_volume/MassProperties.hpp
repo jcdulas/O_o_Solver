@@ -29,17 +29,17 @@ using CardFilter = std::function<bool(std::string_view card)>;
 // The rigid-body mass properties of the elements of a snapshot, for the WEIGHT, VOLUME and FRMASS responses.
 //
 // rigidBodyMass: MO = Σ_e D_eᵀ·M_e·D_e, the 6 × 6 rigid-body mass matrix about `reference` in the basic system, the
-// sum of the element mass matrices M_e (the Mass facet, lumped or coupled as PARAM COUPMASS asks) carried by D_e, the
-// rows of the rigid-body modes at the element's DOFs: for a translation component c of a grid point at x with the
+// sum of the element mass matrices M_e (the Mass facet, lumped or coupled as PARAM CoupledMass asks) carried by D_e,
+// the rows of the rigid-body modes at the element's DOFs: for a translation component c of a grid point at x with the
 // CD-to-basic rotation R (u_basic = R·u_CD), the row c of Rᵀ·[I, −[x − reference]×]; for a rotation, the row c of
 // Rᵀ·[0, I]; a scalar point has a zero row. It equals the MO of the grid point weight generator (assembly/relief
 // GridPointWeight: Dᵀ·Mgg·D) because Mgg is the sum of the same element matrices; summing element by element needs no
-// assembly. The masses are in the units of the deck (before WTMASS, as the weight generator), without the NSM
+// assembly. The masses are in the units of the deck (before WeightToMass, as the weight generator), without the NSM
 // cards (as the static analysis, which takes no NSM set: a warning of StaticSolution says so).
 //
 // volume: Σ of the element volumes, the translational mass of the elements with every density 1 and every
 // non-structural mass 0 (an overlay of the snapshot's "rho" and "nsm" columns), without the concentrated masses
-// (CONM1, PointMassInertia, MassDofProperty-4: they have a mass and no volume).
+// (PointMassMatrix, PointMassInertia, MassDofProperty-4: they have a mass and no volume).
 //
 // Determinism: the sums run batch by batch and element by element in the snapshot order, on one thread.
 // Thread-safety: stateless functions. Ownership: none kept.

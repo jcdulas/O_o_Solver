@@ -42,17 +42,17 @@ enum class SolidIntegration : std::uint8_t
 };
 
 // What a solid element reads from its SolidProp and its material:
-// - the constitutive matrix in the material system (MAT1: isotropicSolidMatrix from E and NU; AnisoMat3D: G11-G66 as
+// - the constitutive matrix in the material system (IsoMat: isotropicSolidMatrix from E and NU; AnisoMat3D: G11-G66 as
 //   given), Voigt order of MaterialMatrices.hpp;
 // - the density RHO (mass per unit volume);
-// - the material system CORDM (PSOLID: 0 the basic system, or a rectangular system), in which the material is
+// - the material system CORDM (SolidProp: 0 the basic system, or a rectangular system), in which the material is
 //   given and the stresses and strains are output: `axes` has the material axes as columns, in the basic system;
 // - the integration (SolidIntegration);
-// - the thermal expansion (MAT1 A, TREF; AnisoMat3D A1-A6, TREF): the thermal strain of a unit temperature change in
-// the
-//   material system, in the engineering strains of the Voigt order (εx, εy, εz, γxy, γyz, γzx): (A, A, A, 0, 0, 0)
-//   for a IsoMat, (A1, ..., A6) for a AnisoMat3D (MAT9 gives the coefficients of the strains in that order), and the
-//   reference temperature TREF of the material (the initial temperature of a subcase without TEMPERATURE(INITIAL)).
+// - the thermal expansion (IsoMat A, TREF; AnisoMat3D A1-A6, TREF): the thermal strain of a unit temperature change in
+//   the material system, in the engineering strains of the Voigt order (εx, εy, εz, γxy, γyz, γzx): (A, A, A, 0, 0, 0)
+//   for an IsoMat, (A1, ..., A6) for an AnisoMat3D (AnisoMat3D gives the coefficients of the strains in that order),
+//   and the reference temperature TREF of the material (the initial temperature of a subcase without
+//   TEMPERATURE(INITIAL)).
 //
 // IsoMat for the solids: the matrix is built from E and NU only, G being ignored. With E = 2.9e7, G = 1.1e7, NU = 0.32,
 // the shear strains are the shear stresses divided by E/2(1 + NU) = 1.0985e7, not by G.
@@ -109,13 +109,13 @@ struct SolidSectionColumns
 // - 10-node SolidTetra, SolidPyramid: IN blank with ISOP blank or FULL.
 // Problems: the SolidProp or its material missing or of another type; CORDM −1 or −2 (the element systems of the
 // solids, not supported yet), a missing or curvilinear CORDM; IN and ISOP other than above; STRESS = GAUSS but on a
-// 4-node SolidTetra (whose one Gauss point is its centroid); FCTN other than SMECH; a IsoMat with E ≤ 0 or NU outside
-// (−1, 0.5); a AnisoMat3D whose matrix is not positive definite; a material other than IsoMat and AnisoMat3D.
+// 4-node SolidTetra (whose one Gauss point is its centroid); FCTN other than SMECH; an IsoMat with E ≤ 0 or NU outside
+// (−1, 0.5); an AnisoMat3D whose matrix is not positive definite; a material other than IsoMat and AnisoMat3D.
 [[nodiscard]] Resolution<SolidSection> resolveSolidSection(const ElementBatchView& view,
                                                            const SolidSectionColumns& columns, std::int64_t row,
                                                            SolidShape shape);
 
-// The constitutive matrix of a AnisoMat3D from the 21 terms of its card (G11, G12, ..., G16, G22, ..., G66: the upper
+// The constitutive matrix of an AnisoMat3D from the 21 terms of its card (G11, G12, ..., G16, G22, ..., G66: the upper
 // triangle by rows), symmetric. Precondition: terms.size() is 21.
 [[nodiscard]] Mat6 anisotropicSolidMatrix(std::span<const double> terms);
 

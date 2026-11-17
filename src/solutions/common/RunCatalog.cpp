@@ -35,9 +35,9 @@ struct IgnoredParameter
     std::string_view reason;
 };
 
-// K6ROT: the scale of a drilling penalty on shells, which no shell of this version has: the ShellQuad4Drilling and
-// ShellTria3Drilling take a membrane with a drilling DOF, the other shells no stiffness for the rotation about their
-// normal.
+// ShellDrillingStiffness: the scale of a drilling penalty on shells, which no shell of this version has: the
+// ShellQuad4Drilling and ShellTria3Drilling take a membrane with a drilling DOF, the other shells no stiffness for the
+// rotation about their normal.
 constexpr std::array<IgnoredParameter, 1> IGNORED_PARAMETERS{IgnoredParameter{
     "ShellDrillingStiffness",
     "no shell element of O_o_Solver has a drilling penalty: the ShellQuad4, ShellTria3, ShellQuad8 and "
@@ -80,8 +80,9 @@ input::SupportCatalog staticSupportCatalog(const elements::ElementRegistry& regi
                                                           input::PERMANENT_CONSTRAINT_CARD.data(), "MultiPointConstr"};
     // The temperature cards of TEMPERATURE(LOAD) and (INITIAL) and the element deformations of DEFORM
     // (TemperatureField; the element families check what they can take, LoadVectorBuilder the elements a DEFORM names).
-    // The inertial loads (InertialLoads; ACCEL, AccelNodeLoad, RotationalForceLoad need inertialLoadsTable, and are
-    // refused at the load assembly without it) and the supports of inertia relief (SUPORT, SUPORT1: dofSetsTable).
+    // The inertial loads (InertialLoads; AccelFieldLoad, AccelNodeLoad, RotationalForceLoad need inertialLoadsTable,
+    // and are refused at the load assembly without it) and the supports of inertia relief (FreeBodySupport,
+    // FreeBodySupportSet: dofSetsTable).
     constexpr std::array<const char*, 22> LOAD_CARDS{
         "PointForceLoad",         "PointForceLoad1",      "PointForceLoad2",         "PointMomentLoad",
         "PointMomentLoad1",       "PointMomentLoad2",     "ScalarPointLoad",         "GravityLoad",
@@ -174,8 +175,8 @@ base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const ele
         for (const auto* card : AERO_CARDS)
             catalog.addCard(card);
     }
-    // The method cards the analysis reads (EIGRL, RealEigenMethod, BucklingEigenMethod: METHOD selects RealEigenMethod
-    // or LanczosEigenMethod in SOL 103, BucklingEigenMethod or LanczosEigenMethod in SOL 105).
+    // The method cards the analysis reads (LanczosEigenMethod, RealEigenMethod, BucklingEigenMethod: METHOD selects
+    // RealEigenMethod or LanczosEigenMethod in SOL 103, BucklingEigenMethod or LanczosEigenMethod in SOL 105).
     if (analysis == AnalysisKind::Modes)
     {
         catalog.addCard("LanczosEigenMethod");
@@ -194,7 +195,8 @@ base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const ele
     std::vector<base::Diagnostic> refusals;
     for (base::Diagnostic& diagnostic : report.refusals)
     {
-        // The diagnostics of the catalog name the card by its deck keyword (EIGRL): the list is of neutral names.
+        // The diagnostics of the catalog name the card by its deck keyword (LanczosEigenMethod): the list is of neutral
+        // names.
         constexpr std::string_view DESIGN_DECLARATIONS[]{
             "DesignVar",           "DesignVarLink",        "DesignDiscreteValues", "DesignPropRelation1",
             "DesignPropRelation2", "DesignMatRelation1",   "DesignMatRelation2",   "DesignElemRelation1",

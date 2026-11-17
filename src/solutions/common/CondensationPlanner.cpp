@@ -92,7 +92,7 @@ reduction::SpiderMeasurement measureSpider(const reduction::Spider& spider, cons
 }
 
 // The MPC card sets each selected set holds, when multiPointConstrTable does not name the card of each row (its
-// source_sid column): every set of the model is in the table (an MultiPointConstrUnion expanded under its own ID), and
+// source_sid column): every set of the model is in the table (a MultiPointConstrUnion expanded under its own ID), and
 // a set c is held by a selected set S when every equation of c is an equation of S, term for term (point, component and
 // the bits of the coefficient). O_o_Reader's connection list names an equation by its card's set; the constraints of
 // the analysis by S: the alias lets the plan key the equations as the analysis does.
@@ -332,8 +332,8 @@ CondensationPlanner::CondensationPlanner(const input::ModelSnapshot& snapshot, b
 
     if (snapshot.hasTable(input::TableRole::Supports))
     {
-        // dofSetsTable may list the other DOF set cards too (ASET, OmittedDofSet, ...): keep the FreeBodySupport and
-        // SUPORT1 points.
+        // dofSetsTable may list the other DOF set cards too (AnalysisDofSet, OmittedDofSet, ...): keep the
+        // FreeBodySupport and FreeBodySupportSet points.
         const base::ContractReader& supports = snapshot.supports();
         const std::span<const std::int32_t> nodeIds = supports.values<std::int32_t>("nodeId");
         const base::DictionaryView cards = supports.dictionaryTexts("card");

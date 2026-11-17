@@ -57,7 +57,7 @@ inline constexpr double PIERCING_WEIGHT_FLOOR = 1.0e-3;
 inline constexpr double PIERCING_PIVOT_TOLERANCE = 1.0e-10;
 
 // The interpolation of the piercing point P of one fastener side from the grid points of the shell element it
-// pierces: P moves with the reference point of an RigidInterpolation interpolation element (an element of NASTRAN-95,
+// pierces: P moves with the reference point of a RigidInterpolation interpolation element (an element of NASTRAN-95,
 // NASA's open-source release, among its rigid elements in mis/criggp.f; implemented for the RigidInterpolation card by
 // assembly/constraints/RigidElementEquations, which the elements layer cannot call) whose independent points are the
 // grid points of that element with their translations (components 123), weighted by the shape functions N_i of the
@@ -79,7 +79,7 @@ inline constexpr double PIERCING_PIVOT_TOLERANCE = 1.0e-10;
 [[nodiscard]] std::variant<PiercingMap, std::string> interpolatePiercing(base::Vec3 piercingPoint,
                                                                          std::span<const PiercedGrid> grids);
 
-// The map of a side connected directly to a grid point of the model (CWELD ALIGN): (u_P, θ_P) = (R·u, R·θ).
+// The map of a side connected directly to a grid point of the model (Weld ALIGN): (u_P, θ_P) = (R·u, R·θ).
 [[nodiscard]] PiercingMap directGridMap(const base::Mat3& gridFrame);
 
 // A grid point of the model as the interpolation of a side reads it: its row (in the node table and the DOF map),

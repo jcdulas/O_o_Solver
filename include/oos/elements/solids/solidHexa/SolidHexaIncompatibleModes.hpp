@@ -9,8 +9,8 @@
 namespace oos::elements
 {
 
-// The eight-node SolidHexa of the default integration (PSOLID IN and ISOP blank): the trilinear hexahedron enriched by
-// incompatible modes, the element of Wilson, Taylor, Doherty & Ghaboussi (Incompatible displacement models, in
+// The eight-node SolidHexa of the default integration (SolidProp IN and ISOP blank): the trilinear hexahedron enriched
+// by incompatible modes, the element of Wilson, Taylor, Doherty & Ghaboussi (Incompatible displacement models, in
 // Numerical and Computer Methods in Structural Mechanics, Academic Press, 1973) with the correction of Taylor,
 // Beresford & Wilson (A non-conforming element for stress analysis, IJNME 10, 1976), as the open-source solver
 // CalculiX gives it (its element C3D8I); Bathe, Finite Element Procedures, §4.4.1 (incompatible displacement models).

@@ -322,9 +322,9 @@ namespace
 {
 
 // The element types whose outputs the CENTER and CORNER describers choose between: the four-node quadrilaterals and
-// the three-node triangles (CQUAD4, CQUADR, CTRIAR, CTRIA3), which have a centre row and corner rows. The other
-// element types write all their rows whatever the describer: the solids their centre and vertex grid points, the
-// higher-order shells their corners, the bars their stations.
+// the three-node triangles (ShellQuad4, ShellQuad4Drilling, ShellTria3Drilling, ShellTria3), which have a centre row
+// and corner rows. The other element types write all their rows whatever the describer: the solids their centre and
+// vertex grid points, the higher-order shells their corners, the bars their stations.
 bool isCentreOrCornerElement(std::string_view card)
 {
     return card == "ShellQuad4" || card == "ShellQuad4Drilling" || card == "ShellTria3Drilling" || card == "ShellTria3";
@@ -566,7 +566,7 @@ bool recoverLayerKind(const assembly::AssemblyBatch& batch, const KindOfLayerTab
 // LAYER_KINDS[k − 3], for the kinds `isIncluded` names: the kinds whose selections take the same elements recovered
 // together, each element resolved and formulated once for all of them (ElementFamily::recoverOutputs: each output's
 // rows those of its recovery alone), each kind's tables those recoverKind and recoverLayerKind make.
-// PERFORMANCE: a case's tables resolved and formulated every element again for each kind (a CQUAD4 three times, a
+// PERFORMANCE: a case's tables resolved and formulated every element again for each kind (a ShellQuad4 three times, a
 // laminate six: its plate, place states and laminate); here once.
 // Measured: on the 1-case recovery configurations.
 constexpr std::size_t ALL_KINDS = 6;
@@ -771,7 +771,7 @@ std::size_t gSetIndexOf(const elements::ElementDof& dof, std::size_t gridValues,
 
 // One vectorised kind of table of a batch: its table kind, the output of its table's rows and the output whose slopes
 // make its Linear values (the same, the ply states of the failure indices: ElementFamily::vectorisedLayerSource, or the
-// forces of a CWELD's stresses: ElementFamily::vectorisedSource), its selection and the shaping of its table.
+// forces of a Weld's stresses: ElementFamily::vectorisedSource), its selection and the shaping of its table.
 struct VectorisedKind
 {
     const char* kindName = nullptr;
@@ -861,7 +861,7 @@ std::vector<VectorisedTables> vectoriseKinds(
                      for (std::size_t g = 0; g < groupCount; ++g)
                      {
                          // The rows do not depend on the temperatures: a kind without rows in the first group has
-                         // none in the others (a PSHELL batch's ply tables).
+                         // none in the others (a ShellProp batch's ply tables).
                          outputs.clear();
                          outputKinds.clear();
                          for (const std::size_t k : group)
@@ -1540,7 +1540,7 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
             }
         }
         // The layers (the plies of the laminates); a kind recovered case by case whose rows do not depend on the
-        // displacements: a batch whose first case has none has none for the others either (a PSHELL batch: every
+        // displacements: a batch whose first case has none has none for the others either (a ShellProp batch: every
         // element resolved for nothing).
         for (std::size_t k = 0; k < LAYER_KINDS.size(); ++k)
             for (std::size_t c = 0; c < subcases.size(); ++c)

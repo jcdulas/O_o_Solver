@@ -32,12 +32,12 @@ namespace oos::assembly
 struct InertialTerm
 {
     std::vector<double> generator;    // its kind, then its parameters (the identity of the field)
-    std::vector<double> coefficients; // 3 (the basic axes) or 1 (RFORCE)
+    std::vector<double> coefficients; // 3 (the basic axes) or 1 (RotationalForceLoad)
 };
 
 // The inertial loads of a load set (the inertial family of the load basis): each is the mass matrix
 // times a rigid acceleration field, P = Mgg·a (d'Alembert: the static load equivalent to the field of GravityLoad,
-// ACCEL, AccelNodeLoad, RotationalForceLoad), with Mgg the assembled mass (PARAM WTMASS applied):
+// AccelFieldLoad, AccelNodeLoad, RotationalForceLoad), with Mgg the assembled mass (PARAM WeightToMass applied):
 // - GravityLoad: a uniform translational acceleration A·N on every grid point;
 // - AccelNodeLoad: the uniform acceleration A·N on the grid points the card lists only;
 // - ACCEL: the acceleration N times a factor that varies linearly with the coordinate DIR of the grid point in the
@@ -49,7 +49,7 @@ struct InertialTerm
 //   the field on the mass: outward for the centrifugal part).
 // The rows come from O_o_Reader's inertialLoadsTable (the vectors in the basic system with the LOAD factors
 // applied); without that table, from the GravityLoad rows of loadsTable (the acceleration in the basic system, scaled),
-// and an RotationalForceLoad, ACCEL or AccelNodeLoad is refused naming the missing table.
+// and a RotationalForceLoad, AccelFieldLoad or AccelNodeLoad is refused naming the missing table.
 //
 // Refused with a diagnostic: RotationalForceLoad METHOD = 2 (the element-based form for coupled masses; METHOD = 1 is
 // the one computed), an ACCEL in a cylindrical or spherical CID or with a DIR other than X, Y, Z, an ACCEL table of
@@ -125,7 +125,7 @@ private:
         base::Vec3 centre{};   // RotationalForceLoad
         double velocity = 0.0; // RotationalForceLoad: A (revolutions per unit time)
         double angularAcceleration = 0.0;
-        double factor = 1.0; // the factor of the field (RFORCE: −the LOAD factors, the force on the mass)
+        double factor = 1.0; // the factor of the field (RotationalForceLoad: −the LOAD factors, the force on the mass)
     };
     // The set's rows of inertialLoadsTable (their problems reported, the rows not applied left out), or its GravityLoad
     // rows of loadsTable.

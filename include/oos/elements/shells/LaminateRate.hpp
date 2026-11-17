@@ -1,6 +1,6 @@
 #pragma once
 
-// The rate of a laminate (PCOMP, CompPropGlobal; Laminate.hpp) with respect to the thickness of one ply of its card,
+// The rate of a laminate (CompProp, CompPropGlobal; Laminate.hpp) with respect to the thickness of one ply of its card,
 // the designed field ("CompProp" or "CompPropGlobal", propId, ("ply_thickness", k)): what the shells' closed-form
 // derivatives in a ply thickness differentiate along.
 //

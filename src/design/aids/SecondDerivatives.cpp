@@ -680,7 +680,7 @@ private:
                             loads[static_cast<std::size_t>(m_dofMap.dofOf(vectors.dofs(v)[d]))] += vectors.values(v)[d];
                 }
             base::DiagnosticSink sink;
-            // The point's own positions (the radius of an RotationalForceLoad, the location of an ACCEL) and tables.
+            // The point's own positions (the radius of a RotationalForceLoad, the location of an ACCEL) and tables.
             const assembly::DofMap pointMap(state.snapshot->nodes(), state.index->points());
             const assembly::LoadVectorBuilder builder(*state.set, pointMap, m_budget);
             if (subcase.hasDistributedLoads)

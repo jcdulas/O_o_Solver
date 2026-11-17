@@ -18,7 +18,7 @@ struct AbsorptionOptions
     // False keeps every cluster and every 1D/0D-only unit where the connection system put it (the boundaries are then
     // O_o_Reader's interface points: a check, and the "before absorption" column of the plan report).
     bool absorbsClusters = true;
-    // The SIDs of the MPC cards that some subcases select and others do not (an MultiPointConstrUnion resolved to its
+    // The SIDs of the MPC cards that some subcases select and others do not (a MultiPointConstrUnion resolved to its
     // cards: the connections name an MPC equation by its card's SID): a cluster holding an equation of such a card
     // stays in the connection system, so that one condensation serves every subcase. Sorted.
     std::vector<base::EntityId> varyingMpcSets;
@@ -41,7 +41,7 @@ struct AbsorbedUnit
 // 1. a 1D/0D-only unit the connection system did not move and that is linked to exactly one other unit is absorbed
 //    into it (a 1D chain hanging from a unit); two such units linked only to each other become one unit;
 // 2. a cluster whose connections use points of exactly one unit (after step 1) is absorbed into it: a PointMassInertia on the
-//    reference point of a spider of that unit, a spring or bush to the ground, an RigidBodyStar tying points of the
+//    reference point of a spider of that unit, a spring or bush to the ground, a RigidBodyStar tying points of the
 //    unit, a chain hanging from it. Its elements and relations become part of the unit, its connection-only points
 //    interior points of the unit, its stamp part of the unit's stamp. This is exact: the relations are the same
 //    equations, eliminated inside the unit instead of at the interface;

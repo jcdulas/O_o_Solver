@@ -58,7 +58,7 @@ export async function loadOosSolver(options = {}) {
 // ---- what the solver reads from the reader (the same tables, under the same names, as the model snapshot)
 //
 // Every name is the reader's neutral name: card types (ShellQuad4), columns (positionFrameId) and queries
-// (singlePointConstrTable). The deck keywords (CQUAD4, PID) appear only in the deck and in the messages.
+// (singlePointConstrTable). The deck keywords (ShellQuad4, PID) appear only in the deck and in the messages.
 
 // The columns of the grid point table.
 const NODE_COLUMNS = ["id", "positionFrameId", "displacementFrameId", "permanentConstraints", "superelementId",

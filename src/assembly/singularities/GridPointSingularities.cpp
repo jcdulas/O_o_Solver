@@ -136,7 +136,8 @@ GridPointSingularities::GridPointSingularities(const DofMap& dofMap, const DofSe
     for (std::size_t dof = 0; dof < ratios.size(); ++dof)
         count += ratios[dof] != NOT_SINGULAR_RATIO ? 1 : 0;
     m_rows = base::BudgetedBuffer<SingularityRow>(budget, count, "singularity table");
-    m_autoSpcDofs = base::BudgetedBuffer<base::DofIndex>(budget, options.isAutoSpcOn ? count : 0, "AUTOSPC DOFs");
+    m_autoSpcDofs = base::BudgetedBuffer<base::DofIndex>(budget, options.isAutoSpcOn ? count : 0,
+                                                         "AutoSingularityConstr DOFs");
     for (std::size_t dof = 0; dof < ratios.size(); ++dof)
     {
         if (ratios[dof] == NOT_SINGULAR_RATIO)
@@ -161,7 +162,7 @@ GridPointSingularities::GridPointSingularities(const DofMap& dofMap, const DofSe
               { return a.pointId != b.pointId ? a.pointId < b.pointId : a.component < b.component; });
     if (options.isAutoSpcOn)
         return;
-    // Without AUTOSPC each singular point is reported: the factorisation will meet the mechanism.
+    // Without AutoSingularityConstr each singular point is reported: the factorisation will meet the mechanism.
     std::size_t first = 0;
     while (first < m_rowCount)
     {

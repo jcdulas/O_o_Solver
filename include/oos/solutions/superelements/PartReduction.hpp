@@ -54,9 +54,9 @@ inline constexpr double FIXED_INTERFACE_TIE_TOLERANCE = 1.0e-8;
 //
 // The rules of a part superelement in the format:
 // - its constraints are those of its own Bulk Data that the subcases applying to it select (SPC, MPC, the PS of its
-//   grid points) with the grid point singularities of its interior (AUTOSPC); they must be the same in every one of
-//   those subcases (one reduction serves them all), and a boundary DOF held in the part is held in the residual
-//   structure too (the permanent constraints are united, heldBoundaryLabels);
+//   grid points) with the grid point singularities of its interior (AutoSingularityConstr); they must be the same in
+//   every one of those subcases (one reduction serves them all), and a boundary DOF held in the part is held in the
+//   residual structure too (the permanent constraints are united, heldBoundaryLabels);
 // - its loads are the loads of its own Bulk Data the subcases select, at every point (its boundary points included:
 //   f_b), condensed onto the boundary;
 // - the fixed-interface modes are normalised by the NORM of the part's method (MASS: unit generalised mass, the sign
@@ -110,8 +110,8 @@ public:
     [[nodiscard]] std::span<const reduction::UnitDofLabel> boundaryLabels() const noexcept;
     [[nodiscard]] const linalg::DenseMatrix& stiffness() const noexcept;
     [[nodiscard]] const linalg::DenseMatrix& loads() const noexcept;
-    // The boundary DOFs of its boundary points held in the part (PS, SPC, AUTOSPC), which the residual structure holds
-    // too.
+    // The boundary DOFs of its boundary points held in the part (PS, SPC, AutoSingularityConstr), which the residual
+    // structure holds too.
     [[nodiscard]] std::span<const reduction::UnitDofLabel> heldBoundaryLabels() const noexcept
     {
         return m_heldBoundary;

@@ -7,7 +7,7 @@ namespace oos::elements
 {
 
 // Output columns of the O_o_Reader data contract (forces.springScalarInline: spring_force). No stress: the card has no stress
-// coefficient (CELAS4).
+// coefficient (SpringScalarInline).
 std::vector<std::string> SpringScalarInlineElement::outputColumns(ElementOutput output) const
 {
     if (output == ElementOutput::Forces)

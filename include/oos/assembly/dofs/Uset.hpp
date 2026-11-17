@@ -9,7 +9,7 @@
 namespace oos::assembly
 {
 
-// The set table of the text report (PARAM USETPRT): the members of each set in the g-set order of DofMap (no
+// The set table of the text report (PARAM DofSetPrint): the members of each set in the g-set order of DofMap (no
 // resequencing): per set, a title "Set <NAME>", a column header 1 to 10, then the members ten per line, each written
 // "<point ID>-<component>" (component 0 for a scalar point), the line starting with the position of its first member
 // in the set ("     11=").

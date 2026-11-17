@@ -80,7 +80,7 @@ struct ApproximationHintsResult
 // - the forces and stresses (STRESS, STRAIN, FORCE, ESE, SPCFORCE, the composite ones): p = −1 where x_j enters the
 //   stiffness (reciprocal variables: exact for a statically determinate structure), else direct;
 // - WEIGHT, VOLUME, FRMASS: p = round(mass exponent) (1: linear in a thickness, an area, a density);
-// - the equations (DRESP2, DesignResp3): direct (their form is unknown);
+// - the equations (DesignResp2, DesignResp3): direct (their form is unknown);
 // a variable with no stiffness or mass effect, or a power of 0, gives p = 1 (direct). The internal optimiser keeps
 // the approximation of DesignOptimParams APRCOD unless asked for the hints (ApproximationKind::Hints).
 //

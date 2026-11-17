@@ -235,7 +235,7 @@ void EdgeShearShellFamily<Shell>::checkRows(const ElementBatchView& view, Elemen
     }
 }
 
-// The design fields: ShellProp Z1 and Z2 move the stress fibres only, a AnisoMat2D stiffness term the stiffness,
+// The design fields: ShellProp Z1 and Z2 move the stress fibres only, an AnisoMat2D stiffness term the stiffness,
 // thermal loads and recovery (not the mass, which reads ρ and the thickness), NSM the mass only (the shared rules of
 // core/DesignFieldUse); a pressure reads the element's own geometry only.
 template <typename Shell>
@@ -291,8 +291,8 @@ void EdgeShearShellFamily<Shell>::checkPressureLoads(const ElementBatchView& vie
     checkShellPressures(view, pressures, sink);
 }
 
-// The kernel's pressure loads (PLOAD4, and ShellPressureLoad as a uniform FacePressureLoad), without the offset unless
-// ModelParams OffsetDefinition puts the loads on it.
+// The kernel's pressure loads (FacePressureLoad, and ShellPressureLoad as a uniform FacePressureLoad), without the
+// offset unless ModelParams OffsetDefinition puts the loads on it.
 template <typename Shell>
 void EdgeShearShellFamily<Shell>::computePressureLoads(const ElementBatchView& view,
                                                        std::span<const ElementPressure> pressures,

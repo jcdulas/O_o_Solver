@@ -165,7 +165,7 @@ ConstrainedSystem::ConstrainedSystem(const AnalysisModel& model, const Constrain
     m_solveSets = std::make_shared<assembly::DofSets>(m_sets->withAutoSpc(autoSpcDofs));
     if (options.choosesSupports)
     {
-        // The supports of INREL = −2 among the free DOFs left by the singularity processor.
+        // The supports of InertiaRelief = −2 among the free DOFs left by the singularity processor.
         const assembly::RigidBodyModes geometric(dofMap, options.referencePoint, budget);
         m_supportDofs = assembly::chooseAutomaticSupports(geometric, *m_solveSets);
         m_sets = makeSets();

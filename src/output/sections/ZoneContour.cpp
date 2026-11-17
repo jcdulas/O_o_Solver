@@ -22,9 +22,9 @@ namespace
 
 using RowEntries = std::vector<std::pair<base::DofIndex, double>>;
 
-// The cards whose stiffness is given component by component (a spring, a CBUSH, a gap): the components of an enclosed
+// The cards whose stiffness is given component by component (a spring, a Bushing, a gap): the components of an enclosed
 // one kept outside are those it has a stiffness for, exactly; the other elements act through every component of a
-// kind (translations, rotations) in which their stiffness has a row (so a CBUSH counts only its components with a
+// kind (translations, rotations) in which their stiffness has a row (so a Bushing counts only its components with a
 // stiffness).
 constexpr std::array<std::string_view, 7> COMPONENTWISE_CARDS{
     "SpringDofProperty", "SpringDofInline", "SpringScalarProperty", "SpringScalarInline", "Bushing", "Bushing1D", "Gap2"};

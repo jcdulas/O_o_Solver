@@ -43,7 +43,7 @@ inline constexpr double DERIVED_CHECK_TOLERANCE = 1.0e-9;
 //   o' = o_R' + A_R'·A_Rᵀ·(o − o_R) and A' = A_R'·A_Rᵀ·A;
 // - the vectors given in a moved rectangular system, turned with it, v' = A'·Aᵀ·v: the force or moment of a FORCE or
 //   MOMENT with CID (loadsTable), the acceleration of a GravityLoad (loadsTable ax, ay, az) and the direction of a
-//   GravityLoad, ACCEL, AccelNodeLoad or RotationalForceLoad (inertialLoadsTable).
+//   GravityLoad, AccelFieldLoad, AccelNodeLoad or RotationalForceLoad (inertialLoadsTable).
 // The quantities that read coordsTable at analysis time (the CID, OCID and MCID of the elements, the MCID and CORDM of
 // their properties, a FacePressureLoad's CID, the locations of an ACCEL, the systems of the section and cut loads) read
 // the overlaid frames as they are.
@@ -53,10 +53,10 @@ inline constexpr double DERIVED_CHECK_TOLERANCE = 1.0e-9;
 // system follows the system), a grid point whose displacement system CD is a moved system (displacementRotations), a
 // DesignNodeMove whose CID is a moved system (N taken along CID at read time), a FORCE or MOMENT in a curvilinear
 // system at a grid point a shape moves or in a moved curvilinear system (its local directions turn with the point), a
-// GravityLoad, ACCEL, AccelNodeLoad or RotationalForceLoad in a moved curvilinear system, the aerodynamic model when a
-// system moves (its boxes are derived from the CAERO cards in their CP), and every quantity whose formula above does
-// not give O_o_Reader's base value (the check). The fastener piercing points, the glued contact and the curvilinear
-// displacement systems of moved grid points stay refused by FieldTargets.
+// GravityLoad, AccelFieldLoad, AccelNodeLoad or RotationalForceLoad in a moved curvilinear system, the aerodynamic
+// model when a system moves (its boxes are derived from the CAERO cards in their CP), and every quantity whose formula
+// above does not give O_o_Reader's base value (the check). The fastener piercing points, the glued contact and the
+// curvilinear displacement systems of moved grid points stay refused by FieldTargets.
 //
 // Thread-safety: immutable once built; addCells() may run concurrently. Ownership: owns its data (bounded by the
 // grid points, systems and loads the shapes reach); keeps no reference to the snapshot.

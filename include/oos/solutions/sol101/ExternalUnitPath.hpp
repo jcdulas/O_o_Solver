@@ -93,7 +93,7 @@ struct ExternalUnitCheckOutcome
 //     contour nodes of each unit coupled in the node graph (couplings()), K* added to Kgg (addStiffness) and M* to Mgg
 //     (addMass) on the contour DOFs: "a dense block assembled on the contour DOFs".
 //  3. Mass: a unit without M* is refused for a subcase with inertial loads or inertia relief (checkMass), and named in
-//     a warning for PARAM GRDPNT.
+//     a warning for PARAM WeightReferenceNode.
 //  4. Loads, per constraint set (condenseLoads): the loads of each zone's interior DOFs for every vector of the load
 //     basis go to the unit's load source, which gives f* per vector; each basis vector then has its interior loads
 //     removed and f* added on the contour (applyToBasisVector). A zone loaded inside without a load source is refused.
@@ -134,7 +134,7 @@ public:
     void addMass(linalg::BlockSparseMatrix& mgg) const;
 
     // Step 3: refuses (error) a unit without M* when `isInertial` (a subcase with inertial loads or inertia relief),
-    // `reason` naming why; warns when only PARAM GRDPNT reads the mass.
+    // `reason` naming why; warns when only PARAM WeightReferenceNode reads the mass.
     void checkMass(bool isInertial, bool isGridPointWeight, const std::string& reason,
                    base::DiagnosticSink& sink) const;
 

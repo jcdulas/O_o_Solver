@@ -1228,7 +1228,7 @@ void UnitSystem::assemble(const UnitModel& model, const UnitDescription& descrip
                     { writeOnPoints(block, contributions); });
             },
             mass, pool);
-    // PARAM WTMASS multiplies the structural mass once assembled (as assembly::MassAssembler).
+    // PARAM WeightToMass multiplies the structural mass once assembled (as assembly::MassAssembler).
     if (massOptions.weightToMass != 1.0)
         for (double& value : mass.values())
             value *= massOptions.weightToMass;
@@ -1440,7 +1440,7 @@ void UnitSystem::constrainSingularities(const UnitModel& model, base::MemoryBudg
         }
     }
     m_largestFreeDiagonal = largest;
-    // The scalar points of the interior: singular when their diagonal is at most EPZERO times the largest.
+    // The scalar points of the interior: singular when their diagonal is at most PivotZeroThreshold times the largest.
     for (std::int32_t point = 0; point < pointCount(); ++point)
     {
         const auto p = static_cast<std::size_t>(point);

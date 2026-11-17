@@ -267,8 +267,8 @@ void appendShellRows(ElementResultBlock& block, std::int64_t row, std::int32_t e
         block.append(row, elementId, {state.nodeId, 1}, values);
         return;
     }
-    // PARAM NOCOMPS: a laminate writes the stresses and strains of its plies by default, those of the equivalent
-    // homogeneous element only on request.
+    // PARAM NoCompositeStress: a laminate writes the stresses and strains of its plies by default, those of the
+    // equivalent homogeneous element only on request.
     if (section.isLaminate() && composite == CompositeOutput::PliesOnly)
         return;
     if (output == ElementOutput::StrainCurvatures)
@@ -591,7 +591,7 @@ double plyFailureIndex(FailureTheory theory, const PlyAllowables& allowables, co
 namespace
 {
 
-// Whether a laminate writes failure indices (PCOMP field FT): a failure theory, and the allowables of every ply
+// Whether a laminate writes failure indices (CompProp field FT): a failure theory, and the allowables of every ply
 // written.
 [[nodiscard]] bool writesFailureIndices(const Laminate& laminate)
 {

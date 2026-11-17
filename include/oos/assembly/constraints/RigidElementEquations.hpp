@@ -63,14 +63,14 @@ struct LocalConstraintRows
 // independent rows first then the dependent ones, in the order of the card; RigidBar CMA/CMB defaults already
 // resolved). All the geometry is in the basic system; a DOF is in the displacement system CD of its grid point.
 //
-// - RigidBodyStar, RigidBodyMulti, RigidBar: the element moves rigidly. Its six independent DOFs (RBE2: GN with all its
-// components; RigidBodyMulti:
-//   the GNi with their CNi; RigidBar: CNA at GA and CNB at GB) fix the rigid motion q (translation and rotation at the
-//   first independent grid point); each DOF is a row of the small-rotation rigid transfer
+// - RigidBodyStar, RigidBodyMulti, RigidBar: the element moves rigidly. Its six independent DOFs (RigidBodyStar: GN
+//   with all its components; RigidBodyMulti: the GNi with their CNi; RigidBar: CNA at GA and CNB at GB) fix the rigid
+//   motion q (translation and rotation at the first independent grid point); each DOF is a row of the small-rotation
+//   rigid transfer
 //       t_p = R_pᵀ·(t − [r_p×]·θ),   θ_p = R_pᵀ·θ,   r_p = x_p − x_0,
-//   so u_ind = A·q, u_dep = B·q and u_dep = B·A⁻¹·u_ind (RBE1, RigidBodyStar, RigidBar: a rigid body, whose six
-//   independent DOFs must be able to describe any rigid motion). A is solved after scaling the rotations by the element
-//   size, and an A that cannot describe every rigid motion (pivot below RIGID_PIVOT_TOLERANCE) is refused.
+//   so u_ind = A·q, u_dep = B·q and u_dep = B·A⁻¹·u_ind (RigidBodyMulti, RigidBodyStar, RigidBar: a rigid body, whose
+//   six independent DOFs must be able to describe any rigid motion). A is solved after scaling the rotations by the
+//   element size, and an A that cannot describe every rigid motion (pivot below RIGID_PIVOT_TOLERANCE) is refused.
 // - RigidRod: rigid in extension only: e·(t_B − t_A) = 0 with e the unit axis from GA to GB, solved for the one
 //   dependent translation (CMA or CMB).
 // - RigidInterpolation: the reference motion is the weighted least-squares rigid motion of the independent DOFs (the
@@ -97,7 +97,7 @@ class RigidElementEquations
 public:
     // The smallest pivot of the scaled independent matrix A of a rigid element (rows normalised to 1, rotations scaled
     // by the element size, so the pivots are cosines of angles): below it the independent DOFs cannot describe every
-    // rigid motion (an RigidBar with CNA = CNB = 123 along an axis has no torsion DOF and a zero pivot).
+    // rigid motion (a RigidBar with CNA = CNB = 123 along an axis has no torsion DOF and a zero pivot).
     static constexpr double RIGID_PIVOT_TOLERANCE = 1.0e-8;
     // The smallest |e·d| of the RigidRod axis e and the direction d of the dependent component: a dependent translation
     // nearly perpendicular to the axis takes the whole extension with a huge coefficient (a valid RigidRod has its
@@ -109,7 +109,7 @@ public:
     static constexpr double RIGID_INTERPOLATION_RANK_TOLERANCE = 1.0e-10;
     // The part of a null vector on a REFC component above which that component is not determined.
     static constexpr double RIGID_INTERPOLATION_NULL_COMPONENT_TOLERANCE = 1.0e-8;
-    // The smallest pivot, relative to the largest term, of the UM equations of an RigidInterpolation.
+    // The smallest pivot, relative to the largest term, of the UM equations of a RigidInterpolation.
     static constexpr double RIGID_INTERPOLATION_DEPENDENT_PIVOT_TOLERANCE = 1.0e-10;
 
     explicit RigidElementEquations(const DofMap& dofMap) : m_dofMap(&dofMap) {}

@@ -44,9 +44,10 @@ enum class OffsetDefinition : std::uint8_t
     return definition != OffsetDefinition::ElementOffsets;
 }
 
-// Whether the element loads of an offset element (thermal, pressure: PLOAD2, PLOAD4; PLOAD1 on a bar or beam) act
-// through its offset (LoadRecoveryOffsets, ElemOffsetZ) rather than at its grid points (ElemOffsetsOnly), and whether
-// its differential stiffness is formed (under ElemOffsetsOnly it is refused).
+// Whether the element loads of an offset element (thermal, pressure: ShellPressureLoad, FacePressureLoad;
+// BeamDistributedLoad on a bar or beam) act through its offset (LoadRecoveryOffsets, ElemOffsetZ) rather than at its
+// grid points (ElemOffsetsOnly), and whether its differential stiffness is formed (under ElemOffsetsOnly it is
+// refused).
 [[nodiscard]] constexpr bool carriesLoadsOnOffsets(OffsetDefinition definition) noexcept
 {
     return definition != OffsetDefinition::ElementOffsets;

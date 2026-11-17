@@ -1026,7 +1026,7 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
                 break;
         }
         record.refinementCorrections = refinement.corrections();
-        linalg::DenseMatrix atSupports(budget, rSet.size(), columns, "streamed refined SUPORT displacements");
+        linalg::DenseMatrix atSupports(budget, rSet.size(), columns, "streamed refined FreeBodySupport displacements");
         for (std::size_t j = 0; j < rSet.size(); ++j)
         {
             const std::int32_t equation = equations.equationOfDof(rSet[j]);

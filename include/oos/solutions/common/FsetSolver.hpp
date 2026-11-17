@@ -28,7 +28,7 @@ namespace oos::solutions
 // How the f-set stiffness is ordered and factorised.
 struct FsetSolverOptions
 {
-    linalg::PivotPolicy pivotPolicy; // PARAM MAXRATIO, BAILOUT
+    linalg::PivotPolicy pivotPolicy; // PARAM MaxDiagonalRatio, SingularityBailOut
     linalg::OrderingMethod ordering = linalg::OrderingMethod::Automatic;
     const base::CancellationToken* cancellation = nullptr; // not owned, may be null
     base::ProgressCounter* progress = nullptr;             // advanced by the columns eliminated; may be null
@@ -57,7 +57,7 @@ struct FsetReuse
 
 // The factorisation of the f-set stiffness Kff and the solves with it, on the full model: the free DOFs are ordered and
 // numbered by FsetOrdering, Knn converted to the SymmetricCsc of those DOFs, and factorised by SupernodalFactor in
-// positive definite mode with the MAXRATIO test.
+// positive definite mode with the MaxDiagonalRatio test.
 //
 // A mechanism or a failed ratio test is a SingularityError naming the grid point (or scalar point) ID and component of
 // each DOF (the EquationNamer maps an equation to its g-set DOF and point). An f set without DOFs (every DOF
@@ -117,7 +117,7 @@ public:
     void solve(linalg::DenseMatrixView rightHandSides, const linalg::DenseKernels& kernels,
                const base::CancellationToken* cancellation = nullptr) const;
 
-    // The ratio test of the factorisation (its largest ratio, and the issues kept when BAILOUT is -1).
+    // The ratio test of the factorisation (its largest ratio, and the issues kept when SingularityBailOut is -1).
     [[nodiscard]] const linalg::PivotDiagnostics& pivotDiagnostics() const noexcept
     {
         return m_factor.pivotDiagnostics();

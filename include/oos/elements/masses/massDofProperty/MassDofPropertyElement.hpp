@@ -1,6 +1,6 @@
 #pragma once
 
-// MassDofProperty — scalar mass with its value on a MassProp (CMASS1, MassProp):
+// MassDofProperty — scalar mass with its value on a MassProp (MassDofProperty, MassProp):
 //
 //   | MassDofProperty | EID | PID | G1 | C1 | G2 | C2 |
 //   | MassProp  | PID | M   |

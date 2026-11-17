@@ -22,15 +22,15 @@ namespace oos::elements
 
 // The formulation shared by the rod elements Rod2, Rod2InlineSection and Tube2: a two-node element with an axial
 // stiffness EA/L and a torsional stiffness GJ/L along the axis x = (x_B − x_A)/L, and no bending or shear stiffness.
-// The three cards differ only in where the section comes from (PROD, the Rod2InlineSection card itself, TubeProp), so
-// each element's facet files gather a RodSection and call this.
+// The three cards differ only in where the section comes from (RodProp, the Rod2InlineSection card itself, TubeProp),
+// so each element's facet files gather a RodSection and call this.
 
 // The section of a rod, from its property (or the Rod2InlineSection card).
 struct RodSection
 {
     double area = 0.0;              // A
     double torsionalConstant = 0.0; // J
-    double stressCoefficient = 0.0; // C: torsional stress τ = C·T/J (PROD field C)
+    double stressCoefficient = 0.0; // C: torsional stress τ = C·T/J (RodProp field C)
     double nonStructuralMass = 0.0; // NSM, mass per unit length
 };
 
@@ -109,9 +109,10 @@ struct RodForces
                                   const RodInitialStrain& initial = {});
 
 // The temperature change of a rod (linear statics: α (T − T0)): T the mean of the
-// temperatures of its two grid points in the load set (TEMP, DefaultTemperatureLoad), T0 the mean of those of the
-// TEMPERATURE(INITIAL) set, or TREF of its IsoMat when the subcase has none (a grid point the initial set leaves out
-// takes TREF, as the shells take their grid point temperatures). A grid point without a load temperature is a problem.
+// temperatures of its two grid points in the load set (NodeTemperatureLoad, DefaultTemperatureLoad), T0 the mean of
+// those of the TEMPERATURE(INITIAL) set, or TREF of its IsoMat when the subcase has none (a grid point the initial set
+// leaves out takes TREF, as the shells take their grid point temperatures). A grid point without a load temperature is
+// a problem.
 [[nodiscard]] Resolution<double> resolveRodTemperatureChange(const ElementBatchView& view, std::int64_t row,
                                                              const RodData& rod,
                                                              const ElementTemperatures& temperatures);

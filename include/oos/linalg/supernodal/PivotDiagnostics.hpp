@@ -16,11 +16,11 @@ namespace oos::linalg
 // knows the model; linalg only numbers equations. An empty namer names them by number ("equation 12").
 using EquationNamer = std::function<base::GridComponent(std::int32_t equation)>;
 
-// The factor diagonal ratio test of PARAM MAXRATIO and PARAM BAILOUT: for each pivot of a
+// The factor diagonal ratio test of PARAM MaxDiagonalRatio and PARAM SingularityBailOut: for each pivot of a
 // positive definite factorisation, the ratio of the matrix diagonal to the factor diagonal, a_jj / d_j. A ratio above
 // maxRatio flags a near mechanism (the pivot lost almost all of its diagonal to the coupled DOFs); a negative ratio
 // (a negative factor diagonal) flags a matrix that is not positive definite. Every such DOF is listed with its ratio,
-// then the run stops unless BAILOUT is negative.
+// then the run stops unless SingularityBailOut is negative.
 //
 // The caller may give the test another diagonal than the matrix's for some equations (a reference diagonal:
 // FactorOptions::referenceDiagonal, ratioTestDiagonal below). The matrix diagonal measures the stiffness a DOF has
@@ -32,11 +32,11 @@ using EquationNamer = std::function<base::GridComponent(std::int32_t equation)>;
 // that is not there. The reference is then the diagonal of the stiffness of the elements at the DOF.
 struct PivotPolicy
 {
-    static constexpr double DEFAULT_MAX_RATIO = 1.0e7; // default of PARAM MAXRATIO
-    static constexpr int DEFAULT_BAILOUT = 0;          // default of PARAM BAILOUT
+    static constexpr double DEFAULT_MAX_RATIO = 1.0e7; // default of PARAM MaxDiagonalRatio
+    static constexpr int DEFAULT_BAILOUT = 0;          // default of PARAM SingularityBailOut
 
     double maxRatio = DEFAULT_MAX_RATIO;
-    // BAILOUT < 0: continue with the factor despite the flagged pivots; otherwise the run stops.
+    // SingularityBailOut < 0: continue with the factor despite the flagged pivots; otherwise the run stops.
     int bailout = DEFAULT_BAILOUT;
 
     [[nodiscard]] bool doesStopOnIssues() const noexcept { return bailout >= 0; }
@@ -44,7 +44,7 @@ struct PivotPolicy
 
 enum class PivotIssueKind : std::uint8_t
 {
-    RatioAboveMaximum, // a_jj / d_j > MAXRATIO: a near mechanism
+    RatioAboveMaximum, // a_jj / d_j > MaxDiagonalRatio: a near mechanism
     NegativePivot      // a_jj / d_j < 0: the matrix is not positive definite
 };
 
@@ -85,11 +85,11 @@ public:
     // The largest a_jj / d_j over all pivots (0 without pivots) and its equation (-1 without pivots).
     [[nodiscard]] double largestRatio() const noexcept { return m_largestRatio; }
     [[nodiscard]] std::int32_t equationOfLargestRatio() const noexcept { return m_equationOfLargestRatio; }
-    // The MAXRATIO the test used.
+    // The MaxDiagonalRatio the test used.
     [[nodiscard]] double maxRatio() const noexcept { return m_maxRatio; }
 
     // Throws SingularityError naming the DOFs (through `namer`) when there are issues and the policy stops the run
-    // (BAILOUT >= 0); does nothing otherwise.
+    // (SingularityBailOut >= 0); does nothing otherwise.
     void enforce(const PivotPolicy& policy, const EquationNamer& namer) const;
 
     // One line per listed issue (at most LISTED_ISSUE_COUNT): the DOF and its ratio.

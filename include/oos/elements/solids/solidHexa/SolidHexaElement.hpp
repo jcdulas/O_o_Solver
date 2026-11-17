@@ -1,6 +1,6 @@
 #pragma once
 
-// SolidHexa — six-sided solid with 8 corners and up to 12 mid-side nodes (CHEXA, SolidProp):
+// SolidHexa — six-sided solid with 8 corners and up to 12 mid-side nodes (SolidHexa, SolidProp):
 //
 //   | SolidHexa | EID | PID | G1  | G2  | G3  | G4  | G5  | G6  |
 //   |       | G7  | G8  | G9  | G10 | G11 | G12 | G13 | G14 |
@@ -18,7 +18,7 @@
 // - 20 nodes: the serendipity element, by default with the full 3 × 3 × 3 rule (CalculiX C3D20), with ISOP = REDUCED
 //   or IN = TWO the reduced 2 × 2 × 2 rule (CalculiX C3D20R; Zienkiewicz & Taylor vol. 1, reduced integration), its
 //   stresses then extrapolated from the Gauss points.
-// The material (MAT1 or AnisoMat3D) in the system CORDM (SolidSection).
+// The material (IsoMat or AnisoMat3D) in the system CORDM (SolidSection).
 //
 // Mass: lumped (HRZ) or coupled (SolidElementKernel). Loads: FacePressureLoad on a face, uniform or with corner
 // pressures (SolidPressure); GravityLoad through the mass (the load vector builder); the thermal loads of the grid

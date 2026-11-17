@@ -20,8 +20,8 @@ namespace oos::design
 // analysis: TRIM (the value of a trim variable, its
 // AeroRigidTrimVariable or AeroControlSurface in ATTA) and STABDER (an elastic stability derivative coefficient of a
 // trim variable, ATTA its AeroRigidTrimVariable or AeroControlSurface, ATTB the restraint flag, 0 unrestrained or 1
-// restrained, ATT1 the component 1 to 6: CX, CY, CZ, CMX, CMY, CMZ). The other types of the format (FLUTTER, DIVERG...)
-// are refused, naming them.
+// restrained, ATT1 the component 1 to 6: CX, CY, CZ, CMX, CMY, CMZ). The other types of the format (AeroFlutter,
+// AeroDivergence...) are refused, naming them.
 //
 // Compliance to Rotation are the response kinds of the optimisation aids, SectionLoad and CutLoad those of the
 // analytical sizing tools, ContourDisplacement and ContourForce those of the external local models: extensions of
@@ -160,9 +160,9 @@ enum class ArgumentKind : std::uint8_t
 [[nodiscard]] std::optional<ArgumentKind> findArgumentKind(std::string_view flag) noexcept;
 [[nodiscard]] std::string_view argumentKindName(ArgumentKind kind) noexcept;
 
-// One argument of an equation response. `id` is the DESVAR, DesignResp1, relation or DesignResp2 ID, or the grid point
-// of a DNODE (with its `component`); `label` the DesignConstants label. `name` is the keyword the argument is given
-// under to a caller's callable (empty for a deck DesignResp3: the arguments are then passed by kind, DESVAR,
+// One argument of an equation response. `id` is the DesignVar, DesignResp1, relation or DesignResp2 ID, or the grid
+// point of a DNODE (with its `component`); `label` the DesignConstants label. `name` is the keyword the argument is
+// given under to a caller's callable (empty for a deck DesignResp3: the arguments are then passed by kind, DesignVar,
 // DesignConstants, DesignResp1...).
 struct ResponseArgument
 {
@@ -179,13 +179,13 @@ struct ResponseArgument
 // How an equation response computes its value.
 enum class EquationForm : std::uint8_t
 {
-    Expression, // a DesignEquation program (DRESP2, add_equation_response(expression=)): exact derivatives
-    Callable    // a caller's callable by batch (DRESP3 by GROUP and TYPE, add_equation_response(function=))
+    Expression, // a DesignEquation program (DesignResp2, add_equation_response(expression=)): exact derivatives
+    Callable    // a caller's callable by batch (DesignResp3 by GROUP and TYPE, add_equation_response(function=))
 };
 
 // A DesignResp2 or DesignResp3 entry, or an equation response declared by the caller:
 //
-//   | DesignResp2 | ID | LABEL | EQID | REGION | ...  then the argument lists "DESVAR", "DesignConstants",
+//   | DesignResp2 | ID | LABEL | EQID | REGION | ...  then the argument lists "DesignVar", "DesignConstants",
 //   "DesignResp1", "DNODE", | DesignResp3 | ID | LABEL | GROUP | TYPE | REGION |   "DesignPropRelation1" ...
 //   "DesignResp2" (in that order)
 //
@@ -230,7 +230,7 @@ struct ExternalArgument
     ExternalArgumentKind kind = ExternalArgumentKind::ContourDisplacement;
     std::string name; // the keyword the plugin gets it under
     std::int32_t variable = 0;
-    std::vector<std::pair<std::int32_t, std::int32_t>> variableByLabel; // (zone, DESVAR) per label
+    std::vector<std::pair<std::int32_t, std::int32_t>> variableByLabel; // (zone, DesignVar) per label
 };
 
 // How the values of an external response are given (one-phase or two-phase coupling): by its callable, called

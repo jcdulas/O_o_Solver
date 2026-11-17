@@ -16,7 +16,7 @@ namespace oos::aero
 namespace
 {
 
-// The panels the doublet-lattice boxes come from (CAERO1); the others are refused.
+// The panels the doublet-lattice boxes come from (AeroLiftingPanel1); the others are refused.
 constexpr std::string_view LIFTING_SURFACE_CARD = "AeroLiftingPanel1";
 // The quarter chord, where the doublet line (the bound vortex) of a box lies (Albano & Rodden 1969).
 constexpr double DOUBLET_LINE_CHORD_FRACTION = 0.25;

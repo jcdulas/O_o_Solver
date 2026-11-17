@@ -20,13 +20,12 @@ namespace oos::solutions
 
 // What every subcase of a static analysis shares, on which a condensation that serves them all is made (the plan,
 // CondensationPlanner, and the condensed solution, CondensedStatics, read it the same way):
-// - how many subcases constrain each DOF (SPC, SinglePointConstrList, SinglePointConstrUnion, EnforcedMotionConstr and
-// GRID PS): a DOF held in every subcase is removed
-//   from the units, one held in some only puts its point on a boundary;
-// - the MPC cards every subcase selects (an MultiPointConstrUnion resolved to the cards it holds, from the source_sid
-// column of
-//   multiPointConstrTable, MpcEquations::sourceSetIdsOf), whose equations a unit may eliminate, and those that vary
-//   between subcases, which stay in the connection system;
+// - how many subcases constrain each DOF (SinglePointConstr, SinglePointConstrList, SinglePointConstrUnion,
+//   EnforcedMotionConstr and GRID PS): a DOF held in every subcase is removed from the units, one held in some only
+//   puts its point on a boundary;
+// - the MPC cards every subcase selects (a MultiPointConstrUnion resolved to the cards it holds, from the source_sid
+//   column of multiPointConstrTable, MpcEquations::sourceSetIdsOf), whose equations a unit may eliminate, and those
+//   that vary between subcases, which stay in the connection system;
 // - the contact table every subcase selects (glued contact): one for every subcase, as one MPC set; subcases selecting
 //   different ones are reported ("glued-contact-varies", an error: the condensed path takes one);
 // - the element formulation's constraints (docs/mixed-hybrid-formulation-spec.md section 5.11), from each subcase's

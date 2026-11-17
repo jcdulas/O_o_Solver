@@ -33,8 +33,8 @@ class StreamedFactorisation;
 // How the pivots of a factorisation are chosen.
 enum class PivotingMode : std::uint8_t
 {
-    // LDLᵀ without pivoting, in the order of the symbolic factor, with the MAXRATIO test per pivot: the stiffness
-    // matrices of statics. A zero pivot stops the factorisation (a mechanism).
+    // LDLᵀ without pivoting, in the order of the symbolic factor, with the MaxDiagonalRatio test per pivot: the
+    // stiffness matrices of statics. A zero pivot stops the factorisation (a mechanism).
     PositiveDefinite,
     // LDLᵀ with Bunch-Kaufman pivoting inside each front, the pivots that cannot be taken there delayed to the parent
     // front: the shifted matrices of the eigenvalue and buckling solvers. Zero pivots are counted in the inertia.
@@ -46,7 +46,7 @@ enum class PivotingMode : std::uint8_t
 struct FactorOptions
 {
     PivotingMode pivoting = PivotingMode::PositiveDefinite;
-    // The MAXRATIO and BAILOUT of the ratio test (positive definite mode only).
+    // The MaxDiagonalRatio and SingularityBailOut of the ratio test (positive definite mode only).
     PivotPolicy pivotPolicy;
     // The diagonal the ratio test compares the factor diagonal with, in place of the matrix diagonal, for the
     // equations it gives a value that is not negative (positive definite mode only; PivotDiagnostics.hpp says when a
@@ -155,7 +155,7 @@ public:
     // Throws std::invalid_argument when the matrix is not of the dimension of the symbolic factor or has an entry
     // outside its structure; MemoryBudgetError before any work when it does not fit; SingularityError for a zero pivot
     // in positive definite mode (a mechanism, with its DOFs), or when the ratio test fails and the policy stops
-    // (BAILOUT >= 0); OperationCancelledError when cancelled.
+    // (SingularityBailOut >= 0); OperationCancelledError when cancelled.
     [[nodiscard]] static SupernodalFactor factorise(const SymbolicFactor& symbolic, const SymmetricCsc& matrix,
                                                     const DenseKernels& kernels, const FactorOptions& options,
                                                     base::MemoryBudget& budget);

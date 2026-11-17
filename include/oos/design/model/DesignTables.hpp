@@ -14,7 +14,7 @@ namespace oos::design
 //
 // designVariablesTable: id int32 · label utf8 · value float64 (XINIT) · lower float64 · upper float64 · delta float64
 //   (DELXV, null when blank) · ddval int32 (proposed, optional; null when blank)
-// designLinksTable, one row per (DLINK, independent variable): dependent_variable int32 · constant float64 ·
+// designLinksTable, one row per (DesignVarLink, independent variable): dependent_variable int32 · constant float64 ·
 //   multiplier float64 · independent_variable int32 · coefficient float64
 // designRelationsTable, one row per (relation, argument): relation_card text · relation_id int32 · target_type text
 //   ("property", "material", "element") · target_card text · target_id int32 · field text (the contract column) ·

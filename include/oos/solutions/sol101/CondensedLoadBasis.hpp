@@ -43,8 +43,8 @@ namespace oos::solutions
 // amplitudes, as statics writes appliedLoad there); the units' relief loads are added when they are recovered
 // (CondensedBasisColumns::addUnitReliefLoads).
 //
-// Refused before (StaticSolution): enforced displacements, PARAM INREL = −2 and external units (std::logic_error here
-// for a vector that enforces a displacement). Throws MemoryBudgetError, OperationCancelledError.
+// Refused before (StaticSolution): enforced displacements, PARAM InertiaRelief = −2 and external units
+// (std::logic_error here for a vector that enforces a displacement). Throws MemoryBudgetError, OperationCancelledError.
 [[nodiscard]] std::shared_ptr<const KeptCondensedBasis> solveCondensedBasis(
     std::shared_ptr<const CondensedFactorisedSet> set, const StaticLoadCases& cases,
     const linalg::DenseKernels& kernels, base::MemoryBudget& budget, base::DiagnosticSink& sink,

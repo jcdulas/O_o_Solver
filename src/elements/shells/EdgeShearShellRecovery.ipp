@@ -35,7 +35,7 @@ template <typename T>
 // The rows of `output` at the centre (node 0) from the centre values in the output frame: the forces (the moments
 // as the force table writes them, M = D κ); the stresses at Z1 and Z2 (layers 1, 2); the strains at Z1 and Z2,
 // ε(z) = ε_m − z κ; STRCUR the membrane strains (layer 1, flag 0) and the curvatures (layer 2, flag −1). A laminate
-// writes its stresses and strains here only when PARAM NOCOMPS asks for the homogeneous element.
+// writes its stresses and strains here only when PARAM NoCompositeStress asks for the homogeneous element.
 template <typename T>
 [[nodiscard]] std::vector<LinearRow<T>> linearRowsOf(const std::array<T, CENTRE_RECOVERY_ROWS>& values,
                                                      const std::array<T, 2>& fibres, const ShellSection& section,

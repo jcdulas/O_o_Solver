@@ -14,7 +14,7 @@ Resolution<SpringScalarPropertyElement::Spring> SpringScalarPropertyElement::res
                                                                    std::int64_t row)
 {
     const auto i = static_cast<std::size_t>(row);
-    // Scalar points carry the component 0 (CELAS3: S1, S2 are scalar point IDs).
+    // Scalar points carry the component 0 (SpringScalarProperty: S1, S2 are scalar point IDs).
     Resolution<ScalarConnection> connection =
         resolveScalarConnection(view, row, columns.s1[i], 0, columns.s2[i], 0, true);
     if (!connection)

@@ -13,8 +13,8 @@
 namespace oos::assembly
 {
 
-// One pair of contact bodies glued in a subcase, with the glue parameters in force (BCONPRG, ContactTable; O_o_Reader's
-// contactPairsTable).
+// One pair of contact bodies glued in a subcase, with the glue parameters in force (ContactPairGeomParams,
+// ContactTable; O_o_Reader's contactPairsTable).
 struct GluedPair
 {
     std::int64_t pairRow = 0;   // the row of contactPairsTable

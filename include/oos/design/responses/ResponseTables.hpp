@@ -20,9 +20,9 @@ namespace oos::design
 //   otherwise) · group text, user_type text (GROUP and TYPE of a DesignResp3).
 // designResponseArgumentsTable (proposed), one row per argument of a DesignResp2 or DesignResp3, in the order of the
 // card:
-//   response_id int32 · kind text (DESVAR, DesignConstants, DesignResp1, DNODE, DesignPropRelation1,
+//   response_id int32 · kind text (DesignVar, DesignConstants, DesignResp1, DNODE, DesignPropRelation1,
 //   DesignElemRelation1, DesignMatRelation1, DesignPropRelation2, DesignElemRelation2, DesignMatRelation2, DesignResp2)
-//   · position int32 (from 0, the order of the arguments on the card) · id int32 (the DESVAR, DesignResp1, relation,
+//   · position int32 (from 0, the order of the arguments on the card) · id int32 (the DesignVar, DesignResp1, relation,
 //   DesignResp2 ID or the grid point of a DNODE; null for a DesignConstants) · component int32 (the Cm of a DNODE, null
 //   otherwise) · label utf8 (the DesignConstants label, null otherwise).
 // A "text" column is "utf8" or "dictionary<utf8>".

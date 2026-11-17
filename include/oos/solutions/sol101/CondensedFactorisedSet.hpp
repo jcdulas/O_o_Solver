@@ -91,7 +91,7 @@ struct CondensedFactorisedSetParts
     std::vector<std::shared_ptr<const reduction::ExternalUnitAssembly>> externalUnits;
     linalg::KernelKind kernel = linalg::KernelKind::Reference;
     std::vector<base::EntityId> subcases; // the subcases solved on it, in solve order
-    // The inertia relief of the set (PARAM INREL = −1), null without one.
+    // The inertia relief of the set (PARAM InertiaRelief = −1), null without one.
     std::shared_ptr<const CondensedRelief> relief;
     // What the element formulation adds to the constraints (its excluded DOFs filled in a solution), null without one.
     std::shared_ptr<const assembly::FormulationConstraints> formulation;

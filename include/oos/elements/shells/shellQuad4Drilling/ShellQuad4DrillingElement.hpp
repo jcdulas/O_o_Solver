@@ -15,15 +15,15 @@
 // thicknesses T1-T4 follow TFLAG (not for a laminate); THETA and MCID set the material axis, in which the material
 // matrices and the ply angles are given.
 //
-// Mass (checked on public modal decks): lumped (COUPMASS ≤ 0, the default) the row sums of the consistent
-// translational mass, ∫ m N_i dA, no rotary inertia; coupled (COUPMASS > 0) the consistent mass of the bilinear
+// Mass (checked on public modal decks): lumped (CoupledMass ≤ 0, the default) the row sums of the consistent
+// translational mass, ∫ m N_i dA, no rotary inertia; coupled (CoupledMass > 0) the consistent mass of the bilinear
 // functions on the three translations and the rotary inertia ρ t³/12 on θx, θy. The mass per unit area is
 // ρ t(ξ, η) + NSM (+ the NSM cards' share), ρ of MID1 (of MID2 when MID1 is blank; Σ ρ_k t_k of the plies for a
 // laminate); with ZOFFS the mass lies on the offset plane.
 //
-// Pressure (PLOAD4, ShellPressureLoad through pressureTable): p(ξ, η) = Σ N_i p_i from the corner pressures, the
-// consistent nodal forces F_i = ∫ N_i p dA on the mean plane, along +n, or along the vector N of CID (ShellPressure).
-// SORL and LDIR (edge loads) are not in pressureTable.
+// Pressure (FacePressureLoad, ShellPressureLoad through pressureTable): p(ξ, η) = Σ N_i p_i from the corner pressures,
+// the consistent nodal forces F_i = ∫ N_i p dA on the mean plane, along +n, or along the vector N of CID
+// (ShellPressure). SORL and LDIR (edge loads) are not in pressureTable.
 //
 // Thermal loads (TEMPERATURE(LOAD); ShellQuad4DrillingPlate): the temperature change of ShellTemperature, uniform over the
 // element, through the thermal resultants of the section.
@@ -32,7 +32,8 @@
 // values extrapolated bilinearly from the 2 × 2 Gauss points (STRESS(CORNER) = BILIN); stresses and fibre strains
 // at Z1 and Z2 (layers 1 and 2), strains and curvatures (STRCUR), forces per unit length (ShellRecovery). The centre
 // rows alone are the STRESS(CENTER) output. A laminate gives the ply stresses, strains and failure indices at its
-// centre (recoverLayers, element type "ShellQuad4DrillingComposite") and, by PARAM NOCOMPS, no homogeneous stresses or strains.
+// centre (recoverLayers, element type "ShellQuad4DrillingComposite") and, by PARAM NoCompositeStress, no homogeneous
+// stresses or strains.
 //
 // Differential stiffness (SOL 105; ShellQuad4DrillingPlate::differentialStiffness): the membrane resultants of the preload at
 // the centre on the in-plane gradients of the three translations (shells/ShellDifferential).

@@ -10,7 +10,7 @@
 namespace oos::elements
 {
 
-// The constants of an isotropic material (MAT1) that the line and shell elements read, as O_o_Reader's materialsTable
+// The constants of an isotropic material (IsoMat) that the line and shell elements read, as O_o_Reader's materialsTable
 // gives them: E, G and NU completed from the two given (G = E / 2(1 + NU) when G is blank...), a constant that stays
 // blank after that read as 0 (when only E or only G is given, the other and NU are 0).
 // The stress limits ST, SC, SS are 0 when not given; they serve only the margins of safety.

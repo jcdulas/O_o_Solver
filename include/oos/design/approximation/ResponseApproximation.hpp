@@ -9,7 +9,8 @@
 namespace oos::design
 {
 
-// The first-order approximation of a response in a design cycle (DOPTPRM APRCOD, or a kind the caller asks for).
+// The first-order approximation of a response in a design cycle (DesignOptimParams APRCOD, or a kind the caller asks
+// for).
 enum class ApproximationKind : std::uint8_t
 {
     Direct,     // APRCOD = 1: linear in the design variables, r ≈ r0 + Σ ∂r/∂x_i·(x_i − x0_i)

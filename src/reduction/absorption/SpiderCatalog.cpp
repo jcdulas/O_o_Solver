@@ -79,7 +79,7 @@ void readRigidSpiders(const base::ContractReader& table, std::vector<Spider>& sp
         spider.referenceNodeId = hasReference.isValid(row) ? references[r] : 0;
         spider.referenceDofs = hasReferenceDofs.isValid(row) ? std::string(referenceDofs[row]) : std::string();
         const std::span<const std::int32_t> legIds = legs[row];
-        // The leg components (and the weights of an RigidInterpolation) follow the legs one to one (O_o_Reader: "as the
+        // The leg components (and the weights of a RigidInterpolation) follow the legs one to one (O_o_Reader: "as the
         // card gives them"); a table where they do not is not the contract's.
         if ((hasLegDofs.isValid(row) && legDofs.count(row) != static_cast<std::int64_t>(legIds.size())) ||
             (spider.kind == SpiderKind::RigidInterpolation && hasLegWeights.isValid(row) &&

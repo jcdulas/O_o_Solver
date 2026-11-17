@@ -33,9 +33,9 @@ constexpr double ANISOTROPY_MIN = 0.01;
 constexpr double ANISOTROPY_MAX = 2000.0;
 constexpr double ANISOTROPY_FLOOR = 1.0e-7; // a factor not positive is replaced by this
 
-// The effective Poisson ratio of spec §2.4: ν = m E / (2 G) − 1 (exactly ν for a IsoMat with 12I/T³ = 1); the stiffness
-// caps it at 0.999999 and falls back to ν' (from the rotated bending matrix) when it is not positive, the recovery
-// does not cap it and falls back when it is negative.
+// The effective Poisson ratio of spec §2.4: ν = m E / (2 G) − 1 (exactly ν for an IsoMat with 12I/T³ = 1); the
+// stiffness caps it at 0.999999 and falls back to ν' (from the rotated bending matrix) when it is not positive, the
+// recovery does not cap it and falls back when it is negative.
 template <typename T>
 [[nodiscard]] T effectivePoisson(const T& ratio, const T& young, const T& shear, const T& fallback, bool isStiffness)
 {

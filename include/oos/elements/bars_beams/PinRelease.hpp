@@ -8,7 +8,7 @@
 namespace oos::elements
 {
 
-// The pin flags of a bar or beam (CBAR, Beam2 fields PA, PB: the end DOFs, in the element system, that the bar does
+// The pin flags of a bar or beam (Bar2, Beam2 fields PA, PB: the end DOFs, in the element system, that the bar does
 // not connect to its grid point), applied by static condensation of the released end DOFs r out of the element
 // stiffness, the others a keeping their connection (they carry no force through r):
 //

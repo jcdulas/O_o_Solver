@@ -78,9 +78,9 @@ struct HessianVectorResult
 // the element computations of 1 + 4n + 8·n(n−1)/2 design points (n variables), or 1 + 12n + 4 for a product.
 //
 // Refused (OptimisationError naming them): an item that is not linear in u (von Mises, principal stresses, strain
-// energies, a rotation magnitude: their ∇²_w r is not formed), an equation response (DRESP2, DesignResp3: the second
-// derivatives of the equation are not formed), a mean displacement whose applied forces change with the design, the
-// relations given by functions of the caller (the design points need their values), and what StaticSensitivity
+// energies, a rotation magnitude: their ∇²_w r is not formed), an equation response (DesignResp2, DesignResp3: the
+// second derivatives of the equation are not formed), a mean displacement whose applied forces change with the design,
+// the relations given by functions of the caller (the design points need their values), and what StaticSensitivity
 // refuses.
 //
 // Thread-safety: run on the calling thread. Ownership: none kept.

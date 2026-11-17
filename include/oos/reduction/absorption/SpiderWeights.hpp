@@ -53,7 +53,7 @@ public:
                                                                       assembly::ConstraintSource source,
                                                                       base::EntityId pointNodeId) const;
 
-    // The DOFs an RigidBodyStar makes dependent (its legs' CM components), increasing; empty when Gm has none.
+    // The DOFs a RigidBodyStar makes dependent (its legs' CM components), increasing; empty when Gm has none.
     [[nodiscard]] std::vector<base::DofIndex> dependentDofs(base::EntityId elementId,
                                                             assembly::ConstraintSource source) const;
 

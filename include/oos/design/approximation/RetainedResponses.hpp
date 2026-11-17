@@ -15,7 +15,7 @@ namespace oos::design
 {
 
 // The retained responses of a design point: the objective ∪ the explicit group ∪ the constraints
-// retained by screening (DSCREEN of the problem's constraints, ConstraintScreening), counted in items.
+// retained by screening (DesignConstrScreen of the problem's constraints, ConstraintScreening), counted in items.
 //
 // Each constraint value of the evaluation is renormalised with the GSCAL of the problem (ConstraintNormalisation),
 // given its DesignConstrScreen type (the DesignResp1 RTYPE, EQUA for a DesignResp2, DesignResp3) and its region (the

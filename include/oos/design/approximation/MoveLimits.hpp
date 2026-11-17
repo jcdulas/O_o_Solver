@@ -9,11 +9,12 @@
 namespace oos::design
 {
 
-// The move limits of a design cycle (DOPTPRM DELP, DPMIN, DELX, DXMIN; DESVAR DELXV); `isEnabled` false keeps only
-// the bounds of the variables and the PMIN, PMAX of the properties (the caller's approximate(move_limits=False)). The
-// defaults are those of ADS (OptimiserDefaults.hpp): a relative move limit RMVLMZ of 0.4 as its convex linearisation
-// strategy takes (the approximations in reciprocal variables, APRCOD 2 and 3), 0.2 as its sequential linear
-// programming takes (the direct linearisation, APRCOD 1), and O_o_Solver's floor of 0.001 (ADS SCLMIN).
+// The move limits of a design cycle (DesignOptimParams DELP, DPMIN, DELX, DXMIN; DesignVar DELXV); `isEnabled` false
+// keeps only the bounds of the variables and the PMIN, PMAX of the properties (the caller's
+// approximate(move_limits=False)). The defaults are those of ADS (OptimiserDefaults.hpp): a relative move limit RMVLMZ
+// of 0.4 as its convex linearisation strategy takes (the approximations in reciprocal variables, APRCOD 2 and 3), 0.2
+// as its sequential linear programming takes (the direct linearisation, APRCOD 1), and O_o_Solver's floor of 0.001 (ADS
+// SCLMIN).
 struct MoveLimitParameters
 {
     bool isEnabled = true;
@@ -36,14 +37,14 @@ struct Range
     double upper = 0.0;
 };
 
-// The move limits of a design cycle (DOPTPRM, DESVAR), the move limits of the approximation concepts (Schmit and
-// Miura, "Approximation concepts for efficient structural synthesis", NASA CR-2552, 1976: each approximate problem
-// is solved within a fraction of the current design, as ADS's sequential strategies do):
-//   a design variable moves by at most Δx = max(DELXV·|x0|, DXMIN) (DELXV of its DESVAR, DesignOptimParams DELX
+// The move limits of a design cycle (DesignOptimParams, DesignVar), the move limits of the approximation concepts
+// (Schmit and Miura, "Approximation concepts for efficient structural synthesis", NASA CR-2552, 1976: each approximate
+// problem is solved within a fraction of the current design, as ADS's sequential strategies do):
+//   a design variable moves by at most Δx = max(DELXV·|x0|, DXMIN) (DELXV of its DesignVar, DesignOptimParams DELX
 //   otherwise) and stays within [XLB, XUB]; a designed property moves by at most Δp = max(DELP·|p0|, DPMIN) and stays
 //   within [PMIN, PMAX] of its relation.
 // The property limits become, in the approximate problem, a cut of the bounds of the variable that drives a property
-// linearly and alone (DVPREL1 of one variable), and constraints on the linearised property otherwise
+// linearly and alone (DesignPropRelation1 of one variable), and constraints on the linearised property otherwise
 // (ApproximateProblem).
 //
 // Thread-safety: immutable.

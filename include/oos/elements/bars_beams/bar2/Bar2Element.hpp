@@ -13,8 +13,8 @@
 // Φ = 12·E·I/(K·A·G·L²) of a uniform bar), axial EA/L, torsion GJ/L; orientation by X1-X3 or G0, offsets WA, WB with
 // OFFT, pin flags PA, PB condensed (BeamGeometry, PinRelease); E, G, RHO and the stress limits from the IsoMat of MID.
 //
-// Facets: stiffness, mass (lumped and coupled, BarProp NSM and the NSM cards), loads (PLOAD1, all load and scale
-// types), recovery (forces: bending moments at A and B in planes 1 and 2, shears, axial force, torque; stresses:
+// Facets: stiffness, mass (lumped and coupled, BarProp NSM and the NSM cards), loads (BeamDistributedLoad, all load and
+// scale types), recovery (forces: bending moments at A and B in planes 1 and 2, shears, axial force, torque; stresses:
 // bending at C, D, E, F of each end, axial, maximum and minimum, margins of safety in tension and compression). Under
 // BeamDistributedLoad the Bar2 is written with the layout of its stations (the ends A and B: bending moments,
 // shears, axial, torque per station; sxc-sxf, axial, smax, smin, ms): recoverUnderLineLoads gives that layout. Thermal

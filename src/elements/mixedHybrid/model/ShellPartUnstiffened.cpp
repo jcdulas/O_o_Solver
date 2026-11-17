@@ -14,7 +14,7 @@ namespace
 {
 
 // A direction of a displacement function is singular when its stiffness is below this fraction of the largest of the
-// function: the default threshold of the singularity processor of the grid points (EPZERO).
+// function: the default threshold of the singularity processor of the grid points (PivotZeroThreshold).
 constexpr double UNSTIFFENED_DIRECTION_RATIO = 1e-8;
 // The singular directions lie along the components that hold them when |det V_C| reaches cos 1° (the rule of the
 // singularity processor of the grid points).

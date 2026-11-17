@@ -11,7 +11,7 @@
 namespace oos::elements
 {
 
-// GA and GB closer than this (model length units) give no element x-axis: CID must then be given (CBUSH1D and
+// GA and GB closer than this (model length units) give no element x-axis: CID must then be given (Bushing1D and
 // Gap2, as Bushing: BUSH_COINCIDENT_DISTANCE).
 inline constexpr double SPRING_COINCIDENT_DISTANCE = 1.0e-4;
 
@@ -21,7 +21,7 @@ inline constexpr double SPRING_PARALLEL_ORIENTATION_FACTOR = 1.0e-12;
 // O_o_Reader gives a blank CID of Bushing1D and Gap2 as −1 (0 is the basic system).
 inline constexpr std::int32_t BLANK_SPRING_SYSTEM = -1;
 
-// Where the element axes of a two-point spring come from (CBUSH1D, Gap2): the system CID when it is given, else x
+// Where the element axes of a two-point spring come from (Bushing1D, Gap2): the system CID when it is given, else x
 // from GA to GB and, when the element needs y and z, the orientation vector v from the grid point GO (v = x_GO − x_GA)
 // or from X1-X3 (in the displacement system of GA), z = x × v / |x × v|, y = z × x (the Bar2 convention).
 struct SpringAxesInput

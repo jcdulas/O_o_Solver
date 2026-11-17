@@ -29,8 +29,8 @@ namespace oos::elements
 // bar E·A·(ε − α·ΔT − D/L)). A subcase with a DEFORM and no TEMPERATURE(LOAD) has D/L alone.
 //
 // T̄: a LineElemTemperatureLoad of the element (temperatureTable gives TA and TB − TA: T̄ = (TA + TB)/2), else the mean
-// of the temperatures of GA and GB (TEMP, DefaultTemperatureLoad); T̄0 the same from the TEMPERATURE(INITIAL) set, else
-// the TREF of the IsoMat.
+// of the temperatures of GA and GB (NodeTemperatureLoad, DefaultTemperatureLoad); T̄0 the same from the
+// TEMPERATURE(INITIAL) set, else the TREF of the IsoMat.
 //
 // The temperature gradients across the section of a LineElemTemperatureLoad (T'y along the element y axis and T'z
 // along z, given at ends A and B and linear between them) bend the element. The temperature of the section is

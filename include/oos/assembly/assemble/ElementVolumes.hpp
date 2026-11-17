@@ -20,7 +20,8 @@ namespace oos::assembly
 // bars and beams, area × thickness for the shells (∫t dA with corner thicknesses, area × Σ t_k for a laminate), the
 // volume for the solids. The element strain energy density is the strain energy divided by this volume (the ESE
 // output, and the item 4 of a DesignResp1 ESE). Only the structural elements have one, those whose family has both a
-// stiffness and a mass: not the concentrated masses (CONM1, PointMassInertia, CMASSi) nor the springs, bushes and dampers.
+// stiffness and a mass: not the concentrated masses (PointMassMatrix, PointMassInertia, CMASSi) nor the springs, bushes
+// and dampers.
 //
 // An element family that computes the volumes of its elements from its geometry gives them itself
 // (ElementFamily::computeVolumes) and the mass is not read for its batches: the elements of the mixed hybrid

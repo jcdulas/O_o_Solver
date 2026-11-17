@@ -11,10 +11,10 @@ namespace oos::reduction
 {
 
 // The rule for a boundary point that a relation makes dependent (for every relation: RigidBodyStar, RigidInterpolation,
-// RigidBar, MPC, fastener constraints and the glue equations). A point is on a unit's boundary because something
-// outside the unit acts on it (a connection, a retained output, a constraint of some subcases only, a FreeBodySupport);
-// if some of its DOFs are dependent, u_m = Gm·u_n, what acts on them acts on the DOFs they depend on. So that the
-// coupling is never lost and the condensation stays exact:
+// RigidBar, MultiPointConstr, fastener constraints and the glue equations). A point is on a unit's boundary because
+// something outside the unit acts on it (a connection, a retained output, a constraint of some subcases only, a
+// FreeBodySupport); if some of its DOFs are dependent, u_m = Gm·u_n, what acts on them acts on the DOFs they depend on.
+// So that the coupling is never lost and the condensation stays exact:
 // - a relation eliminated at the interface (one of `interfaceRelations`: a relation of the connection system, or a
 //   glue equation whose points are on several units) leaves the dependent DOFs to the unit as boundary DOFs
 //   (PlanGraph::unitDofCount counts them): the point stays a boundary point with them;

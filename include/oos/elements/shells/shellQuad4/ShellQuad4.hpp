@@ -23,7 +23,7 @@
 //   even and odd across the element weighted by shear-correction factors (C_b = 1.6 for bending, C_t for torsion, and
 //   factors for an anisotropic coupling), in series with the shear compliance when MID3 is given;
 // - no drilling stiffness: θz has none in a flat element (the solver's automatic constraint of singular DOFs, PARAM
-//   AUTOSPC, removes it); no rotary inertia.
+//   AutoSingularityConstr, removes it); no rotary inertia.
 //
 // Frames: the element frame E (x along the bisector of the diagonals, z the normal of the mean plane, origin the
 // centroid) holds every matrix (local DOFs u, v, w, θx, θy, θz of each node, node by node); the user frame (x along

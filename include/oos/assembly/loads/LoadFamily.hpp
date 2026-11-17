@@ -9,11 +9,11 @@ namespace oos::assembly
 
 // The families of static loads (for the load basis of many load cases): the load vectors of the cases are
 // grouped by family, and each family takes its own smallest exact basis.
-// - Concentrated: FORCE, PointForceLoad1, PointForceLoad2, MOMENT, PointMomentLoad1, PointMomentLoad2, ScalarPointLoad
-// (loadsTable, per grid or scalar point);
+// - Concentrated: PointForceLoad, PointForceLoad1, PointForceLoad2, PointMomentLoad, PointMomentLoad1,
+//   PointMomentLoad2, ScalarPointLoad (loadsTable, per grid or scalar point);
 // - Distributed: ShellPressureLoad, FacePressureLoad (pressureTable) and BeamDistributedLoad (lineLoadsTable), per
 // element;
-// - Inertial: GravityLoad, ACCEL, AccelNodeLoad, RotationalForceLoad (Mgg times an acceleration field);
+// - Inertial: GravityLoad, AccelFieldLoad, AccelNodeLoad, RotationalForceLoad (Mgg times an acceleration field);
 // - Thermal: the thermal loads of TEMPERATURE(LOAD);
 // - Enforced: the enforced displacements of SPC and EnforcedMotionConstr (a displacement vector of the s set, not a
 // load).

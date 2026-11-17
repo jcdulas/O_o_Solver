@@ -13,7 +13,7 @@ struct AnalysisPartTimings
     double constraints = 0.0;   // the MPCs, fasteners, SPCs, glued contact, Gm and the DOF sets
     double graph = 0.0;         // the m-set couplings, the node graph and the sparse pattern
     double stiffness = 0.0;     // Kgg (from the kept element matrices) and Knn (the m set eliminated)
-    double singularities = 0.0; // the grid point singularity processor (AUTOSPC) and the solved sets
+    double singularities = 0.0; // the grid point singularity processor (AutoSingularityConstr) and the solved sets
     double ordering = 0.0;      // the fill-reducing ordering of the solved set's nodes
     double symbolic = 0.0;      // the symbolic factor and the numbering of the equations
     double conversion = 0.0;    // Knn to the SymmetricCsc of the equations

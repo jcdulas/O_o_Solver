@@ -1,6 +1,6 @@
 #pragma once
 
-// The materials of the shells (MAT1, AnisoMat2D, OrthoMat2D), each reduced to what a shell section reads: the
+// The materials of the shells (IsoMat, AnisoMat2D, OrthoMat2D), each reduced to what a shell section reads: the
 // plane-stress matrix in the material frame, the transverse shear moduli, the in-plane shear modulus (the rotation
 // penalty of the drilling membranes), the density, the thermal expansion and its reference temperature, and the
 // allowables of the failure indices of a ply.
@@ -33,8 +33,8 @@ enum class ShellMaterialType : std::uint8_t
     OrthoMat2D
 };
 
-// The allowables of the failure indices of a ply (MAT8 Xt, Xc, Yt, Yc, S, F12, STRN; CompProp FT). Xc defaults to
-// Xt and Yc to Yt (MAT8); a blank Xt, Yt or S leaves the allowables incomplete (hasStrengths false).
+// The allowables of the failure indices of a ply (OrthoMat2D Xt, Xc, Yt, Yc, S, F12, STRN; CompProp FT). Xc defaults to
+// Xt and Yc to Yt (OrthoMat2D); a blank Xt, Yt or S leaves the allowables incomplete (hasStrengths false).
 struct PlyAllowables
 {
     bool hasStrengths = false;
@@ -60,7 +60,7 @@ struct ShellMaterial
         expansion{}; // (α1, α2, α12): IsoMat (A, A, 0), AnisoMat2D (A1, A2, A3), OrthoMat2D (A1, A2, 0)
     double referenceTemperature = 0.0; // TREF (0 when blank, the default)
     PlyAllowables allowables;          // OrthoMat2D only
-    double e1 = 0.0;                   // OrthoMat2D E1, E2 and G12 (MAT1: E, E, G), for the strain allowables
+    double e1 = 0.0;                   // OrthoMat2D E1, E2 and G12 (IsoMat: E, E, G), for the strain allowables
     double e2 = 0.0;
     double g12 = 0.0;
 };
@@ -80,7 +80,7 @@ struct ShellMaterialColumns
 
 // The material of ID `matId` for the shell of batch row `row`, read as MID1, MID2, MID3 or MID4 (`matIdField`) or as
 // the material of a ply ("MID3" of CompProp ply 3...). A missing material, a type other than IsoMat, AnisoMat2D or
-// OrthoMat2D, a AnisoMat2D or OrthoMat2D the snapshot has no card table for, or a OrthoMat2D whose E1, E2 are not
+// OrthoMat2D, an AnisoMat2D or OrthoMat2D the snapshot has no card table for, or an OrthoMat2D whose E1, E2 are not
 // positive are problems.
 [[nodiscard]] Resolution<ShellMaterial> resolveShellMaterial(const ElementBatchView& view,
                                                              const ShellMaterialColumns& columns, std::int64_t row,

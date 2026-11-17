@@ -19,21 +19,19 @@ namespace oos::solutions
 
 // The vectors of the load basis as the full path streamed takes them: never a vector of the model, each
 // basis vector's loads made at the fronts from what defines them:
-// - concentrated loads (FORCE, MOMENT, ScalarPointLoad, a unit load of the loaded DOFs' basis): their values on their
-// DOFs,
-//   carried through Gm onto equations, each term placed at the supernode of its equation;
-// - pressures on elements (PLOAD2, FacePressureLoad): the rows of pressureTable of each element, the basis vectors that
-// take a
-//   row's load set with their factors (a set as written, the set of a case, through the terms of its LOAD), the
-//   element's equivalent nodal loads made at its front by its family's pressure facet, once per row, times each
-//   factor;
+// - concentrated loads (PointForceLoad, PointMomentLoad, ScalarPointLoad, a unit load of the loaded DOFs' basis): their
+//   values on their DOFs, carried through Gm onto equations, each term placed at the supernode of its equation;
+// - pressures on elements (ShellPressureLoad, FacePressureLoad): the rows of pressureTable of each element, the basis
+//   vectors that take a row's load set with their factors (a set as written, the set of a case, through the terms of
+//   its LOAD), the element's equivalent nodal loads made at its front by its family's pressure facet, once per row,
+//   times each factor;
 // - inertial loads of GravityLoad (the inertial family by its generators): each vector's acceleration in the basic
-//   system, the element's loads its mass (WTMASS applied) times that uniform translation, at its front;
+//   system, the element's loads its mass (WeightToMass applied) times that uniform translation, at its front;
 // - inertia relief on rigid support motions (setRelief): each vector's rigid-body amplitudes w (P' = P − M·Φ·w),
 //   the element's part −M_e·Φ_e·w at its front.
-// What the path does not take is reported as an error naming the remedy: line loads (PLOAD1), pressures on the faces
-// of grid points (PLOAD without element), ACCEL, AccelNodeLoad, RotationalForceLoad, thermal loads and enforced
-// displacements.
+// What the path does not take is reported as an error naming the remedy: line loads (BeamDistributedLoad), pressures on
+// the faces of grid points (PointsPressureLoad without element), AccelFieldLoad, AccelNodeLoad, RotationalForceLoad,
+// thermal loads and enforced displacements.
 //
 // Thread-safety: immutable once built (setRelief before any use); const methods are safe concurrently. Ownership:
 // owns its descriptions (budgeted); borrows the load cases, the load builder and the placement, which outlive it.

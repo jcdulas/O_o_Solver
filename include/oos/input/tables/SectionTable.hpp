@@ -20,10 +20,10 @@ struct SectionRows
     [[nodiscard]] std::int64_t count() const noexcept { return last - first; }
 };
 
-// The section properties of the PBARL and PBEAML cards, computed from the dimensions of their section type
-// (O_o_Reader sectionsTable(types=["PBARL", "PBEAML"]), data contract 31): one row per PBARL, one
-// row per PBEAML station, in the element system (y, z) about the neutral axis, with the shear factors K1, K2 and the
-// stress recovery points C, D, E, F as (y, z) pairs (the columns c1 c2 d1 d2 e1 e2 f1 f2).
+// The section properties of the BarShapeProp and BeamShapeProp cards, computed from the dimensions of their section
+// type (O_o_Reader sectionsTable(types=["BarShapeProp", "BeamShapeProp"]), data contract 31): one row per BarShapeProp,
+// one row per BeamShapeProp station, in the element system (y, z) about the neutral axis, with the shear factors K1, K2
+// and the stress recovery points C, D, E, F as (y, z) pairs (the columns c1 c2 d1 d2 e1 e2 f1 f2).
 //
 // Invariant (checked at construction): the rows are sorted by propId, then by xxb, so that the stations of a property
 // are contiguous and in increasing order, and findProperty() is a binary search (no index is built).
@@ -37,7 +37,7 @@ public:
 
     [[nodiscard]] std::int64_t rowCount() const noexcept { return m_reader.rowCount(); }
     [[nodiscard]] std::span<const std::int32_t> propIds() const { return m_reader.values<std::int32_t>("propId"); }
-    // X/XB of each row: 0 at end A, 1 at end B (0 for a PBARL).
+    // X/XB of each row: 0 at end A, 1 at end B (0 for a BarShapeProp).
     [[nodiscard]] std::span<const double> positions() const { return m_reader.values<double>("xxb"); }
     [[nodiscard]] std::span<const double> areas() const { return m_reader.values<double>("area"); }
     [[nodiscard]] std::span<const double> inertias1() const { return m_reader.values<double>("i1"); }
@@ -77,7 +77,8 @@ private:
 
     base::ContractReader m_reader;
     // The recovery points row after row. A copy, so that the elements read them as one fixed list per row (the table
-    // gives them as eight columns): 64 bytes per section row, bounded by the PBARL and PBEAML stations (std::vector).
+    // gives them as eight columns): 64 bytes per section row, bounded by the BarShapeProp and BeamShapeProp stations
+    // (std::vector).
     std::vector<double> m_recoveryPoints;
 };
 

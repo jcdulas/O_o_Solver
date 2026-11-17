@@ -17,8 +17,8 @@ namespace oos::elements
 {
 
 // The formulation shared by Bar2 and Beam2 (a Bar2 is a Beam2 of uniform section without warping): the two
-// cards differ in where the section comes from (PBAR; BeamProp with its stations) and in their output layouts, so each
-// family's facet files gather a BeamData and call this. The pieces:
+// cards differ in where the section comes from (BarProp; BeamProp with its stations) and in their output layouts, so
+// each family's facet files gather a BeamData and call this. The pieces:
 //
 // - BeamGeometry: end points, element system, offsets, pin flags, the map T from grid DOFs to end DOFs;
 // - BeamSection: the section along the length;

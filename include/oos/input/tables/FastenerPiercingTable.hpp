@@ -41,12 +41,12 @@ struct SideFailure
     std::string message;
 };
 
-// The piercing points of the CFAST and CWELD elements (O_o_Reader fastenerPiercings, data contract 60), in the layout
+// The piercing points of the Fastener and Weld elements (O_o_Reader fastenerPiercings, data contract 60), in the layout
 // the elements, the fastener constraints and the spider absorption read: for each side A and B of each fastener, one
 // row: its piercing point (GA or GB, given on the card or found by the reader on the shells), with the grid points of
-// the shell element it pierces (or of the face of grid points of a CWELD GRIDID) and the shape functions of that
+// the shell element it pierces (or of the face of grid points of a Weld GRIDID) and the shape functions of that
 // element at the point, which elements/fasteners/PiercingInterpolation turns into the motion of the point. The sides of
-// a CWELD ALIGN and the GS end of a point-to-patch CWELD have no row (the element connects those grid points directly);
+// a Weld ALIGN and the GS end of a point-to-patch Weld have no row (the element connects those grid points directly);
 // a side whose point the reader did not find has a failure instead (findFailure).
 //
 // Invariant: the rows are sorted by elementId, then side A before side B, each side once; every row has as many shape
@@ -63,7 +63,7 @@ public:
 
     [[nodiscard]] std::int64_t rowCount() const noexcept { return static_cast<std::int64_t>(m_fastenerIds.size()); }
     [[nodiscard]] std::span<const std::int32_t> fastenerIds() const noexcept { return m_fastenerIds; }
-    // The neutral card name: "Fastener" (CFAST) or "Weld" (CWELD).
+    // The neutral card name: "Fastener" (Fastener) or "Weld" (Weld).
     [[nodiscard]] std::string_view card(std::int64_t row) const;
     [[nodiscard]] bool isSideA(std::int64_t row) const { return m_isSideA[static_cast<std::size_t>(row)] != 0; }
     // GA or GB as given on the card; null (isPointGridGiven) when the point is generated.
@@ -74,7 +74,7 @@ public:
     {
         return {m_piercingPoints.data(), rowCount(), 3};
     }
-    // The shell element pierced (0 for the face of grid points of a CWELD GRIDID).
+    // The shell element pierced (0 for the face of grid points of a Weld GRIDID).
     [[nodiscard]] std::span<const std::int32_t> elementIds() const noexcept { return m_elementIds; }
     // The grid points of the pierced element and its shape functions at the piercing point.
     [[nodiscard]] base::ListView<std::int32_t> grids() const

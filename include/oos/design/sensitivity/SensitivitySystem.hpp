@@ -36,8 +36,8 @@ namespace oos::design
 // The static system of one constraint set of a design point, factorised for the sensitivity solves (the
 // direct method solves K⁻¹·B, the adjoint method solves K⁻¹·Cᵀ): the same reduction as the static solution
 // (solutions/sol101/StaticSolution steps 3 and 4: the m set of the rigid elements, fasteners and MPC equations
-// eliminated by Gm, the single-point constraints and the AUTOSPC of the grid point singularity processor, the r set of
-// FreeBodySupport held as constraints) and the l-set factor K_ll.
+// eliminated by Gm, the single-point constraints and the AutoSingularityConstr of the grid point singularity processor,
+// the r set of FreeBodySupport held as constraints) and the l-set factor K_ll.
 //
 // The design variables never drive Gm, the constrained DOFs nor the enforced displacements (the relations design
 // property, material and element fields, never rigid elements, MPC coefficients or SPC values), so with
@@ -46,7 +46,7 @@ namespace oos::design
 //   du_g = T·du_l                                      (expand: zero on the s and r sets, Gm on the m set).
 // toEquations() applies Tᵀ (reduceToN, then the l rows in the order of the factor), fromEquations() applies T.
 //
-// Inertia relief (PARAM INREL = -1) on rigid support motions only (refused otherwise by the constructor
+// Inertia relief (PARAM InertiaRelief = -1) on rigid support motions only (refused otherwise by the constructor
 // with an OptimisationError naming the subcase). The SUBCOM combinations are no subcase of a system: the sensitivities
 // solve a SUBCOM on the system of its terms, and the constructor refuses one (std::invalid_argument).
 //
@@ -111,8 +111,8 @@ public:
             return m_dofMap->gSetSize();
         return m_kept ? m_kept->equationCount() : m_solver->equationCount();
     }
-    // Whether a g-set DOF is held (s set, AUTOSPC, r set of FreeBodySupport): its SPC force is a result, its
-    // displacement fixed.
+    // Whether a g-set DOF is held (s set, AutoSingularityConstr, r set of FreeBodySupport): its SPC force is a result,
+    // its displacement fixed.
     [[nodiscard]] bool isConstrained(base::DofIndex dof) const noexcept;
 
     // Tᵀ·v: `vectorG` (a load or adjoint weight on the g set, not modified) reduced to the n set (P_n + Gmᵀ·P_m) and
@@ -134,7 +134,7 @@ public:
 
     // The condensed path: its solves and their statistics, null on the full path.
     [[nodiscard]] bool isCondensed() const noexcept { return m_condensed != nullptr; }
-    // The inertia relief of the constraint set (PARAM INREL = −1), null without one.
+    // The inertia relief of the constraint set (PARAM InertiaRelief = −1), null without one.
     [[nodiscard]] const solutions::KeptRelief* relief() const noexcept
     {
         return m_kept ? m_kept->relief() : m_condensedRelief.get();

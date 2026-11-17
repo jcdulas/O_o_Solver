@@ -88,7 +88,7 @@ public:
                        const linalg::DenseKernels& kernels, const linalg::FactorOptions& options,
                        base::MemoryBudget& budget, WithoutFactor);
     // The condensation of `system` taken from the cache: `reduced` its cached reduced unit (labels equal to the unit's
-    // boundary labels: std::invalid_argument otherwise), `largestPivotRatio` the MAXRATIO diagnostic of the
+    // boundary labels: std::invalid_argument otherwise), `largestPivotRatio` the MaxDiagonalRatio diagnostic of the
     // factorisation that made it. No factorisation is made.
     StaticCondensation(std::shared_ptr<const UnitSystem> system, std::shared_ptr<const ReducedUnit> reduced,
                        double largestPivotRatio, const linalg::FactorOptions& options);
@@ -108,7 +108,8 @@ public:
     [[nodiscard]] std::size_t patternCount() const noexcept { return m_reduced->patterns().columns(); }
     // Whether it came from the cache (no factorisation made until recomputeInteriorFactor()).
     [[nodiscard]] bool isFromCache() const noexcept { return m_isFromCache; }
-    // The largest MAXRATIO ratio of its interior factorisation (the cached one's for a condensation from the cache).
+    // The largest MaxDiagonalRatio ratio of its interior factorisation (the cached one's for a condensation from the
+    // cache).
     [[nodiscard]] double largestPivotRatio() const noexcept { return m_largestPivotRatio; }
 
     [[nodiscard]] bool isInteriorFactorKept() const noexcept { return m_factor.isInteriorFactorKept(); }

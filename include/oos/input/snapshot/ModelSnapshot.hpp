@@ -171,7 +171,8 @@ public:
     [[nodiscard]] const ConstraintTable& constraints() const;
     [[nodiscard]] const RigidTable& rigidElements() const;
     [[nodiscard]] const LoadTable& loads() const;
-    // The load tables, or null when the snapshot was taken without them (SpcSet reads its SPCD through them).
+    // The load tables, or null when the snapshot was taken without them (SpcSet reads its EnforcedMotionConstr through
+    // them).
     [[nodiscard]] const LoadTable* findLoads() const noexcept { return m_loads ? &*m_loads : nullptr; }
     [[nodiscard]] const SubcaseTable& subcases() const;
     [[nodiscard]] const ParamTable& params() const;
@@ -182,11 +183,12 @@ public:
     // The ply stacks of the laminates (laminatePliesTable) and their summary (laminateSummary), read by the shells.
     [[nodiscard]] const base::ContractReader& laminatePlies() const;
     [[nodiscard]] const base::ContractReader& laminateSummary() const;
-    // The section properties of PBARL and PBEAML (sectionsTable) and the fastener piercings (the piercing points of
-    // fastenerPiercings with the shape functions of the elements pierced).
+    // The section properties of BarShapeProp and BeamShapeProp (sectionsTable) and the fastener piercings (the piercing
+    // points of fastenerPiercings with the shape functions of the elements pierced).
     [[nodiscard]] const SectionTable& sections() const;
     [[nodiscard]] const FastenerPiercingTable& fastenerPiercings() const;
-    // The SUPORT and SUPORT1 points (dofSetsTable), read through its contract by the solution drivers.
+    // The FreeBodySupport and FreeBodySupportSet points (dofSetsTable), read through its contract by the solution
+    // drivers.
     [[nodiscard]] const base::ContractReader& supports() const;
     // The connection system of the units (componentNodes, connectionList), read through
     // their contracts by the reduction module.
@@ -209,7 +211,7 @@ public:
 
     // The terms of the loads a subcase's LOAD selects (LoadTable::termsOf): none without a set, the set alone with the
     // factor 1 without load tables. What the readers of the load tables by set (the load vectors, the inertial loads,
-    // the SPCD of SpcSet) go through, so that the two forms of the tables give the same loads.
+    // the EnforcedMotionConstr of SpcSet) go through, so that the two forms of the tables give the same loads.
     [[nodiscard]] std::vector<LoadTerm> loadTermsOf(std::optional<std::int32_t> loadSetId) const;
 
     // A table by name, for checks and reports that walk every table: a role name ("singlePointConstrTable"),

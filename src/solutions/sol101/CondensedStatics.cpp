@@ -824,7 +824,7 @@ void CondensedStatics::condenseUnits(const Inputs& inputs, base::MemoryBudget& b
         loads.mass = std::make_unique<linalg::BlockSparseMatrix>(*loads.massPattern, budget, "condensed mass Mgg");
         assembly::MassAssembler(elementSet, dofMap, *units.shares, units.massOptions)
             .assemble(*loads.mass, inputs.pool, inputs.cancellation);
-        // The reduced mass of the external units, as given (unscaled by WTMASS, as on the full path).
+        // The reduced mass of the external units, as given (unscaled by WeightToMass, as on the full path).
         if (inputs.externalUnits != nullptr)
             inputs.externalUnits->addMass(*loads.mass);
     }
@@ -3951,7 +3951,8 @@ std::string CondensedStatics::solveGroup(const GroupInputs& group, const CaseVis
                 for (std::size_t q = 0; q < boundarySolutions.columns(); ++q)
                     supportRows(j, q) = boundarySolutions(static_cast<std::size_t>(*local), q);
             }
-            linalg::DenseMatrix atSupports(budget, supportCount, caseCount, "condensed unit by unit SUPORT values");
+            linalg::DenseMatrix atSupports(budget, supportCount, caseCount,
+                                           "condensed unit by unit FreeBodySupport values");
             basis.coefficients().combine(supportRows.view(), 0, atSupports.view(), kernels);
             for (std::size_t c = 0; c < caseCount; ++c)
                 for (std::size_t j = 0; j < supportCount; ++j)

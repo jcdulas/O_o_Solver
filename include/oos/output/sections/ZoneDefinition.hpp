@@ -44,7 +44,7 @@ struct ContourCause
 };
 
 // One boundary point of a zone as O_o_Reader gives it (zoneBoundaries): its grid point, the components through which
-// the outside acts on it, whether it is a grid point of the element a CFAST or CWELD pierces when its other side is
+// the outside acts on it, whether it is a grid point of the element a Fastener or Weld pierces when its other side is
 // outside, and the outside things that act on it.
 struct ZoneBoundaryPoint
 {
@@ -78,8 +78,8 @@ enum class EnclosedPolicy : std::uint8_t
 inline constexpr std::int32_t DISPLACEMENT_SYSTEMS = -1;
 
 // The subcases whose constraints decide the contour of a zone (a grid point constrained in some of them only is a
-// contour point): the label and the SPC set it selects (nothing: none), and its load set (the SPCD of an enforced
-// displacement).
+// contour point): the label and the SPC set it selects (nothing: none), and its load set (the EnforcedMotionConstr of
+// an enforced displacement).
 struct ZoneSubcaseConstraint
 {
     std::int32_t subcase = 0;

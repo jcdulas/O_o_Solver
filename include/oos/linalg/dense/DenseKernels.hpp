@@ -87,8 +87,8 @@ struct PivotedLdlt
 };
 
 // The dense kernels of the factorisation for one kernel family: the block LDLᵀ without pivoting (with
-// the factor diagonal ratios of the MAXRATIO check) and with Bunch-Kaufman pivoting, the triangular solves of a panel
-// and of many right-hand sides, and the update C ← C − A·D·Aᵀ.
+// the factor diagonal ratios of the MaxDiagonalRatio check) and with Bunch-Kaufman pivoting, the triangular solves of a
+// panel and of many right-hand sides, and the update C ← C − A·D·Aᵀ.
 //
 // The reference family runs the textbook algorithms of kernels/reference, the oracle; the SIMD families run blocked
 // algorithms on register-blocked micro-kernels with packed panels. Every result element is one chain of terms in a
@@ -127,8 +127,8 @@ public:
     // holds the Schur complement). On return the eliminated columns hold L below the diagonal (unit
     // diagonal implied) and D on it.
     // pivotRatios, when not empty (at least pivotColumnCount values), receives for each eliminated column the ratio of
-    // the matrix diagonal to the factor diagonal, a_jj / d_j: the quantity compared with PARAM MAXRATIO; a large or
-    // negative ratio flags a near-singularity.
+    // the matrix diagonal to the factor diagonal, a_jj / d_j: the quantity compared with PARAM MaxDiagonalRatio; a
+    // large or negative ratio flags a near-singularity.
     [[nodiscard]] LdltOutcome factorWithoutPivoting(DenseMatrixView a, std::size_t pivotColumnCount,
                                                     std::span<double> pivotRatios = {}) const;
 

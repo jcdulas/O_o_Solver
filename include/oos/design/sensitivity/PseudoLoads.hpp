@@ -33,7 +33,7 @@ namespace oos::design
 // (loadPartOf), and the applied loads alone (appliedLoadPartOf: the distributed and inertial loads that addDenseLoad
 // takes, without the thermal loads that addLoad takes element by element; OLOAD has no thermal load).
 //
-// Inertia relief (PARAM INREL = −1; solutions::KeptRelief): the relieved loads of a subcase are Q·P,
+// Inertia relief (PARAM InertiaRelief = −1; solutions::KeptRelief): the relieved loads of a subcase are Q·P,
 // Q = I − M·D·(Dᵀ·M·D)⁻¹·Dᵀ, and with rigid support motions their derivative is Q·(∂P/∂v − ∂M/∂v·D·ü_r): the caller
 // adds −∂M/∂v·D·ü_r as an applied load of the field (addAppliedLoad), and after finish() projectRelief() keeps the
 // coefficients c_rs = (Dᵀ·M·D)⁻¹·Dᵀ·(the field's load part) of the low-rank term −M·D·c_rs, which assemble(), dotAll(),

@@ -188,8 +188,8 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
     std::vector<output::MonitorPoint1> monitors; // bounded by the monitor points
     for (const output::MonitorPoint1Definition& definition : results.monitorPoints)
         monitors.emplace_back(definition, snapshot, dofMap, reference, boxes);
-    // The MonitorNodeForceSum3: the grid point forces of their elements and the loads XFLAG keeps at their grid points,
-    // in the trimmed state (output::MonitorPoint3).
+    // The MonitorNodeForceSum3: the grid point forces of their elements and the loads TemperatureLoadFlag keeps at
+    // their grid points, in the trimmed state (output::MonitorPoint3).
     results.monitorPoints3 = m_options.monitorPoints3;
     std::vector<output::MonitorPoint3> monitors3; // bounded by the monitor points
     for (const output::MonitorPoint3Definition& definition : results.monitorPoints3)
@@ -513,7 +513,7 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
             }
 
             // The normalwash of each variable and the support accelerations of each rigid acceleration (divided by
-            // PARAM AUNITS, the accelerations of the TRIM in units of g).
+            // PARAM AccelUnitsFactor, the accelerations of the TRIM in units of g).
             linalg::DenseMatrix rigid(budget, n, m, "rigid pressures");
             linalg::DenseMatrix accelerations(budget, r, m, "support accelerations of the variables");
             bool hasAcceleration = false;

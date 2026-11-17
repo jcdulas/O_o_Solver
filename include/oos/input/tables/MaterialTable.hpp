@@ -10,9 +10,9 @@ namespace oos::input
 {
 
 // The materials of the model (materialsTable of O_o_Reader): one row per material card of any type, with the
-// constants of MAT1 (e, g, nu, rho, a, tref, ge) and of MAT8 (e1, e2, nu12, g12) in shared columns, null where a type
-// has no such constant. The element code reads the constants it needs with NullPolicy::Allow and refuses a null it
-// cannot accept, as a diagnostic.
+// constants of IsoMat (e, g, nu, rho, a, tref, ge) and of OrthoMat2D (e1, e2, nu12, g12) in shared columns, null where
+// a type has no such constant. The element code reads the constants it needs with NullPolicy::Allow and refuses a null
+// it cannot accept, as a diagnostic.
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns the imported table (buffers borrowed).
 class MaterialTable

@@ -20,9 +20,9 @@ struct AeroResultant
 // in the reference frame RCSID: CX, CY, CZ = F / (q·REFS) and CMX, CMY, CMZ = M / (q·REFS·REFB), M / (q·REFS·REFC),
 // M / (q·REFS·REFB), the moment about the RCSID origin, for a resultant given per unit q.
 //
-// A half model (AEROS SYMXZ or SYMXY) gives half of the forces and moments of the whole configuration, the modelled
-// part and its images: the image in a plane of symmetry key s is the mirrored system times s, whose resultant about
-// the origin o is s·(mirror(F), mirror*(M about mirror(o))), mirror* the reflection of a moment (an axial vector:
+// A half model (AeroStaticParams SYMXZ or SYMXY) gives half of the forces and moments of the whole configuration, the
+// modelled part and its images: the image in a plane of symmetry key s is the mirrored system times s, whose resultant
+// about the origin o is s·(mirror(F), mirror*(M about mirror(o))), mirror* the reflection of a moment (an axial vector:
 // −mirror). The components the symmetry doubles are then those of the modelled part, those it cancels are zero (for
 // SYMXZ = +1, CY, CMX, CMZ = 0).
 //

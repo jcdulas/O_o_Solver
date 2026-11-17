@@ -86,7 +86,7 @@ struct ElementEntityNodes
 // - freeDofCounts: those that no relation makes dependent either: the DOFs of the interface problem;
 // - unitDofCount(): what a unit factorises, the unconstrained DOFs less those made dependent by relations eliminated
 //   inside it (every relation but those of the connection system): the dependent DOFs of a relation of the connection
-//   system (the legs of an RigidBodyStar whose reference is a connection-only point) are boundary DOFs of their unit.
+//   system (the legs of a RigidBodyStar whose reference is a connection-only point) are boundary DOFs of their unit.
 //
 // Thread-safety: immutable. Ownership: borrows the graph and the arrays, which must outlive it; owns the index of IDs
 // and the dependent points (their number is bounded by the dependent DOFs of the model: a std::vector, built once).

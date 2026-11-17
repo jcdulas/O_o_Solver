@@ -38,7 +38,7 @@ struct Connection
     std::int64_t revision = 0;         // O_o_Reader's stamp of the connection
 };
 
-// An MPC set a subcase selects that holds the equations of an MPC card set (an MultiPointConstrUnion of it), when
+// An MPC set a subcase selects that holds the equations of an MPC card set (a MultiPointConstrUnion of it), when
 // multiPointConstrTable does not name the card of each row (its source_sid column): O_o_Reader's connection list names
 // an MPC equation by the set ID of its card, the constraints of the analysis by the set the subcase selects, so the
 // connections of the card stand for the selected set too (ConnectionSystem).

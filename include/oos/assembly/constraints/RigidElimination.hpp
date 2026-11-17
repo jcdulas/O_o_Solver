@@ -47,8 +47,8 @@ using ConstraintRowFilter = std::function<bool(const ConstraintRowOrigin&)>;
 // elimination, the default of the format): the m set and its matrix Gm,
 //     u_m = Gm·u_n,
 // with every row of Gm on n-set DOFs only. Each element or equation gives its dependent DOFs as combinations of its
-// other DOFs (RigidElementEquations, MpcEquations); a term on a dependent DOF of another element (an RigidBodyStar on
-// the dependent point of an RigidBar, an MPC on the reference point of an RigidInterpolation) is replaced by that DOF's
+// other DOFs (RigidElementEquations, MpcEquations); a term on a dependent DOF of another element (a RigidBodyStar on
+// the dependent point of a RigidBar, an MPC on the reference point of a RigidInterpolation) is replaced by that DOF's
 // row, in dependency order, so that chains of any length resolve to the n set.
 //
 // Problems are Diagnostics, and the DOFs involved are left out of the m set: a DOF made dependent by two elements or
@@ -128,9 +128,9 @@ public:
     [[nodiscard]] bool hasFormulationRows() const noexcept { return m_hasFormulationRows; }
 
     // The relation of row i as the split multiPointConstrForce rows of a grid point force table name it (O_o_Reader's
-    // data contract): the element ID of a rigid element (RBE1, RigidBodyStar, RigidInterpolation, RigidBar, RigidRod),
-    // minus the SID of the MPC card of an MPC equation (the equations of one card set are one relation at a grid
-    // point), 0 for the other rows (the internal constraints of a Fastener or Weld, the glue of a contact pair:
+    // data contract): the element ID of a rigid element (RigidBodyMulti, RigidBodyStar, RigidInterpolation, RigidBar,
+    // RigidRod), minus the SID of the MPC card of an MPC equation (the equations of one card set are one relation at a
+    // grid point), 0 for the other rows (the internal constraints of a Fastener or Weld, the glue of a contact pair:
     // no relation a cut counts).
     [[nodiscard]] std::int32_t relationOf(std::size_t i) const noexcept { return m_relationIds[i]; }
 

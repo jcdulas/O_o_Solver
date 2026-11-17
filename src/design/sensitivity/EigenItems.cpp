@@ -93,7 +93,8 @@ void EigenItems::add(const ItemKey& key, ResponseType type, const ResponseItem& 
                     solve.shapes = &candidate.eigenvectors;
                     solve.scales = &candidate.scales;
                 }
-            // The mass of the subcase as the modal solution assembles it (PARAM COUPMASS, WTMASS of the subcase).
+            // The mass of the subcase as the modal solution assembles it (PARAM CoupledMass, WeightToMass of the
+            // subcase).
             base::DiagnosticSink ignored; // the analysis reported the problems of its PARAMs
             const assembly::MassAssemblyOptions options =
                 assembly::MassAssemblyOptions::fromParams(m_in.params, label.subcase, ignored);

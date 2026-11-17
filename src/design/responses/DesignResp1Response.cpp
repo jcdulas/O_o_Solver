@@ -44,7 +44,7 @@ constexpr std::int32_t DEFAULT_LAMINA = 1;
 // The item codes tried when a caller's response names its items by a column (the largest item code that O_o_Solver
 // maps is 111, the Beam2 end B margin).
 constexpr std::int32_t LARGEST_ITEM_CODE = 111;
-// PARAM GRDPNT: −1 (the default) or a non-grid value puts the reference at the origin of the basic system.
+// PARAM WeightReferenceNode: −1 (the default) or a non-grid value puts the reference at the origin of the basic system.
 constexpr std::int32_t NO_WEIGHT_REFERENCE_NODE = -1;
 // Item code 4 of ESE is the element strain energy density.
 constexpr std::int32_t STRAIN_ENERGY_DENSITY_ITEM = 4;
@@ -812,7 +812,8 @@ ElementFilter DesignResp1Response::massFilter() const
 
 base::Vec3 DesignResp1Response::weightReference(const input::ModelSnapshot& snapshot)
 {
-    // The reference point of WEIGHT: the grid point of PARAM GRDPNT, the origin when it is not a grid point.
+    // The reference point of WEIGHT: the grid point of PARAM WeightReferenceNode, the origin when it is not a grid
+    // point.
     base::Vec3 reference{0.0, 0.0, 0.0};
     if (snapshot.hasTable(input::TableRole::Params))
         if (const std::optional<input::ParamValue> weightReferenceNode = snapshot.params().find("WeightReferenceNode");

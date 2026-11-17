@@ -23,20 +23,23 @@ struct LoadTerm
 // The static loads of the model, scaled by O_o_Reader, one reader per table:
 // - loadsTable: one row per elementary load of each load set (`scale` the product of the LOAD factors, `sourceSetId`
 //   the set of the card): FORCE, MOMENT and their variants per grid point with the force and moment in the basic
-//   system, GRAV as an acceleration in the basic system, the first pressure of PLOAD*, RFORCE with no values;
-// - pressureTable: PLOAD, PLOAD2, PLOAD4 per element face, or its fields (O_o_Reader's detail="fields": a row
-//   per card and its element runs; isPressureFields(), read row by row through assembly::PressureRows);
-// - lineLoadsTable: PLOAD1;
-// - temperatureTable: TEMP, TEMPD, TEMPP1, ...;
-// - inertialLoadsTable (optional): GRAV, ACCEL, ACCEL1, RFORCE with all their fields;
+//   system, GravityLoad as an acceleration in the basic system, the first pressure of the pressure loads,
+//   RotationalForceLoad with no values;
+// - pressureTable: PointsPressureLoad, ShellPressureLoad, FacePressureLoad per element face, or its fields
+//   (O_o_Reader's detail="fields": a row per card and its element runs; isPressureFields(), read row by row through
+//   assembly::PressureRows);
+// - lineLoadsTable: BeamDistributedLoad;
+// - temperatureTable: NodeTemperatureLoad, DefaultTemperatureLoad, PlateTemperatureLoad, ...;
+// - inertialLoadsTable (optional): GravityLoad, AccelFieldLoad, AccelNodeLoad, RotationalForceLoad with all their
+//   fields;
 // - loadCombinationsTable (optional): the terms of every LOAD entry.
 //
 // Two forms. Without loadCombinationsTable the tables expand every LOAD combination: the rows of a
 // combination are listed under its SID with their factors applied (`scale`), and a set's loads are its rows. With it
 // (O_o_Reader's expandCombinations=False) each load set is listed once, its own cards with the scale 1, and the loads
-// a LOAD selects are made from its terms (termsOf): the rows of each set it reaches times the set's factor. The SPCD
-// rows of singlePointConstrTable take the same form as these tables (ConstraintTable; SnapshotBuilder checks that they
-// agree).
+// a LOAD selects are made from its terms (termsOf): the rows of each set it reaches times the set's factor. The
+// EnforcedMotionConstr rows of singlePointConstrTable take the same form as these tables (ConstraintTable;
+// SnapshotBuilder checks that they agree).
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns the imported tables (buffers borrowed).
 class LoadTable

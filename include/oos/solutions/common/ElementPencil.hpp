@@ -34,8 +34,8 @@ namespace oos::solutions
 // The bits: the same as the assembled path's to round-off, not to the bit: an entry of the assembled K_nn is the sum
 // of its elements' terms in the assembly's order, then Gm's reduction (MsetElimination); here each element's terms are
 // reduced first and the entries of one front are summed in the placement's order, the entries of the rows carried up
-// by the update matrices (extend-add), WTMASS applied to each element's mass rather than once to M_gg. Deterministic:
-// the same bits whatever the threads.
+// by the update matrices (extend-add), WeightToMass applied to each element's mass rather than once to M_gg.
+// Deterministic: the same bits whatever the threads.
 //
 // B, the pencil's right-hand matrix: M for vibration, −K_d for buckling (K_d of the preload: its g-set displacements
 // and temperatures, as DifferentialStiffnessAssembler); the mass source of a buckling pencil (the multilevel
@@ -100,8 +100,8 @@ private:
     public:
         Source(const ElementPencil& pencil, Combination combination) : m_pencil(pencil), m_combination(combination) {}
         void addTerms(linalg::FrontTerms& front) override;
-        // The MAXRATIO diagonal is read by the positive definite factorisation alone, never of a pencil's source
-        // (MultifrontalDriver's indefinite mode): zero.
+        // The MaxDiagonalRatio diagonal is read by the positive definite factorisation alone, never of a pencil's
+        // source (MultifrontalDriver's indefinite mode): zero.
         void diagonal(std::int32_t supernode, std::span<double> values) const override;
         void setCombination(Combination combination) noexcept { m_combination = combination; }
 

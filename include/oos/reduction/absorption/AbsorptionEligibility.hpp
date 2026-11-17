@@ -27,7 +27,7 @@ enum class AbsorptionDecision : std::uint8_t
     NoEligibility,           // the table does not say whether a leg is touched (a piercing table without is_eligible)
     LegRetained,             // a leg is retained by the caller
     LegOnSplineNode,         // a leg is a spline node (SOL 144)
-    LegOnSupport,            // a leg is a FreeBodySupport or SUPORT1 point
+    LegOnSupport,            // a leg is a FreeBodySupport or FreeBodySupportSet point
     LegPartiallyConstrained, // a leg has a DOF constrained in some subcases only
     LegConstrained,          // a leg DOF of the relation is constrained in every subcase
     NotRequested,            // the plan asked for no spider absorption

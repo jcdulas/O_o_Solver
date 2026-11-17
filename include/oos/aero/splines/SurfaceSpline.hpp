@@ -15,8 +15,8 @@ namespace oos::aero
 // structural points,
 //     w(x, y) = a0 + a1 x + a2 y + Σ_i P_i K(r_i),    K(r) = r² ln r² / (16π D),    r_i the distance to point i,
 // with the forces in equilibrium (Σ P_i = Σ x_i P_i = Σ y_i P_i = 0) and the plate attached to the structure by springs
-// of flexibility DZ (SPLINE1 DZ, 0: the plate passes through every point): a0 + a1 x_j + a2 y_j + Σ_i K_ji P_i +
-// DZ P_j = u_j. D = 1, as in NASA CR-3094: the interpolation does not depend on it when DZ = 0, and DZ is a
+// of flexibility DZ (AeroSurfaceSpline1 DZ, 0: the plate passes through every point): a0 + a1 x_j + a2 y_j + Σ_i K_ji
+// P_i + DZ P_j = u_j. D = 1, as in NASA CR-3094: the interpolation does not depend on it when DZ = 0, and DZ is a
 // flexibility relative to it. The polynomial part holds the rigid motions (a plunge and the rotations about x and y),
 // which the spline reproduces exactly, whatever DZ. TPS (the thin plate spline of METH) has the same kernel up to a
 // factor, so the same interpolation.

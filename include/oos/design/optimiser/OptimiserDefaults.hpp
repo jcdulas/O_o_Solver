@@ -80,8 +80,8 @@ inline constexpr double DIRECT_MOVE_LIMIT = 0.2;
 // than for sequential linear programming" [ADS, §1]. DesignOptimParams DELX and DELP under the other approximations.
 inline constexpr double CONVEX_MOVE_LIMIT = 0.4;
 // SCLMIN: the smallest scale factor of a design variable [ADS, Table 6: 0.001]. O_o_Solver's choice for the floors
-// that keep a quantity near zero from vanishing: the smallest move of a variable or a property (DOPTPRM DXMIN, DPMIN)
-// and the normalisation of a constraint bound near zero (DOPTPRM GSCAL).
+// that keep a quantity near zero from vanishing: the smallest move of a variable or a property (DesignOptimParams
+// DXMIN, DPMIN) and the normalisation of a constraint bound near zero (DesignOptimParams GSCAL).
 inline constexpr double MINIMUM_SCALE = 1.0e-3;
 
 // ---- The method of feasible directions ----

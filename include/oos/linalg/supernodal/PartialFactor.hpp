@@ -17,7 +17,7 @@ namespace oos::linalg
 
 // What the condensation of a unit without its factor gives (PartialFactor::condenseWithoutFactor): K* and
 // the pivots D of the interior (one value an interior equation, in equation order: what FactorSolve::solveDiagonal
-// divides by), the largest ratio of the MAXRATIO test, and the working storage used.
+// divides by), the largest ratio of the MaxDiagonalRatio test, and the working storage used.
 struct PartialCondensation
 {
     DenseMatrix schurComplement;
@@ -55,7 +55,7 @@ struct WithoutFactorEstimate
 // the forward sweep over the interior panels leaves f_b − L_bi·L_ii⁻¹·f_i = f* in the boundary rows, and
 // u_i = L_ii⁻ᵀ·(D_i⁻¹·L_ii⁻¹·f_i − L_biᵀ·u_b) is the diagonal and backward sweeps with the boundary rows set to u_b.
 // The interior is positive definite (the unit held at its boundary): it is factorised without pivoting, with the
-// MAXRATIO test, so no pivot is ever delayed into the boundary.
+// MaxDiagonalRatio test, so no pivot is ever delayed into the boundary.
 //
 // Recovery data: the interior factor stays in memory while kept and is never written to disk;
 // releaseInteriorFactor() frees it and recomputeInteriorFactor() computes it again, to the same bits (the
@@ -109,7 +109,8 @@ public:
     // Computes the interior factor again from the same symbolic factor and matrix (the caller keeps them), with the
     // same kernel family and pivot policy: the same bits as the first time. Throws std::invalid_argument when they do
     // not have the shape of the first factorisation, when the matrix values differ (a checksum of its structure and
-    // values), when the kernel family or the pivot policy (MAXRATIO, BAILOUT) differ, and as factorise.
+    // values), when the kernel family or the pivot policy (MaxDiagonalRatio, SingularityBailOut) differ, and as
+    // factorise.
     void recomputeInteriorFactor(const SymbolicFactor& symbolic, const SymmetricCsc& matrix,
                                  const DenseKernels& kernels, const FactorOptions& options, base::MemoryBudget& budget);
 

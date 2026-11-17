@@ -356,7 +356,7 @@ void completeHigherOrderShellFailureRows(const ElementBatchView& view, std::span
 namespace
 {
 
-// The section rate the Mindlin shell takes for `field`: a AnisoMat2D term's (shellSectionRate), or a ply thickness's
+// The section rate the Mindlin shell takes for `field`: an AnisoMat2D term's (shellSectionRate), or a ply thickness's
 // rates of the products (LaminateSectionRate::ofProducts: MindlinShell is linear in t·G1, t³/12·G2, t²·B/t², t·κG and
 // t·G at the corner thickness T of a laminate) when no direction is rigid in transverse shear (the shell then takes
 // TS/T·G2_33·t, not a product); `laminate` gets the laminate's rate of a ply thickness.

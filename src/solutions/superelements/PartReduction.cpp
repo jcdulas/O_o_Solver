@@ -93,7 +93,7 @@ PartReduction::PartReduction(const Inputs& inputs, base::MemoryBudget& budget, b
     stopOnErrors(sink, base::concatenate({"the reduction of ", partName(m_superelementId)}));
 
     // The partial factorisation of the part's interior (positive definite: the part held at its boundary), with the
-    // MAXRATIO and BAILOUT of its own PARAMs.
+    // MaxDiagonalRatio and SingularityBailOut of its own PARAMs.
     m_factorOptions.pivoting = linalg::PivotingMode::PositiveDefinite;
     if (const std::optional<double> ratio = assembly::findRealParam(params, "MaxDiagonalRatio", std::nullopt, sink);
         ratio && *ratio > 0.0)
@@ -536,12 +536,12 @@ void PartReduction::reduceModes(const Inputs& inputs, base::MemoryBudget& budget
     };
     for (std::size_t j = 0; j < kept; ++j)
     {
-        // The normalisation of the part's method (EIGRL NORM). MASS keeps the unit generalised mass of the Lanczos
-        // vectors and makes the component of largest magnitude positive (the first one on a near-tie, in the order of
-        // the part's DOFs: the convention of scaleEigenvectors, decided whatever the order of the equations). The
-        // format fixes no sign for a mode, so the generalised coordinates of the q set, which carry it, are defined up
-        // to the sign of each mode; this rule makes them reproducible. MAX makes the component of largest magnitude +1;
-        // POINT is taken as MAX (a warning).
+        // The normalisation of the part's method (LanczosEigenMethod NORM). MASS keeps the unit generalised mass of the
+        // Lanczos vectors and makes the component of largest magnitude positive (the first one on a near-tie, in the
+        // order of the part's DOFs: the convention of scaleEigenvectors, decided whatever the order of the equations).
+        // The format fixes no sign for a mode, so the generalised coordinates of the q set, which carry it, are defined
+        // up to the sign of each mode; this rule makes them reproducible. MAX makes the component of largest magnitude
+        // +1; POINT is taken as MAX (a warning).
         const bool isMass = method->normalization == EigenNormalization::Mass;
         const std::optional<std::size_t> peak = peakOf(j);
         double scale = 1.0;

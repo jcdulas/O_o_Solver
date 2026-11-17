@@ -56,7 +56,7 @@ struct ModalEffectiveMassTable
 {
     std::int32_t subcase = 1;
     std::int32_t referencePoint = 0; // ReferenceNode, 0 for the origin of the basic system
-    // The rigid-body mass of the analysis set, Dᵀ·M·D (6 × 6, row-major), in the units of the mass matrix (WTMASS
+    // The rigid-body mass of the analysis set, Dᵀ·M·D (6 × 6, row-major), in the units of the mass matrix (WeightToMass
     // applied).
     std::array<double, 36> rigidBodyMass{};
     std::vector<ModalEffectiveMassRow> rows;

@@ -17,11 +17,11 @@ enum class TorsionalInertia
 // The mass of a bar or beam over its end DOFs [u_A θ_A u_B θ_B] in the element system, with the mass per unit length
 // m(x) = ρ·A(x) + NSM(x) + the NSM cards' share:
 //
-// - lumped (PARAM COUPMASS −1, the default): translations, m_A = ∫ m·(1 − x/L) dx at end A and m_B = ∫ m·x/L dx
+// - lumped (PARAM CoupledMass −1, the default): translations, m_A = ∫ m·(1 − x/L) dx at end A and m_B = ∫ m·x/L dx
 //   at end B in each direction (m·L/2 at each end for a uniform bar); with TorsionalInertia::Polar also the torsional
 //   inertia ∫ ρ·(I1 + I2)·(1 − x/L) dx on θx at end A and ∫ ρ·(I1 + I2)·x/L dx at end B (ρ·(I1 + I2)·L/2 each for a
 //   uniform beam);
-// - coupled (COUPMASS > 0): the consistent mass ∫ m·Nᵀ·N dx of the axial motion (linear shape functions) and of the
+// - coupled (CoupledMass > 0): the consistent mass ∫ m·Nᵀ·N dx of the axial motion (linear shape functions) and of the
 //   bending motion in both planes (Hermite cubics on v, θz and on w, −θy); with TorsionalInertia::Polar also the
 //   consistent torsional inertia ∫ ρ·(I1 + I2)·Nᵀ·N dx with linear shape functions on θx (ρ·(I1 + I2)·L/6·[2 1; 1 2]
 //   for a uniform beam).

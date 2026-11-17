@@ -12,7 +12,7 @@
 namespace oos::design
 {
 
-// One design variable (DESVAR): ID, LABEL, XINIT, XLB, XUB, DELXV, DesignDiscreteValues. `discreteValues` is the
+// One design variable (DesignVar): ID, LABEL, XINIT, XLB, XUB, DELXV, DesignDiscreteValues. `discreteValues` is the
 // DesignDiscreteValues ID of a discrete variable, which is refused (discrete values are not supported yet).
 struct DesignVariable
 {
@@ -21,7 +21,8 @@ struct DesignVariable
     double initialValue = 0.0;       // XINIT
     double lower = 0.0;              // XLB
     double upper = 0.0;              // XUB
-    std::optional<double> moveLimit; // DELXV, the fractional move limit of the variable (DOPTPRM DELX if blank)
+    // DELXV, the fractional move limit of the variable (DesignOptimParams DELX if blank)
+    std::optional<double> moveLimit;
     std::optional<std::int32_t> discreteValues; // DesignDiscreteValues
 };
 
@@ -43,7 +44,7 @@ public:
     // The index of the variable of an ID, or nothing.
     [[nodiscard]] std::optional<std::size_t> findIndex(std::int32_t id) const noexcept;
 
-    // The problems of the variables, as diagnostics of the card DESVAR.
+    // The problems of the variables, as diagnostics of the card DesignVar.
     void check(std::vector<base::Diagnostic>& diagnostics) const;
 
 private:

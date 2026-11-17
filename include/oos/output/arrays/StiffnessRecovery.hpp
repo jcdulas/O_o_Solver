@@ -65,8 +65,8 @@ public:
     // grid point split by relation from `mpcRelationForces` (RigidElimination::relationForces of `mpcForces`, or a
     // combination of such lists): a row per rigid element or MPC set acting at the point, a zero one included, its
     // element ID the relation's (RigidElimination::relationOf), and one row of ID 0 for the other constraint rows (a
-    // CFAST's, the glue) when nonzero; total the sum with the point's MPC force as before, so its bits do not change.
-    // Without: one multiPointConstrForce row a point.
+    // Fastener's, the glue) when nonzero; total the sum with the point's MPC force as before, so its bits do not
+    // change. Without: one multiPointConstrForce row a point.
     struct NodalState
     {
         std::span<const double> displacements;

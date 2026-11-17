@@ -21,18 +21,16 @@ namespace oos::design
 // design point that changes a ply thickness T or a dimension DIM overlays, beside the card's cell, what O_o_Reader's
 // model.design.apply derives from it, with the same arithmetic, so that the elements read the bits of the same cards
 // edited by apply:
-// - a laminate (PCOMP, CompPropGlobal; its ply thicknesses are the list column ply_thickness, the item the ply of the
-// card):
-//   laminatePliesTable's thickness of every ply of the stack (the mirrored half of LAM = SYM follows its ply),
-//   z_bottom and z_top (z_bottom of the first ply Z0, each next one the z_top of the ply below, z_top = z_bottom + t),
-//   laminateSummary's thickness (the plies summed in stack order) and z0, and the card's Z0: a blank Z0 is −T/2 and
-//   follows T, a given one stays (z0_given of data contract 54; before it, a Z0 equal to −T/2 to the bit is
-//   taken as blank);
-// - a library section (PBARL: its list column dims; BeamShapeProp: station_dims, the item station · n + dimension, n
-// the
-//   dimensions of its type): sectionsTable's area, i1, i2, i12, j, k1, k2 and the recovery points c1 ... f2 of its row
-//   (each station's row for a BeamShapeProp, with its neutral axis from the shear centre n1, n2 when the table has
-//   them) from the section library (SectionLibrary: O_o_Reader's formulas); NSM stays.
+// - a laminate (CompProp, CompPropGlobal; its ply thicknesses are the list column ply_thickness, the item the ply of
+//   the card): laminatePliesTable's thickness of every ply of the stack (the mirrored half of LAM = SYM follows its
+//   ply), z_bottom and z_top (z_bottom of the first ply Z0, each next one the z_top of the ply below, z_top = z_bottom
+//   + t), laminateSummary's thickness (the plies summed in stack order) and z0, and the card's Z0: a blank Z0 is −T/2
+//   and follows T, a given one stays (z0_given of data contract 54; before it, a Z0 equal to −T/2 to the bit is taken
+//   as blank);
+// - a library section (BarShapeProp: its list column dims; BeamShapeProp: station_dims, the item station · n +
+//   dimension, n the dimensions of its type): sectionsTable's area, i1, i2, i12, j, k1, k2 and the recovery points c1
+//   ... f2 of its row (each station's row for a BeamShapeProp, with its neutral axis from the shear centre n1, n2 when
+//   the table has them) from the section library (SectionLibrary: O_o_Reader's formulas); NSM stays.
 // THETA of a ply and the other fields of these cards are not derived (THETA is refused as a design target).
 //
 // The sensitivities: the perturbed sides of a section's dimension take the section's properties

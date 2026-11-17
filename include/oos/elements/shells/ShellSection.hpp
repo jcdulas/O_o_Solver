@@ -1,13 +1,13 @@
 #pragma once
 
-// The section of a shell, shared by every shell element (PSHELL, CompProp, CompPropGlobal):
+// The section of a shell, shared by every shell element (ShellProp, CompProp, CompPropGlobal):
 //
 //   | ShellProp | PID | MID1 | T | MID2 | 12I/T**3 | MID3 | TS/T | NSM |
 //   |        | Z1  | Z2   | MID4 |
 //
 // MID1 gives the membrane, MID2 the bending, MID3 the transverse shear flexibility, MID4 the membrane-bending coupling;
-// a blank MID (0) leaves its part out. Each MIDi is a IsoMat, AnisoMat2D or OrthoMat2D (ShellMaterial). MID2 = −1 is
-// the plane-strain option of ShellProp: the membrane of a IsoMat MID1 in plane strain, no bending.
+// a blank MID (0) leaves its part out. Each MIDi is an IsoMat, AnisoMat2D or OrthoMat2D (ShellMaterial). MID2 = −1 is
+// the plane-strain option of ShellProp: the membrane of an IsoMat MID1 in plane strain, no bending.
 //
 // A CompProp or CompPropGlobal (Laminate) is written as its equivalent ShellProp: T = the laminate thickness, G1 = A/T,
 // 12I/T³ = 1 with G2 = 12 D/T³, G4 = B/T², and the transverse shear of the laminate (κ G per unit thickness = H/T).
@@ -79,11 +79,11 @@ struct ShellSection
     std::array<double, 2> transverseShearStiffness{};
     double bendingRatio = SHELL_PROP_DEFAULT_BENDING_RATIO; // 12I/T³
     double shearRatio = SHELL_PROP_DEFAULT_SHEAR_RATIO;     // TS/T (the shear correction factor κ)
-    double density = 0.0;           // RHO of MID1, of MID2 when MID1 is blank (PSHELL); Σρt/T for a laminate
+    double density = 0.0;           // RHO of MID1, of MID2 when MID1 is blank (ShellProp); Σρt/T for a laminate
     double nonStructuralMass = 0.0; // NSM, mass per unit area
     bool hasThickness = false;      // T given (always for a laminate)
     double thickness = 0.0;         // T
-    // Z1 and Z2 given (PSHELL: a blank one is −t/2 or +t/2 of the thickness at each point).
+    // Z1 and Z2 given (ShellProp: a blank one is −t/2 or +t/2 of the thickness at each point).
     bool hasFiberDistance1 = false;
     bool hasFiberDistance2 = false;
     double fiberDistance1 = 0.0;
@@ -162,11 +162,11 @@ struct ShellSectionColumns
 
 // The section of the shell of batch row `row`. Problems: a PID that is not a ShellProp, CompProp or CompPropGlobal, an
 // unknown material or one the shells cannot take, no MID1 and no MID2, MID3 or MID4 without the parts they act on, MID2
-// = −1 with a MID1 that is not a IsoMat, the laminate problems of resolveLaminate.
+// = −1 with a MID1 that is not an IsoMat, the laminate problems of resolveLaminate.
 [[nodiscard]] Resolution<ShellSection> resolveShellSection(const ElementBatchView& view,
                                                            const ShellSectionColumns& columns, std::int64_t row);
 
-// The thickness at each corner of a shell (CQUAD4, ShellTria3 fields T1-T4 and TFLAG): a corner thickness as given
+// The thickness at each corner of a shell (ShellQuad4, ShellTria3 fields T1-T4 and TFLAG): a corner thickness as given
 // (TFLAG 0) or as a fraction of T (TFLAG 1); a blank one (O_o_Reader: −1) takes T (TFLAG 0) or 1·T (TFLAG 1). A
 // laminate takes its own thickness at every corner. A blank corner without a T, a TFLAG other than 0 or 1, or a
 // thickness that is not positive is a problem.
@@ -185,7 +185,7 @@ template <std::size_t N>
 [[nodiscard]] bool cornersFollowThickness(const ShellSection& section, std::int32_t thicknessFlag,
                                           std::span<const double> cornerThickness) noexcept;
 
-// The problem of a shell offset by ZOFFS from its grid points, or nothing. A shell (CQUAD4, ShellTria3, ShellQuad8,
+// The problem of a shell offset by ZOFFS from its grid points, or nothing. A shell (ShellQuad4, ShellTria3, ShellQuad8,
 // ShellTria6, ShellQuad4Drilling, ShellTria3Drilling) with a ZOFFS needs both MID1 and MID2 on its property. The offset ties
 // the rotations of the grid points to the membrane (u_plane = u + θ × ZOFFS·n): without the bending of MID2 the
 // rotations act only through the membrane, in the combination u + ZOFFS·θ, so the assembled stiffness is singular in

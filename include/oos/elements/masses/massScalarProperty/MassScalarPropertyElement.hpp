@@ -1,6 +1,6 @@
 #pragma once
 
-// MassScalarProperty — scalar mass between scalar points, its value on a MassProp (CMASS3, MassProp):
+// MassScalarProperty — scalar mass between scalar points, its value on a MassProp (MassScalarProperty, MassProp):
 //
 //   | MassScalarProperty | EID | PID | S1 | S2 |
 //   | MassProp  | PID | M   |

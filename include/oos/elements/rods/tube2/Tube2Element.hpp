@@ -1,11 +1,11 @@
 #pragma once
 
-// Tube2 — rod of circular tube section (CTUBE, TubeProp):
+// Tube2 — rod of circular tube section (Tube2, TubeProp):
 //
 //   | Tube2 | EID | PID | G1 | G2 |
 //   | TubeProp | PID | MID | OD | T  | NSM | OD2 |
 //
-// Formulation: rods/RodFormulation with the section of the tube (PTUBE): inner diameter D_i = OD − 2T,
+// Formulation: rods/RodFormulation with the section of the tube (TubeProp): inner diameter D_i = OD − 2T,
 // A = π(OD² − D_i²)/4, J = π(OD⁴ − D_i⁴)/32, and the torsional stress at the outer fibre, C = OD/2. T blank or 0 is
 // a solid rod (O_o_Reader gives a blank T as null).
 //

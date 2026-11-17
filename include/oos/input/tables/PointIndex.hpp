@@ -32,7 +32,7 @@ struct PointRef
 };
 
 // The row of a grid point or scalar point by its ID, for the element cards whose table gives grid point IDs and no
-// row-index column (CELASi, CMASSi, CBUSH, CONM1, CONM2). Built once per snapshot.
+// row-index column (CELASi, CMASSi, Bushing, PointMassMatrix, PointMassInertia). Built once per snapshot.
 //
 // Thread-safety: immutable once built; concurrent lookups are safe. Ownership: owns its indices (budgeted); the
 // budget must outlive it. Movable, not copyable.

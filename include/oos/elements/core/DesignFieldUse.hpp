@@ -11,7 +11,7 @@ namespace oos::elements
 // element's property ("ShellProp"), one of its materials ("IsoMat") or the element's own card ("ShellQuad4") — and its
 // column in the data contract ("t", "e", "offset"); `id` the ID of that card (the PID, MID or EID; 0 when the caller
 // does not name it) and `item` the item of a fixed-list column ("stiffness" of AnisoMat2D: G11 is item 0), -1 for a
-// scalar column. A family whose closed form depends on which of the element's cards holds the field (a AnisoMat2D read
+// scalar column. A family whose closed form depends on which of the element's cards holds the field (an AnisoMat2D read
 // as MID1 or MID4) needs `id`; a field whose `id` is 0 gets no such closed form (the caller differences it).
 struct DesignedField
 {
@@ -76,13 +76,13 @@ struct FieldUseRule
 [[nodiscard]] FieldUse findFieldUse(const DesignedField& field, std::initializer_list<FieldUseRule> rules) noexcept;
 
 // The uses every family shares, the fields it knows nothing more about getting FieldUse::all() (conservative):
-// - a material card (MAT1, AnisoMat2D, OrthoMat2D, AnisoMat3D): RHO the mass only; GE nothing (structural damping: no
-// static effect);
-//   TREF and the expansion coefficients (A, A1 ... A6) the thermal loads and the recovery; the stress and strain
-//   allowables (ST, SC, SS, XT, XC, YT, YC, S, F12, STRN) the recovery only (margins, failure indices); every other
-//   field all but the pressure and line loads; families override this when their equivalent loads read a material;
+// - a material card (IsoMat, AnisoMat2D, OrthoMat2D, AnisoMat3D): RHO the mass only; GE nothing (structural damping: no
+//   static effect); TREF and the expansion coefficients (A, A1 ... A6) the thermal loads and the recovery; the stress
+//   and strain allowables (ST, SC, SS, XT, XC, YT, YC, S, F12, STRN) the recovery only (margins, failure indices);
+//   every other field all but the pressure and line loads; families override this when their equivalent loads read a
+//   material;
 // - NSM of any property the mass only (a non-structural mass per unit length or area);
-// - GE of any property or element (PELAS, BushProp, SpringDofInline, SpringScalarInline) nothing.
+// - GE of any property or element (SpringProp, BushProp, SpringDofInline, SpringScalarInline) nothing.
 [[nodiscard]] FieldUse commonFieldUse(const DesignedField& field) noexcept;
 
 } // namespace oos::elements

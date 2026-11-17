@@ -55,7 +55,7 @@ struct ItemKey
 // designed fields' own effect on the item, through d(field)/dx; a column it does not hold is 0). The total gradient
 // is dr/dx_j = ∂r/∂x_j + c·du/dx_j.
 //
-// An equation item e = h(r_1, ..., r_p, x) (DRESP2, DesignResp3) also keeps its own partials: ∂h/∂x through its
+// An equation item e = h(r_1, ..., r_p, x) (DesignResp2, DesignResp3) also keeps its own partials: ∂h/∂x through its
 // variable and field arguments (`ownExplicit`) and the weights ∂h/∂r_k of its response arguments (`arguments`), from
 // which its chained weights c_e = Σ_k ∂h/∂r_k·c_k and explicit part ∂h/∂x + Σ_k ∂h/∂r_k·∂r_k/∂x are formed.
 struct ItemLinearisation

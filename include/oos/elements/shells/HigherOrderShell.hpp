@@ -39,10 +39,11 @@ namespace oos::elements
 //
 // The rotation about a node's director takes no stiffness (MindlinShell). Where the elements of a grid point share
 // one director (a flat mesh, a smooth curved mesh), that rotation is singular, and the automatic constraint of
-// singular DOFs (AUTOSPC) removes it, along a component axis or, when the director is skewed in the displacement
-// system, by constraining the component best aligned with it (assembly::GridPointSingularities; exact, the direction
-// having no stiffness). Where elements of different directions meet (a fold, a stiffener, a ShellQuad4 at a ShellQuad8),
-// each holds the others' rotation by its bending, and nothing is constrained. K6ROT plays no part.
+// singular DOFs (AutoSingularityConstr) removes it, along a component axis or, when the director is skewed in the
+// displacement system, by constraining the component best aligned with it (assembly::GridPointSingularities; exact, the
+// direction having no stiffness). Where elements of different directions meet (a fold, a stiffener, a ShellQuad4 at a
+// ShellQuad8), each holds the others' rotation by its bending, and nothing is constrained. ShellDrillingStiffness plays
+// no part.
 //
 // Not supported (refused with a diagnostic): an element without all its edge grid points (a ShellQuad4 or ShellTria3
 // serves there), a map whose Jacobian on the element plane is not positive (an edge node far from the middle third of
@@ -132,7 +133,7 @@ void recoverHigherOrderShellLayers(const ElementBatchView& view, ElementRange ra
 template <typename Shape>
 void higherOrderShellSlopes(const ElementBatchView& view, std::int64_t row, std::span<const RecoveryOutput> outputs,
                             std::span<RecoverySlopes> slopes);
-// The closed forms in a AnisoMat2D stiffness term of the ShellProp (ShellSectionRate): dK
+// The closed forms in an AnisoMat2D stiffness term of the ShellProp (ShellSectionRate): dK
 // (MindlinShell::stiffnessSectionRate), dK_d at a fixed preload (the differential stiffness of the centre's membrane
 // resultants' rate) and the rows' rates at fixed displacements (placeStateSectionRates, appendShellRowRates); false
 // for another field, a section whose rate shellSectionRate does not give, or a temperature change of the preload or

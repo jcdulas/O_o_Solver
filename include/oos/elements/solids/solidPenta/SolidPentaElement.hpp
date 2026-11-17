@@ -1,6 +1,6 @@
 #pragma once
 
-// SolidPenta — five-sided solid (a wedge) with 6 corners and up to 9 mid-side nodes (CPENTA, SolidProp):
+// SolidPenta — five-sided solid (a wedge) with 6 corners and up to 9 mid-side nodes (SolidPenta, SolidProp):
 //
 //   | SolidPenta | EID | PID | G1  | G2  | G3  | G4  | G5  | G6  |
 //   |        | G7  | G8  | G9  | G10 | G11 | G12 | G13 | G14 |
@@ -15,7 +15,7 @@
 // and ISOP: blank; the 6-node wedge also takes IN = BUBBLE, ISOP = REDUCED or FULL (the same element: it has one). The
 // 6-node wedge, like the plain trilinear hexahedron, locks in bending (its parasitic shear): mesh bending with the
 // default SolidHexa or with the 15-node wedge. The 15-node wedge is not validated against reference results. The
-// material (MAT1 or AnisoMat3D) in the system CORDM (SolidSection).
+// material (IsoMat or AnisoMat3D) in the system CORDM (SolidSection).
 //
 // Mass: lumped (HRZ) or coupled (SolidElementKernel). Loads: FacePressureLoad on a triangular or quadrilateral face,
 // uniform or with corner pressures (SolidPressure); GravityLoad through the mass. Recovery: stresses and strains at the

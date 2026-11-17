@@ -15,10 +15,10 @@
 namespace oos::elements
 {
 
-// One higher-order shell (CQUAD8 with SerendipityQuadShape, ShellTria6 with QuadraticTriangleShape), flat or curved,
-// formulated in its element frame (x, y, n: HigherOrderShell) on the six local DOFs (u, v, w, θx, θy, θn) of each of
-// its N nodes. It is the degenerated (continuum-based) shell of Ahmad, Irons & Zienkiewicz, "Analysis of thick and thin
-// shell structures by curved finite elements", IJNME 2 (1970) 419-451, with the uniform reduced integration of
+// One higher-order shell (ShellQuad8 with SerendipityQuadShape, ShellTria6 with QuadraticTriangleShape), flat or
+// curved, formulated in its element frame (x, y, n: HigherOrderShell) on the six local DOFs (u, v, w, θx, θy, θn) of
+// each of its N nodes. It is the degenerated (continuum-based) shell of Ahmad, Irons & Zienkiewicz, "Analysis of thick
+// and thin shell structures by curved finite elements", IJNME 2 (1970) 419-451, with the uniform reduced integration of
 // Zienkiewicz, Taylor & Too, "Reduced integration technique in general analysis of plates and shells", IJNME 3 (1971)
 // 275-290; on a flat element it is exactly the isoparametric membrane plus the Reissner-Mindlin plate of the shape
 // (Mindlin, J. Appl. Mech. 18 (1951) 31-38; Hughes, The Finite Element Method (2000), chapter 5; Bathe, Finite Element
@@ -36,7 +36,7 @@ namespace oos::elements
 // fibre. A rotation θ_a moves the fibre by θ_a × ν_a, so its
 // component along ν_a moves nothing: each node has five DOFs in the shell sense (three translations, two rotations
 // normal to its director) carried by the six of the grid point, and the rotation about the director has no stiffness
-// (no drilling stiffness, as the ShellQuad4 and ShellTria3 of NASTRAN-95: no K6ROT).
+// (no drilling stiffness, as the ShellQuad4 and ShellTria3 of NASTRAN-95: no ShellDrillingStiffness).
 //
 // Strains (the linear shell strains of these kinematics, written with the strains linear through the thickness and the
 // shell shifter taken as one: the thin-shell assumption under which the degenerated solid and the shell theory give
@@ -73,13 +73,14 @@ namespace oos::elements
 //   the shear correction κ = TS/T (5/6 by default, the factor of Reissner, J. Appl. Mech. 12 (1945) A69-A77);
 // - coupling (MID4, on these fields): K_mb = s Σ_g w dA B_mᵀ [B] B_b, s = SHELL_COUPLING_SIGN;
 // - no stiffness for the rotation about the director (above). A flat mesh leaves θn singular at its grid points, and
-//   the solver's automatic constraint of singular DOFs (AUTOSPC, assembly::GridPointSingularities) removes it, along a
-//   component axis or along the skewed normal. On a curved mesh the elements of a grid point share its director
-//   (HigherOrderShellDirectors: Hughes & Liu, CMAME 26 (1981) 331-362; Bathe 1996, §5.4), so the rotation about it is
-//   singular there too, exactly, and removed the same way. (With each element's own normal instead, two elements'
-//   directors differ by about α³/2, α the half-angle of arc of an element, which made that rotation a near mechanism
-//   of stiffness ratio about α⁶/16: between EPZERO and the factorisation's MAXRATIO test for elements of about 8° to
-//   15° of arc.) No drilling stiffness; PARAM K6ROT changes nothing (the support check reports it as ignored).
+//   the solver's automatic constraint of singular DOFs (AutoSingularityConstr, assembly::GridPointSingularities)
+//   removes it, along a component axis or along the skewed normal. On a curved mesh the elements of a grid point share
+//   its director (HigherOrderShellDirectors: Hughes & Liu, CMAME 26 (1981) 331-362; Bathe 1996, §5.4), so the rotation
+//   about it is singular there too, exactly, and removed the same way. (With each element's own normal instead, two
+//   elements' directors differ by about α³/2, α the half-angle of arc of an element, which made that rotation a near
+//   mechanism of stiffness ratio about α⁶/16: between PivotZeroThreshold and the factorisation's MaxDiagonalRatio test
+//   for elements of about 8° to 15° of arc.) No drilling stiffness; PARAM ShellDrillingStiffness changes nothing (the
+//   support check reports it as ignored).
 // Stiffness integrals with the rule of the shape (Shape::rule(): uniform 2 × 2 for the ShellQuad8, the three-point rule
 // for the ShellTria6; Zienkiewicz, Taylor & Too 1971), dA = |∂X0/∂ξ × ∂X0/∂η| dξ dη, t(ξ, η) interpolated from the
 // corner thicknesses (the edge nodes take the mean of their corners, so the quadratic interpolation reproduces the
@@ -92,7 +93,7 @@ namespace oos::elements
 // Transverse shear with MID3 blank (a design choice of this project): a rigid transverse shear would be a constraint
 // on the interpolated shear strains; with only nodal DOFs that constraint couples the elements (it is not local to one
 // element), so the rigid shear is approximated by the shear of the bending material, S = TS/T · G2_33 · t (G2_33 the
-// in-plane shear modulus of MID2, G of a IsoMat: the transverse shear of a homogeneous isotropic plate, as a shell
+// in-plane shear modulus of MID2, G of an IsoMat: the transverse shear of a homogeneous isotropic plate, as a shell
 // whose transverse shear comes from its own material, e.g. the S8R of CalculiX), which is negligible for a thin plate;
 // never a penalty.
 //

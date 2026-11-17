@@ -30,29 +30,31 @@ enum MonitorContribution : std::size_t
 };
 inline constexpr std::size_t MONITOR_CONTRIBUTION_COUNT = 5;
 
-// A MONPNT1 as the caller gives it: O_o_Reader gives the MONPNT1 fields as columns but the AECOMP and AECOMPL only as
-// card objects, so the caller resolves the component of each monitor point to its boxes (an AECOMP of AELIST or CAERO
-// lists) or its grid points (of SET1 lists), the AECOMPL expanded.
+// A MonitorIntegratedLoad1 as the caller gives it: O_o_Reader gives the MonitorIntegratedLoad1 fields as columns but
+// the AeroComponent and AeroComponentUnion only as card objects, so the caller resolves the component of each monitor
+// point to its boxes (an AeroComponent of AeroBoxList or CAERO lists) or its grid points (of SET1 lists), the
+// AeroComponentUnion expanded.
 struct MonitorPoint1Definition
 {
     std::string name;
     std::string label;
-    std::string component; // the AECOMP or AECOMPL
-    // The class of the point: the CLASS of a MONPNT1 (GENERAL by default), and for the points the trim adds,
-    // "vehicleCoefficients" (the whole vehicle) and "hingeMoment" (the boxes of an AESURF about its hinge line).
+    std::string component; // the AeroComponent or AeroComponentUnion
+    // The class of the point: the CLASS of a MonitorIntegratedLoad1 (GENERAL by default), and for the points the trim
+    // adds, "vehicleCoefficients" (the whole vehicle) and "hingeMoment" (the boxes of an AeroControlSurface about its
+    // hinge line).
     std::string pointClass = "GENERAL";
     std::int32_t axes = 123456;    // AXES: the components (1 to 6) the point reports
-    bool isAerodynamic = false;    // boxes (AELIST, CAERO) or grid points (SET1)
+    bool isAerodynamic = false;    // boxes (AeroBoxList, CAERO) or grid points (SET1)
     std::vector<std::int32_t> ids; // the box or grid point IDs, bounded by the component
     std::int32_t positionFrameId = 0;
     base::Vec3 pointInPositionFrame; // X, Y, Z
     std::int32_t displacementFrameId = 0;
 };
 
-// The integrated loads of a MONPNT1: the resultant of the forces of its component about its point, the forces along the
-// axes of CD and the moments about them through the point. A structural component sums the g-set loads of its grid
-// points (the loads in their displacement systems turned to the basic one), an aerodynamic component the forces of its
-// boxes (along their normals at their force points).
+// The integrated loads of a MonitorIntegratedLoad1: the resultant of the forces of its component about its point, the
+// forces along the axes of CD and the moments about them through the point. A structural component sums the g-set loads
+// of its grid points (the loads in their displacement systems turned to the basic one), an aerodynamic component the
+// forces of its boxes (along their normals at their force points).
 //
 // Thread-safety: immutable. Ownership: owns its data.
 class MonitorPoint1

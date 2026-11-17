@@ -20,8 +20,8 @@ namespace oos::linalg
 // The settings of the block Lanczos solver, each with its reason.
 struct LanczosOptions
 {
-    // 7, the default of the EIGRL MAXSET field: it holds the six rigid-body modes of a free structure and a
-    // repeated root of multiplicity up to 7 in one block (a block Krylov method finds at most blockSize copies of a
+    // 7, the default of the LanczosEigenMethod MAXSET field: it holds the six rigid-body modes of a free structure and
+    // a repeated root of multiplicity up to 7 in one block (a block Krylov method finds at most blockSize copies of a
     // root per start), and its 7-column solves use the solve kernels well (FactorSolve's tiles are padded to a
     // multiple of the vector length: 8 columns, and threaded by the subtrees and the rows of the large supernodes).
     static constexpr std::size_t DEFAULT_BLOCK_SIZE = 7;

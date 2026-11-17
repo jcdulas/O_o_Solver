@@ -23,7 +23,7 @@ namespace oos::output
 {
 
 // The loads through the cuts the caller defines (the integrated grid point forces of a cut), and the computation of a
-// MONPNT3: six rows per cut, fx, fy, fz, mx, my, mz (CUT_COMPONENTS).
+// MonitorNodeForceSum3: six rows per cut, fx, fy, fz, mx, my, mz (CUT_COMPONENTS).
 //
 // The force that element e exerts on its grid point g is the element row of the grid point forces (GPFORCE,
 // StiffnessRecovery): q_e,g = −(K_e·u_e − f_e,T)|g, in the displacement system CD_g of the grid point (f_e,T the
@@ -39,8 +39,8 @@ namespace oos::output
 // on the g-set, −Σ a_g·K_e(g, :) over the elements and the DOFs of the cut (exact: the element stiffness matrices
 // themselves), on which the loads of a load basis are one product and the sensitivities read their weights.
 //
-// For the MONPNT3 of a deck: a CutDefinition per card (GRIDSET and ELEMSET expanded to their IDs, CID and X, Y, Z
-// as the point, CD), CutLoads built on the element set and the DOF map of the analysis, then per load case
+// For the MonitorNodeForceSum3 of a deck: a CutDefinition per card (GRIDSET and ELEMSET expanded to their IDs, CID and
+// X, Y, Z as the point, CD), CutLoads built on the element set and the DOF map of the analysis, then per load case
 // evaluateCut(c, set, ug, temperatures) (six values, along the axes of CD about the point), or for many cases
 // displacementRows(budget).apply(U) for the displacements U of a load basis and the thermal parts added per case
 // (evaluateCut at zero displacements) — SectionLoadRun does this for the sections and cuts of a static run.

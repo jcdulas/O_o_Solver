@@ -11,7 +11,7 @@
 namespace oos::design
 {
 
-// The optimiser of an approximate problem (DOPTPRM METHOD).
+// The optimiser of an approximate problem (DesignOptimParams METHOD).
 enum class OptimiserMethod : std::uint8_t
 {
     Automatic,          // METHOD = 0: the modified method of feasible directions

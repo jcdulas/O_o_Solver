@@ -1,22 +1,22 @@
 #pragma once
 
-// Bushing1D — rod-type spring and damper (CBUSH1D, BushProp1D):
+// Bushing1D — rod-type spring and damper (Bushing1D, BushProp1D):
 //
 //   | Bushing1D | EID | PID | GA | GB | CID |
 //   | BushProp1D | PID | K   | C  | M  |     | SA | SE |
 //
-// Formulation (CBUSH1D, BushProp1D, the linear part): one axial spring K along the element x-axis between GA and GB,
+// Formulation (Bushing1D, BushProp1D, the linear part): one axial spring K along the element x-axis between GA and GB,
 // on their translations only (no rotational stiffness, like a Rod2 without torsion): e = x·(u_B − u_A), the axial
 // displacement, f = K·e, the element force; K = K·hᵀ·h with h the row of x·(u_B − u_A) over the translations of GA
 // and GB in their displacement systems. A blank GB grounds the second end. The x-axis runs from GA to GB, or is the
 // x-axis of CID when CID is given (needed when GB is blank or GA and GB coincide: SpringAxes).
 //
-// Facets: stiffness; mass (PBUSH1D M, the mass of the element, lumped on the translations: M/2 at GA and at GB, M at GA
-// when GB is blank — the split is assumed, not validated); recovery: the stress and strain tables of the data contract
-// (stress.bushing1D, strain.bushing1D: element force, axial displacement, axial velocity 0 in statics, axial stress
-// SA·f, axial strain SE·e, plastic strain 0, failed 0; BushProp1D: SA, SE the stress and strain recovery coefficients).
-// C, the viscous damping, plays no part in SOL 101, 103, 105. The data contract has no force table of Bushing1D (the
-// stress table holds the force).
+// Facets: stiffness; mass (BushProp1D M, the mass of the element, lumped on the translations: M/2 at GA and at GB, M at
+// GA when GB is blank — the split is assumed, not validated); recovery: the stress and strain tables of the data
+// contract (stress.bushing1D, strain.bushing1D: element force, axial displacement, axial velocity 0 in statics, axial
+// stress SA·f, axial strain SE·e, plastic strain 0, failed 0; BushProp1D: SA, SE the stress and strain recovery
+// coefficients). C, the viscous damping, plays no part in SOL 101, 103, 105. The data contract has no force table of
+// Bushing1D (the stress table holds the force).
 // The stiffness, mass and recovery rates of K, M, SA and SE are closed form.
 //
 // Not supported, refused by check(): the nonlinear groups of BushProp1D (SHOCKA, SPRING, DAMPER, GENER: field groups

@@ -674,7 +674,7 @@ The fastener elements (`elements/fasteners/FastenerConnection`, through `resolve
 GB grid points (`assembly/FastenerConstraints`) and the glue (`assembly/GlueConstraints`) use them when the
 formulation has the element, in place of the shape functions of `ClassicFormulation`: their matrices and relations
 name entity DOFs, which the assembly and `RigidElimination` take as any DOF. A side with no element of the
-formulation (a CWELD GRIDID face of grid points, an element of another card) keeps the classic interpolation. The
+formulation (a Weld face given by grid points, an element of another card) keeps the classic interpolation. The
 element views carry the formulation model with the entity layout (`ElementBatchView::formulation`).
 
 ### 5.11 The condensed path

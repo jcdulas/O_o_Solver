@@ -111,8 +111,8 @@ struct StaticOptions
     // and recovers no case: no table, no check, no SUBCOM is made. Full path only, without sections, zones, envelopes,
     // MonitorNodeForceSum3 or external units (std::invalid_argument otherwise). A subcase with a thermal load is
     // refused (an error naming it), or with excludesThermalCases left out and listed (KeptLoadBasis::excludedCases),
-    // and so is a SUBCOM with one or that combines such a subcase; a subcase loaded by line loads (PLOAD1) is refused:
-    // its bar forces are in the station layout, not the superposition of its units.
+    // and so is a SUBCOM with one or that combines such a subcase; a subcase loaded by line loads (BeamDistributedLoad)
+    // is refused: its bar forces are in the station layout, not the superposition of its units.
     bool keepsLoadBasis = false;
     bool excludesThermalCases = false;
     // With keepsLoadBasis: a subcase with a thermal load is kept, its thermal
@@ -318,15 +318,15 @@ struct StaticResults
     bool areTablesStreamed = false; // the tables went to StaticOptions::resultSink (they would not fit in memory)
     std::vector<base::Diagnostic> diagnostics;  // the warnings and information of the run (errors stop it)
     std::vector<std::string> singularityTables; // the table of the singular components of each constraint set, as text
-    std::vector<std::string> usetTables;        // with PARAM USETPRT >= 0, the USET table of each constraint set
+    std::vector<std::string> usetTables;        // with PARAM DofSetPrint >= 0, the USET table of each constraint set
     std::int64_t gSetSize = 0;
     std::int64_t largestFsetSize = 0;
-    double largestPivotRatio = 0.0;      // the largest MAXRATIO ratio of the factorisations
+    double largestPivotRatio = 0.0;      // the largest MaxDiagonalRatio ratio of the factorisations
     std::int32_t constraintSetCount = 0; // the factorisations made
     std::string kernel;
     StaticTimings timings;
     std::vector<output::SubcaseCheck> checks;                 // per subcase and SUBCOM, in the order of the results
-    std::optional<assembly::GridPointWeight> gridPointWeight; // with PARAM GRDPNT
+    std::optional<assembly::GridPointWeight> gridPointWeight; // with PARAM WeightReferenceNode
     std::vector<output::EnvelopeTable> envelopes;
     std::vector<LoadBasisRecord> loadBases;
     std::vector<ReliefRecord> reliefs; // per constraint set with inertia relief (the full path)
@@ -373,9 +373,9 @@ struct StaticResults
 
 // The linear static solution on the full model (SOL 101): for each subcase,
 // Kgg·ug = Pg with the single-point constraints, the multipoint constraints and rigid elements eliminated, the grid
-// point singularities constrained by AUTOSPC, inertia relief when PARAM INREL asks for it, the load cases solved on
-// their load basis, and the outputs the Case Control requests with the equilibrium checks (OLOAD and SPC force
-// resultants, EPSILON).
+// point singularities constrained by AutoSingularityConstr, inertia relief when PARAM InertiaRelief asks for it, the
+// load cases solved on their load basis, and the outputs the Case Control requests with the equilibrium checks (OLOAD
+// and SPC force resultants, EPSILON).
 //
 // The steps (src/assembly/README.md, "How a static solve uses them"; src/solutions/README.md):
 //  1. the support check of the run (RunCatalog), the element check, the subcases (StaticSubcases: SUBCASE and SUBCOM;
@@ -384,13 +384,13 @@ struct StaticResults
 //  2. the volume of the requested outputs is estimated (OutputVolumeEstimate) and an output that would not fit is
 //     refused before the analysis with its remedies (OutputVolumeError);
 //  3. the solved subcases are grouped by constraint set (the same MPC set, the same constrained DOFs with
-//  EnforcedMotionConstr, the
-//     same FreeBodySupport DOFs and PARAM INREL): one assembly and one factorisation of K_ll per group;
+//     EnforcedMotionConstr, the same FreeBodySupport DOFs and PARAM InertiaRelief): one assembly and one factorisation
+//     of K_ll per group;
 //  4. per group (ConstrainedSystem, shared with the eigenvalue solutions as AnalysisModel is for step 1): Gm, the DOF
-//     sets (the r set of FreeBodySupport, or the supports PARAM INREL = −2 chooses), the pattern, Kgg, Knn, the grid
-//     point singularity processor, the l-set factorisation (FsetSolver; kept with StaticOptions::keepsSystems), Mgg
-//     when an inertial load, inertia relief or PARAM GRDPNT needs it (the grid point weight generator is computed from
-//     the first one), the support modes of inertia relief (D_l = −K_ll⁻¹·K_lr) and InertiaRelief;
+//     sets (the r set of FreeBodySupport, or the supports PARAM InertiaRelief = −2 chooses), the pattern, Kgg, Knn, the
+//     grid point singularity processor, the l-set factorisation (FsetSolver; kept with StaticOptions::keepsSystems),
+//     Mgg when an inertial load, inertia relief or PARAM WeightReferenceNode needs it (the grid point weight generator
+//     is computed from the first one), the support modes of inertia relief (D_l = −K_ll⁻¹·K_lr) and InertiaRelief;
 //  5. the load cases of the group and their load basis per family (StaticLoadCases, LoadBasis): the basis vectors are
 //     made (inertia relief applied), reduced to the l set with their enforced displacements, solved at once; their
 //     displacements, residual (EPSILON), SPC and MPC forces computed;

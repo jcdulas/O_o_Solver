@@ -36,12 +36,11 @@ class AnalysisModel;
 // - the subcases (staticSubcasesOf; the SUBCOMs constrain nothing of their own) and, per subcase, its SPC set (SpcSet);
 //   a DOF constrained in every subcase is removed from the units and from the interface problem, a DOF constrained in
 //   some subcases only puts its point on the boundary of its unit;
-// - the MPC equations, by the SID of their MPC card (an MultiPointConstrUnion is resolved to the cards it holds, from
-// the source_sid
-//   column of multiPointConstrTable when O_o_Reader gives it, MpcEquations::sourceSetIdsOf): the cards every subcase
-//   selects go into the dependent DOFs of the plan graph with the rigid elements and the fasteners (Gm), keyed by their
-//   card's SID as connectionClusters names them; a card some subcases select and others do not keeps its equations in
-//   the connection system (reduction::AbsorptionOptions::varyingMpcSets);
+// - the MPC equations, by the SID of their MPC card (a MultiPointConstrUnion is resolved to the cards it holds, from
+//   the source_sid column of multiPointConstrTable when O_o_Reader gives it, MpcEquations::sourceSetIdsOf): the cards
+//   every subcase selects go into the dependent DOFs of the plan graph with the rigid elements and the fasteners (Gm),
+//   keyed by their card's SID as connectionClusters names them; a card some subcases select and others do not keeps its
+//   equations in the connection system (reduction::AbsorptionOptions::varyingMpcSets);
 // - the glued contact: the glue of the contact table every subcase selects goes into Gm too, one relation per glued
 //   point (reduction::glueRelationKey; subcases selecting different tables are refused, "glued-contact-varies"); plan()
 //   hands the points whose equations join units to the plan as interface relations (glueUnitCheck), which

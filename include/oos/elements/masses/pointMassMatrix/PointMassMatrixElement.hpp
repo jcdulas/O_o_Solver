@@ -6,8 +6,8 @@
 //   |       | M33 | M41 | M42 | M43 | M44 | M51 | M52 | M53 |
 //   |       | M54 | M55 | M61 | M62 | M63 | M64 | M65 | M66 |
 //
-// Formulation (CONM1): the symmetric mass matrix M of the grid point G, its lower triangle given row by row (Mij
-// with j ≤ i; O_o_Reader's column m holds the 21 terms in that order), in the coordinate system CID (0 the basic
+// Formulation (PointMassMatrix): the symmetric mass matrix M of the grid point G, its lower triangle given row by row
+// (Mij with j ≤ i; O_o_Reader's column m holds the 21 terms in that order), in the coordinate system CID (0 the basic
 // system). Carried to the displacement system of G by the rotation of each 3-component block:
 // M_CD = Fᵀ·M·F block by block, F = Aᵀ·R (A the CID-to-basic rotation, R the CD-to-basic rotation of G). The same
 // matrix for the lumped and the coupled formulations.

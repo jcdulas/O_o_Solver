@@ -1,12 +1,12 @@
 #pragma once
 
-// ShellQuad8 — eight-node shell (CQUAD8, ShellProp, CompProp, CompPropGlobal).
+// ShellQuad8 — eight-node shell (ShellQuad8, ShellProp, CompProp, CompPropGlobal).
 //
 // Formulation: MindlinShell<SerendipityQuadShape>, the eight-node degenerated shell, flat or curved (the serendipity
 // membrane and Reissner-Mindlin bending of a flat element, uniform reduced 2 × 2 integration (an isolated element
 // keeps the spurious mode of that rule; in a mesh it does not propagate), the membrane-bending coupling, no stiffness
-// for the rotation about the nodal director: no K6ROT), through the facets shared with the other higher-order shell
-// (HigherOrderShell.hpp, which says what is supported and refused).
+// for the rotation about the nodal director: no ShellDrillingStiffness), through the facets shared with the other
+// higher-order shell (HigherOrderShell.hpp, which says what is supported and refused).
 // Covered by the patch, rigid-body and convergence tests.
 //
 // Facets: stiffness, mass, loads (pressure, thermal), recovery (centre and corner grid points; the plies of a
@@ -30,7 +30,7 @@ public:
         return {Facet::Stiffness, Facet::Mass, Facet::Differential, Facet::Loads, Facet::Recovery, Facet::Derivatives};
     }
     [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
-    // The closed forms in a AnisoMat2D stiffness term (HigherOrderShell's); every other field differenced.
+    // The closed forms in an AnisoMat2D stiffness term (HigherOrderShell's); every other field differenced.
     bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                                   ElementMatrixBlock& block) const override;
     bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,

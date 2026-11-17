@@ -1,12 +1,12 @@
 #pragma once
 
-// Bushing — generalised spring and damper (CBUSH, BushProp):
+// Bushing — generalised spring and damper (Bushing, BushProp):
 //
 //   | Bushing | EID | PID  | GA | GB | GO/X1 | X2 | X3 | CID |
 //   |       | S   | OCID | S1 | S2 | S3    |    |    |     |
 //   | BushProp | PID | "K"  | K1 | K2 | K3    | K4 | K5 | K6  |
 //
-// Formulation (CBUSH, BushProp): six uncoupled springs K1-K6 on the
+// Formulation (Bushing, BushProp): six uncoupled springs K1-K6 on the
 // relative motion of GB and GA, in the element system, acting at the spring point p:
 //
 //   Δu = (u_B + θ_B × (p − x_B)) − (u_A + θ_A × (p − x_A)),   Δθ = θ_B − θ_A,
@@ -24,10 +24,10 @@
 // Spring point: OCID −1 (blank) puts it on the line GA-GB at p = x_A + S·(x_B − x_A) (S default 0.5; x_A itself when
 // GB is blank); OCID ≥ 0 puts it at (S1, S2, S3) in the system OCID.
 //
-// Facets: stiffness; mass (PBUSH M, lumped on the translations: M/2 at GA and at GB, all of M at GA when GB is blank
+// Facets: stiffness; mass (BushProp M, lumped on the translations: M/2 at GA and at GB, all of M at GA when GB is blank
 // — the input format gives M as the mass of the element without the split, which is assumed here as for Bushing1D; not
 // validated); recovery: forces fx, fy, fz, mx, my, mz in the element system (f above), stresses and strains by the
-// recovery coefficients of BushProp RCV (PBUSH: SA, ST the stress coefficients of the translational and rotational
+// recovery coefficients of BushProp RCV (BushProp: SA, ST the stress coefficients of the translational and rotational
 // components, EA, ET the strain coefficients; stress_i = SA·f_i for i = 1-3, ST·m_i for 4-6; strain_i = EA·Δu_i,
 // ET·Δθ_i, the element displacements; their default 1.0 is given by O_o_Reader). B and GE (damping) play no part in
 // SOL 101, 103, 105. Stiffness, mass and recovery have exact field derivatives in K1-K6, M and RCV.

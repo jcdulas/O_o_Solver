@@ -8,9 +8,10 @@
 namespace oos::input
 {
 
-// The non-structural mass of the model, expanded by O_o_Reader (nonStructMassTable): one row per NSM, NSM1, NSML,
-// NSML1 target (NSMADD resolved) with the value as the card gives it and the mass it adds. The concentrated masses
-// (CONM1, CONM2, CMASSi) are element batches of the snapshot, and the mass parameters (WTMASS, COUPMASS) PARAM values.
+// The non-structural mass of the model, expanded by O_o_Reader (nonStructMassTable): one row per NonStructMass,
+// NonStructMass1, NonStructMassLumped, NonStructMassLumped1 target (NonStructMassUnion resolved) with the value as the
+// card gives it and the mass it adds. The concentrated masses (PointMassMatrix, PointMassInertia, CMASSi) are element
+// batches of the snapshot, and the mass parameters (WeightToMass, CoupledMass) PARAM values.
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns the imported table (buffers borrowed).
 class MassTable

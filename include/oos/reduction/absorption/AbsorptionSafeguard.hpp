@@ -10,7 +10,7 @@ namespace oos::reduction
 
 // The largest condition number of a spider's change of basis that is absorbed (the numerical safeguard, per spider),
 // the condition number of the scaled weighting matrix (SpiderChangeOfBasis::conditionNumber). CALIBRATED on shell
-// models: two plates joined through an RigidInterpolation of 3 to 8 legs, uneven weights, its reference raised up to
+// models: two plates joined through a RigidInterpolation of 3 to 8 legs, uneven weights, its reference raised up to
 // 128 element sizes, legs brought within 0.001 of a line, and Fastener and Weld piercing points off their
 // element centres, condensed with the spider absorbed and on its legs against the full path:
 // - the disagreement with the full path grows with the condition number on both paths alike (the model's own
@@ -32,7 +32,7 @@ struct SpiderMeasurement
 {
     bool hasRelation = false;     // the weighting matrix could be built (Gm rows found, piercing point interpolated)
     bool isRankDeficient = false; // SpiderChangeOfBasis::isRankDeficient
-    double conditionNumber = 0.0; // SpiderChangeOfBasis::conditionNumber; 1 for an RigidBodyStar (no change of basis)
+    double conditionNumber = 0.0; // SpiderChangeOfBasis::conditionNumber; 1 for a RigidBodyStar (no change of basis)
     bool hasLegConstrainedEverywhere = false; // a leg DOF the relation uses is constrained in every subcase
     std::int32_t referenceDofCount = 0;       // the reference DOFs the absorption makes boundary DOFs
 };
@@ -58,7 +58,7 @@ public:
     // reflectors do not fit; std::invalid_argument for inconsistent weights.
     [[nodiscard]] static SpiderMeasurement measure(const SpiderWeightMatrix& weights, base::MemoryBudget& budget);
 
-    // The measurement of an RigidBodyStar: it is absorbed by its own elimination (dependent legs on the unit, GN on the
+    // The measurement of a RigidBodyStar: it is absorbed by its own elimination (dependent legs on the unit, GN on the
     // boundary), with no change of basis to condition.
     [[nodiscard]] static SpiderMeasurement rigidBodyStarMeasurement(std::int32_t referenceDofCount) noexcept;
 

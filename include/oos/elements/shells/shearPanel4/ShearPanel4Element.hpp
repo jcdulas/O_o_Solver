@@ -1,6 +1,6 @@
 #pragma once
 
-// ShearPanel4 — shear panel (CSHEAR, ShearPanelProp):
+// ShearPanel4 — shear panel (ShearPanel4, ShearPanelProp):
 //
 //   | ShearPanel4 | EID | PID | G1 | G2 | G3 | G4 |
 //   | ShearPanelProp | PID | MID | T  | NSM | F1 | F2 |

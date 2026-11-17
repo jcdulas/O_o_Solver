@@ -19,7 +19,7 @@ inline constexpr std::uint64_t EMPTY_DESIGN_STAMP = 0;
 //
 // Method: FNV-1a (Fowler, Noll, Vo; 64 bits) over, for each relation that changes the unit in relation order, the
 // identity of its field (target kind, card, ID, column, item) and the bits of the value it gives; then, for each shape
-// variable that moves grid points of the unit (DVGRID), in basis order, the ID of every grid point it moves
+// variable that moves grid points of the unit (DesignNodeMove), in basis order, the ID of every grid point it moves
 // and the bits of that point's position at the design point (FieldTargets::movedPositions: the sum of every shape's
 // move). The stamp depends on the field values and the positions only, not on x: a design point that changes a
 // variable driving no field and no grid point of a unit leaves its stamp unchanged, and two points giving the same

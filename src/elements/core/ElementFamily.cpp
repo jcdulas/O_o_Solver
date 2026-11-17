@@ -102,9 +102,9 @@ namespace
 {
 
 // The element types without thermal expansion in a linear analysis: scalar springs and bushes (their properties
-// SpringProp, BushProp, BushProp1D, GapProp have no expansion coefficient), fasteners (PFAST, WeldProp: springs between
-// pierced elements), masses (no stiffness), and the shear panel (CSHEAR: a pure shear state, which a temperature change
-// does not strain; a design choice of this project).
+// SpringProp, BushProp, BushProp1D, GapProp have no expansion coefficient), fasteners (FastenerProp, WeldProp: springs
+// between pierced elements), masses (no stiffness), and the shear panel (ShearPanel4: a pure shear state, which a
+// temperature change does not strain; a design choice of this project).
 constexpr std::array<std::string_view, 18> THERMALLY_INERT_CARDS{
     "SpringDofProperty", "SpringDofInline",  "SpringScalarProperty", "SpringScalarInline",    "Bushing",    "Bushing1D",
     "Gap2",     "Fastener", "Weld",    "PointMassMatrix",     "PointMassInertia",  "MassDofProperty",

@@ -23,8 +23,8 @@ namespace oos::design
 // result tables, its subcase rules known; evaluate() reads its items for a subcase.
 //
 // Rules by type (the rules of the DesignResp1 entry):
-// - WEIGHT: MO(ATTA, ATTB) of the grid point weight generator about PARAM GRDPNT (the origin when it is not a grid
-//   point), ATTA and ATTB from 1 to 6, default 3; ATTi blank, ALL or 0 (the residual: O_o_Solver has no
+// - WEIGHT: MO(ATTA, ATTB) of the grid point weight generator about PARAM WeightReferenceNode (the origin when it is
+//   not a grid point), ATTA and ATTB from 1 to 6, default 3; ATTi blank, ALL or 0 (the residual: O_o_Solver has no
 //   superelements yet). One global item.
 // - VOLUME: the volume of the structural elements (MassProperties::volume); ATTi as for WEIGHT. One global item.
 // - FRMASS: the mass of the elements of the properties ATTi of type PTYPE (every structural element when ATTi is
@@ -127,7 +127,7 @@ public:
 
     // The elements the mass of FRMASS takes (its properties, or every structural element).
     [[nodiscard]] ElementFilter massFilter() const;
-    // The reference point of WEIGHT: the grid point of PARAM GRDPNT, the origin otherwise.
+    // The reference point of WEIGHT: the grid point of PARAM WeightReferenceNode, the origin otherwise.
     [[nodiscard]] static base::Vec3 weightReference(const input::ModelSnapshot& snapshot);
 
 private:

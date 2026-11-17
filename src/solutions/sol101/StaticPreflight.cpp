@@ -82,7 +82,7 @@ std::unique_ptr<assembly::MsetCouplings> relationCouplings(const input::ModelSna
 // The factorisation estimate of the full path: the ordering and the symbolic analysis of the element connectivity
 // with the couplings of the m set's elimination (relationCouplings), every node with the DOFs an element's stiffness
 // has (ElementConnectivity::stiffenedComponents: a grid point of solids alone its three translations, its rotations
-// held by AUTOSPC in the analysis; with all six the factor of a SolidHexa block was estimated four
+// held by AutoSingularityConstr in the analysis; with all six the factor of a SolidHexa block was estimated four
 // times its entries, 208 GB at 512 000 SolidHexa where the analysis's is 33 GB), and every DOF of a point a relation
 // reaches (no constraint removed, the dependent DOFs kept: an upper bound of the f set).
 void estimateFactor(const input::ModelSnapshot& snapshot, const assembly::ElementSet& set,
@@ -110,7 +110,7 @@ void estimateFactor(const input::ModelSnapshot& snapshot, const assembly::Elemen
     for (std::size_t node = 0; node < nodeCount; ++node)
     {
         const auto components = static_cast<std::int32_t>(std::popcount(static_cast<unsigned>(stiffened[node])));
-        // At least one DOF: a point without stiffness (fully held by AUTOSPC) is kept in the graph.
+        // At least one DOF: a point without stiffness (fully held by AutoSingularityConstr) is kept in the graph.
         weights[node] = isRelated[node] != 0 || components == 0 ? dofCounts[node] : components;
         // A scalar point has no position; the origin is enough for an estimate.
         const auto row = static_cast<std::int32_t>(node);

@@ -30,10 +30,11 @@ namespace oos::aero
 // stretch leaves unchanged). A 2-D check: one box of chord c gives Δcp = 2π α / β, thin-airfoil theory with the
 // Prandtl-Glauert factor.
 //
-// Symmetry (AEROS SYMXZ, SYMXY): the boxes model half of the configuration; each horseshoe has an image in the plane,
-// mirrored, whose pressure is s·Δcp on the mirrored normal (s = +1 for a symmetric motion, −1 for an antisymmetric
-// one): it adds −s·v(mirrored start → mirrored end) (the mirror reverses the sense n × x of the quarter-chord line).
-// With both keys the image in both planes adds sXZ·sXY·v. The forces are those of the modelled boxes.
+// Symmetry (AeroStaticParams SYMXZ, SYMXY): the boxes model half of the configuration; each horseshoe has an image in
+// the plane, mirrored, whose pressure is s·Δcp on the mirrored normal (s = +1 for a symmetric motion, −1 for an
+// antisymmetric one): it adds −s·v(mirrored start → mirrored end) (the mirror reverses the sense n × x of the
+// quarter-chord line). With both keys the image in both planes adds sXZ·sXY·v. The forces are those of the modelled
+// boxes.
 //
 // A point closer to a vortex line than VORTEX_CORE_RATIO of the box span takes no velocity from it: on the line the
 // Biot-Savart velocity is singular, and the principal value the lifting-surface theory takes is zero for a straight

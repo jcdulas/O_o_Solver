@@ -61,8 +61,8 @@ public:
     // dK_e/dv of the element of a row.
     [[nodiscard]] ElementMatrixDerivative stiffness(std::int64_t row) const;
     // dM_e/dv of the element of a row: its mass facet with `options` (the eigenvalue derivatives), in the
-    // mass units of the deck (WTMASS is applied by the caller, as MassAssembler applies it to the assembled matrix).
-    // Empty for an element without mass.
+    // mass units of the deck (WeightToMass is applied by the caller, as MassAssembler applies it to the assembled
+    // matrix). Empty for an element without mass.
     [[nodiscard]] ElementMatrixDerivative mass(std::int64_t row, const elements::MassOptions& options) const;
     // dK_d/dv of the element of a row at fixed preload displacements and temperatures (the derivatives of
     // the buckling load factors: the explicit part, the preload's own derivative being taken apart).

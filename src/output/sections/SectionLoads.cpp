@@ -49,17 +49,18 @@ constexpr std::array<std::string_view, 8> BAR_COMPONENTS{
 constexpr std::array<std::string_view, 14> BEAM_COMPONENTS{
     "bendingMoment1A", "bendingMoment2A", "shear1A", "shear2A", "axialForceA", "totalTorqueA", "warpingTorqueA",
     "bendingMoment1B", "bendingMoment2B", "shear1B", "shear2B", "axialForceB", "totalTorqueB", "warpingTorqueB"};
-// The CBEAM force columns of one station (Beam2Element::outputColumns), read at end A and at end B.
+// The Beam2 force columns of one station (Beam2Element::outputColumns), read at end A and at end B.
 constexpr std::array<std::string_view, 7> BEAM_STATION_COLUMNS{
     "bendingMoment1", "bendingMoment2", "shear1", "shear2", "axialForce", "totalTorque", "warpingTorque"};
 constexpr std::array<std::string_view, 2> ROD_COMPONENTS{"axial", "torsion"};
 
-// The DOFs of the largest element a section takes (a CQUAD8: eight grid points of six DOFs), the bound of the entries
-// of the rows before they are merged.
+// The DOFs of the largest element a section takes (a ShellQuad8: eight grid points of six DOFs), the bound of the
+// entries of the rows before they are merged.
 constexpr std::uint64_t MEMBER_DOF_BOUND = 8 * 6;
 using Transform = std::array<double, MAX_SECTION_COMPONENTS * MAX_SECTION_COMPONENTS>;
 
-// The number of corners of a shell card (CQUAD8 and CTRIA6 list the corners first): its frame is that of the corners.
+// The number of corners of a shell card (ShellQuad8 and ShellTria6 list the corners first): its frame is that of the
+// corners.
 std::size_t cornerCountOf(std::string_view card) noexcept
 {
     if (card == "ShellQuad4" || card == "ShellQuad4Drilling" || card == "ShellQuad8")
@@ -701,8 +702,8 @@ const SparseRows& SectionLoads::displacementRows(base::MemoryBudget& budget, bas
                     // PERFORMANCE: the family's rows at every unit displacement from one formulation of the
                     // element (the same bits as a recovery per DOF, which resolved and formulated it again for
                     // each DOF, after a stiffness for its DOFs).
-                    // Measured: a design point of a stiffened barrel panel (3 118 sections of CQUAD4,
-                    // CBAR and CBEAM), its connectivity phase 1.2 → 0.15 s on one thread.
+                    // Measured: a design point of a stiffened barrel panel (3 118 sections of ShellQuad4,
+                    // Bar2 and Beam2), its connectivity phase 1.2 → 0.15 s on one thread.
                     const bool isUnitByFamily = batch.family->recoverAtUnitDisplacements(
                         batch.view, member.row, elements::ElementOutput::Forces, unitDofs, unitRecoveries);
                     if (!isUnitByFamily)

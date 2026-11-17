@@ -22,13 +22,14 @@ enum class SectionReduce : std::uint8_t
 
 // The element families a section may hold (a section holds elements of one family only), each with the components of
 // its loads:
-// - Shell (CQUAD4, CQUADR, CQUAD8, CTRIA3, CTRIAR, CTRIA6): nx, ny, nxy, mx, my, mxy, qx, qy, the element forces per
-//   unit length at the centre (the FORCE output), rotated into the section frame;
-// - Bar (CBAR): bendingMomentA1, bendingMomentA2, bendingMomentB1, bendingMomentB2, shear1, shear2, axial,
-//   torque, in the element frame (the FORCE output of the CBAR);
-// - Beam (CBEAM): the seven forces of end A then of end B (bendingMoment1A ... warpingTorqueA, bendingMoment1B
+// - Shell (ShellQuad4, ShellQuad4Drilling, ShellQuad8, ShellTria3, ShellTria3Drilling, ShellTria6): nx, ny, nxy, mx,
+//   my, mxy, qx, qy, the element forces per unit length at the centre (the FORCE output), rotated into the section
+//   frame;
+// - Bar (Bar2): bendingMomentA1, bendingMomentA2, bendingMomentB1, bendingMomentB2, shear1, shear2, axial,
+//   torque, in the element frame (the FORCE output of the Bar2);
+// - Beam (Beam2): the seven forces of end A then of end B (bendingMoment1A ... warpingTorqueA, bendingMoment1B
 //   ... warpingTorqueB), in the element frame;
-// - Rod (CROD, CONROD, CTUBE): axial, torsion.
+// - Rod (Rod2, Rod2InlineSection, Tube2): axial, torsion.
 enum class SectionFamily : std::uint8_t
 {
     Shell,
@@ -42,7 +43,7 @@ enum class SectionFamily : std::uint8_t
 [[nodiscard]] std::string_view nameOf(SectionFamily family) noexcept;
 // The components of a family, in the order of the rows of a section.
 [[nodiscard]] std::span<const std::string_view> sectionComponents(SectionFamily family) noexcept;
-// The largest number of components of a family (a CBEAM: seven at each end).
+// The largest number of components of a family (a Beam2: seven at each end).
 inline constexpr std::size_t MAX_SECTION_COMPONENTS = 14;
 
 // One element of a section with its weight; no weight: the default of the family (the element area for a shell, 1 for

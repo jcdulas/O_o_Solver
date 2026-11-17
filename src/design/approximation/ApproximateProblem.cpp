@@ -18,7 +18,7 @@ namespace
 
 constexpr double INF = std::numeric_limits<double>::infinity();
 constexpr double PI = 3.14159265358979323846;
-// DESVAR: XLB and XUB default to ∓1.0E+20, "no bound"; a bound at or beyond this magnitude constrains nothing.
+// DesignVar: XLB and XUB default to ∓1.0E+20, "no bound"; a bound at or beyond this magnitude constrains nothing.
 constexpr double NO_BOUND = 1.0e20;
 
 bool isBound(double value) noexcept

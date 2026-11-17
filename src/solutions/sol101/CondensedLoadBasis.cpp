@@ -349,7 +349,7 @@ std::shared_ptr<const KeptCondensedBasis> solveCondensedBasis(std::shared_ptr<co
     interface.equationLoads(interfaceLoads.view(), {}, equations.view());
     interface.solve(equations.view(), kernels, cancellation);
     // Without its factor the interface's pivots come with its first solve: a factor kept with failed pivots (PARAM
-    // BAILOUT -1) is reported here, as the analysis reports it with the factor.
+    // SingularityBailOut -1) is reported here, as the analysis reports it with the factor.
     if (!interface.isFactorKept() && !set->subcases().empty())
         reportKeptPivots(
             interface.pivotDiagnostics(), [&interface](std::int32_t equation)

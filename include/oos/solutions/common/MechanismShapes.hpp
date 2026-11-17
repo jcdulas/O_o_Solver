@@ -22,12 +22,12 @@ namespace oos::solutions
 //   K_s = K_ll + SHIFT·diag(K_ll),   X₀ = R (k fixed pseudo-random columns),   X_{i+1} = orth(K_s⁻¹·X_i).
 //
 // The shift makes an exact null space factorisable (its pivots become about SHIFT·a_jj instead of 0) and changes the
-// other directions by a relative SHIFT only; K_s is factorised with the failed pivots kept (the PARAM BAILOUT −1
-// behaviour). A zero-energy direction then has an eigenvalue of K_s below SHIFT·max a_jj, every other one at least the
-// smallest flexible eigenvalue λ₁ of K_ll, so each solve amplifies the null space against the rest by λ₁/(SHIFT·a);
-// after INVERSE_ITERATIONS solves the columns span it to round-off: for a free structure the six rigid-body motions,
-// for a mechanism its free motion. The shift moves the shapes off the exact null space by about SHIFT·a/λ₁, the order
-// of the round-off of any factorisation of K_ll (a gap λ₁ is resolved to ε·a/λ₁, ε = 2.2e-16).
+// other directions by a relative SHIFT only; K_s is factorised with the failed pivots kept (the PARAM
+// SingularityBailOut −1 behaviour). A zero-energy direction then has an eigenvalue of K_s below SHIFT·max a_jj, every
+// other one at least the smallest flexible eigenvalue λ₁ of K_ll, so each solve amplifies the null space against the
+// rest by λ₁/(SHIFT·a); after INVERSE_ITERATIONS solves the columns span it to round-off: for a free structure the six
+// rigid-body motions, for a mechanism its free motion. The shift moves the shapes off the exact null space by about
+// SHIFT·a/λ₁, the order of the round-off of any factorisation of K_ll (a gap λ₁ is resolved to ε·a/λ₁, ε = 2.2e-16).
 //
 // The block has the failed pivots of K_s plus GUARD_COLUMNS (at most MAX_SHAPES): the ratio test finds the dimension
 // of the near null space only approximately (a null pivot of a large model may pass it, round-off having grown its
@@ -36,8 +36,8 @@ namespace oos::solutions
 //
 //   (Xᵀ K X) y = θ (Xᵀ D X) y,   shapes = X·y for θ ≤ ZERO_ENERGY_RATIO,
 //
-// θ = xᵀKx / xᵀDx being the energy of a shape relative to that of its DOFs taken one by one: below 1/MAXRATIO, the
-// near mechanism the factor diagonal ratio test flags; at round-off for an exact one.
+// θ = xᵀKx / xᵀDx being the energy of a shape relative to that of its DOFs taken one by one: below 1/MaxDiagonalRatio,
+// the near mechanism the factor diagonal ratio test flags; at round-off for an exact one.
 //
 // Each shape is expanded to the g set (zero on the s set, u_m = Gm·u_n), scaled so that its largest amplitude is 1
 // with that amplitude positive (a fixed sign, so that the shapes are reproducible), and listed as the DOFs whose
@@ -64,7 +64,7 @@ public:
     // The columns added to the failed pivot count (a free body has six zero-energy motions).
     static constexpr std::size_t GUARD_COLUMNS = 6;
     // A Ritz vector of energy ratio θ = xᵀKx / xᵀDx at most this is a zero-energy shape: the inverse of the default
-    // PARAM MAXRATIO (10⁷), the near-mechanism threshold of the factor diagonal ratio test.
+    // PARAM MaxDiagonalRatio (10⁷), the near-mechanism threshold of the factor diagonal ratio test.
     static constexpr double ZERO_ENERGY_RATIO = 1.0e-7;
     // A DOF whose amplitude is below this fraction of the largest one is left out of the shape (the round-off of the
     // iteration is far below; a real motion is never left out).
