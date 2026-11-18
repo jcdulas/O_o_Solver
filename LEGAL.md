@@ -21,7 +21,8 @@ document is not legal advice.
   and papers).
 - No vendor documentation, example deck or result file is part of the repository, and none may be added or quoted.
 - The ShellQuad4 and ShellTria3 elements follow docs/shell-quad4-formulation.md and docs/shell-tria3-formulation.md,
-  written from the scientific publications those documents list.
+  and the ShellQuad8 and ShellTria6 elements docs/shell-quad8-tria6-formulation.md, written from the scientific
+  publications those documents list.
 - The transverse shear of the ShellQuad4Drilling and ShellTria3Drilling plates follows the formulation of NASTRAN-95
   (https://github.com/nasa/NASTRAN-95), released by NASA under the NASA Open Source Agreement 1.3. It was written from
   a mathematical description of that formulation, not by translating its Fortran, and contains no NASTRAN-95 code; the

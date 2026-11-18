@@ -251,6 +251,10 @@ TableContract contractOf(TableRole role)
             {required("propId", INT32), optional("station", INT32), optional("n1", FLOAT64), optional("n2", FLOAT64)},
             {"xxb", "area", "i1", "i2", "i12", "j", "nonStructMass", "k1", "k2", "c1", "c2", "d1", "d2", "e1", "e2",
              "f1", "f2"});
+    case TableRole::ShellNormals:
+        // cardTable(deck, "ShellNormal"): one row per card, the grid point, the coordinate system of the vector
+        // (null or 0: the basic system) and the vector; a zero vector gives the grid point no shared normal.
+        return tableOf(role, {required("nodeId", INT32), optional("frameId", INT32), required("vector", VECTOR)});
     case TableRole::FastenerPiercings:
         // O_o_Reader fastenerPiercings (contract 60): where each Fastener and Weld pierces the shells, one row per
         // fastener and side ("A", "B"; a point-to-patch Weld has side A only, a Weld ALIGN no row: its ends are GA

@@ -40,6 +40,7 @@ enum class TableRole
     LaminatePlies,
     LaminateSummary,    // laminateSummary: one row per laminate, with its lamination option LAM
     Sections,           // sectionsTable(types=BarShapeProp, BeamShapeProp): section properties
+    ShellNormals,       // shellNormals: cardTable(deck, "ShellNormal"), the normals given at grid points
     FastenerPiercings,  // fastenerPiercings: where Fastener and Weld pierce the shells (contract 60)
     // dofSetsTable(cards=FreeBodySupport, FreeBodySupportSet): the DOFs of FreeBodySupport and FreeBodySupportSet
     Supports,
@@ -63,7 +64,7 @@ enum class TableRole
                         // AeroWeightingMatrix, AeroWeightingFactor (contract 57)
 };
 
-inline constexpr std::array<TableRole, 45> ALL_TABLE_ROLES{TableRole::Nodes,
+inline constexpr std::array<TableRole, 46> ALL_TABLE_ROLES{TableRole::Nodes,
                                                            TableRole::ScalarPoints,
                                                            TableRole::Materials,
                                                            TableRole::Spc,
@@ -90,6 +91,7 @@ inline constexpr std::array<TableRole, 45> ALL_TABLE_ROLES{TableRole::Nodes,
                                                            TableRole::LaminatePlies,
                                                            TableRole::LaminateSummary,
                                                            TableRole::Sections,
+                                                           TableRole::ShellNormals,
                                                            TableRole::FastenerPiercings,
                                                            TableRole::Supports,
                                                            TableRole::ConnectionNodes,

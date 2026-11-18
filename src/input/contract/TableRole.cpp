@@ -61,6 +61,8 @@ std::string_view tableName(TableRole role) noexcept
         return "laminateSummary";
     case TableRole::Sections:
         return "sectionsTable";
+    case TableRole::ShellNormals:
+        return "shellNormals";
     case TableRole::FastenerPiercings:
         return "fastenerPiercings";
     case TableRole::Supports:
@@ -128,6 +130,8 @@ std::string_view prerequisiteOf(TableRole role) noexcept
         return "the output requests and sets, per subcase";
     case TableRole::Sections:
         return "the section properties of BarShapeProp and BeamShapeProp";
+    case TableRole::ShellNormals:
+        return "the normals the ShellNormal cards give at grid points";
     case TableRole::FastenerPiercings:
         return "the piercing points of Fastener and Weld on the shells, with the shape functions of the "
                "elements pierced";

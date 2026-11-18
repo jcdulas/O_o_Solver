@@ -1,10 +1,12 @@
 # Three-node triangular shell element with 18 degrees of freedom — formulation
 
 This document states the linear three-node shell element that goes with the four-node element of
-[shell-quad4-formulation.md](shell-quad4-formulation.md) ("the quadrilateral document" below): the same section, the
-same conventions, the same constants where they apply, so that two triangles on the grids of a quadrilateral behave
-closely to it. Section 6 gives the closeness measured and its limits. The notation is that of the quadrilateral
-document; only what differs is stated here. The methods are those of the open literature listed in section 8.
+[shell-quad4-formulation.md](shell-quad4-formulation.md) ("the quadrilateral document" below): it is that element on
+three nodes, with the same kinematics, section, conventions and constants where they apply, so that two triangles on
+the grids of a quadrilateral behave closely to it. Section 6 gives the closeness measured and its limits. The
+notation is that of the quadrilateral document; only what differs is stated here. Section 3 also states how the
+directors of both elements are shared at the grids of a model. The methods are those of the open literature listed
+in section 8.
 
 ## 1. Data and conventions
 
@@ -12,8 +14,8 @@ document; only what differs is stated here. The methods are those of the open li
 - Section stiffnesses $A, B, D, H$, mass moments, material axis, offset and drilling factor $c_d$: as in section 1 of
   the quadrilateral document, with the same conventions for $\mathbf e_0$, $\boldsymbol\kappa$, $\mathbf N$,
   $\mathbf M$, $\mathbf Q$.
-
-The element is flat: its directors are its normal, and the local frame of every point is the element frame.
+- A director $\mathbf n_i$ at each grid: the normal of the triangle, or the normal the grid shares with its
+  neighbours (section 3).
 
 ## 2. Element axes
 
@@ -31,76 +33,81 @@ $$
 \mathbf e_y=\mathbf e_z\times\mathbf e_x ,
 $$
 
-origin $\mathbf X_c=\tfrac13\sum\mathbf X_i$, local coordinates $(x_i,y_i)$. The widths are those of the
-parallelogram,
+origin $\mathbf X_c=\tfrac13\sum\mathbf X_i$, local coordinates $\mathbf x_i=T(\mathbf X_i-\mathbf X_c)$. The widths
+are those of the parallelogram,
 
 $$
-a=|\mathbf l_A\cdot\mathbf e_x|,\qquad b=|\mathbf l_B\cdot\mathbf e_y| ,
+a=|\mathbf l_A\cdot\mathbf e_x|,\qquad b=|\mathbf l_B\cdot\mathbf e_y| .
 $$
 
-and S = $\|\mathbf l_A\times\mathbf l_B\|$ is its area, twice that of the triangle. On a right triangle
-$\mathbf e_x$ and $\mathbf e_y$ are along the sides of the right angle, and a, b are their lengths.
+On a right triangle $\mathbf e_x$ and $\mathbf e_y$ are along the sides of the right angle, and a, b are their
+lengths.
 
 Reference direction: $\mathbf X_2-\mathbf X_1$. The material direction is this direction turned by φ about
 $\mathbf e_z$, or the projection of the given direction on the element plane.
 
-## 3. Membrane strains, curvatures and drilling
+## 3. Directors and kinematics
 
-Linear shape functions $N_i$, of constant derivatives $N_{i,x}$, $N_{i,y}$. The rotations move a fibre by
-$z\,\boldsymbol\theta\times\mathbf e_z$, so that $u(z)=u+z\theta_y$ and $v(z)=v-z\theta_x$:
-
-$$
-\mathbf e_0=\Big(\sum N_{i,x}u_i,\ \sum N_{i,y}v_i,\ \sum(N_{i,y}u_i+N_{i,x}v_i)\Big),\qquad
-\boldsymbol\kappa=\Big(\sum N_{i,x}\theta_{yi},\ -\sum N_{i,y}\theta_{xi},\ \sum(N_{i,y}\theta_{yi}-N_{i,x}\theta_{xi})\Big).
-$$
-
-Both are constant over the element: the enhanced strains of the quadrilateral have no counterpart.
-
-Drilling, as section 8 of the quadrilateral document with $\mathbf n_i=\mathbf e_z$:
+**Kinematics.** Those of section 3 of the quadrilateral document with the linear shape functions
+$N_1=1-\xi-\eta$, $N_2=\xi$, $N_3=\eta$:
 
 $$
-r=\omega-\sum N_i\theta_{zi},\qquad \omega=\tfrac12\sum(N_{i,x}v_i-N_{i,y}u_i),
+\mathbf X(\xi,\eta,\zeta)=\sum_iN_i\big(\mathbf x_i+\zeta\tfrac{t_i}2\mathbf n_i\big),\qquad
+\mathbf u(\xi,\eta,\zeta)=\sum_iN_i\big(\mathbf u_i+\zeta\tfrac{t_i}2\,\boldsymbol\theta_i\times\mathbf n_i\big),
 $$
 
-linear over the element, zero for a rigid motion. Its stiffness per unit area is
+the covariant vectors, the displacement gradient L with its three rows kept, and the local frame of a point, which
+is the element frame (the reference surface is flat). The membrane strains and the curvatures are those of section 5
+of the quadrilateral document; they are constant over a triangle whose directors are its normal, and there
+$\boldsymbol\kappa=(\theta_{y,x},\ -\theta_{x,y},\ \theta_{y,y}-\theta_{x,x})$. There are no enhanced strains: a
+constant strain has no use for them.
 
-$$
-k_d=c_dA_{33}+c_n\,\frac{12\max(D_{11},D_{22})}{S},\qquad c_n=0.1 ,
-$$
+**Directors shared at the grids.** Each element has a normal at each of its grids: that of its bilinear surface
+there for a quadrilateral, its own for a triangle. On a curved surface the elements that meet at a grid have normals
+that differ by the angle of their facets, and the rotation about the normal of one is a bending rotation for the
+others: they hold it by their bending alone, the less the finer the mesh against the thickness, and the surface
+softens as the mesh is refined (a twisted beam of triangles gives 1.19, 1.38 and 1.89 times its tip displacement at
+12 × 2, 24 × 4 and 48 × 8 cells; a thick vault of quadrilaterals drifts by 4 % over the same refinements). So the
+directors are defined at the grids of the mesh, for the quadrilaterals and the triangles of a model together (and
+the eight-node and six-node elements of [shell-quad8-tria6-formulation.md](shell-quad8-tria6-formulation.md)):
 
-S the area of the parallelogram of section 2. The first term is that of the quadrilateral. The second is proper to
-the triangle: the rotation about the normal of a flat element is, for the neighbours it meets at an angle, a bending
-rotation, and the membrane term alone leaves it far softer than their bending. The directors of the quadrilateral,
-which follow its warped surface, do not have this defect; a surface meshed with flat triangles softens with the
-refinement of the mesh without the second term (the twisted beam of section 6: 1.16, 1.28 and 1.49 times its tip
-displacement at 12 × 2, 24 × 4 and 48 × 8 cells with $c_n=0$). On a flat mesh the term acts on the membrane alone,
-and changes its results by less than 0.2 %.
+- at each grid the elements are put in smooth groups: two elements whose normals there make, in direction, an angle
+  of at most $\alpha_n$ (20° by default) are in one group, and the groups are the connected sets of that relation.
+  A fold, a junction of three walls or a stiffener on a skin keeps one normal per smooth side; two neighbours
+  numbered in opposite senses are in one group;
+- a group of one element, a group whose normals are equal (a flat mesh), or a group one of whose normals is farther
+  than $\alpha_n$ from their mean keeps the normal of each element;
+- any other group shares the normalised sum of the unit normals of its elements (each turned to the side of the
+  first), and each element takes it on the side of its own normal.
+
+The rotation of a grid about its shared normal then moves nothing in any element of the group, and the two other
+rotations are bending rotations for all of them. With $\alpha_n\le0$ no normal is shared. A normal may also be given
+at a grid: the elements whose own normal there is within $\alpha_n$ of it, on either side, take it; a zero vector
+leaves every element of the grid its own normal.
+
+**Drilling.** Section 8 of the quadrilateral document with these directors:
+$r=\omega-\theta_n$, $\theta_n=\sum_iN_i(\boldsymbol\theta_i-\bar{\boldsymbol\theta})\cdot\mathbf n_i+\bar{\boldsymbol\theta}\cdot\mathbf e_3$,
+$\bar{\boldsymbol\theta}=\tfrac13\sum\boldsymbol\theta_i$. The drilling factor is a datum of the model, $c_d=10^{-6}k$
+with k = 100 by default; with $k\le0$ there is no drilling term.
 
 ## 4. Transverse shear
 
-**Tied strains.** With $\gamma_{xz}=w_{,x}+\theta_y$ and $\gamma_{yz}=w_{,y}-\theta_x$, the tangential shear at the
-middle of side p (from grid i to grid j, of length $L_p$ and direction $(c_p,s_p)$) is
+**Tied strains.** The covariant shears of section 7 of the quadrilateral document,
+$\tilde\gamma_\alpha=\mathbf g_3\cdot\mathbf u_{,\alpha}+\mathbf g_\alpha\cdot\sum_iN_i\tfrac{t_i}2\,\boldsymbol\theta_i\times\mathbf n_i$,
+are tied at the mid-sides. The field is the one of lowest order whose component along each side is constant on it:
 
 $$
-\gamma_t(p)=\frac{w_j-w_i}{L_p}+\tfrac12 c_p(\theta_{yi}+\theta_{yj})-\tfrac12 s_p(\theta_{xi}+\theta_{xj}).
+\tilde\gamma_\xi=a+c\,\eta,\qquad\tilde\gamma_\eta=b-c\,\xi ,
 $$
 
-The shear field of the element is the field of lowest order whose tangential component is constant along each side,
+with $a=\tilde\gamma_\xi(\tfrac12,0)$ on side 1-2, $b=\tilde\gamma_\eta(0,\tfrac12)$ on side 3-1, and c from the
+shear along side 2-3 at its middle, $(\tilde\gamma_\eta-\tilde\gamma_\xi)(\tfrac12,\tfrac12)=b-a-c$. The local
+components $\gamma_x,\gamma_y$ of a point follow by the formula of that section.
 
-$$
-\boldsymbol\gamma(x,y)=(\gamma_x-q\,y,\ \gamma_y+q\,x),
-$$
-
-x and y measured from the centroid: $(\gamma_x,\gamma_y)$ is its mean and q its rotational part. The three values
-$\gamma_t(p)$ give the three parameters:
-
-$$
-c_p\gamma_x+s_p\gamma_y+(x_ps_p-y_pc_p)\,q=\gamma_t(p),\qquad p=1,2,3,
-$$
-
-$(x_p,y_p)$ the middle of side p. By the circulation of $\boldsymbol\gamma$ around the element,
-$q=-\tfrac12(\theta_{x,x}+\theta_{y,y})$: q measures how far the rotations are from the slopes of a deflection, and
-vanishes with the transverse shear in a thin plate.
+On a triangle whose directors are its normal the field is $\boldsymbol\gamma(x,y)=(\bar\gamma_x-q\,y,\ \bar\gamma_y+q\,x)$,
+x and y from the centroid: $\bar{\boldsymbol\gamma}$ is its mean and q its rotational part, and by the circulation of
+$\boldsymbol\gamma$ around the element $q=-\tfrac12(\theta_{x,x}+\theta_{y,y})$: q measures how far the rotations are
+from the slopes of a deflection, and vanishes with the transverse shear in a thin plate.
 
 **Factors.** With the section of the point, $s(z)=z/(1+z)$, $D^*_{kk}$ as in section 7 of the quadrilateral document
 and the widths a, b of section 2:
@@ -132,53 +139,59 @@ $$
 
 on the width of the direction itself; section 6 gives what it leaves.
 
-**Modified strains.** At a point of coordinates (x, y) from the centroid:
+**Modified strains.** With $\bar{\boldsymbol\gamma}$ the mean of the local shears of the three integration points:
 
 $$
-\gamma'_x=\sqrt{s_{x0}}\,\gamma_x-\sqrt{s_{x1}}\,q\,y,\qquad
-\gamma'_y=\sqrt{s_{y0}}\,\gamma_y+\sqrt{s_{y1}}\,q\,x,\qquad\boldsymbol\gamma'=B_s\mathbf d .
+\gamma'_x=\sqrt{s_{x0}}\,\bar\gamma_x+\sqrt{s_{x1}}\,(\gamma_x-\bar\gamma_x),\qquad
+\gamma'_y=\sqrt{s_{y0}}\,\bar\gamma_y+\sqrt{s_{y1}}\,(\gamma_y-\bar\gamma_y),\qquad\boldsymbol\gamma'=B_s\mathbf d .
 $$
 
-**Without transverse shear flexibility:** $H=c_K\,\dfrac{12\max(D_{11},D_{22})}{S}\begin{bmatrix}1&0\\0&1\end{bmatrix}$,
-S the area of the parallelogram (the 4j of the quadrilateral).
+**Without transverse shear flexibility:** $H=c_K\,\dfrac{12\max(D_{11},D_{22})}{j}\begin{bmatrix}1&0\\0&1\end{bmatrix}$,
+j the area of the parallelogram (the 4j of the quadrilateral).
 
 ## 5. Stiffness, mass, loads, resultants
 
-Integration at the three mid-sides, of weight w = S/6 each (exact for a polynomial of degree 2), with the section at
+Integration at the three mid-sides, of weight w = j/6 each (exact for a polynomial of degree 2), with the section at
 the thickness $t=\sum N_it_i$ of the point.
 
 - **Stiffness.** With $\mathsf B$ the rows of $(\mathbf e_0,\boldsymbol\kappa)$ and
   $\mathsf C=\begin{bmatrix}A&B\\B&D\end{bmatrix}$:
 
 $$
-K=\sum_pw\Big(\mathsf B^{\mathsf T}\mathsf C\mathsf B+B_s^{\mathsf T}HB_s+k_d\,\mathbf b_d^{\mathsf T}\mathbf b_d\Big).
+K=\sum_pw\Big(\mathsf B^{\mathsf T}\mathsf C\mathsf B+B_s^{\mathsf T}HB_s+c_dA_{33}\,\mathbf b_d^{\mathsf T}\mathbf b_d\Big).
 $$
 
   A section without bending stiffness has no shear term; the drilling term is present when the section has both a
   membrane and a bending stiffness.
-- **Mass.** As section 10 of the quadrilateral document, with
-  $\boldsymbol\beta=\sum N_i(\theta_{yi},-\theta_{xi},0)$: $M=\sum_pw\,(I_0N_u^{\mathsf T}N_u+I_2N_\beta^{\mathsf T}N_\beta)$ for a
-  homogeneous section ($I_0=\rho t$ plus the non-structural mass, $I_2=\rho t^3/12$). Lumped form: on the three
-  translations of grid i, $m_i=\sum_pw\,I_0N_i$; nothing on the rotations.
+- **Mass.** Section 10 of the quadrilateral document:
+  $M=\sum_pw\,(I_0N_u^{\mathsf T}N_u+I_2N_\beta^{\mathsf T}N_\beta)$ for a homogeneous section ($I_0=\rho t$ plus
+  the non-structural mass, $I_2=\rho t^3/12$). Lumped form: on the three translations of grid i,
+  $m_i=\sum_pw\,I_0N_i$; nothing on the rotations.
 - **Offset and global system.** As section 11 of the quadrilateral document.
-- **Pressure** p along the element normal: $\mathbf f_i=\sum p\,N_i\,S/6\ \mathbf e_z$ on the translations of grid i,
+- **Pressure** p along the element normal: $\mathbf f_i=\sum p\,N_i\,j/6\ \mathbf e_z$ on the translations of grid i,
   at the three interior points $(\tfrac16,\tfrac16),(\tfrac16,\tfrac23),(\tfrac23,\tfrac16)$, p interpolated from the
   values at the grids.
-- **Initial (thermal) resultants** $\mathbf S_0=\mathsf C\,\boldsymbol\varepsilon_{th}$:
-  $\mathbf f=\sum_pw\,\mathsf B^{\mathsf T}\mathbf S_0$. A free thermal expansion leaves the element without stress.
+- **Initial (thermal) resultants.** The free thermal strain is split into its dilatation ε (the mean of its two
+  in-plane strains) and the rest. The rest gives $\mathbf f=\sum_pw\,\mathsf B^{\mathsf T}\mathsf C\,\boldsymbol\varepsilon_{th}$
+  as in section 12 of the quadrilateral document. The dilatation gives $\mathbf f=\varepsilon\,K\mathbf d_h$,
+  $\mathbf d_h$ the homothety of the element (the positions $\mathbf x_i$ on the translations, no rotation): a free
+  thermal dilatation is the homothety $\mathbf u=\varepsilon\mathbf x$, and leaves the element without stress in
+  every one of its strain measures, whatever its directors. The quadrilateral takes the same rule, so that a warped
+  mesh, or a mesh whose normals are shared, expands freely under a uniform temperature rise.
 - **Resultants** at the centroid, at the mean thickness:
-  $\begin{Bmatrix}\mathbf N\\\mathbf M\end{Bmatrix}=\mathsf C\,\mathsf B\mathbf d-\mathbf S_0$, and the transverse shear
+  $\begin{Bmatrix}\mathbf N\\\mathbf M\end{Bmatrix}=\mathsf C\,(\mathsf B\mathbf d-\boldsymbol\varepsilon_{th})$, the
+  dilatation of $\boldsymbol\varepsilon_{th}$ taken as ε times the strains of the homothety, and the transverse shear
   forces conjugate to the mean shear in the energy of the element,
-  $\mathbf Q=\mathsf S H\mathsf S\,(\gamma_x,\gamma_y)$ with $\mathsf S=\operatorname{diag}(\sqrt{s_{x0}},\sqrt{s_{y0}})$.
+  $\mathbf Q=\mathsf S H\mathsf S\,\bar{\boldsymbol\gamma}$ with $\mathsf S=\operatorname{diag}(\sqrt{s_{x0}},\sqrt{s_{y0}})$.
 - **Differential stiffness** of the membrane forces: as section 12 of the quadrilateral document, with the constant
-  gradients of the translations and the area S/2.
+  gradients of the translations and the area j/2.
 
 ## 6. Two triangles against one quadrilateral
 
 The cases below are run through the solver with quadrilaterals and with two triangles on the grids of each
 quadrilateral, cut along the diagonal 1-3, along 2-4, or alternating from cell to cell
-(`wasm/test/validation/classic-shells.test.mjs`). The values are the result over the reference; for the triangles,
-the range over the three ways of cutting.
+(`wasm/test/validation/classic-shells.test.mjs`), with the default drilling factor and shared normals. The values are
+the result over the reference; for the triangles, the range over the three ways of cutting.
 
 | Case | Mesh (cells) | Quadrilaterals | Two triangles per cell |
 |---|---|---|---|
@@ -191,9 +204,9 @@ the range over the three ways of cutting.
 | | 40 × 4, 80 × 8 | | 0.82 to 0.84, 0.95 to 0.96 |
 | Simply supported square plate, a/t = 100, pressure: centre deflection over 0.004062 q a⁴ / D | 8 × 8, 16 × 16 | 1.017, 1.006 | 0.955 to 0.964, 0.990 to 0.992 |
 | Clamped square plate, a/t = 100, pressure: over 0.001265 q a⁴ / D | 8 × 8, 16 × 16 | 1.059, 1.021 | 0.966 to 0.976, 0.994 to 0.997 |
-| Barrel vault under its weight (Scordelis and Lo): deflection of the free edge over 0.3024 | 8 × 8, 16 × 16 | 1.014, 1.006 | 0.858 to 0.884, 0.957 to 0.965 |
-| Pinched hemisphere with a hole (MacNeal and Harder): displacement over 0.0940 | 8 × 8, 16 × 16 | 1.013, 0.999 | 0.996 to 0.998, 0.988 to 0.990 |
-| Twisted beam (MacNeal and Harder), t = 0.32: tip displacement over 0.005424 (force in the plane of the tip section) and over 0.001754 (force across it) | 12 × 2, 24 × 4 | 0.996 and 0.987, 0.997 and 0.994 | 0.990 to 0.999 and 0.842 to 0.860, 0.993 to 0.996 and 0.925 to 0.936 |
+| Barrel vault under its weight (Scordelis and Lo): deflection of the free edge over 0.3024 | 8 × 8, 16 × 16 | 1.012, 1.002 | 0.857 to 0.883, 0.957 to 0.965 |
+| Pinched hemisphere with a hole (MacNeal and Harder): displacement over 0.0940 | 8 × 8, 16 × 16 | 1.007, 0.998 | 0.991 to 0.993, 0.987 to 0.989 |
+| Twisted beam (MacNeal and Harder), t = 0.32: tip displacement over 0.005424 (force in the plane of the tip section) and over 0.001754 (force across it) | 12 × 2, 24 × 4 | 0.996 and 0.987, 0.997 and 0.994 | 0.978 and 0.831 to 0.841, 0.990 and 0.922 to 0.931 |
 | Simply supported square plate, a/t = 100: first four frequencies over the thin plate's | 16 × 16 | 0.998, 1.005, 1.005, 1.001 | 1.002 to 1.003, 1.010 to 1.013, 1.013 to 1.020, 1.024 to 1.026 |
 
 What the table shows:
@@ -213,42 +226,49 @@ What the table shows:
    are needed for 5 %. The barrel vault, whose response is carried by its membrane, shows the same slower
    convergence, and the twisted beam under the force across its tip, which bends its root in its plane. Where a
    part bends in its plane, it takes quadrilaterals, or several triangles across its depth.
-5. **Warped and thick surfaces.** On the twisted beam, whose quadrilaterals are all warped, the triangles follow the
-   quadrilaterals under the force in the plane of the tip (within 1 %); this is what the term $c_n$ of section 3
-   gives. A twisted stiffened panel whose cells come to the size of the thickness of its skin
+5. **Warped and thick surfaces.** With the shared normals of section 3 the triangles converge on the twisted beam,
+   whose quadrilaterals are all warped (0.978, then 0.990 under the force in the plane of the tip), and a twisted
+   stiffened panel whose cells come to the size of the thickness of its skin
    (`wasm/test/validation/classic-stiffened-panel.test.mjs`: stringers, frames and edge caps as line elements) is
-   within 0.1 % of the same panel with webs of shells under bending loads, with quadrilaterals, with triangles or
-   with both; triangles without a stiffness on the rotation about their normal give 4 to 29 % too much
-   displacement there, more as the mesh is refined. That term has a cost where the cells are smaller than the thickness: on a vault of R/t = 10 meshed with
-   cells of 0.9, 0.4 and 0.2 thickness, the triangles are 8, 5 and 5 % below the quadrilaterals of the same mesh, of
-   which 2, 3 and 4 % come from it.
+   within 0.3 % of the same panel with webs of shells under bending loads, with quadrilaterals, with triangles or
+   with both. Without shared normals the triangles give 4 to 29 % too much displacement there, more as the mesh is
+   refined. The results do not depend on the drilling factor between 0 and 4·10⁻⁴.
 
 ## 7. Checks of an implementation
 
-1. Six zero-energy modes and no other; $K\boldsymbol\Phi=0$ for the six rigid motions to round-off.
-2. Constant membrane, bending and coupled states are reproduced exactly on any mesh (patch test), for any section.
-3. A free thermal expansion and its free curvature are balanced by the thermal loads and leave no resultant.
+1. Six zero-energy modes and no other; $K\boldsymbol\Phi=0$ for the six rigid motions to round-off, with directors
+   along the normal of the triangle or up to 20° off it.
+2. Constant membrane, bending and coupled states are reproduced exactly on any flat mesh (patch test), for any
+   section.
+3. A free thermal expansion and its free curvature are balanced by the thermal loads and leave no resultant; a free
+   quarter of a cylinder under a uniform temperature rise takes the displacements of the homothety to round-off,
+   with shared normals.
 4. One cell of 2 × 1 (length × width), ν = 0, t = 0.05, clamped at one end and loaded at the other: the two triangles
    give 1.003744 times the deflection $PL^3/(3EI)+PL/(GA_s)$ that one quadrilateral gives exactly, on either
    diagonal.
 5. Numerical values. The section of section 14 of the quadrilateral document (E = 1000, ν = 0.3, t = 0.05,
-   $c_d=4\cdot10^{-4}$), $c_n=0.1$ and $c_t=8$. Grids (0, 0, 0), (1.2, 0.1, 0), (0.3, 0.9, 0.2): a = 1.190020,
-   b = 0.941215.
+   $c_d=4\cdot10^{-4}$) and $c_t=8$. Grids (0, 0, 0), (1.2, 0.1, 0), (0.3, 0.9, 0.2): a = 1.190020, b = 0.941215.
    The twelve non-zero eigenvalues of the 18 × 18 stiffness and the trace of the consistent mass:
 
-| Section | Eigenvalues of K | trace M |
+| Section and directors | Eigenvalues of K | trace M |
 |---|---|---|
-| with $H=\frac56\frac{Et}{2(1+\nu)}\mathbf I$ | 9.176215838·10⁻⁴, 9.176215838·10⁻⁴, 5.950790620·10⁻³, 6.213710696·10⁻³, 1.218425823·10⁻², 1.436811758·10⁻², 2.426647736·10⁻², 8.562176106·10⁻², 2.097010749·10⁻¹, 29.79552950, 34.63254986, 69.15264118 | 4.040305034·10⁻² |
-| without transverse shear flexibility | 9.176215838·10⁻⁴, 9.176215838·10⁻⁴, 5.950907217·10⁻³, 6.220952221·10⁻³, 1.218425823·10⁻², 1.436816311·10⁻², 2.502438656·10⁻², 8.613741876·10⁻², 2.116889453·10⁻¹, 29.79552950, 34.63254986, 69.15264118 | 4.040305034·10⁻² |
+| with $H=\frac56\frac{Et}{2(1+\nu)}\mathbf I$, the normal of the triangle | 3.452772614·10⁻⁴, 3.452772614·10⁻⁴, 4.584678133·10⁻³, 5.950790620·10⁻³, 6.213710696·10⁻³, 1.436811758·10⁻², 2.426647736·10⁻², 8.562176106·10⁻², 2.097010749·10⁻¹, 29.79552950, 34.63211936, 69.15264118 | 4.040305034·10⁻² |
+| without transverse shear flexibility, the normal of the triangle | 3.452772614·10⁻⁴, 3.452772614·10⁻⁴, 4.584678133·10⁻³, 5.950907217·10⁻³, 6.220952221·10⁻³, 1.436816311·10⁻², 2.502438656·10⁻², 8.613741876·10⁻², 2.116889453·10⁻¹, 29.79552950, 34.63211936, 69.15264118 | 4.040305034·10⁻² |
+| with H, the directors (0.1163474672, −0.2676832426, 0.9564564541), (−0.0625593640, −0.1046684690, 0.9925375749), (0.0493105131, −0.1348232982, 0.9896419310) | 3.412781254·10⁻⁴, 3.450049511·10⁻⁴, 4.378774519·10⁻³, 5.975466350·10⁻³, 6.544627910·10⁻³, 1.462007979·10⁻², 2.443904227·10⁻², 8.569121971·10⁻², 2.105586843·10⁻¹, 29.79652551, 34.63327897, 69.15416522 | 4.040305034·10⁻² |
 
 ## 8. Literature
 
 - The literature of the quadrilateral document, for the kinematics, the residual bending flexibility of the
   transverse shear and the rotation about the normal.
+- T. J. R. Hughes, W. K. Liu, Nonlinear finite element analysis of shells: part I. Three-dimensional shells, Comput.
+  Methods Appl. Mech. Eng. 26 (1981); K.-J. Bathe, Finite Element Procedures (1996), section 5.4: the directors
+  defined at the nodes of the mesh.
 - J.-C. Nédélec, Mixed finite elements in R³, Numer. Math. 35 (1980): the lowest-order field with continuous
   tangential components.
 - P.-S. Lee, K.-J. Bathe, Development of MITC isotropic triangular shell finite elements, Comput. Struct. 82 (2004):
-  transverse shear strains of a triangle tied at the mid-sides.
+  covariant transverse shear strains of a triangular shell tied at the mid-sides.
+- J. L. Sanders, An improved first-approximation theory for thin shells, NASA TR R-24 (1959): a uniform dilatation
+  bends nothing.
 - A. C. Scordelis, K. S. Lo, Computer analysis of cylindrical shells, J. Am. Concrete Inst. 61 (1964); R. H. MacNeal,
   R. L. Harder, A proposed standard set of problems to test finite element accuracy, Finite Elem. Anal. Des. 1 (1985);
   S. P. Timoshenko, S. Woinowsky-Krieger, Theory of plates and shells (1959): the reference values of section 6.

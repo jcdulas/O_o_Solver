@@ -40,7 +40,11 @@ CentreRecoveryOperator<T, ShellQuad4::DOFS> ShellQuad4::recovery(const Geometry&
     const ScalarMatrix<T, 6, DOFS> rows = planeRowsAt(geometry, thickness, shape, frame);
     const PointSection<T> section = sectionAt(c, t, 0.0, 4.0 * frame.area);
 
-    // The mechanical strains as affine rows: the thermal strain in the last column, subtracted.
+    // The mechanical strains as affine rows: the thermal strain in the last column, subtracted. Its dilatation is
+    // taken as the strains of the homothety of the element, as in the thermal loads (ShellQuad4Loads.cpp).
+    const std::array<T, 6> homothety = dilatationStrainsOf(geometry, rows);
+    const double dilatation = thermal.isZero ? 0.0 : dilatationOf(thermal);
+    const std::array<double, DOFS> homothetyDofs = director_shell::homothetyOf(geometry.position);
     std::array<Affine<T>, 3> membrane{};
     std::array<Affine<T>, 3> curvature{};
     for (std::size_t r = 0; r < 3; ++r)
@@ -50,8 +54,8 @@ CentreRecoveryOperator<T, ShellQuad4::DOFS> ShellQuad4::recovery(const Geometry&
             membrane[r][k] = rows(r, k);
             curvature[r][k] = rows(3 + r, k);
         }
-        membrane[r][DOFS] = T(-thermal.membrane[r]);
-        curvature[r][DOFS] = T(-thermal.gradient[r]);
+        membrane[r][DOFS] = T(-thermal.membrane[r]) - dilatation * (homothety[r] - (r < 2 ? 1.0 : 0.0));
+        curvature[r][DOFS] = T(-thermal.gradient[r]) - dilatation * homothety[3 + r];
     }
 
     CentreRecoveryOperator<T, DOFS> recovery;
@@ -114,6 +118,9 @@ CentreRecoveryOperator<T, ShellQuad4::DOFS> ShellQuad4::recovery(const Geometry&
                 for (std::size_t k = 0; k < DOFS; ++k)
                     force[k] += weight * shear[j][k];
             }
+            // the shear of the free dilatation (directors that are not normal to the element), subtracted
+            for (std::size_t k = 0; k < DOFS; ++k)
+                force[DOFS] -= dilatation * force[k] * homothetyDofs[k];
             setRow(recovery, centre_row::SHEAR_FORCE + i, force);
         }
     }

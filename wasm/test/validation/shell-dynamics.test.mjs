@@ -1064,10 +1064,13 @@ for (const { name, shape, distortion } of PLATE_MESHES)
 
 // A cantilever plate 1 × 0.5 clamped along x = 0, with a point mass at the middle of its free end: 5 kg (the plate
 // weighs 13.5 kg) 0.05 above the plate, with the inertias of a body of that size.
-function massOnPlate({ nx, ny, shape = "ShellQuad4", distortion = 0 }) {
+function massOnPlate({ nx, ny, shape = "ShellQuad4", distortion = 0, drilling = true }) {
   const m = mesh({ nx, ny, shape, distortion, straightRows: [ny / 2], map: (s, t) => [s, 0.5 * t, 0] });
   const lines = [...m.lines, shellProp(0.01), isoMat(), eigenMethod(4),
     `PointMassInertia;900;${m.node(nx, ny / 2)};;5.;0.;0.;0.05;0.02;;0.02;;;0.03`];
+  // Without the drilling term of the ClassicFormulation shells the rotation about the normal of this flat plate is
+  // removed by the automatic constraint of singular DOFs, and the inertia of the mass about the normal with it.
+  if (!drilling) lines.push("Parameter;ShellDrillingStiffness;0.");
   for (let j = 0; j <= ny; ++j) lines.push(`SinglePointConstrList;1;123456;${m.node(0, j)}`);
   return deck(103, MODES_CASE, lines);
 }
@@ -1081,7 +1084,9 @@ for (const { name, shape, distortion } of PLATE_MESHES)
     // frequencies change by 3e-4, 1 % and 1.6 %, and the fourth by 11 %: the inertia of the mass acts on the rotation
     // of one grid point of the plate, where the rotation under a concentrated moment grows slowly with the mesh, in
     // any formulation. The first three frequencies are counted, the fourth is printed.
-    classicMassOnPlate ??= eigenRows(massOnPlate({ nx: 96, ny: 48 }), CLASSIC, "modes").values;
+    // The reference has no drilling term: with it the inertia of the mass about the normal of the plate, on one grid
+    // point, would be held by that stabilisation alone, in a mode of its own whose frequency falls with the mesh.
+    classicMassOnPlate ??= eigenRows(massOnPlate({ nx: 96, ny: 48, drilling: false }), CLASSIC, "modes").values;
     const classic = classicMassOnPlate;
     const { values, run } = eigenRows(massOnPlate({ nx: 8, ny: 4, shape, distortion }), MIXED, "modes");
     const check = measurements();

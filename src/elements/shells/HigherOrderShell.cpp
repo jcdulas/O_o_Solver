@@ -28,7 +28,7 @@ constexpr double MATERIAL_FRAME_MIN_PROJECTION = 1.0e-8;
 constexpr base::Vec3 ELEMENT_NORMAL{0.0, 0.0, 1.0};
 
 // The directors of the element of batch row `row` with geometry `geometry`, in its element frame: at each node the
-// director its grid point shares (HigherOrderShellDirectors), turned to the element's own normal there, or that normal.
+// normal its grid point shares or is given (ShellDirectors), or the element's own normal there.
 template <std::size_t N>
 [[nodiscard]] std::array<base::Vec3, N> directorsOf(const ElementBatchView& view,
                                                     const HigherOrderShellColumns& columns, std::int64_t row,
@@ -37,7 +37,7 @@ template <std::size_t N>
     std::array<base::Vec3, N> directors = geometry.ownDirector;
     for (std::size_t i = 0; i < N; ++i)
     {
-        const std::optional<base::Vec3> shared = columns.directors->sharedDirector(view.card(), row, i);
+        const std::optional<base::Vec3> shared = columns.directors->sharedNormal(view.card(), row, i);
         if (!shared)
             continue;
         const base::Mat3& e = geometry.axes;
@@ -45,7 +45,7 @@ template <std::size_t N>
         const base::Vec3 local{v[0] * e(0, 0) + v[1] * e(1, 0) + v[2] * e(2, 0),
                                v[0] * e(0, 1) + v[1] * e(1, 1) + v[2] * e(2, 1),
                                v[0] * e(0, 2) + v[1] * e(1, 2) + v[2] * e(2, 2)};
-        directors[i] = base::dot(local, geometry.ownDirector[i]) >= 0.0 ? local : -local;
+        directors[i] = local;
     }
     return directors;
 }
@@ -60,7 +60,7 @@ HigherOrderShellColumns::HigherOrderShellColumns(const ElementBatchView& view)
       offset(view.columns().values<double>("offset")),
       thicknessFlag(view.columns().values<std::int32_t>("thicknessFlag")),
       cornerThickness(view.columns().fixedLists<double>("cornerThickness")),
-      directors(&higherOrderShellDirectors(view.index()))
+      directors(&shellDirectors(view.index()))
 {
 }
 
@@ -88,6 +88,7 @@ Resolution<HigherOrderShellData<Shape>> resolveHigherOrderShell(const ElementBat
     data.isCurved = geometry.value->isCurved;
     data.position = geometry.value->position;
     data.director = directorsOf<N>(view, columns, row, *geometry.value);
+    data.drillingFactor = columns.directors->drillingFactor();
     Resolution<std::array<double, C>> thickness =
         resolveCornerThicknesses<C>(view, row, *section.value, columns.thicknessFlag[r], columns.cornerThickness[row]);
     if (!thickness)

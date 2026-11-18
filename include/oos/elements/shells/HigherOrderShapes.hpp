@@ -43,14 +43,16 @@ struct SerendipityQuadShape
     [[nodiscard]] static std::array<QuadraturePoint, 9> massRule();
     // The parent area of the element (the weights of its rule sum to it): 4.
     static constexpr double PARENT_AREA = 4.0;
+    // The strains are those of the displacements at the points of the reduced rule (MindlinShell), and the states of
+    // the corners are carried from these points.
+    static constexpr bool HAS_TIED_STRAINS = false;
 };
 
 // ShellTria6: the six-node quadratic triangle in the area coordinates L1 = 1 − ξ − η, L2 = ξ, L3 = η (Zienkiewicz &
 // Taylor vol. 1, §8.8): corners N_i = L_i(2L_i − 1), edge nodes N = 4 L_i L_j; G4 on G1-G2, G5 on G2-G3, G6 on G3-G1.
-// Stiffness: the three-point rule at (1/6, 1/6), (2/3, 1/6), (1/6, 2/3), weights 1/6 each (exact for quadratics: the
-// membrane and the bending exactly, the transverse shear reduced). Mass and pressure: the seven-point rule exact for
-// quintics (Hammer, Marlowe & Stroud, "Numerical integration over simplexes and cones", Math. Tables Aids Comput. 10
-// (1956) 130-137; tabulated by Cowper, IJNME 7 (1973) 405-408).
+// Stiffness, mass and pressure: the seven-point rule exact for quintics (Hammer, Marlowe & Stroud, "Numerical
+// integration over simplexes and cones", Math. Tables Aids Comput. 10 (1956) 130-137; tabulated by Cowper, IJNME 7
+// (1973) 405-408): the tied strains of the element (MindlinShell) are integrated in full.
 struct QuadraticTriangleShape
 {
     static constexpr std::size_t NODES = 6;
@@ -61,9 +63,11 @@ struct QuadraticTriangleShape
     static constexpr double CENTRE_ETA = 1.0 / 3.0;
 
     [[nodiscard]] static ShapeValues<6> at(double xi, double eta);
-    [[nodiscard]] static std::array<QuadraturePoint, 3> rule();
+    [[nodiscard]] static std::array<QuadraturePoint, 7> rule() { return massRule(); }
     [[nodiscard]] static std::array<QuadraturePoint, 7> massRule();
     static constexpr double PARENT_AREA = 0.5;
+    // The membrane strains and the transverse shears are tied (MindlinShell).
+    static constexpr bool HAS_TIED_STRAINS = true;
 };
 
 } // namespace oos::elements

@@ -84,11 +84,4 @@ ShapeValues<6> QuadraticTriangleShape::at(double xi, double eta)
     return s;
 }
 
-std::array<QuadraturePoint, 3> QuadraticTriangleShape::rule()
-{
-    constexpr double SIXTH = 1.0 / 6.0;
-    return {QuadraturePoint{SIXTH, SIXTH, SIXTH}, QuadraturePoint{2.0 / 3.0, SIXTH, SIXTH},
-            QuadraturePoint{SIXTH, 2.0 / 3.0, SIXTH}};
-}
-
 } // namespace oos::elements

@@ -28,7 +28,8 @@ have their full names in `paramsTable`, such as `WeightToMass` and `ShellQuad4Fo
   properties), `FastenerPiercingTable` (the piercing points of Fastener and Weld: O_o_Reader's `fastenerPiercings`,
   with the grid points and shape functions of the shells pierced, in the layout the elements read), `ContactTable`
   (glued contact: the node pairs, read as the two surfaces near each other, the glue parameters, the pairs a BCONTACT
-  selects), `CoordinateSystemTable`.
+  selects), `CoordinateSystemTable`; the normals the ShellNormal cards give at grid points (`shellNormals`, read
+  through its contract by the ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6).
 - `snapshot/`: `ModelSnapshot` (immutable, borrowed), `SnapshotBuilder` (takes the tables over, checks their contracts,
   builds), `SnapshotDiff` (what changed between two snapshots: versions, component and load group stamps),
   `SupportCatalog` (the cards and field values the solver supports, and the `SupportReport` of a snapshot),

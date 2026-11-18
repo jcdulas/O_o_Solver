@@ -35,15 +35,9 @@ struct IgnoredParameter
     std::string_view reason;
 };
 
-// ShellDrillingStiffness: the scale of a drilling penalty on shells, which no shell of this version has: the
-// ShellQuad4Drilling and ShellTria3Drilling take a membrane with a drilling DOF, the other shells no stiffness for the
-// rotation about their normal.
-constexpr std::array<IgnoredParameter, 1> IGNORED_PARAMETERS{IgnoredParameter{
-    "ShellDrillingStiffness",
-    "no shell element of O_o_Solver has a drilling penalty: the ShellQuad4, ShellTria3, ShellQuad8 and "
-    "ShellTria6 have no stiffness for the rotation about their normal (the automatic constraint "
-    "of singular degrees of freedom, PARAM AutoSingularityConstr, removes it on a flat mesh), and the "
-    "ShellQuad4Drilling and ShellTria3Drilling have their own drilling membrane"}};
+// None in this version (ShellDrillingStiffness is the drilling factor of the ShellQuad4, ShellTria3, ShellQuad8 and
+// ShellTria6: elements::ShellDirectors).
+constexpr std::array<IgnoredParameter, 0> IGNORED_PARAMETERS{};
 
 // One warning per ignored PARAM the model gives, in the Bulk Data or in any Case Control section.
 void reportIgnoredParameters(const input::ModelSnapshot& snapshot, std::vector<base::Diagnostic>& ignored)
@@ -106,6 +100,7 @@ input::SupportCatalog staticSupportCatalog(const elements::ElementRegistry& regi
                                         "NodeDefaults",
                                         "ScalarPoint",
                                         "ExtraPoint",
+                                        "ShellNormal",
                                         "RectFrame1",
                                         "RectFrame2",
                                         "RectFrame3",

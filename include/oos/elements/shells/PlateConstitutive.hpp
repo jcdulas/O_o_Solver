@@ -24,6 +24,9 @@
 namespace oos::elements
 {
 
+// The default of the drilling factor c_d: PARAM ShellDrillingStiffness 100, times 1e-6.
+inline constexpr double DEFAULT_SHELL_DRILLING_FACTOR = 1.0e-4;
+
 // A shell section in its material frame, as the kernels read it.
 template <typename T>
 struct PlateSectionValues
@@ -43,6 +46,8 @@ struct PlateSectionValues
     T shearRatio = T(SHELL_PROP_DEFAULT_SHEAR_RATIO);     // TS/T
     T density{};
     T nonStructuralMass{};
+    // c_d, the drilling factor of the model (ShellDirectors.hpp).
+    double drillingFactor = DEFAULT_SHELL_DRILLING_FACTOR;
 };
 
 // The section values of a resolved section (in its material frame: not rotated).
@@ -66,6 +71,9 @@ struct PlateConstitutive
     // The angle of the material x axis from the element x axis (radians): the kernels whose points have a frame of
     // their own (ShellQuad4 on a warped element) turn the data from the element frame to it.
     double materialAngle = 0.0;
+    // c_d: the stiffness of the rotation about the director is c_d A33 (ω − θ_n)² per unit area
+    // (docs/shell-quad4-formulation.md, section 8); 0: none.
+    double drillingFactor = DEFAULT_SHELL_DRILLING_FACTOR;
     Matrix3<T> membrane; // G1 in the element frame
     Matrix3<T> bending;  // G2
     Matrix3<T> coupling; // G4 (ShellProp MID4 sign)

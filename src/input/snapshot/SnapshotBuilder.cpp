@@ -364,6 +364,8 @@ ModelSnapshot SnapshotBuilder::takeAll()
         parts.laminateSummary.emplace(readTable(TableRole::LaminateSummary, std::move(*summary)));
     if (auto sections = take(TableRole::Sections))
         parts.sections.emplace(std::move(*sections));
+    if (auto normals = take(TableRole::ShellNormals))
+        parts.shellNormals.emplace(readTable(TableRole::ShellNormals, std::move(*normals)));
     if (auto piercings = take(TableRole::FastenerPiercings))
         parts.fastenerPiercings.emplace(std::move(*piercings));
     if (auto supports = take(TableRole::Supports))

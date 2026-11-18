@@ -112,41 +112,46 @@ CHECK_CASE("shellQuad4: a rigid motion of a warped element gives no force, with 
 
 CHECK_CASE("shellQuad4: the loads of a free thermal expansion are balanced by it and leave no force in the element")
 {
-    // A flat element under the uniform free strain ε_x = ε_y = e: the displacements u = e x, v = e y are its own
-    // equilibrium (K q = f) and the recovered membrane forces vanish.
+    // An element, flat or warped, under the uniform free strain ε_x = ε_y = e: the homothety u = e x is its own
+    // equilibrium (K q = f) and the recovered forces, moments and stresses vanish. On the warped element the free
+    // strain of the dilatation is the strain of the homothety, which has a curvature there (ShellQuad4Kernel.hpp).
     constexpr double EXPANSION = 1.0e-3;
-    const ShellQuad4::Geometry geometry = quadrilateral(0.0);
     const PlateConstitutive<double> section = isotropicSection(true);
     PlateThermalStrain thermal;
     thermal.membrane = {EXPANSION, EXPANSION, 0.0};
     thermal.isZero = false;
-    std::array<double, DOFS> q{};
-    for (std::size_t a = 0; a < 4; ++a)
+    for (const double warp : {0.0, 0.1})
     {
-        q[6 * a + 0] = EXPANSION * geometry.position[a][0];
-        q[6 * a + 1] = EXPANSION * geometry.position[a][1];
-    }
-    const auto k = ShellQuad4::stiffness(geometry, section, UNIFORM);
-    const std::array<double, DOFS> loads = ShellQuad4::thermalLoads(geometry, section, UNIFORM, thermal);
-    const double scale = YOUNG * THICKNESS * EXPANSION;
-    for (std::size_t i = 0; i < DOFS; ++i)
-    {
-        double force = 0.0;
-        for (std::size_t j = 0; j < DOFS; ++j)
-            force += k(i, j) * q[j];
-        runner.expect(std::fabs(force - loads[i]) < 1.0e-10 * scale,
-                      "DOF " + std::to_string(i) + ": K q = " + std::to_string(force) + ", load " +
-                          std::to_string(loads[i]));
-    }
-    const std::array<double, 2> fibres{-0.5 * THICKNESS, 0.5 * THICKNESS};
-    const auto recovery = ShellQuad4::recovery(geometry, section, UNIFORM, fibres, thermal);
-    for (std::size_t row = 0; row < 3; ++row)
-    {
-        double force = recovery(oos::elements::centre_row::MEMBRANE_FORCE + row, DOFS);
-        for (std::size_t j = 0; j < DOFS; ++j)
-            force += recovery(oos::elements::centre_row::MEMBRANE_FORCE + row, j) * q[j];
-        runner.expect(std::fabs(force) < 1.0e-10 * scale, "membrane force " + std::to_string(row) + " is " +
-                                                              std::to_string(force));
+        const ShellQuad4::Geometry geometry = quadrilateral(warp);
+        std::array<double, DOFS> q{};
+        for (std::size_t a = 0; a < 4; ++a)
+            for (std::size_t k = 0; k < 3; ++k)
+                q[6 * a + k] = EXPANSION * geometry.position[a][k];
+        const auto k = ShellQuad4::stiffness(geometry, section, UNIFORM);
+        const std::array<double, DOFS> loads = ShellQuad4::thermalLoads(geometry, section, UNIFORM, thermal);
+        const double scale = YOUNG * THICKNESS * EXPANSION;
+        for (std::size_t i = 0; i < DOFS; ++i)
+        {
+            double force = 0.0;
+            for (std::size_t j = 0; j < DOFS; ++j)
+                force += k(i, j) * q[j];
+            runner.expect(std::fabs(force - loads[i]) < 1.0e-10 * scale,
+                          "warp " + std::to_string(warp) + ", DOF " + std::to_string(i) + ": K q = " +
+                              std::to_string(force) + ", load " + std::to_string(loads[i]));
+        }
+        const std::array<double, 2> fibres{-0.5 * THICKNESS, 0.5 * THICKNESS};
+        const auto recovery = ShellQuad4::recovery(geometry, section, UNIFORM, fibres, thermal);
+        for (std::size_t row = 0; row < oos::elements::centre_row::MEMBRANE_STRAIN; ++row)
+        {
+            double value = recovery(row, DOFS);
+            for (std::size_t j = 0; j < DOFS; ++j)
+                value += recovery(row, j) * q[j];
+            // the stresses are per unit thickness against the forces
+            const double rowScale = row >= oos::elements::centre_row::STRESS_FIBER1 ? YOUNG * EXPANSION : scale;
+            runner.expect(std::fabs(value) < 1.0e-10 * rowScale,
+                          "warp " + std::to_string(warp) + ", force or stress row " + std::to_string(row) + " is " +
+                              std::to_string(value));
+        }
     }
 }
 

@@ -164,6 +164,7 @@ PlateSectionValues<Complex> complexStepped(const PlateSectionValues<double>& val
     result.shearRatio = complexStepped(values.shearRatio, rates.shearRatio);
     result.density = complexStepped(values.density, rates.density);
     result.nonStructuralMass = complexStepped(values.nonStructuralMass, rates.nonStructuralMass);
+    result.drillingFactor = values.drillingFactor;
     return result;
 }
 
@@ -176,6 +177,7 @@ PlateConstitutive<T> plateConstitutiveOf(const PlateSectionValues<T>& section, d
     c.hasCoupling = section.hasCoupling;
     c.hasShearFlexibility = section.hasShearFlexibility;
     c.materialAngle = materialAngle;
+    c.drillingFactor = section.drillingFactor;
     c.bendingRatio = section.bendingRatio;
     c.shearRatio = section.shearRatio;
     // ε_material = U3 ε_element, so G_element = U3ᵀ G U3.

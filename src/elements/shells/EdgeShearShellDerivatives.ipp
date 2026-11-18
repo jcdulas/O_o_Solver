@@ -30,6 +30,7 @@ inline PlateConstitutive<SecondOrderScalar> constantConstitutive(const PlateCons
 {
     PlateConstitutive<SecondOrderScalar> result;
     result.materialAngle = source.materialAngle;
+    result.drillingFactor = source.drillingFactor;
     result.hasMembrane = source.hasMembrane;
     result.hasBending = source.hasBending;
     result.hasCoupling = source.hasCoupling;

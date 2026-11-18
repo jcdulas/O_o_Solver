@@ -34,7 +34,14 @@ namespace oos::elements
 //   plane and joined to its grid points by rigid offsets;
 // - 7: the ShellQuad4 of docs/shell-quad4-formulation.md and the ShellTria3 of docs/shell-tria3-formulation.md
 //   (enhanced strains, a stabilised rotation about the normal, the rotary inertia in the coupled mass, no transverse
-//   shear flexibility without a shear material).
-inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 7;
+//   shear flexibility without a shear material);
+// - 8: the ShellTria3 on the director kinematics of the ShellQuad4; the normals of the grid points shared between
+//   the ShellQuad4 and ShellTria3 (PARAM ShellNormalAngle); their drilling factor from PARAM ShellDrillingStiffness
+//   (1e-4 by default, 4e-4 before); the thermal loads of a dilatation as the loads of the homothety of the element;
+// - 9: the ShellQuad8 and ShellTria6 of docs/shell-quad8-tria6-formulation.md: the normals of the grid points and the
+//   drilling factor of the ShellQuad4 and ShellTria3 (the normals of the four cards grouped in direction), the tied
+//   transverse shears and membrane strains of the ShellTria6 with the seven-point rule, the thermal loads of a
+//   dilatation as the loads of the homothety; the x axis of a ShellQuad8 along its edge G1-G2.
+inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 9;
 
 } // namespace oos::elements

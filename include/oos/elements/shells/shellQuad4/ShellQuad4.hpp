@@ -47,7 +47,9 @@ struct ShellQuad4Geometry
     base::Mat3 axes = base::Mat3::identity();  // columns x, y, z of the element frame, in basic
     base::Vec3 centre;                         // the mean of the four grid points, in basic
     std::array<Vector3<double>, 4> position{}; // x_i: the grid points in the element frame, from the centre
-    std::array<Vector3<double>, 4> normal{};   // n_i: the unit directors in the element frame
+    // n_i: the unit directors in the element frame: the normal of the bilinear surface at each node, or the normal
+    // the grid point shares with the neighbouring elements (ShellDirectors.hpp).
+    std::array<Vector3<double>, 4> normal{};
     double meanWidthX = 0.0;                   // a = ½ |x2 + x3 − x1 − x4|
     double meanWidthY = 0.0;                   // b = ½ |y3 + y4 − y1 − y2|
     double userAngle = 0.0; // the reference direction (G1→G2 projected) from the element x axis, radians

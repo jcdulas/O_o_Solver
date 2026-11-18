@@ -4,10 +4,10 @@
 //
 // Formulation: MindlinShell<SerendipityQuadShape>, the eight-node degenerated shell, flat or curved (the serendipity
 // membrane and Reissner-Mindlin bending of a flat element, uniform reduced 2 × 2 integration (an isolated element
-// keeps the spurious mode of that rule; in a mesh it does not propagate), the membrane-bending coupling, no stiffness
-// for the rotation about the nodal director: no ShellDrillingStiffness), through the facets shared with the other
-// higher-order shell (HigherOrderShell.hpp, which says what is supported and refused).
-// Covered by the patch, rigid-body and convergence tests.
+// keeps the spurious modes of that rule; in a mesh they do not propagate), the membrane-bending coupling, the
+// directors and the drilling term of the ShellQuad4: ShellDirectors, docs/shell-quad8-tria6-formulation.md), through
+// the facets shared with the other higher-order shell (HigherOrderShell.hpp, which says what is supported and
+// refused). Covered by the patch, rigid-body and convergence tests.
 //
 // Facets: stiffness, mass, loads (pressure, thermal), recovery (centre and corner grid points; the plies of a
 // laminate at the centre), differential stiffness (the membrane resultants of the preload at the centre,

@@ -9,6 +9,7 @@
 // or second-order numbers, the grid point positions are real. A row of 24 values is a linear form of the local DOFs
 // (u, v, w, θx, θy, θz of each node, node by node, in the element frame).
 
+#include "../DirectorShellKinematics.hpp"
 #include "../EdgeShearShellSection.hpp"
 #include "oos/elements/shells/PlateConstitutive.hpp"
 #include "oos/elements/shells/ShellScalar.hpp"
@@ -44,12 +45,7 @@ inline constexpr double TWIST_FACTOR = 99.0;
 template <typename T>
 using Row = std::array<T, DOFS>;
 
-struct Shape
-{
-    std::array<double, NODES> value{};
-    std::array<double, NODES> dXi{};
-    std::array<double, NODES> dEta{};
-};
+using Shape = director_shell::Shape<NODES>;
 
 // N_i = ¼ (1 + ξ ξ_i)(1 + η η_i) and its derivatives.
 [[nodiscard]] inline Shape shapeAt(double xi, double eta)
@@ -73,162 +69,34 @@ template <typename T>
     return sum;
 }
 
-// The local frame of a point of the reference surface (document section 3): e3 the normal, e1 = e_y × e3 made
-// unit, e2 = e3 × e1 (rows of E), and j = ‖g1 × g2‖ at ζ = 0.
-struct Frame
-{
-    std::array<Vector3<double>, 3> axis{};
-    double area = 0.0; // j
-};
+// The kinematics of DirectorShellKinematics.hpp on the four nodes of the element.
+using Frame = director_shell::Frame;
 
 [[nodiscard]] inline Frame frameAt(const ShellQuad4Geometry& geometry, const Shape& shape)
 {
-    Vector3<double> g1{};
-    Vector3<double> g2{};
-    for (std::size_t i = 0; i < NODES; ++i)
-        for (std::size_t k = 0; k < 3; ++k)
-        {
-            g1[k] += shape.dXi[i] * geometry.position[i][k];
-            g2[k] += shape.dEta[i] * geometry.position[i][k];
-        }
-    const Vector3<double> normal = crossOf(g1, g2);
-    Frame frame;
-    frame.area = std::sqrt(dotOf(normal, normal));
-    frame.axis[2] = scaledBy(normal, 1.0 / frame.area);
-    frame.axis[0] = unitOf(crossOf(Vector3<double>{0.0, 1.0, 0.0}, frame.axis[2]));
-    frame.axis[1] = crossOf(frame.axis[2], frame.axis[0]);
-    return frame;
+    return director_shell::frameAt(geometry.position, shape);
 }
 
-// The covariant vectors g1 = X,ξ, g2 = X,η, g3 = X,ζ at (ξ, η, ζ), rows of J(ζ):
-// X = Σ N_i (x_i + ζ (t_i / 2) n_i).
 template <typename T>
 [[nodiscard]] Matrix3<T> covariantAt(const ShellQuad4Geometry& geometry, const std::array<T, NODES>& thickness,
                                      const Shape& shape, double zeta)
 {
-    Matrix3<T> j;
-    for (std::size_t i = 0; i < NODES; ++i)
-        for (std::size_t k = 0; k < 3; ++k)
-        {
-            const T fibre = 0.5 * thickness[i] * geometry.normal[i][k];
-            const T point = geometry.position[i][k] + zeta * fibre;
-            j(0, k) += shape.dXi[i] * point;
-            j(1, k) += shape.dEta[i] * point;
-            j(2, k) += shape.value[i] * fibre;
-        }
-    return j;
+    return director_shell::covariantAt(geometry.position, geometry.normal, thickness, shape, zeta);
 }
 
-// u,ξ, u,η and u,ζ at (ξ, η, ζ) as rows of the local DOFs (component c of derivative k at [k](c, dof)):
-// u = Σ N_i (u_i + ζ (t_i / 2) θ_i × n_i).
-template <typename T>
-[[nodiscard]] std::array<ScalarMatrix<T, 3, DOFS>, 3> displacementRowsAt(const ShellQuad4Geometry& geometry,
-                                                                        const std::array<T, NODES>& thickness,
-                                                                        const Shape& shape, double zeta)
-{
-    std::array<ScalarMatrix<T, 3, DOFS>, 3> rows;
-    for (std::size_t i = 0; i < NODES; ++i)
-    {
-        const Vector3<double>& n = geometry.normal[i];
-        // θ × n = S θ with S = [[0, n_z, −n_y], [−n_z, 0, n_x], [n_y, −n_x, 0]]
-        const std::array<std::array<double, 3>, 3> skew{{{0.0, n[2], -n[1]}, {-n[2], 0.0, n[0]}, {n[1], -n[0], 0.0}}};
-        const T half = 0.5 * thickness[i];
-        const std::array<double, 2> derivative{shape.dXi[i], shape.dEta[i]};
-        for (std::size_t c = 0; c < 3; ++c)
-        {
-            for (std::size_t k = 0; k < 2; ++k)
-                rows[k](c, 6 * i + c) += T(derivative[k]);
-            for (std::size_t r = 0; r < 3; ++r)
-            {
-                if (skew[c][r] == 0.0)
-                    continue;
-                for (std::size_t k = 0; k < 2; ++k)
-                    rows[k](c, 6 * i + 3 + r) += (derivative[k] * zeta * skew[c][r]) * half;
-                rows[2](c, 6 * i + 3 + r) += (shape.value[i] * skew[c][r]) * half;
-            }
-        }
-    }
-    return rows;
-}
-
-// The displacement gradient in the local frame at (ξ, η, ζ): L[a][b] = ∂u_b/∂x_a = (E J(ζ)⁻¹) [u,ξ; u,η; u,ζ] Eᵀ
-// (document section 3; the three rows u,ξ, u,η, u,ζ are kept).
-template <typename T>
-using Gradient = std::array<std::array<Row<T>, 3>, 3>;
-
-template <typename T>
-[[nodiscard]] Gradient<T> gradientAt(const ShellQuad4Geometry& geometry, const std::array<T, NODES>& thickness,
-                                     const Shape& shape, double zeta, const Frame& frame)
-{
-    const Matrix3<T> inverse = inverseOf(covariantAt(geometry, thickness, shape, zeta));
-    const std::array<ScalarMatrix<T, 3, DOFS>, 3> rows = displacementRowsAt(geometry, thickness, shape, zeta);
-    Gradient<T> gradient{};
-    for (std::size_t a = 0; a < 3; ++a)
-    {
-        // P_ak = Σ_m E_am (J⁻¹)_mk: the derivative along local axis a in terms of ξ, η, ζ
-        std::array<T, 3> p{};
-        for (std::size_t k = 0; k < 3; ++k)
-            for (std::size_t m = 0; m < 3; ++m)
-                p[k] += frame.axis[a][m] * inverse(m, k);
-        for (std::size_t b = 0; b < 3; ++b)
-            for (std::size_t dof = 0; dof < DOFS; ++dof)
-            {
-                T sum{};
-                for (std::size_t k = 0; k < 3; ++k)
-                    for (std::size_t c = 0; c < 3; ++c)
-                        sum += p[k] * frame.axis[b][c] * rows[k](c, dof);
-                gradient[a][b][dof] = sum;
-            }
-    }
-    return gradient;
-}
-
-// The membrane strains e0 and the curvatures κ of a point (document section 5), rows 0-2 and 3-5:
-// ε = (L11, L22, L12 + L21) at ζ = ±1, e0 = ½ (ε⁺ + ε⁻), κ = (ε⁺ − ε⁻) / (2 h), h = g3 · e3.
 template <typename T>
 [[nodiscard]] ScalarMatrix<T, 6, DOFS> planeRowsAt(const ShellQuad4Geometry& geometry,
                                                    const std::array<T, NODES>& thickness, const Shape& shape,
                                                    const Frame& frame)
 {
-    const Gradient<T> top = gradientAt(geometry, thickness, shape, 1.0, frame);
-    const Gradient<T> bottom = gradientAt(geometry, thickness, shape, -1.0, frame);
-    const Matrix3<T> middle = covariantAt(geometry, thickness, shape, 0.0);
-    T height{};
-    for (std::size_t k = 0; k < 3; ++k)
-        height += middle(2, k) * frame.axis[2][k];
-    const T curvatureScale = T(0.5) / height;
-    ScalarMatrix<T, 6, DOFS> rows;
-    for (std::size_t dof = 0; dof < DOFS; ++dof)
-    {
-        const std::array<T, 3> above{top[0][0][dof], top[1][1][dof], top[0][1][dof] + top[1][0][dof]};
-        const std::array<T, 3> below{bottom[0][0][dof], bottom[1][1][dof], bottom[0][1][dof] + bottom[1][0][dof]};
-        for (std::size_t r = 0; r < 3; ++r)
-        {
-            rows(r, dof) = 0.5 * (above[r] + below[r]);
-            rows(3 + r, dof) = (above[r] - below[r]) * curvatureScale;
-        }
-    }
-    return rows;
+    return director_shell::planeRowsAt(geometry.position, geometry.normal, thickness, shape, frame);
 }
 
-// The covariant transverse shears at ζ = 0 (document section 7): γ̃_α = g3 · u,α + g_α · Σ N_i (t_i / 2) θ_i × n_i.
 template <typename T>
 [[nodiscard]] std::array<Row<T>, 2> covariantShearAt(const ShellQuad4Geometry& geometry,
                                                     const std::array<T, NODES>& thickness, double xi, double eta)
 {
-    const Shape shape = shapeAt(xi, eta);
-    const Matrix3<T> j = covariantAt(geometry, thickness, shape, 0.0);
-    const std::array<ScalarMatrix<T, 3, DOFS>, 3> rows = displacementRowsAt(geometry, thickness, shape, 0.0);
-    std::array<Row<T>, 2> shear{};
-    for (std::size_t alpha = 0; alpha < 2; ++alpha)
-        for (std::size_t dof = 0; dof < DOFS; ++dof)
-        {
-            T sum{};
-            for (std::size_t c = 0; c < 3; ++c)
-                sum += j(2, c) * rows[alpha](c, dof) + j(alpha, c) * rows[2](c, dof);
-            shear[alpha][dof] = sum;
-        }
-    return shear;
+    return director_shell::covariantShearAt(geometry.position, geometry.normal, thickness, shapeAt(xi, eta));
 }
 
 // The covariant shears tied at the mid-sides (Dvorkin and Bathe, 1984): γ̃_ξ at (0, −1) and (0, 1), γ̃_η at (−1, 0)
@@ -285,25 +153,11 @@ template <typename T>
     return rows;
 }
 
-// The drilling term of a point (document section 8), at ζ = 0: r = ω − θ_n, ω = ½ (L12 − L21),
-// θ_n = Σ N_i (θ_i − θ̄) · n_i + θ̄ · e3, θ̄ the mean rotation of the nodes. Zero for a rigid motion.
 template <typename T>
 [[nodiscard]] Row<T> drillingRowAt(const ShellQuad4Geometry& geometry, const std::array<T, NODES>& thickness,
                                    const Shape& shape, const Frame& frame)
 {
-    const Gradient<T> gradient = gradientAt(geometry, thickness, shape, 0.0, frame);
-    Row<T> row{};
-    for (std::size_t dof = 0; dof < DOFS; ++dof)
-        row[dof] = 0.5 * (gradient[0][1][dof] - gradient[1][0][dof]);
-    // the coefficient of θ̄ in θ_n: e3 − Σ N_i n_i
-    Vector3<double> mean = frame.axis[2];
-    for (std::size_t i = 0; i < NODES; ++i)
-        for (std::size_t k = 0; k < 3; ++k)
-            mean[k] -= shape.value[i] * geometry.normal[i][k];
-    for (std::size_t i = 0; i < NODES; ++i)
-        for (std::size_t k = 0; k < 3; ++k)
-            row[6 * i + 3 + k] -= T(shape.value[i] * geometry.normal[i][k] + 0.25 * mean[k]);
-    return row;
+    return director_shell::drillingRowAt(geometry.position, geometry.normal, thickness, shape, frame);
 }
 
 // The angle from the element x axis to the local e1 of a point, about the normal: the section, given in the element
@@ -413,6 +267,20 @@ template <typename T>
             point.enhanced = enhancedAt(centre, xi, eta, point.frame.area);
         }
     return points;
+}
+
+// The strains (e0, κ) at a point of the homothety u = x of the element (DirectorShellKinematics.hpp).
+template <typename T>
+[[nodiscard]] std::array<T, 6> dilatationStrainsOf(const ShellQuad4Geometry& geometry,
+                                                   const ScalarMatrix<T, 6, DOFS>& rows)
+{
+    return director_shell::dilatationStrainsOf(geometry.position, rows);
+}
+
+// The mean in-plane strain of a free thermal strain: its dilatation.
+[[nodiscard]] inline double dilatationOf(const PlateThermalStrain& thermal)
+{
+    return 0.5 * (thermal.membrane[0] + thermal.membrane[1]);
 }
 
 // The enhanced part of the stiffness (document section 9): K_dα = Σ j Bᵀ C G and K_αα = Σ j Gᵀ C G, G applied to the

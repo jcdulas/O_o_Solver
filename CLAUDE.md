@@ -24,9 +24,11 @@ O_o_Reader module (table packages) and gives its results as plain arrays. Start 
    All numerical threading goes through `base::ThreadPool`. JS callbacks stay on the module's calling thread.
 7. **C++20 within what GCC 12 has**, `-Wall -Wextra -Wpedantic -Werror` natively. Names: types `CamelCase`, functions
    and variables `camelCase`, members `m_name`, constants `UPPER_CASE`; `.clang-format` (4 spaces, 120 columns).
-8. **ShellQuad4 follows [docs/shell-quad4-formulation.md](docs/shell-quad4-formulation.md) and ShellTria3
-   [docs/shell-tria3-formulation.md](docs/shell-tria3-formulation.md)** (the ShellQuad4 brought to three nodes);
-   ShellQuad4Drilling, ShellTria3Drilling and the other elements keep their own formulation.
+8. **ShellQuad4 follows [docs/shell-quad4-formulation.md](docs/shell-quad4-formulation.md), ShellTria3
+   [docs/shell-tria3-formulation.md](docs/shell-tria3-formulation.md)** (the ShellQuad4 brought to three nodes) **and
+   ShellQuad8 and ShellTria6 [docs/shell-quad8-tria6-formulation.md](docs/shell-quad8-tria6-formulation.md)** (the
+   same conventions on the quadratic elements); ShellQuad4Drilling, ShellTria3Drilling and the other elements keep
+   their own formulation.
 
 ## Build and test
 

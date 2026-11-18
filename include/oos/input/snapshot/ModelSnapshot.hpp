@@ -187,6 +187,11 @@ public:
     // points of fastenerPiercings with the shape functions of the elements pierced).
     [[nodiscard]] const SectionTable& sections() const;
     [[nodiscard]] const FastenerPiercingTable& fastenerPiercings() const;
+    // The normals the ShellNormal cards give at grid points (shellNormals), or nullptr when the model has none.
+    [[nodiscard]] const base::ContractReader* shellNormals() const noexcept
+    {
+        return m_shellNormals ? &*m_shellNormals : nullptr;
+    }
     // The FreeBodySupport and FreeBodySupportSet points (dofSetsTable), read through its contract by the solution
     // drivers.
     [[nodiscard]] const base::ContractReader& supports() const;
@@ -255,6 +260,7 @@ private:
         std::optional<base::ContractReader> laminatePlies;
         std::optional<base::ContractReader> laminateSummary;
         std::optional<SectionTable> sections;
+        std::optional<base::ContractReader> shellNormals;
         std::optional<FastenerPiercingTable> fastenerPiercings;
         std::optional<base::ContractReader> supports;
         std::optional<base::ContractReader> connectionNodes;
@@ -296,6 +302,7 @@ private:
     std::optional<base::ContractReader> m_laminatePlies;
     std::optional<base::ContractReader> m_laminateSummary;
     std::optional<SectionTable> m_sections;
+    std::optional<base::ContractReader> m_shellNormals;
     std::optional<FastenerPiercingTable> m_fastenerPiercings;
     std::optional<base::ContractReader> m_supports;
     std::optional<base::ContractReader> m_connectionNodes;

@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
-#include <numeric>
 #include <span>
 #include <string>
 #include <utility>
@@ -22,11 +21,11 @@ namespace
 
 // O_o_Reader gives 0 for a blank edge grid point.
 constexpr std::int32_t BLANK_GRID = 0;
-constexpr std::string_view QUADRILATERAL_CARD = "ShellQuad8";
-constexpr std::string_view TRIANGLE_CARD = "ShellTria6";
 
-// The element frame of the corners: the ShellQuad4 frame or the ShellTria3 frame, and the angle of the
-// edge G1→G2 from its x axis (the reference of THETA).
+// The element frame of the corners, its x axis along the edge G1→G2 (projected on the mean plane of the corners of
+// a quadrilateral, whose normal is along the cross product of its diagonals): the reference of THETA and the x axis
+// of the results, as for the ShellQuad4 and the ShellTria3. `edgeAngle` is the angle of the edge G1→G2 from the x
+// axis: zero.
 struct CornerFrame
 {
     bool isDegenerate = false;
@@ -43,9 +42,17 @@ template <std::size_t C>
     {
         const ShellQuad4DrillingGeometryResult geometry = buildShellQuad4DrillingGeometry(corners);
         frame.isDegenerate = geometry.problem == QuadGeometryProblem::DegenerateNormal;
-        frame.axes = geometry.geometry.axes;
         frame.centre = geometry.geometry.centre;
-        frame.edgeAngle = geometry.geometry.edgeAngle;
+        // The frame of the bisector of the diagonals, turned about its normal by the angle of the edge G1→G2.
+        const base::Mat3& bisector = geometry.geometry.axes;
+        const double cosine = std::cos(geometry.geometry.edgeAngle);
+        const double sine = std::sin(geometry.geometry.edgeAngle);
+        for (std::size_t r = 0; r < 3; ++r)
+        {
+            frame.axes(r, 0) = cosine * bisector(r, 0) + sine * bisector(r, 1);
+            frame.axes(r, 1) = -sine * bisector(r, 0) + cosine * bisector(r, 1);
+            frame.axes(r, 2) = bisector(r, 2);
+        }
     }
     else
     {
@@ -72,93 +79,6 @@ template <typename Shape>
                               "corners' plane, found it turned by ",
                               std::to_string(static_cast<int>(std::lround(degrees))),
                               " degrees; one quadratic element cannot follow so curved a surface: refine the mesh"});
-}
-
-// v in basic from the element frame of `axes`: E v.
-[[nodiscard]] base::Vec3 toBasic(const base::Mat3& axes, const base::Vec3& v)
-{
-    return {axes(0, 0) * v[0] + axes(0, 1) * v[1] + axes(0, 2) * v[2],
-            axes(1, 0) * v[0] + axes(1, 1) * v[1] + axes(1, 2) * v[2],
-            axes(2, 0) * v[0] + axes(2, 1) * v[1] + axes(2, 2) * v[2]};
-}
-
-// One node of one element at a grid point, with the element's own normal there (basic).
-struct NodeNormal
-{
-    std::int32_t gridRow = 0;
-    std::size_t slot = 0; // the node's index in the card's table (row · N + node)
-    bool isTriangle = false;
-    bool isCurved = false; // the element is curved
-    base::Vec3 normal;
-};
-
-// The own normals of every node of the elements of the batch of `card`, appended to `normals`.
-template <typename Shape>
-void collectNodeNormals(const SnapshotIndex& index, std::string_view card, bool isTriangle,
-                        std::vector<NodeNormal>& normals)
-{
-    const input::ElementBatch* batch = index.snapshot().findElementBatch(card);
-    if (batch == nullptr)
-        return;
-    const ElementBatchView view(*batch, index);
-    const ShellConnectivity connectivity(view);
-    for (std::int64_t row = 0; row < view.rowCount(); ++row)
-    {
-        const Resolution<HigherOrderShellGeometry<Shape::NODES>> geometry =
-            resolveHigherOrderShellGeometry<Shape>(view, connectivity, row);
-        if (!geometry)
-            continue; // check() reports it
-        for (std::size_t node = 0; node < Shape::NODES; ++node)
-            normals.push_back({geometry.value->nodes.rows[node], static_cast<std::size_t>(row) * Shape::NODES + node,
-                               isTriangle, geometry.value->isCurved,
-                               toBasic(geometry.value->axes, geometry.value->ownDirector[node])});
-    }
-}
-
-// The smooth groups of the normals of one grid point (HigherOrderShellDirectors): `group[i]` the group of normal i,
-// the connected sets of the relation "angle in direction below the sharp-edge angle" (a small union-find).
-[[nodiscard]] std::vector<std::size_t> smoothGroups(std::span<const NodeNormal> normals)
-{
-    const double sameDirectionCosine = std::cos(HIGHER_ORDER_SHELL_SHARP_EDGE_DEGREES * std::numbers::pi / 180.0);
-    std::vector<std::size_t> parent(normals.size()); // bounded by the elements at one grid point
-    std::iota(parent.begin(), parent.end(), std::size_t{0});
-    const auto root = [&](std::size_t i)
-    {
-        while (parent[i] != i)
-            i = parent[i];
-        return i;
-    };
-    for (std::size_t i = 0; i < normals.size(); ++i)
-        for (std::size_t j = i + 1; j < normals.size(); ++j)
-            if (std::abs(base::dot(normals[i].normal, normals[j].normal)) >= sameDirectionCosine)
-                parent[root(j)] = root(i);
-    std::vector<std::size_t> group(normals.size());
-    for (std::size_t i = 0; i < normals.size(); ++i)
-        group[i] = root(i);
-    return group;
-}
-
-// The shared director of the members of one smooth group, or nothing when its elements are all flat or its normals
-// agree to round-off.
-[[nodiscard]] std::optional<base::Vec3> groupDirector(std::span<const NodeNormal> normals,
-                                                      std::span<const std::size_t> members)
-{
-    const base::Vec3& first = normals[members[0]].normal;
-    const bool hasCurved =
-        std::any_of(members.begin(), members.end(), [&](std::size_t m) { return normals[m].isCurved; });
-    if (!hasCurved)
-        return std::nullopt;
-    bool isSame = true;
-    base::Vec3 sum{0.0, 0.0, 0.0};
-    for (const std::size_t m : members)
-    {
-        const base::Vec3& normal = normals[m].normal;
-        isSame = isSame && base::norm(base::cross(normal, first)) <= HIGHER_ORDER_SHELL_SAME_NORMAL_SINE;
-        sum = sum + (base::dot(normal, first) >= 0.0 ? normal : -normal);
-    }
-    if (isSame)
-        return std::nullopt;
-    return base::normalized(sum);
 }
 
 } // namespace
@@ -228,68 +148,6 @@ Resolution<HigherOrderShellGeometry<Shape::NODES>> resolveHigherOrderShellGeomet
         geometry.ownDirector = MindlinShell<Shape>::nodalDirectors(geometry.position);
     }
     return Result::success(std::move(geometry));
-}
-
-HigherOrderShellDirectors HigherOrderShellDirectors::build(const SnapshotIndex& index)
-{
-    HigherOrderShellDirectors directors;
-    std::vector<NodeNormal> normals; // bounded by the nodes of the higher-order shells
-    collectNodeNormals<SerendipityQuadShape>(index, QUADRILATERAL_CARD, false, normals);
-    collectNodeNormals<QuadraticTriangleShape>(index, TRIANGLE_CARD, true, normals);
-    if (const input::ElementBatch* batch = index.snapshot().findElementBatch(QUADRILATERAL_CARD))
-        directors.m_quadrilaterals.assign(static_cast<std::size_t>(batch->rowCount()) * SerendipityQuadShape::NODES,
-                                          base::Vec3{});
-    if (const input::ElementBatch* batch = index.snapshot().findElementBatch(TRIANGLE_CARD))
-        directors.m_triangles.assign(static_cast<std::size_t>(batch->rowCount()) * QuadraticTriangleShape::NODES,
-                                     base::Vec3{});
-    // Grid point by grid point, in a fixed order (the stable sort keeps the card, row and node order): the directors
-    // do not depend on the threads.
-    std::stable_sort(normals.begin(), normals.end(),
-                     [](const NodeNormal& a, const NodeNormal& b) { return a.gridRow < b.gridRow; });
-    std::size_t first = 0;
-    while (first < normals.size())
-    {
-        std::size_t last = first + 1;
-        while (last < normals.size() && normals[last].gridRow == normals[first].gridRow)
-            ++last;
-        const std::span<const NodeNormal> atGrid(normals.data() + first, last - first);
-        const std::vector<std::size_t> group = smoothGroups(atGrid);
-        for (std::size_t g = 0; g < atGrid.size(); ++g)
-        {
-            if (group[g] != g)
-                continue;                     // the group is handled from its root
-            std::vector<std::size_t> members; // bounded by the elements at one grid point
-            for (std::size_t m = 0; m < atGrid.size(); ++m)
-                if (group[m] == g)
-                    members.push_back(m);
-            if (members.size() < 2)
-                continue;
-            const std::optional<base::Vec3> shared = groupDirector(atGrid, members);
-            if (!shared)
-                continue;
-            for (const std::size_t m : members)
-                (atGrid[m].isTriangle ? directors.m_triangles : directors.m_quadrilaterals)[atGrid[m].slot] = *shared;
-        }
-        first = last;
-    }
-    return directors;
-}
-
-std::optional<base::Vec3> HigherOrderShellDirectors::sharedDirector(std::string_view card, std::int64_t row,
-                                                                    std::size_t node) const
-{
-    const bool isTriangle = card == TRIANGLE_CARD;
-    const std::vector<base::Vec3>& table = isTriangle ? m_triangles : m_quadrilaterals;
-    const std::size_t nodes = isTriangle ? QuadraticTriangleShape::NODES : SerendipityQuadShape::NODES;
-    const std::size_t slot = static_cast<std::size_t>(row) * nodes + node;
-    if (slot >= table.size() || table[slot] == base::Vec3{})
-        return std::nullopt;
-    return table[slot];
-}
-
-const HigherOrderShellDirectors& higherOrderShellDirectors(const SnapshotIndex& index)
-{
-    return index.computedOnce<HigherOrderShellDirectors>([&] { return HigherOrderShellDirectors::build(index); });
 }
 
 template Resolution<HigherOrderShellGeometry<SerendipityQuadShape::NODES>>

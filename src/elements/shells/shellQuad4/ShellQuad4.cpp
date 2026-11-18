@@ -60,10 +60,10 @@ ScalarMatrix<T, ShellQuad4::DOFS> ShellQuad4::stiffness(const Geometry& geometry
             }
             addCongruence(k, shear, point.section.h, T(point.weight));
         }
-        if (constitutive.hasMembrane && constitutive.hasBending)
+        if (constitutive.hasMembrane && constitutive.hasBending && constitutive.drillingFactor > 0.0)
         {
             const Row<T> drilling = drillingRowAt(geometry, thickness, shapeAt(point.xi, point.eta), point.frame);
-            const T scale = (DRILLING_FACTOR * point.weight) * point.section.a(2, 2);
+            const T scale = (constitutive.drillingFactor * point.weight) * point.section.a(2, 2);
             for (std::size_t i = 0; i < DOFS; ++i)
             {
                 if (drilling[i] == T(0.0))

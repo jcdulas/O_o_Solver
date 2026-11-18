@@ -133,7 +133,10 @@ std::array<double, ShellQuad4::DOFS> ShellQuad4::pressureLoads(const Geometry& g
 // Document section 12: the initial resultants S0 = C ε_th of the free thermal strain ε_th = (ε_m, gradient) at each
 // point (ε(z) = ε_m + z · gradient, given in the element frame and turned to the local frame of the point),
 //   f_d = Σ j Bᵀ S0,  f_α = Σ j Gᵀ S0,  f = f_d − K_dα K_αα⁻¹ f_α,
-// so that a free thermal expansion leaves the element without stress.
+// so that a free thermal expansion leaves the element without stress. The dilatation of ε_th (its mean in-plane
+// strain) is taken apart: its loads are K q for the homothety q of the element (addDilatationLoads), so that a warped
+// element, or one whose directors are the normals of its grid points, expands freely under a uniform temperature
+// rise as a flat one does; the rest of ε_th is taken as given.
 std::array<double, ShellQuad4::DOFS> ShellQuad4::thermalLoads(const Geometry& geometry,
                                                               const PlateConstitutive<double>& constitutive,
                                                               const std::array<double, NODES>& thickness,
@@ -165,6 +168,9 @@ std::array<double, ShellQuad4::DOFS> ShellQuad4::thermalLoads(const Geometry& ge
                 strain[3 + r] = gradient[r];
             }
         }
+        // the dilatation is taken apart (below)
+        strain[0] -= dilatationOf(thermal);
+        strain[1] -= dilatationOf(thermal);
         const std::array<double, 6> resultants = productOf(planeMatrixOf(point.section), strain);
         for (std::size_t dof = 0; dof < DOFS; ++dof)
             for (std::size_t r = 0; r < 6; ++r)
@@ -181,6 +187,8 @@ std::array<double, ShellQuad4::DOFS> ShellQuad4::thermalLoads(const Geometry& ge
     for (std::size_t dof = 0; dof < DOFS; ++dof)
         for (std::size_t q = 0; q < ENHANCED; ++q)
             loads[dof] -= enhanced.coupling(dof, q) * parameters(q, 0);
+    director_shell::addDilatationLoads(loads, stiffness(geometry, constitutive, thickness), geometry.position,
+                                       dilatationOf(thermal));
     return loads;
 }
 

@@ -50,9 +50,8 @@ enum class AnalysisKind : std::uint8_t
 // The support check of a run of `analysis`: that of a static run, with the eigenvalue method cards the analysis reads
 // accepted (SOL 103: LanczosEigenMethod and RealEigenMethod; SOL 105: LanczosEigenMethod and BucklingEigenMethod) and
 // the others ignored as a static run ignores them. The loads of a SOL 103 run are accepted and not applied (a vibration
-// analysis has no load). The PARAMs that change nothing in this version (ShellDrillingStiffness: no shell has a
-// drilling penalty) are listed in SupportReport::ignored as warnings
-// ("ignored-parameter"), whether given in the Bulk Data or in the Case Control.
+// analysis has no load). The PARAMs that change nothing in this version (none at present) are listed in
+// SupportReport::ignored as warnings ("ignored-parameter"), whether given in the Bulk Data or in the Case Control.
 [[nodiscard]] base::SupportReport checkSupport(const input::ModelSnapshot& snapshot,
                                                const elements::ElementRegistry& registry, AnalysisKind analysis);
 

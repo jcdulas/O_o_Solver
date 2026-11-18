@@ -4,6 +4,7 @@
 #include "oos/elements/shells/HigherOrderGeometry.hpp"
 #include "oos/elements/shells/MindlinShell.hpp"
 #include "oos/elements/shells/ShellConnectivity.hpp"
+#include "oos/elements/shells/ShellDirectors.hpp"
 #include "oos/elements/shells/ShellNodeFrames.hpp"
 #include "oos/elements/shells/ShellRecovery.hpp"
 #include "oos/elements/shells/ShellSection.hpp"
@@ -20,30 +21,34 @@ namespace oos::elements
 //   | ShellQuad8 | EID | PID | G1 | G2 | G3 | G4 | G5 | G6 | G7 | G8 | T1 | T2 | T3 | T4 | THETA or MCID | ZOFFS | TFLAG
 //   | | ShellTria6 | EID | PID | G1 | G2 | G3 | G4 | G5 | G6 | THETA or MCID | ZOFFS | T1 | T2 | T3 | TFLAG |
 //
-// The element frame is that of the corners (the ShellQuad4 frame of the mean plane for the ShellQuad8, the ShellTria3
-// frame for the ShellTria6), the origin at the mean of the corners; the material axis, ZOFFS, the corner thicknesses and
-// the sections as for the ShellQuad4 and the ShellTria3 (the material angle measured from G1→G2 in the element plane, or
-// the MCID x axis projected on it, not along the lines of constant ξ of the element: a design choice of this project).
+// The element frame is that of the corners: z along the cross product of the diagonals of a ShellQuad8 (the normal of
+// the corners of a ShellTria6), x along the edge G1→G2 projected on the plane normal to z, the origin at the mean of
+// the corners. The material axis, the x axis of the results, ZOFFS, the corner thicknesses and the sections are as for
+// the ShellQuad4 and the ShellTria3 (the material angle measured from G1→G2 in the element plane, or the MCID x axis
+// projected on it, not along the lines of constant ξ of the element: a design choice of this project).
 //
 // Flat and curved elements: an element whose nodes are all within HIGHER_ORDER_SHELL_FLATNESS of its size from the
 // mean plane of its corners is flat, its nodes projected on that plane (HigherOrderGeometry); any other is curved,
-// MindlinShell then the degenerated shell of its nodes as given. The director of each node is the one its grid point
-// shares with the other ShellQuad8 and ShellTria6 of its smooth group there (HigherOrderShellDirectors: the mean of their
-// own normals, separate across a fold, a T-junction or a stiffener), or the element's own normal (that of its
-// isoparametric surface, n on a flat element) where it is alone in its group or where the group's normals agree to
-// round-off: a flat mesh is then the Mindlin plate of the shape, bit for bit. The stresses, strains and forces of a
+// MindlinShell then the degenerated shell of its nodes as given. The director of each node is the normal its grid
+// point shares with the other ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6 of its smooth group there, or is given
+// by a ShellNormal card (ShellDirectors: the mean of their own normals within PARAM ShellNormalAngle, separate across
+// a fold, a T-junction or a stiffener), or the element's own normal (that of its isoparametric surface, n on a flat
+// element) where it is alone in its group or where the group's normals agree to round-off: a flat mesh is then the
+// Mindlin plate of the shape. The stresses, strains and forces of a
 // place are in its tangent frame: e3 the normal of the surface there, e1 the element x axis projected on the tangent
 // plane, e2 = e3 × e1 (the element frame on a flat element); the material axis is at the material angle from e1. ZOFFS
 // moves each node along its director (u_ref = u + θ × ZOFFS·ν_i: ShellNodeFrames::buildWithNodeOffsets), and the
 // reference surface with it (X_i + ZOFFS·ν_i), unless every director is n (ShellNodeFrames::build).
 //
-// The rotation about a node's director takes no stiffness (MindlinShell). Where the elements of a grid point share
-// one director (a flat mesh, a smooth curved mesh), that rotation is singular, and the automatic constraint of
-// singular DOFs (AutoSingularityConstr) removes it, along a component axis or, when the director is skewed in the
-// displacement system, by constraining the component best aligned with it (assembly::GridPointSingularities; exact, the
-// direction having no stiffness). Where elements of different directions meet (a fold, a stiffener, a ShellQuad4 at a
-// ShellQuad8), each holds the others' rotation by its bending, and nothing is constrained. ShellDrillingStiffness plays
-// no part.
+// The rotation about a node's director is held by the drilling term of the element (MindlinShell), c_d = 1e-6 × PARAM
+// ShellDrillingStiffness (ShellDirectors), as for the ShellQuad4 and the ShellTria3: a stabilisation, so that an
+// inertia or a moment about the normal put on one grid point of a shell is held by it alone (a modal analysis points
+// out the PointMassInertia in that case: solutions::AnalysisModel). With ShellDrillingStiffness zero or negative, or
+// a section without MID1 or without MID2, that rotation has no stiffness where the elements of a grid point share one
+// director (a flat mesh, a smooth curved mesh), and the automatic constraint of singular DOFs (AutoSingularityConstr)
+// removes it, along a component axis or, when the director is skewed in the displacement system, by constraining the
+// component best aligned with it (assembly::GridPointSingularities; exact, the direction having no stiffness). Where
+// elements of different directions meet (a fold, a stiffener), each holds the others' rotation by its bending.
 //
 // Not supported (refused with a diagnostic): an element without all its edge grid points (a ShellQuad4 or ShellTria3
 // serves there), a map whose Jacobian on the element plane is not positive (an edge node far from the middle third of
@@ -61,7 +66,7 @@ struct HigherOrderShellColumns
     std::span<const double> offset;
     std::span<const std::int32_t> thicknessFlag;
     base::FixedListView<double> cornerThickness;
-    const HigherOrderShellDirectors* directors; // the directors shared at the grid points of the snapshot
+    const ShellDirectors* directors; // the normals shared at the grid points of the snapshot, the drilling factor
 
     explicit HigherOrderShellColumns(const ElementBatchView& view);
 };
@@ -84,10 +89,11 @@ struct HigherOrderShellData
     std::array<std::int32_t, N> gridIds{};
     ShellNodeFrames<N> frames;
     double materialAngle = 0.0;
+    double drillingFactor = 0.0; // c_d of the model (ShellDirectors)
 
     [[nodiscard]] MindlinShell<Shape> shell() const
     {
-        return MindlinShell<Shape>(position, director, section, thickness);
+        return MindlinShell<Shape>(position, director, section, thickness, drillingFactor);
     }
 };
 

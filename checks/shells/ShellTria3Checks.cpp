@@ -38,7 +38,7 @@ std::array<std::array<double, 3>, 3> positionsOf(const ShellTria3::Geometry& geo
 {
     std::array<std::array<double, 3>, 3> position{};
     for (std::size_t a = 0; a < 3; ++a)
-        position[a] = {geometry.x[a], geometry.y[a], 0.0};
+        position[a] = geometry.position[a];
     return position;
 }
 
@@ -52,11 +52,11 @@ struct ReferenceValues
 // (E = 1000, ν = 0.3, t = 0.05), from an independent implementation of docs/shell-tria3-formulation.md.
 const std::array<ReferenceValues, 2> REFERENCE{{
     {true,
-     {9.176215838e-04, 9.176215838e-04, 5.950790620e-03, 6.213710696e-03, 1.218425823e-02, 1.436811758e-02,
-      2.426647736e-02, 8.562176106e-02, 2.097010749e-01, 2.979552950e+01, 3.463254986e+01, 6.915264118e+01}},
+     {3.452772614e-04, 3.452772614e-04, 4.584678133e-03, 5.950790620e-03, 6.213710696e-03, 1.436811758e-02,
+      2.426647736e-02, 8.562176106e-02, 2.097010749e-01, 2.979552950e+01, 3.463211936e+01, 6.915264118e+01}},
     {false,
-     {9.176215838e-04, 9.176215838e-04, 5.950907217e-03, 6.220952221e-03, 1.218425823e-02, 1.436816311e-02,
-      2.502438656e-02, 8.613741876e-02, 2.116889453e-01, 2.979552950e+01, 3.463254986e+01, 6.915264118e+01}},
+     {3.452772614e-04, 3.452772614e-04, 4.584678133e-03, 5.950907217e-03, 6.220952221e-03, 1.436816311e-02,
+      2.502438656e-02, 8.613741876e-02, 2.116889453e-01, 2.979552950e+01, 3.463211936e+01, 6.915264118e+01}},
 }};
 constexpr double REFERENCE_MASS_TRACE = 4.040305034e-02;
 
@@ -138,6 +138,51 @@ CHECK_CASE("shellTria3: the eigenvalues of the stiffness and the trace of the ma
         runner.expectNear(lumped(i, i), i % 6 < 3 ? third : 0.0, 1.0e-14, "lumped mass of DOF " + std::to_string(i));
 }
 
+CHECK_CASE("shellTria3: directors that are not the normal of the triangle give the values of the formulation")
+{
+    // The scalene triangle with a director at each node 6 to 10 degrees off its normal, as the normals its grid points
+    // would share with neighbouring elements: the twelve non-zero eigenvalues of the stiffness, from an independent
+    // implementation, six zero-energy modes, and no force under a rigid motion.
+    const std::array<oos::base::Vec3, 3> directors{
+        oos::base::Vec3{0.11634746723402964, -0.26768324260002146, 0.95645645405285662},
+        oos::base::Vec3{-0.06255936396723194, -0.10466846902744856, 0.99253757489148253},
+        oos::base::Vec3{0.049310513060364561, -0.13482329824164022, 0.98964193097956865}};
+    const std::array<double, 12> expected{3.412781254e-04, 3.450049511e-04, 4.378774519e-03, 5.975466350e-03,
+                                          6.544627910e-03, 1.462007979e-02, 2.443904227e-02, 8.569121971e-02,
+                                          2.105586843e-01, 2.979652551e+01, 3.463327897e+01, 6.915416522e+01};
+    ShellTria3::Geometry geometry = scalene();
+    for (std::size_t a = 0; a < 3; ++a)
+        for (std::size_t k = 0; k < 3; ++k)
+            geometry.normal[a][k] = directors[a][0] * geometry.axes(0, k) + directors[a][1] * geometry.axes(1, k) +
+                                    directors[a][2] * geometry.axes(2, k);
+    const auto k = ShellTria3::stiffness(geometry, isotropicSection(true), UNIFORM);
+    const std::vector<double> values = sortedEigenvalues<DOFS>(k);
+    for (std::size_t mode = 0; mode < 6; ++mode)
+        runner.expect(std::fabs(values[mode]) < 1.0e-10 * values.back(),
+                      "zero-energy mode " + std::to_string(mode + 1) + " has the eigenvalue " +
+                          std::to_string(values[mode]));
+    for (std::size_t mode = 0; mode < expected.size(); ++mode)
+        runner.expect(std::fabs(values[6 + mode] / expected[mode] - 1.0) < 5.0e-9,
+                      "eigenvalue " + std::to_string(mode + 1) + " is " + std::to_string(values[6 + mode]) +
+                          ", expected " + std::to_string(expected[mode]));
+    for (std::size_t mode = 0; mode < 6; ++mode)
+    {
+        std::array<double, 3> shift{};
+        std::array<double, 3> turn{};
+        (mode < 3 ? shift : turn)[mode % 3] = 1.0;
+        const std::array<double, DOFS> q = rigidMotion<ShellTria3::NODES>(positionsOf(geometry), shift, turn);
+        for (std::size_t i = 0; i < DOFS; ++i)
+        {
+            double force = 0.0;
+            for (std::size_t j = 0; j < DOFS; ++j)
+                force += k(i, j) * q[j];
+            runner.expect(std::fabs(force) < 1.0e-10 * values.back(),
+                          "rigid motion " + std::to_string(mode + 1) + " gives the force " + std::to_string(force) +
+                              " on DOF " + std::to_string(i));
+        }
+    }
+}
+
 CHECK_CASE("shellTria3: a rigid motion gives no force, with or without shear flexibility")
 {
     const ShellTria3::Geometry geometry = scalene();
@@ -182,8 +227,8 @@ CHECK_CASE("shellTria3: the loads of a free thermal expansion are balanced by it
     std::array<double, DOFS> q{};
     for (std::size_t a = 0; a < 3; ++a)
     {
-        const double x = geometry.x[a];
-        const double y = geometry.y[a];
+        const double x = geometry.position[a][0];
+        const double y = geometry.position[a][1];
         q[6 * a + 0] = EXPANSION * x;
         q[6 * a + 1] = EXPANSION * y;
         q[6 * a + 2] = -0.5 * GRADIENT * (x * x + y * y);

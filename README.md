@@ -66,9 +66,13 @@ ShellQuad4 is the four-node shell of [docs/shell-quad4-formulation.md](docs/shel
 at the nodes, enhanced membrane strains and curvatures, transverse shear tied at the mid-sides with its residual
 bending flexibility, a stabilised rotation about the normal), and ShellTria3 the same element brought to three nodes
 ([docs/shell-tria3-formulation.md](docs/shell-tria3-formulation.md)), so that two triangles on the grid points of a
-quadrilateral behave closely to it; that document gives the measured closeness and its limits. Both are written from
-methods of the open literature, cited in the documents; the choices of this project are listed in
-[src/elements/README.md](src/elements/README.md).
+quadrilateral behave closely to it; that document gives the measured closeness and its limits. ShellQuad8 and
+ShellTria6 are the shells with a director at each node on the quadratic shape functions
+([docs/shell-quad8-tria6-formulation.md](docs/shell-quad8-tria6-formulation.md)), with the same conventions: the
+normals shared at the grid points, the stabilised rotation about the normal, the free thermal dilatation; the
+eight-node element with uniform reduced integration, the six-node element with tied transverse shears and membrane
+strains. All are written from methods of the open literature, cited in the documents; the choices of this project
+are listed in [src/elements/README.md](src/elements/README.md).
 
 ## Element formulations
 

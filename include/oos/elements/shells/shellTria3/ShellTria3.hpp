@@ -1,21 +1,20 @@
 #pragma once
 
 // The ShellTria3: a linear three-node shell with 18 degrees of freedom, its stiffness, mass, loads, centre recovery
-// and membrane-stress differential stiffness. It is the ShellQuad4 (docs/shell-quad4-formulation.md) brought to three
-// nodes, so that two triangles on the grid points of a quadrilateral behave closely to it; the formulation and the
-// measured closeness are in docs/shell-tria3-formulation.md. From the methods of the open literature:
-// - constant membrane strains and curvatures on the three nodes (the rotations move a fibre as in the ShellQuad4);
-// - transverse shear strains tied at the mid-sides: the tangential shear of each side gives a constant shear and one
+// and membrane-stress differential stiffness. It is the ShellQuad4 (docs/shell-quad4-formulation.md) on three nodes,
+// so that two triangles on the grid points of a quadrilateral behave closely to it; the formulation and the measured
+// closeness are in docs/shell-tria3-formulation.md. From the methods of the open literature:
+// - the kinematics of the ShellQuad4, with a director at each node (DirectorShellKinematics.hpp): the strains are
+//   those of linear shape functions, constant on a triangle whose directors are its normal;
+// - transverse shear strains tied at the mid-sides: the covariant shear along each side gives a field with one
 //   rotational part (the lowest-order field with continuous tangential components: J.-C. Nédélec, Mixed finite elements
-//   in R³, Numer. Math. 35 (1980); as a plate element: P.-S. Lee, K.-J. Bathe, Development of MITC isotropic
+//   in R³, Numer. Math. 35 (1980); as a shell element: P.-S. Lee, K.-J. Bathe, Development of MITC isotropic
 //   triangular shell finite elements, Comput. Struct. 82 (2004));
 // - the residual bending flexibility of the transverse shear (R. H. MacNeal, A simple quadrilateral shell element,
 //   Comput. Struct. 8 (1978)), with the factors of the ShellQuad4 and the widths of the parallelogram the triangle is
 //   half of;
-// - the stabilisation of the rotation about the normal of the ShellQuad4 (T. J. R. Hughes, F. Brezzi, On drilling
-//   degrees of freedom, Comput. Methods Appl. Mech. Eng. 72 (1989)), with a stiffness of the order of the bending one
-//   beside its membrane term: the rotation about the normal of a flat element is a bending rotation for the
-//   neighbours it meets at an angle.
+// - the stabilisation of the rotation about the director of the ShellQuad4 (T. J. R. Hughes, F. Brezzi, On drilling
+//   degrees of freedom, Comput. Methods Appl. Mech. Eng. 72 (1989)).
 //
 // Frames: the element frame (that of the ShellQuad4 on the parallelogram whose diagonal is the longest side of the
 // triangle; z the normal, origin the centroid) holds every matrix (local DOFs u, v, w, θx, θy, θz of each node, node
@@ -40,25 +39,20 @@
 namespace oos::elements
 {
 
-// The geometry of one ShellTria3, from the positions of its grid points only.
+// The geometry of one ShellTria3, from the positions of its grid points; `normal` may then be given the normals its
+// grid points share with the neighbouring elements (ShellDirectors.hpp).
 struct ShellTria3Geometry
 {
     base::Mat3 axes = base::Mat3::identity(); // columns x, y, z of the element frame, in basic
     base::Vec3 centre;                        // the centroid, in basic
-    std::array<double, 3> x{};                // the plane coordinates of the nodes from the centroid
-    std::array<double, 3> y{};
+    std::array<Vector3<double>, 3> position{}; // the nodes in the element frame, from the centroid (z = 0)
+    std::array<Vector3<double>, 3> normal{};   // the unit directors in the element frame (z when not shared)
     std::array<double, 3> dX{}; // ∂N_a/∂x, ∂N_a/∂y of the linear shapes (constant)
     std::array<double, 3> dY{};
     double determinant = 0.0; // 2 × the area: the area of the parallelogram the triangle is half of
     // The widths a and b of that parallelogram along x and y (those of the ShellQuad4 on its four corners).
     double widthX = 0.0;
     double widthY = 0.0;
-    // Side p runs 1→2, 2→3, 3→1: its direction cosines (c_p, s_p) in the element frame.
-    std::array<double, 3> edgeCosine{};
-    std::array<double, 3> edgeSine{};
-    // The inverse of the side fit: [γx, γy at the centroid; q] = edgeFit · [γ_t(1), γ_t(2), γ_t(3)], the shear field
-    // being γ(x, y) = (γx − q y, γy + q x).
-    Matrix3<double> edgeFit;
     double userAngle = 0.0; // the reference direction (G1→G2) from the element x axis, radians
 };
 
@@ -85,12 +79,10 @@ struct ShellTria3
         return buildShellTria3Geometry(positions);
     }
 
-    // The flat triangle has no integration problem once its geometry is accepted.
-    [[nodiscard]] static std::optional<std::string> integrationProblem(const Geometry& /*geometry*/,
-                                                                       const std::array<double, NODES>& /*thickness*/)
-    {
-        return std::nullopt;
-    }
+    // The problem of an element whose Jacobian is not positive at an integration point, on its top or bottom face
+    // (a thickness large against the element where the normals of its grid points turn), or nothing.
+    [[nodiscard]] static std::optional<std::string> integrationProblem(const Geometry& geometry,
+                                                                       const std::array<double, NODES>& thickness);
 
     // K (18 × 18) in the element frame.
     template <typename T>

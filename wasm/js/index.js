@@ -234,6 +234,11 @@ export class OosSolver {
         putTable("scalarPoints", packageOf(reader.cardTable(deck, source, ["id"])));
       }
 
+      // The normals given at grid points, which the ShellQuad4 and ShellTria3 take as their directors there.
+      if (deck.cardCounts().ShellNormal > 0) {
+        putTable("shellNormals", packageOf(reader.cardTable(deck, "ShellNormal", ["nodeId", "frameId", "vector"])));
+      }
+
       // The offset convention the model selects (ModelParams OffsetDefinition; the last one given).
       if (deck.cardCounts().ModelParams > 0) {
         const parameters = reader.cardTable(deck, "ModelParams", ["name", "text"]);

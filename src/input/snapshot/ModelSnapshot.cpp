@@ -78,6 +78,7 @@ ModelSnapshot::ModelSnapshot(Parts parts)
       m_laminatePlies(std::move(parts.laminatePlies)),
       m_laminateSummary(std::move(parts.laminateSummary)),
       m_sections(std::move(parts.sections)),
+      m_shellNormals(std::move(parts.shellNormals)),
       m_fastenerPiercings(std::move(parts.fastenerPiercings)),
       m_supports(std::move(parts.supports)),
       m_connectionNodes(std::move(parts.connectionNodes)),
@@ -166,6 +167,8 @@ bool ModelSnapshot::hasTable(TableRole role) const noexcept
         return m_laminateSummary.has_value();
     case TableRole::Sections:
         return m_sections.has_value();
+    case TableRole::ShellNormals:
+        return m_shellNormals.has_value();
     case TableRole::FastenerPiercings:
         return m_fastenerPiercings.has_value();
     case TableRole::Supports:
@@ -403,6 +406,8 @@ const base::ContractReader* ModelSnapshot::findTable(std::string_view name) cons
         return &*m_laminateSummary;
     case TableRole::Sections:
         return &m_sections->reader();
+    case TableRole::ShellNormals:
+        return &*m_shellNormals;
     case TableRole::FastenerPiercings:
         return &m_fastenerPiercings->reader();
     case TableRole::Supports:

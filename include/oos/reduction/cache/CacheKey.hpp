@@ -29,11 +29,14 @@ struct CacheParameter
 
 // The PARAMs whose value changes what a unit is condensed from: WeightToMass and CoupledMass (the mass of the inertial
 // patterns and of the rigid-body mass properties), AutoSingularityConstr and PivotZeroThreshold (which interior DOFs
-// the unit's singularity processor holds). MaxDiagonalRatio and SingularityBailOut only test the pivots (the same bits
-// when the factorisation goes through) and stay out, as does ShellDrillingStiffness, which changes no matrix
-// (solutions::checkSupport reports it ignored). By their neutral names (the names of the params table).
-inline constexpr std::array<std::string_view, 4> MATRIX_PARAMETERS{"AutoSingularityConstr", "CoupledMass",
-                                                                   "PivotZeroThreshold", "WeightToMass"};
+// the unit's singularity processor holds), ShellDrillingStiffness and ShellNormalAngle (the drilling factor of the
+// ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6 and the normals they share at their grid points:
+// ShellDirectors.hpp).
+// MaxDiagonalRatio and SingularityBailOut only test the pivots (the same bits when the factorisation goes through)
+// and stay out. By their neutral names (the names of the params table).
+inline constexpr std::array<std::string_view, 6> MATRIX_PARAMETERS{
+    "AutoSingularityConstr", "CoupledMass", "PivotZeroThreshold", "ShellDrillingStiffness", "ShellNormalAngle",
+    "WeightToMass"};
 
 // The model parameter beside them, under this name in CacheKey::parameters with the value
 // input::offsetDefinitionName gives: ModelParams OffsetDefinition, where the mass of the offset elements is (the

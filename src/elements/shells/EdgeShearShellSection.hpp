@@ -14,9 +14,6 @@
 namespace oos::elements::edge_shear_detail
 {
 
-// c_d: the stabilisation of the rotation about the normal (Hughes and Brezzi, 1989), times the in-plane shear
-// stiffness A33; the results do not depend on it between 1e-7 and 1e-3.
-inline constexpr double DRILLING_FACTOR = 4.0e-4;
 // c_K: a section without transverse shear flexibility takes H = c_K · 12 max(D11, D22) / S (S the area of the
 // element: sectionAt), a shear flexibility below 1e-4 of the bending one.
 inline constexpr double RIGID_SHEAR_FACTOR = 1.0e4;

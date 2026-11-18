@@ -7,6 +7,7 @@
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/elements/core/ElementReferences.hpp"
 #include "oos/elements/core/MatrixKernels.hpp"
+#include "oos/elements/shells/ShellDirectors.hpp"
 #include "oos/elements/shells/EdgeShearShellFamily.hpp"
 #include "oos/elements/shells/ShellPressure.hpp"
 #include "oos/elements/shells/ShellTemperature.hpp"
@@ -148,6 +149,16 @@ Resolution<typename EdgeShearShellFamily<Shell>::Data> EdgeShearShellFamily<Shel
 
     Data data;
     data.geometry = geometry.geometry;
+    // The normals the grid points share with the neighbouring elements, in the element frame.
+    const ShellDirectors& directors = shellDirectors(view.index());
+    for (std::size_t corner = 0; corner < NODES; ++corner)
+        if (const std::optional<base::Vec3> shared = directors.sharedNormal(Shell::CARD, row, corner))
+        {
+            const base::Mat3& axes = data.geometry.axes;
+            for (std::size_t k = 0; k < 3; ++k)
+                data.geometry.normal[corner][k] =
+                    axes(0, k) * (*shared)[0] + axes(1, k) * (*shared)[1] + axes(2, k) * (*shared)[2];
+        }
     data.section = *section.value;
     data.gridIds = corners.value->ids;
     Resolution<std::array<double, NODES>> thickness = resolveCornerThicknesses<NODES>(
@@ -183,6 +194,7 @@ Resolution<typename EdgeShearShellFamily<Shell>::Data> EdgeShearShellFamily<Shel
         data.materialAngle = std::atan2(alongY, alongX);
     }
     data.values = plateSectionValuesOf(data.section);
+    data.values.drillingFactor = directors.drillingFactor();
     data.constitutive = plateConstitutiveOf(data.values, data.materialAngle);
     if (std::optional<std::string> problem = Shell::integrationProblem(data.geometry, data.thickness))
         return Result::failure(

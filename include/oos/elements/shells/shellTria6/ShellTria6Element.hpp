@@ -3,9 +3,10 @@
 // ShellTria6 — six-node shell (ShellTria6, ShellProp, CompProp, CompPropGlobal).
 //
 // Formulation: MindlinShell<QuadraticTriangleShape>, the six-node degenerated shell, flat or curved (the quadratic
-// membrane and Reissner-Mindlin bending of a flat element, three-point integration, the membrane-bending coupling,
-// no stiffness for the rotation about the nodal director: no ShellDrillingStiffness), through the facets shared with
-// the other higher-order shell (HigherOrderShell.hpp, which says what is supported and refused).
+// membrane and Reissner-Mindlin bending of a flat element, tied covariant transverse shears and membrane strains
+// with the seven-point rule, the membrane-bending coupling, the directors and the drilling term of the ShellQuad4:
+// ShellDirectors, docs/shell-quad8-tria6-formulation.md), through the facets shared with the other higher-order
+// shell (HigherOrderShell.hpp, which says what is supported and refused).
 // Covered by the patch, rigid-body and convergence tests.
 //
 // Facets: stiffness, mass, loads (pressure, thermal), recovery (centre and corner grid points; the plies of a

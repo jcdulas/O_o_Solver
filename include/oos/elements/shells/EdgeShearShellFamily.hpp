@@ -21,6 +21,9 @@
 // - mass: the lumped mass of the element on the grid points through the rotations alone, and the pressure loads
 //   without the offset, unless ModelParams OffsetDefinition asks for them on the offset (ShellNodeFrames), as the other
 //   shells; the thermal loads always through the offset, consistently with the stiffness;
+// - thermal loads: the dilatation of the free strain (its mean in-plane strain) loads the element as K q, q its
+//   homothety, so that a uniform temperature rise leaves a warped mesh, or one whose normals are shared, without
+//   stress (DirectorShellKinematics.hpp, addDilatationLoads);
 // - THETA and MCID: the material axis is measured and applied in one frame, the element frame;
 // - ShellProp T without MID1: the bending-only section keeps its thickness;
 // - a section without MID3 (or a laminate whose plies give no transverse shear modulus) has no transverse shear
@@ -32,10 +35,17 @@
 // - the differential stiffness (SOL 105): the membrane forces recovered by the element (ShellCentreRecovery, the
 //   thermal force removed) act on the in-plane gradients of u, v, w (ShellDifferential),
 //   ∫ (Nx w,x² + 2 Nxy w,x w,y + Ny w,y²) dA and the same terms on u and v;
+// - the normals of the grid points: the directors of the elements are the normals their grid points share with
+//   the neighbouring ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6 within PARAM ShellNormalAngle (20 degrees by
+//   default), in place of each element's own (ShellDirectors.hpp); a flat mesh, a fold and a junction keep the
+//   elements' own normals;
 // - the rotation about the normal: a section with a membrane and a bending stiffness has the drilling term of the
-//   ShellQuad4 document (section 8, c_d = 4e-4), which ShellDrillingStiffness does not change; a section without one
-//   of them has none (the solver's automatic constraint of singular DOFs, PARAM AutoSingularityConstr, removes what
-//   has no stiffness).
+//   ShellQuad4 document (section 8) with c_d = 1e-6 times PARAM ShellDrillingStiffness (100 by default); a section
+//   without one of them, or a model with ShellDrillingStiffness 0, has none (the solver's automatic constraint of
+//   singular DOFs, PARAM AutoSingularityConstr, removes what has no stiffness). The term is a stabilisation: an
+//   inertia or a moment about the normal put on one grid point of a shell is held by it alone, and belongs on a rigid
+//   or interpolation element that spreads it over the neighbouring grid points (a modal analysis points out the
+//   PointMassInertia in that case: solutions::AnalysisModel).
 //
 // Design derivatives: the kernels are templates on the scalar and are evaluated in complex numbers along the rates of
 // their inputs (the section values and the corner thicknesses), which gives the exact first derivatives (complex step,

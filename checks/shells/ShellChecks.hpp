@@ -22,6 +22,7 @@ inline constexpr double YOUNG = 1000.0;
 inline constexpr double POISSON = 0.3;
 inline constexpr double THICKNESS = 0.05;
 inline constexpr double SHEAR_FACTOR = 5.0 / 6.0;
+inline constexpr double DRILLING_FACTOR = 4.0e-4; // c_d of the check values of the document
 
 // The isotropic section of the document: the moduli of the membrane and of the bending, and κ G on the transverse
 // shears (none for a section without transverse shear flexibility).
@@ -34,6 +35,7 @@ inline constexpr double SHEAR_FACTOR = 5.0 / 6.0;
     c.hasShearFlexibility = hasShearFlexibility;
     c.bendingRatio = 1.0;
     c.shearRatio = SHEAR_FACTOR;
+    c.drillingFactor = DRILLING_FACTOR;
     const double plane = YOUNG / (1.0 - poisson * poisson);
     for (elements::Matrix3<double>* modulus : {&c.membrane, &c.bending})
     {
