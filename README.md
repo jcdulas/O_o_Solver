@@ -62,10 +62,12 @@ See [read, download and build instructions](docs/documentation.md).
 
 ## Shell elements
 
-ShellQuad4 and ShellTria3 follow the formulation of NASTRAN-95, the program NASA released as open source in 2015
-(degenerated shell with assumed edge transverse shear and shear correction factors for the QUAD4; constant strain
-membrane, linear bending and fitted edge shear for the TRIA3; no drilling stiffness). The implementation is written from
-a mathematical description of that formulation, not translated from its Fortran; the differences are listed in
+ShellQuad4 is the four-node shell of [docs/shell-quad4-formulation.md](docs/shell-quad4-formulation.md) (directors
+at the nodes, enhanced membrane strains and curvatures, transverse shear tied at the mid-sides with its residual
+bending flexibility, a stabilised rotation about the normal), and ShellTria3 the same element brought to three nodes
+([docs/shell-tria3-formulation.md](docs/shell-tria3-formulation.md)), so that two triangles on the grid points of a
+quadrilateral behave closely to it; that document gives the measured closeness and its limits. Both are written from
+methods of the open literature, cited in the documents; the choices of this project are listed in
 [src/elements/README.md](src/elements/README.md).
 
 ## Element formulations

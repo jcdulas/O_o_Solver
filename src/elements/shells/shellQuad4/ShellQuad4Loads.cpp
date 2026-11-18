@@ -1,4 +1,4 @@
-#include "ShellQuad4Kinematics.hpp"
+#include "ShellQuad4Kernel.hpp"
 #include "oos/elements/shells/SecondOrderScalar.hpp"
 #include "oos/elements/shells/ShellDifferential.hpp"
 #include "oos/elements/shells/shellQuad4/ShellQuad4.hpp"
@@ -11,18 +11,18 @@ namespace oos::elements
 namespace
 {
 
-using quad4_detail::BilinearShape;
 using quad4_detail::GAUSS_POINTS;
-using quad4_detail::bilinearShape;
+using quad4_detail::Shape;
+using quad4_detail::shapeAt;
 
-// The tangent vectors ∂X/∂ξ and ∂X/∂η of the mid-surface at a point (element frame).
+// The tangent vectors ∂X/∂ξ and ∂X/∂η of the surface of the grid points at a point (element frame).
 struct SurfaceTangents
 {
     Vector3<double> alongXi{};
     Vector3<double> alongEta{};
 };
 
-[[nodiscard]] SurfaceTangents tangentsAt(const ShellQuad4Geometry& geometry, const BilinearShape& shape)
+[[nodiscard]] SurfaceTangents tangentsAt(const ShellQuad4Geometry& geometry, const Shape& shape)
 {
     SurfaceTangents tangents;
     for (std::size_t a = 0; a < 4; ++a)
@@ -34,12 +34,19 @@ struct SurfaceTangents
     return tangents;
 }
 
+// θ × n = S θ.
+[[nodiscard]] std::array<std::array<double, 3>, 3> skewOf(const Vector3<double>& n)
+{
+    return {{{0.0, n[2], -n[1]}, {-n[2], 0.0, n[0]}, {n[1], -n[0], 0.0}}};
+}
+
 } // namespace
 
-// Spec §2.10: the 2 × 2 rule on the mid-surface (weights 1), dA = ‖∂X/∂ξ × ∂X/∂η‖, t_g the thickness at the point;
-// lumped M_aa = Σ_g ρ t_g dA N_a, coupled M_ab = Σ_g ρ t_g dA N_a N_b (ρ taken as 1 when zero), then scaled by
-// (V ρ + NSM A)/(V ρ) when there is a non-structural mass (V = Σ dA t_g, A = Σ dA): the NSM distributed like the
-// structural mass (a negative NSM accepted, as NASTRAN-95's QUAD4 does). Translations only: no rotary inertia.
+// Document section 10, with the 2 × 2 rule: the mass moments per unit area I0 = ρ t + NSM and I2 = ρ t³/12 of a
+// homogeneous section about its reference surface (I1 = 0),
+//   M = Σ j (I0 N_uᵀ N_u + I2 N_βᵀ N_β),  β = Σ N_i θ_i × n_i the director increment.
+// Lumped: m_i = Σ j I0 N_i on the three translations of node i, nothing on the rotations.
+// A laminate is taken as a homogeneous section of its mass per unit area (the family gives ρ = mass per area / t).
 template <typename T>
 ScalarMatrix<T, ShellQuad4::DOFS> ShellQuad4::mass(const Geometry& geometry, const T& density,
                                                    const T& nonStructuralMass, const std::array<T, NODES>& thickness,
@@ -48,39 +55,42 @@ ScalarMatrix<T, ShellQuad4::DOFS> ShellQuad4::mass(const Geometry& geometry, con
     ScalarMatrix<T, DOFS> result;
     if (realPart(density) == 0.0 && realPart(nonStructuralMass) == 0.0)
         return result;
-    const T weightDensity = realPart(density) != 0.0 ? density : T(1.0);
-    ScalarMatrix<T, NODES> scalar;
-    T area{};
-    T volume{};
+    std::array<std::array<std::array<double, 3>, 3>, NODES> skew{};
+    for (std::size_t a = 0; a < NODES; ++a)
+        skew[a] = skewOf(geometry.normal[a]);
     for (const double xi : GAUSS_POINTS)
         for (const double eta : GAUSS_POINTS)
         {
-            const BilinearShape shape = bilinearShape(xi, eta);
-            const SurfaceTangents tangents = tangentsAt(geometry, shape);
-            const Vector3<double> normal = crossOf(tangents.alongXi, tangents.alongEta);
-            const double dA = std::sqrt(dotOf(normal, normal));
+            const Shape shape = shapeAt(xi, eta);
+            const double area = quad4_detail::frameAt(geometry, shape).area;
             const T t = quad4_detail::interpolated(shape, thickness);
-            area += dA;
-            volume += dA * t;
-            const T weight = weightDensity * t * dA;
+            const T translational = area * (density * t + nonStructuralMass);
+            const T rotary = area * (density * t * t * t / 12.0);
             for (std::size_t a = 0; a < NODES; ++a)
             {
                 if (formulation == MassFormulation::Lumped)
                 {
-                    scalar(a, a) += weight * shape.value[a];
+                    for (std::size_t k = 0; k < 3; ++k)
+                        result(6 * a + k, 6 * a + k) += translational * shape.value[a];
                     continue;
                 }
                 for (std::size_t b = 0; b < NODES; ++b)
-                    scalar(a, b) += weight * shape.value[a] * shape.value[b];
+                {
+                    const double weight = shape.value[a] * shape.value[b];
+                    for (std::size_t k = 0; k < 3; ++k)
+                        result(6 * a + k, 6 * b + k) += translational * weight;
+                    for (std::size_t r = 0; r < 3; ++r)
+                        for (std::size_t s = 0; s < 3; ++s)
+                        {
+                            double product = 0.0;
+                            for (std::size_t c = 0; c < 3; ++c)
+                                product += skew[a][c][r] * skew[b][c][s];
+                            if (product != 0.0)
+                                result(6 * a + 3 + r, 6 * b + 3 + s) += rotary * (weight * product);
+                        }
+                }
             }
         }
-    T scale(1.0);
-    if (realPart(nonStructuralMass) != 0.0)
-        scale = (volume * density + nonStructuralMass * area) / (volume * weightDensity);
-    for (std::size_t a = 0; a < NODES; ++a)
-        for (std::size_t b = 0; b < NODES; ++b)
-            for (std::size_t k = 0; k < 3; ++k)
-                result(6 * a + k, 6 * b + k) = scale * scalar(a, b);
     return result;
 }
 
@@ -89,10 +99,13 @@ template ScalarMatrix<double, ShellQuad4::DOFS> ShellQuad4::mass(const Geometry&
 template ScalarMatrix<Complex, ShellQuad4::DOFS> ShellQuad4::mass(const Geometry&, const Complex&, const Complex&,
                                                                   const std::array<Complex, NODES>&,
                                                                   MassFormulation);
+template ScalarMatrix<SecondOrderScalar, ShellQuad4::DOFS> ShellQuad4::mass(
+    const Geometry&, const SecondOrderScalar&, const SecondOrderScalar&,
+    const std::array<SecondOrderScalar, NODES>&, MassFormulation);
 
-// Spec §5.1: F_a = Σ_g p(g) N_a(g) d(g) with the 2 × 2 rule, p = Σ N_a P_a, d = ∂X/∂ξ × ∂X/∂η (the surface element,
-// not normalised: its length is the area Jacobian), or ‖d‖ times the unit direction of a FacePressureLoad with CID or
-// N. Translations only.
+// Document section 12: F_a = Σ p N_a d with the 2 × 2 rule on the surface of the grid points, p = Σ N_a P_a,
+// d = ∂X/∂ξ × ∂X/∂η (the surface element, not normalised: its length is the area Jacobian), or ‖d‖ times the unit
+// direction of a FacePressureLoad with CID or N. Translations only.
 std::array<double, ShellQuad4::DOFS> ShellQuad4::pressureLoads(const Geometry& geometry,
                                                                const std::array<double, 4>& cornerPressures,
                                                                const std::optional<base::Vec3>& direction)
@@ -101,7 +114,7 @@ std::array<double, ShellQuad4::DOFS> ShellQuad4::pressureLoads(const Geometry& g
     for (const double xi : GAUSS_POINTS)
         for (const double eta : GAUSS_POINTS)
         {
-            const BilinearShape shape = bilinearShape(xi, eta);
+            const Shape shape = shapeAt(xi, eta);
             const SurfaceTangents tangents = tangentsAt(geometry, shape);
             Vector3<double> d = crossOf(tangents.alongXi, tangents.alongEta);
             if (direction)
@@ -117,108 +130,89 @@ std::array<double, ShellQuad4::DOFS> ShellQuad4::pressureLoads(const Geometry& g
     return loads;
 }
 
-// Spec §6.2: P = Σ over the 2 × 2 × 2 points of det J Bᵀ G ε_th, with the membrane and bending rows of the stiffness
-// (the in-plane shears at the centre) and G its membrane-bending block, ε_th = [ε_m; z·gradient], z = ζ t/2.
-// Deviation from NASTRAN-95 (deliberate): NASTRAN-95 flattens the element (each node at the mean height) for its
-// thermal loads; the stiffness geometry is kept here, so that a free thermal expansion gives zero stress exactly.
+// Document section 12: the initial resultants S0 = C ε_th of the free thermal strain ε_th = (ε_m, gradient) at each
+// point (ε(z) = ε_m + z · gradient, given in the element frame and turned to the local frame of the point),
+//   f_d = Σ j Bᵀ S0,  f_α = Σ j Gᵀ S0,  f = f_d − K_dα K_αα⁻¹ f_α,
+// so that a free thermal expansion leaves the element without stress.
 std::array<double, ShellQuad4::DOFS> ShellQuad4::thermalLoads(const Geometry& geometry,
                                                               const PlateConstitutive<double>& constitutive,
                                                               const std::array<double, NODES>& thickness,
                                                               const PlateThermalStrain& thermal)
 {
     using namespace quad4_detail;
-    const PlateConstitutive<double>& c = constitutive;
     std::array<double, DOFS> loads{};
     if (thermal.isZero)
         return loads;
-    std::array<ScalarMatrix<double, 6, 24>, 2> centreRows;
-    for (std::size_t z = 0; z < 2; ++z)
-        centreRows[z] = inPlaneStrainRows(geometry, thickness,
-                                          kinematicsAt(geometry, thickness, 0.0, 0.0, GAUSS_POINTS[z]),
-                                          GAUSS_POINTS[z]);
-    for (const double xi : GAUSS_POINTS)
-        for (const double eta : GAUSS_POINTS)
+    const std::array<PlanePoint<double>, POINT_COUNT> points = planePointsOf(geometry, constitutive, thickness);
+    ScalarMatrix<double, ENHANCED, 1> onParameters;
+    for (const PlanePoint<double>& point : points)
+    {
+        std::array<double, 6> strain{};
+        for (std::size_t r = 0; r < 3; ++r)
         {
-            const double t = interpolated(bilinearShape(xi, eta), thickness);
-            for (std::size_t z = 0; z < 2; ++z)
+            strain[r] = thermal.membrane[r];
+            strain[3 + r] = thermal.gradient[r];
+        }
+        if (std::abs(point.angle) > NO_ROTATION)
+        {
+            // ε_element = U3(angle) ε_local
+            const Matrix3<double> toLocal = engineeringStrainRotation(-point.angle);
+            const std::array<double, 3> membrane = productOf(toLocal, thermal.membrane);
+            const std::array<double, 3> gradient = productOf(toLocal, thermal.gradient);
+            for (std::size_t r = 0; r < 3; ++r)
             {
-                const double zeta = GAUSS_POINTS[z];
-                const PointKinematics<double> point = kinematicsAt(geometry, thickness, xi, eta, zeta);
-                const ScalarMatrix<double, 6, 24> plane = inPlaneStrainRows(geometry, thickness, point, zeta);
-                std::array<double, 6> strain{};
-                for (std::size_t r = 0; r < 3; ++r)
-                {
-                    strain[r] = thermal.membrane[r];
-                    strain[3 + r] = 0.5 * zeta * t * thermal.gradient[r];
-                }
-                // σ = G ε_th with the blocks of the stiffness (spec §2.8, rows 1 to 6).
-                std::array<double, 6> stress{};
-                for (std::size_t i = 0; i < 3; ++i)
-                    for (std::size_t j = 0; j < 3; ++j)
-                    {
-                        if (c.hasMembrane)
-                            stress[i] += c.membrane(i, j) * strain[j];
-                        if (c.hasBending)
-                            stress[3 + i] += c.bendingRatio * c.bending(i, j) * strain[3 + j];
-                        if (c.hasMembrane && c.hasBending)
-                        {
-                            const double cross =
-                                c.membrane(i, j) - (c.hasCoupling ? 6.0 * zeta * c.coupling(i, j) : 0.0);
-                            stress[i] += cross * strain[3 + j];
-                            stress[3 + i] += cross * strain[j];
-                        }
-                    }
-                for (std::size_t k = 0; k < DOFS; ++k)
-                {
-                    double sum = 0.0;
-                    for (std::size_t r = 0; r < 6; ++r)
-                    {
-                        const double b = (r == 2 || r == 5) ? centreRows[z](r, k) : plane(r, k);
-                        sum += b * stress[r];
-                    }
-                    loads[k] += point.jacobian * sum;
-                }
+                strain[r] = membrane[r];
+                strain[3 + r] = gradient[r];
             }
         }
+        const std::array<double, 6> resultants = productOf(planeMatrixOf(point.section), strain);
+        for (std::size_t dof = 0; dof < DOFS; ++dof)
+            for (std::size_t r = 0; r < 6; ++r)
+                loads[dof] += point.weight * point.rows(r, dof) * resultants[r];
+        for (std::size_t q = 0; q < ENHANCED; ++q)
+        {
+            const std::size_t part = q < ENHANCED_PER_PART ? 0 : 3;
+            for (std::size_t r = 0; r < 3; ++r)
+                onParameters(q, 0) += point.weight * point.enhanced(r, q % ENHANCED_PER_PART) * resultants[part + r];
+        }
+    }
+    const EnhancedPart<double> enhanced = enhancedPartOf(constitutive, points);
+    const ScalarMatrix<double, ENHANCED, 1> parameters = solvedEnhanced(enhanced, onParameters);
+    for (std::size_t dof = 0; dof < DOFS; ++dof)
+        for (std::size_t q = 0; q < ENHANCED; ++q)
+            loads[dof] -= enhanced.coupling(dof, q) * parameters(q, 0);
     return loads;
 }
 
-// The membrane-stress differential stiffness (ShellDifferential) on the mean plane: the shape derivatives of the plane
-// coordinates at the 2 × 2 Gauss points, weight det J.
+// Document section 12: the differential stiffness of the membrane forces (N11, N22, N12), constant over the element
+// (ShellDifferential), with the local gradients of the translations of the reference surface at the 2 × 2 points,
+//   K_σ = Σ j (N11 G1ᵀ G1 + N22 G2ᵀ G2 + N12 (G1ᵀ G2 + G2ᵀ G1)).
+// The gradient along local axis a is Σ_k (e_a · g^k) ∂N/∂ξ_k, g^k the contravariant vectors of (g1, g2, the director):
+// only the direction of the director enters, taken as Σ N_i n_i (the corner thicknesses being equal).
 base::MatN<ShellQuad4::DOFS> ShellQuad4::differentialStiffness(const Geometry& geometry,
                                                                const std::array<double, 3>& membraneForce)
 {
+    using namespace quad4_detail;
+    const std::array<double, NODES> unitThickness{2.0, 2.0, 2.0, 2.0};
     base::MatN<DOFS> k;
     for (const double xi : GAUSS_POINTS)
         for (const double eta : GAUSS_POINTS)
         {
-            const BilinearShape shape = bilinearShape(xi, eta);
-            double j11 = 0.0;
-            double j12 = 0.0;
-            double j21 = 0.0;
-            double j22 = 0.0;
-            for (std::size_t a = 0; a < NODES; ++a)
-            {
-                j11 += shape.dXi[a] * geometry.position[a][0];
-                j12 += shape.dXi[a] * geometry.position[a][1];
-                j21 += shape.dEta[a] * geometry.position[a][0];
-                j22 += shape.dEta[a] * geometry.position[a][1];
-            }
-            const double determinant = j11 * j22 - j12 * j21;
+            const Shape shape = shapeAt(xi, eta);
+            const Frame frame = frameAt(geometry, shape);
+            const Matrix3<double> inverse = inverseOf(covariantAt(geometry, unitThickness, shape, 0.0));
             std::array<double, NODES> dX{};
             std::array<double, NODES> dY{};
             for (std::size_t a = 0; a < NODES; ++a)
-            {
-                dX[a] = (j22 * shape.dXi[a] - j12 * shape.dEta[a]) / determinant;
-                dY[a] = (-j21 * shape.dXi[a] + j11 * shape.dEta[a]) / determinant;
-            }
-            addMembraneDifferentialStiffness<NODES, 6>(k, dX, dY, determinant, membraneForce);
+                for (std::size_t m = 0; m < 3; ++m)
+                {
+                    const double alongNatural = inverse(m, 0) * shape.dXi[a] + inverse(m, 1) * shape.dEta[a];
+                    dX[a] += frame.axis[0][m] * alongNatural;
+                    dY[a] += frame.axis[1][m] * alongNatural;
+                }
+            addMembraneDifferentialStiffness<NODES, 6>(k, dX, dY, frame.area, membraneForce);
         }
     return k;
 }
-
-template ScalarMatrix<SecondOrderScalar, ShellQuad4::DOFS> ShellQuad4::mass(
-    const Geometry&, const SecondOrderScalar&, const SecondOrderScalar&,
-    const std::array<SecondOrderScalar, NODES>&, MassFormulation);
 
 } // namespace oos::elements

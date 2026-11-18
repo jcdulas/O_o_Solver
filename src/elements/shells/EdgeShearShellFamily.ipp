@@ -158,17 +158,6 @@ Resolution<typename EdgeShearShellFamily<Shell>::Data> EdgeShearShellFamily<Shel
     data.followsThickness =
         cornersFollowThickness(data.section, columns.thicknessFlag[r], columns.cornerThickness[row]);
 
-    // The bending card decides how the shear-correction moduli are read (PlateConstitutive.hpp).
-    std::optional<ShellMaterial> bendingMaterial;
-    if (data.section.hasBending && !data.section.isLaminate())
-    {
-        Resolution<ShellMaterial> material = resolveShellMaterial(
-            view, columns.sections.materials, row, data.section.materialIds[1], "ShellProp.bendingMatId");
-        if (!material)
-            return Result::failure(std::move(material.problem));
-        bendingMaterial = *material.value;
-    }
-
     // The material axis from the element x axis: THETA from the user x axis (G1→G2), or the projection of MCID's x
     // axis on the element plane, measured and applied in the element frame.
     if (columns.matFrameId[r] == edge_shear_detail::NO_MAT_FRAME_ID)
@@ -193,7 +182,7 @@ Resolution<typename EdgeShearShellFamily<Shell>::Data> EdgeShearShellFamily<Shel
                                    "another ShellQuad4.matFrameId or a ShellQuad4.materialAngle"})));
         data.materialAngle = std::atan2(alongY, alongX);
     }
-    data.values = plateSectionValuesOf(data.section, bendingMaterial ? &*bendingMaterial : nullptr);
+    data.values = plateSectionValuesOf(data.section);
     data.constitutive = plateConstitutiveOf(data.values, data.materialAngle);
     if (std::optional<std::string> problem = Shell::integrationProblem(data.geometry, data.thickness))
         return Result::failure(

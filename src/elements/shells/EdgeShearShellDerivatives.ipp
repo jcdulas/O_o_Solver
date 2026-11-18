@@ -29,6 +29,7 @@ ScalarMatrix<SecondOrderScalar, R, C> constantMatrix(const ScalarMatrix<double, 
 inline PlateConstitutive<SecondOrderScalar> constantConstitutive(const PlateConstitutive<double>& source)
 {
     PlateConstitutive<SecondOrderScalar> result;
+    result.materialAngle = source.materialAngle;
     result.hasMembrane = source.hasMembrane;
     result.hasBending = source.hasBending;
     result.hasCoupling = source.hasCoupling;
@@ -37,13 +38,8 @@ inline PlateConstitutive<SecondOrderScalar> constantConstitutive(const PlateCons
     result.bending = constantMatrix(source.bending);
     result.coupling = constantMatrix(source.coupling);
     result.transverseShear = constantMatrix(source.transverseShear);
-    result.transverseShearCompliance = constantMatrix(source.transverseShearCompliance);
     result.bendingRatio = source.bendingRatio;
     result.shearRatio = source.shearRatio;
-    result.youngX = source.youngX;
-    result.youngY = source.youngY;
-    result.shearModulusX = source.shearModulusX;
-    result.shearModulusY = source.shearModulusY;
     return result;
 }
 

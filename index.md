@@ -22,6 +22,8 @@ Solve finite element models through typed tables and return numerical results.
 - [Element names](docs/naming.md): shared roots, implementation roles and compatibility.
 - [Table packages](docs/table-package.md): reader-to-solver data contract.
 - [Bar and beam derivatives](docs/beam-derivatives.md): native sizing rates and their solution paths.
+- [Four-node shell](docs/shell-quad4-formulation.md) and [three-node shell](docs/shell-tria3-formulation.md): the
+  formulations of ShellQuad4 and ShellTria3.
 - [Native element derivative API](docs/element-derivative-api.rst): live C++ contexts and derivative facets.
 - [Elements](src/elements/README.md), [assembly](src/assembly/README.md) and [reduction](src/reduction/README.md).
 - [Analysis solutions](src/solutions/README.md), [output](src/output/README.md) and [design](src/design/README.md).
@@ -71,6 +73,9 @@ docs/api
 docs/element-derivative-api
 docs/architecture
 docs/modules
+docs/mixed-hybrid-formulation-spec
+docs/shell-quad4-formulation
+docs/shell-tria3-formulation
 src/output/sections/README
 docs/documentation
 LEGAL

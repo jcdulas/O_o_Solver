@@ -241,11 +241,11 @@ TableContract contractOf(TableRole role)
         // O_o_Reader sectionsTable(types=["BarShapeProp", "BeamShapeProp"]) (contract 31): the section properties
         // computed from the dimensions of the section type, one row per property and station, sorted by propId then
         // station (xxb from 0 at end A to 1 at end B), in the element system about the neutral axis; k1, k2 the shear
-        // factors; the recovery points C, D, E, F as (y, z): c1 c2 d1 d2 e1 e2 f1 f2. n1, n2 (optional): the neutral
-        // axis from the shear centre in the element system, as BeamProp N1, N2, which O_o_Solver's snapshot adds from
-        // O_o_Reader's section_properties_batch (centroid − shear_center of each BeamShapeProp station; 0 for a
-        // BarShapeProp, whose axis is its neutral axis); without them every section has its shear centre on its
-        // centroid.
+        // factors; the recovery points C, D, E, F as (y, z): c1 c2 d1 d2 e1 e2 f1 f2. n1, n2: the neutral axis from
+        // the shear centre in the element system, as BeamProp N1, N2 (the centroid less the shear centre of each
+        // BeamShapeProp station, whose shear centre is the axis of its beam; 0 for a BarShapeProp, whose axis is its
+        // neutral axis). Optional for the tables of a reader that does not give them: every section then has its
+        // shear centre on its centroid.
         return tableOf(
             role,
             {required("propId", INT32), optional("station", INT32), optional("n1", FLOAT64), optional("n2", FLOAT64)},

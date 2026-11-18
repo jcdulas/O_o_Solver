@@ -31,7 +31,10 @@ namespace oos::elements
 // - 6: the ShellQuad4 and ShellTria3 of NASTRAN-95 (their former formulations kept for the ShellQuad4Drilling and
 //   ShellTria3Drilling only); the ShellQuad8 and ShellTria6 (MindlinShell); the defaults of the SolidHexa of 8 and
 //   20 grid points and of the SolidPenta of 6; the fasteners; the warped ShellQuad4Drilling formed flat in its mean
-//   plane and joined to its grid points by rigid offsets.
-inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 6;
+//   plane and joined to its grid points by rigid offsets;
+// - 7: the ShellQuad4 of docs/shell-quad4-formulation.md and the ShellTria3 of docs/shell-tria3-formulation.md
+//   (enhanced strains, a stabilised rotation about the normal, the rotary inertia in the coupled mass, no transverse
+//   shear flexibility without a shear material).
+inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 7;
 
 } // namespace oos::elements

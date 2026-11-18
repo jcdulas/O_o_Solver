@@ -1,4 +1,4 @@
-#include "ShellQuad4Kinematics.hpp"
+#include "ShellQuad4Kernel.hpp"
 #include "oos/elements/shells/shellQuad4/ShellQuad4.hpp"
 
 #include <cmath>
@@ -17,12 +17,6 @@ using quad4_detail::NODE_XI;
 constexpr double PARALLEL_DIAGONALS_FACTOR = 1.0e-12;
 // A nodal normal is undefined when ‖s × t‖ ≤ this factor · ‖s‖·‖t‖ (two edges at a node along one line).
 constexpr double DEGENERATE_NORMAL_FACTOR = 1.0e-12;
-// Spec §2.6: a corner cosine below this magnitude is set to 0 (a right angle up to round-off).
-constexpr double RIGHT_ANGLE_COSINE = 1.0e-7;
-// A corner cosine of magnitude at or above 1 − this puts two edges on one line: 1 − c² vanishes in the edge shear.
-constexpr double STRAIGHT_CORNER_MARGIN = 1.0e-10;
-// Spec §2.7: the warping measure S_w = 28 Σ + 1.
-constexpr double WARP_MEASURE_SCALE = 28.0;
 
 [[nodiscard]] Vector3<double> vectorOf(const base::Vec3& v)
 {
@@ -47,11 +41,12 @@ constexpr double WARP_MEASURE_SCALE = 28.0;
     return result;
 }
 
-// Spec §2.2(4): the unit normal of the bilinear surface of the basic positions at node a, (s × t)/‖s × t‖ with
-// s = Σ_b ∂N_b/∂ξ x_b and t = Σ_b ∂N_b/∂η x_b at the node's natural coordinates; nothing when degenerate.
+// The director of node a (document section 3): the unit normal of the bilinear surface of the grid points there,
+// (s × t)/‖s × t‖ with s = Σ_b ∂N_b/∂ξ x_b and t = Σ_b ∂N_b/∂η x_b at the node's natural coordinates; nothing when
+// degenerate.
 [[nodiscard]] std::optional<Vector3<double>> nodalNormal(const std::array<Vector3<double>, 4>& x, std::size_t a)
 {
-    const quad4_detail::BilinearShape shape = quad4_detail::bilinearShape(NODE_XI[a], NODE_ETA[a]);
+    const quad4_detail::Shape shape = quad4_detail::shapeAt(NODE_XI[a], NODE_ETA[a]);
     Vector3<double> s{};
     Vector3<double> t{};
     for (std::size_t b = 0; b < 4; ++b)
@@ -67,15 +62,6 @@ constexpr double WARP_MEASURE_SCALE = 28.0;
     return scaledBy(n, 1.0 / length);
 }
 
-// Spec §2.7(1): the warping measure of the anisotropic shear factor from the basic nodal normals,
-// Σ_x = ½ ‖n1 × n2‖ + ½ ‖n3 × n4‖, Σ_y = ½ ‖n2 × n3‖ + ½ ‖n1 × n4‖, S_w = 28 max(Σ_x, Σ_y) + 1.
-[[nodiscard]] double warpFactorOf(const std::array<Vector3<double>, 4>& n)
-{
-    const double alongX = 0.5 * lengthOf(crossOf(n[0], n[1])) + 0.5 * lengthOf(crossOf(n[2], n[3]));
-    const double alongY = 0.5 * lengthOf(crossOf(n[1], n[2])) + 0.5 * lengthOf(crossOf(n[0], n[3]));
-    return WARP_MEASURE_SCALE * std::max(alongX, alongY) + 1.0;
-}
-
 } // namespace
 
 ShellQuad4GeometryResult buildShellQuad4Geometry(const std::array<base::Vec3, 4>& positions)
@@ -84,7 +70,7 @@ ShellQuad4GeometryResult buildShellQuad4Geometry(const std::array<base::Vec3, 4>
     for (std::size_t a = 0; a < 4; ++a)
         x[a] = vectorOf(positions[a]);
 
-    // Spec §2.2(1): the normal k of the mean plane, along d13 × d24.
+    // Document section 2: the element axes. e_z along d13 × d24.
     const Vector3<double> d13 = difference(x[2], x[0]);
     const Vector3<double> d24 = difference(x[3], x[1]);
     const Vector3<double> diagonalCross = crossOf(d13, d24);
@@ -97,7 +83,7 @@ ShellQuad4GeometryResult buildShellQuad4Geometry(const std::array<base::Vec3, 4>
                        "ShellQuad4.node1-ShellQuad4.node4");
     const Vector3<double> k = scaledBy(diagonalCross, 1.0 / crossLength);
 
-    // Spec §2.2(2): the user frame R, x along G1→G2 projected on the mean plane.
+    // The reference direction of the material angle and of the output: G1→G2 projected on the plane normal to e_z.
     const Vector3<double> e12 = difference(x[1], x[0]);
     const Vector3<double> projected = difference(e12, scaledBy(k, dotOf(e12, k)));
     if (!(lengthOf(projected) > 0.0))
@@ -108,7 +94,7 @@ ShellQuad4GeometryResult buildShellQuad4Geometry(const std::array<base::Vec3, 4>
     const Vector3<double> userX = unitOf(projected);
     const Vector3<double> userY = crossOf(k, userX);
 
-    // Spec §2.2(3): the element x axis bisects the two diagonals in the user plane, g = unit(d13) − unit(d24).
+    // e_x along unit(d13) − unit(d24), the bisector of the diagonals (both are normal to e_z).
     std::array<std::array<double, 2>, 4> inUser{};
     for (std::size_t a = 0; a < 4; ++a)
     {
@@ -148,8 +134,7 @@ ShellQuad4GeometryResult buildShellQuad4Geometry(const std::array<base::Vec3, 4>
     for (std::size_t a = 0; a < 4; ++a)
         geometry.position[a] = toElement(difference(x[a], centre));
 
-    // Spec §2.2(4): the nodal normals, in basic then in the element frame.
-    std::array<Vector3<double>, 4> basicNormal{};
+    // The directors, in the element frame.
     for (std::size_t a = 0; a < 4; ++a)
     {
         const std::optional<Vector3<double>> normal = nodalNormal(x, a);
@@ -160,37 +145,20 @@ ShellQuad4GeometryResult buildShellQuad4Geometry(const std::array<base::Vec3, 4>
                                " along one line or of zero length; reorder "
                                "ShellQuad4.node1-ShellQuad4.node4 around the element, or use a "
                                "ShellTria3 for a triangle");
-        basicNormal[a] = *normal;
         geometry.normal[a] = toElement(*normal);
     }
-    geometry.warpFactor = warpFactorOf(basicNormal);
-
-    // Spec §2.6: the edges and the corner cosines.
     for (std::size_t e = 0; e < 4; ++e)
     {
         const std::size_t next = (e + 1) % 4;
-        const Vector3<double> edge = difference(geometry.position[next], geometry.position[e]);
-        geometry.edgeLength[e] = lengthOf(edge);
-        if (!(geometry.edgeLength[e] > 0.0))
+        if (!(lengthOf(difference(geometry.position[next], geometry.position[e])) > 0.0))
             return refused(std::string("node").append(std::to_string(next + 1)),
                            "expected four distinct grid points, found ShellQuad4.node" + std::to_string(e + 1) +
                                " and ShellQuad4.node" + std::to_string(next + 1) +
                                " at one position; correct their positions");
-        geometry.edgeDirection[e] = scaledBy(edge, 1.0 / geometry.edgeLength[e]);
-        geometry.edgeNormal[e] = unitOf(sumOf(geometry.normal[e], geometry.normal[next]));
-    }
-    for (std::size_t a = 0; a < 4; ++a)
-    {
-        const double cosine = -dotOf(geometry.edgeDirection[a], geometry.edgeDirection[(a + 3) % 4]);
-        if (std::abs(cosine) >= 1.0 - STRAIGHT_CORNER_MARGIN)
-            return refused(std::string("node").append(std::to_string(a + 1)),
-                           "expected a quadrilateral corner at ShellQuad4.node" + std::to_string(a + 1) +
-                               ", found its two edges along one line; the edge shear cannot be formed there: "
-                               "remesh the element");
-        geometry.cornerCosine[a] = std::abs(cosine) < RIGHT_ANGLE_COSINE ? 0.0 : cosine;
     }
 
-    // Spec §2.7: the mean widths A and B and the aspect α.
+    // The widths of the element along its axes (document section 7): a = ½ |x2 + x3 − x1 − x4| and
+    // b = ½ |y3 + y4 − y1 − y2|.
     const std::array<Vector3<double>, 4>& p = geometry.position;
     geometry.meanWidthX = 0.5 * std::abs(p[1][0] + p[2][0] - p[0][0] - p[3][0]);
     geometry.meanWidthY = 0.5 * std::abs(p[3][1] + p[2][1] - p[0][1] - p[1][1]);
@@ -198,8 +166,6 @@ ShellQuad4GeometryResult buildShellQuad4Geometry(const std::array<base::Vec3, 4>
         return refused("node1",
                        "expected a quadrilateral of non-zero width along both element axes, found a folded "
                        "one; reorder ShellQuad4.node1-ShellQuad4.node4 around the element");
-    geometry.aspect =
-        std::min(geometry.meanWidthX, geometry.meanWidthY) / std::max(geometry.meanWidthX, geometry.meanWidthY);
     ShellQuad4GeometryResult result;
     result.geometry = geometry;
     return result;

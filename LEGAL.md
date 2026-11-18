@@ -20,9 +20,12 @@ document is not legal advice.
 - The code describes model fields, defaults and validation rules in the project's own words. The numerical methods cite their public sources (textbooks
   and papers).
 - No vendor documentation, example deck or result file is part of the repository, and none may be added or quoted.
-- The ShellQuad4 and ShellTria3 elements follow the formulation of NASTRAN-95 (https://github.com/nasa/NASTRAN-95), released
-  by NASA under the NASA Open Source Agreement 1.3. They were written from a mathematical description of that
-  formulation, not by translating its Fortran, and contain no NASTRAN-95 code; the source is cited in the comments.
+- The ShellQuad4 and ShellTria3 elements follow docs/shell-quad4-formulation.md and docs/shell-tria3-formulation.md,
+  written from the scientific publications those documents list.
+- The transverse shear of the ShellQuad4Drilling and ShellTria3Drilling plates follows the formulation of NASTRAN-95
+  (https://github.com/nasa/NASTRAN-95), released by NASA under the NASA Open Source Agreement 1.3. It was written from
+  a mathematical description of that formulation, not by translating its Fortran, and contains no NASTRAN-95 code; the
+  source is cited in the comments.
 - Where an open-source solver's published documentation describes a method (the CalculiX user's manual for the tied
   contact and the incompatible-modes hexahedron, the NASA reports of the ADS and CONMIN optimisers for the design
   defaults), the code cites that document; no code of those programs is used.

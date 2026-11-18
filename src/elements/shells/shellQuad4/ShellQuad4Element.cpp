@@ -1,5 +1,4 @@
-// The family of ShellQuad4 (ShellQuad4Element.hpp): EdgeShearShellFamily instantiated once on the NASTRAN-95 QUAD4
-// kernel.
+// The family of ShellQuad4 (ShellQuad4Element.hpp): EdgeShearShellFamily instantiated once on the ShellQuad4 kernel.
 
 #include "oos/elements/shells/shellQuad4/ShellQuad4Element.hpp"
 

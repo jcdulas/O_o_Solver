@@ -5,11 +5,12 @@
 //   | ShellTria3 | EID   | PID | G1 | G2 | G3 | THETA or MCID | ZOFFS |
 //   |        | TFLAG | T1  | T2 | T3 |
 //
-// The formulation of NASTRAN-95's TRIA3 (ShellTria3: linear membrane and bending, constant assumed transverse shear
-// with one extra parameter and the shear compliance Z, no drilling stiffness), with the facets of EdgeShearShellFamily
-// (sections, offsets, mass, loads, centre recovery in the user frame, membrane-stress differential stiffness,
-// complex-step design derivatives). Problems reported by check(): as the ShellQuad4 (ShellQuad4Element.hpp), with
-// collinear grid points the degenerate geometry of a triangle.
+// The element of docs/shell-tria3-formulation.md (ShellTria3.hpp: the ShellQuad4 brought to three nodes; constant
+// membrane strains and curvatures, transverse shear tied at the mid-sides with the residual bending flexibility of
+// the ShellQuad4, the same stabilised rotation about the normal), with the facets of EdgeShearShellFamily (sections,
+// offsets, mass, loads, centre recovery in the reference frame, membrane-stress differential stiffness, complex-step
+// design derivatives). Problems reported by check(): as the ShellQuad4 (ShellQuad4Element.hpp), with collinear grid
+// points the degenerate geometry of a triangle.
 //
 // ShellTria3DrillingElement implements the separate shell family with a drilling rotation.
 

@@ -17,9 +17,9 @@ namespace oos::elements
 // per station: area, I1, I2, I12, J, NSM, the shear factors K1, K2 and the recovery points C, D, E, F. The element
 // never computes a section from its dimensions: the formulas (and the shear factors, which are not those of the
 // thin-walled rules) belong to O_o_Reader. A BeamShapeProp station's neutral axis from its shear centre (the element
-// axis of a Beam2 on a BeamShapeProp) is the table's n1, n2 (O_o_Solver's snapshot adds them from O_o_Reader's
-// centroid and shear centre of the section); a BarShapeProp's axis is its neutral axis (a BarShapeProp makes no
-// difference between the shear centre and the neutral axis).
+// axis of a Beam2 on a BeamShapeProp) is the table's n1, n2 (the centroid less the shear centre of the section, which
+// O_o_Reader gives); a BarShapeProp's axis is its neutral axis (a BarShapeProp makes no difference between the shear
+// centre and the neutral axis).
 //
 // The columns of the sections table, read once per facet call; `table` is nullptr when the snapshot has no sections
 // table.

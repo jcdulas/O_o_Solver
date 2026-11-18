@@ -1,6 +1,6 @@
 #pragma once
 
-// The centre recovery of the NASTRAN-95 shells (ShellQuad4, ShellTria3): the values each kernel recovers at the
+// The centre recovery of the ShellQuad4 and ShellTria3: the values each kernel recovers at the
 // element centre, as an affine map of the element's local DOFs.
 //
 // The recovery of a linear element is linear in its displacements, with an offset from the thermal strains. Each

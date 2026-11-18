@@ -16,7 +16,7 @@ language = "en"
 exclude_patterns = ["build", "dist", "node_modules", ".git", ".github", ".venv*", ".vscode", ".idea",
                     "include", "CLAUDE.md", "**/__pycache__"]
 myst_heading_anchors = 6
-myst_enable_extensions = ["colon_fence", "deflist", "fieldlist"]
+myst_enable_extensions = ["amsmath", "colon_fence", "deflist", "dollarmath", "fieldlist"]
 html_theme = "furo"
 html_title = project + " documentation"
 html_show_sphinx = False

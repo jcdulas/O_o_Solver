@@ -36,7 +36,7 @@ namespace oos::elements
 // fibre. A rotation θ_a moves the fibre by θ_a × ν_a, so its
 // component along ν_a moves nothing: each node has five DOFs in the shell sense (three translations, two rotations
 // normal to its director) carried by the six of the grid point, and the rotation about the director has no stiffness
-// (no drilling stiffness, as the ShellQuad4 and ShellTria3 of NASTRAN-95: no ShellDrillingStiffness).
+// (no drilling stiffness: no ShellDrillingStiffness).
 //
 // Strains (the linear shell strains of these kinematics, written with the strains linear through the thickness and the
 // shell shifter taken as one: the thin-shell assumption under which the degenerated solid and the shell theory give

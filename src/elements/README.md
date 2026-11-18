@@ -135,7 +135,7 @@ register it in `ElementRegistry::standard()` after the card's default.
   `SnapshotIndex::computedOnce`: the normalised mean of the elements' own normals, Hughes & Liu 1981, Bathe 1996 §5.4;
   separate groups across edges sharper than 30°, folds, T-junctions, stiffeners; a group of flat elements only, or of
   one element, keeps the elements' own normals), five DOFs per node in the shell sense carried by the six of the grid
-  point, the rotation about the director without stiffness (no drilling stiffness, as the ShellQuad4 and ShellTria3: no ShellDrillingStiffness;
+  point, the rotation about the director without stiffness (no drilling stiffness: no ShellDrillingStiffness;
   at a grid point of one smooth group it is exactly singular and AutoSingularityConstr removes it); the linear shell strains, linear
   through the thickness, with the bending correction of Sanders (1959: a uniform dilatation bends nothing), on the
   section's resultants (MID1-MID4, CompProp, CompPropGlobal: Büchter & Ramm 1992; Simo & Fox 1989); on a flat element exactly the
@@ -161,34 +161,38 @@ register it in `ElementRegistry::standard()` after the card's default.
   families implemented directly by `ShellQuad4DrillingElement` and `ShellTria3DrillingElement`, with the
   drilling membranes `ShellQuad4DrillingMembrane` and `ShellTria3DrillingMembrane` (below).
   `shells/shearPanel4/`: the shear panel (`ShearPanel4Panel`).
-- `shells/shellQuad4/ShellQuad4*`, `shells/shellTria3/ShellTria3*`: the ShellQuad4 and ShellTria3, the formulation of NASTRAN-95 (the
-  program of NASA, open-sourced in 2015), implemented from its mathematical description, not translated. `ShellQuad4`:
-  a degenerated shell with nodal normals (2 × 2 × 2 Gauss points), reduced in-plane shear at the centre, transverse
-  shear from the four tangential edge strains with the NASTRAN-95 shear-correction factors (C_b = 1.6 on the even
-  part, C_t on the odd part, the anisotropic factors; `MID3` in series), `MID4` as G1 − 6ζ G4. `ShellTria3`: linear
-  membrane and bending at the edge midpoints, a constant transverse shear plus one parameter fitted to the edge strains,
-  its stiffness the inverse of the compliance Z (`MID3` plus a bending relief from L_x, L_y). Neither has a drilling
-  stiffness (no ShellDrillingStiffness: θz of a flat mesh is removed by the automatic constraint of singular DOFs) nor rotary inertia.
-  A laminate whose plies give no G1Z and G2Z is rigid in transverse shear (a choice of this project): the `ShellQuad4`
-  then takes the G3 of a general bending card without its term between the two shears (`PlateConstitutive`), which
-  with the anisotropic factor made elements a few thicknesses wide indefinite.
-  A limit that follows from the missing drilling stiffness, on a curved surface with a shear-flexible section (`MID3`): the rotations of two elements
-  that meet at an angle are tied by no stiffness about the direction across their common edge, only by the transverse
-  shear of each, which weakens as the elements come to the size of the thickness. The results then drift with
-  refinement (the roof of Scordelis and Lo, R/t = 100, sag of the free edge over 0.3024: 1.013, 1.018, 1.067 at 8²,
-  16², 32² `ShellQuad4`; 0.994 at 32² without `MID3`). `ShellQuad4Drilling` (1.002, 0.999 at 16², 32²) and
-  `MixedHybridFormulation` do not have it.
+- `shells/shellQuad4/ShellQuad4*`, `shells/shellTria3/ShellTria3*`: the ShellQuad4 and ShellTria3, the elements of
+  [docs/shell-quad4-formulation.md](../../docs/shell-quad4-formulation.md) and
+  [docs/shell-tria3-formulation.md](../../docs/shell-tria3-formulation.md), from the methods of the open literature
+  those documents list. `ShellQuad4`: a shell with a director at each node (Ahmad, Irons & Zienkiewicz 1970), a local
+  frame at each of its 2 × 2 points, four enhanced parameters on the membrane strains and four on the curvatures
+  (Pian & Sumihara 1984, Simo & Rifai 1990), transverse shear tied at the mid-sides (Dvorkin & Bathe 1984) with the
+  residual bending flexibility of MacNeal (1978), a stabilised rotation about the normal (Hughes & Brezzi 1989), the
+  rotary inertia in the coupled mass; a cantilever strip gives the deflection of the beam with one element.
+  `ShellTria3`: the same element brought to three nodes, so that two triangles on the grid points of a quadrilateral
+  behave closely to it: constant membrane strains and curvatures, transverse shear tied at the mid-sides (a mean
+  shear and one rotational part), the factors of the `ShellQuad4` on the widths of the parallelogram the triangle is
+  half of, the same mass, and the drilling term with a stiffness of the order of the bending one beside its membrane
+  one (the rotation about the normal of a flat element is a bending rotation for the neighbours it meets at an
+  angle). Section 6 of its document gives the measured closeness (bending,
+  torsion, plates, curved shells, frequencies) and its limit: the constant membrane strains of a triangle bend in
+  their plane only with several elements across the depth. `EdgeShearShellSection.hpp` holds what the two kernels
+  share (the section at a point, the shear factors, the constants).
+  A section without `MID3`, or a laminate whose plies give no G1Z and G2Z, has no transverse shear flexibility: the
+  kernels take a shear stiffness 10⁴ times the bending one (section 4 of the ShellQuad4 document).
+  The drilling term ties the rotations of elements that meet at an angle: the results no longer drift with
+  refinement on a curved surface (the roof of Scordelis and Lo, sag of the free edge over 0.3024: 1.014, 1.006, 1.005
+  at 8², 16², 32² `ShellQuad4`; 0.884, 0.965, 0.989 with two `ShellTria3` per cell).
   `PlateConstitutive` reads a section (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D; CompProp and CompPropGlobal through their equivalent section,
   this project's choice) into the matrices of the kernels; `ShellCentreRecovery` the centre recovery as an affine map
   of the local DOFs; `ShellScalar` the small matrices templated on the scalar. `EdgeShearShellFamily` (with
   `EdgeShearShellFamily.ipp`, `EdgeShearShellRecovery.ipp`, `EdgeShearShellDerivatives.ipp`, instantiated in
   `ShellQuad4Element.cpp` and `ShellTria3Element.cpp`) gives both their facets: the sections, the material axis
   (THETA from G1→G2, MCID projected), ZOFFS through `ShellNodeFrames`, the rows of `ShellRecovery` at the centre in
-  the user frame (x along G1→G2; no corner output), the plies of a laminate. Its header lists the deliberate
-  deviations from NASTRAN-95 (OrthoMat2D G1Z and G2Z on their physical shears, an MCID angle measured and applied in one
-  frame, the offset in the thermal loads, the thickness of a ShellQuad4 without MID1 kept, the connectivity order of the
-  TRIA3 pressures, the coupling in the recovered membrane forces, the thermal curvature and MID4 of the TRIA3
-  recovery, the differential stiffness).
+  the reference frame (x along G1→G2; no corner output), the plies of a laminate. Its header lists the choices of
+  this project (an MCID angle measured and applied in the element frame, the offset in the thermal loads, the
+  thickness of a section without MID1 kept, the coupling and the thermal strains in the recovery, the differential
+  stiffness, the rotation about the normal).
 - `shells/shellQuad4Drilling/`, `shells/shellTria3Drilling/`: the ShellQuad4Drilling and ShellTria3Drilling families.
   `ShellQuad4DrillingElement.hpp` says which file holds which
   part: `ShellQuad4DrillingGeometry` (geometry and frames), `ShellQuad4DrillingBending` (bending and transverse shear), `ShellQuad4DrillingWarpOffsets`
@@ -245,7 +249,7 @@ buckling problem is (K + λ K_d) φ = 0.
 |---|---|---|
 | `Rod2`, `Rod2InlineSection`, `Tube2` | the axial force P turning with the axis: (P/L)·[D −D; −D D], D = I − x xᵀ, on the translations (the thermal force subtracted) | `rods/RodFormulation` (`rodDifferentialStiffness`), `<card>Differential.cpp` |
 | `Bar2`, `Beam2` | the consistent matrix of the axial force on the Hermite deflections, N/(30L)·[36 3L ...] in both planes; pin flags condensed with the elastic map; offsets and CD by T | `bars_beams/BeamDifferential`, `bar2/Bar2Differential.cpp`, `beam2/Beam2Differential.cpp` |
-| `ShellQuad4`, `ShellTria3` | the membrane resultants (Nx, Ny, Nxy) the element recovers at its centre (the mean over the Gauss points of the ShellQuad4), on the in-plane gradients of u, v, w (∫ ∇Nᵀ·N·∇N dA), ZOFFS by ShellNodeFrames; NASTRAN-95 forms these elements' differential stiffness with the sub-triangles of its older QUAD1 and TRIA1, a deviation of this project | `shells/ShellDifferential.hpp`, `ShellQuad4`, `ShellTria3`, `EdgeShearShellFamily.ipp` |
+| `ShellQuad4`, `ShellTria3` | the membrane resultants (Nx, Ny, Nxy) the element recovers at its centre, on the in-plane gradients of u, v, w of its integration points (∫ ∇Nᵀ·N·∇N dA), ZOFFS by ShellNodeFrames | `shells/ShellDifferential.hpp`, `ShellQuad4`, `ShellTria3`, `EdgeShearShellFamily.ipp` |
 | `ShellQuad4Drilling`, `ShellTria3Drilling`, `ShellQuad8`, `ShellTria6` | the membrane resultants (Nx, Ny, Nxy) at the centre on the in-plane gradients of u, v, w (∫ ∇Nᵀ·N·∇N dA), ZOFFS by ShellNodeFrames | `shells/ShellDifferential.hpp`, `ShellQuad4DrillingPlate`, `ShellTria3DrillingPlate`, `MindlinShell::differentialStiffness` (on a curved element the gradients along the tangent axes of each point), `<card>Differential.cpp` |
 | `ShearPanel4` | the mean shear flow q̄ as Nxy on the bilinear functions of the panel (the rods of F1, SensitivityPerturbation and the varying flows left out) | `shearPanel4/ShearPanel4Panel::differentialStiffness`, `ShearPanel4Differential.cpp` |
 | `SolidHexa`, `SolidPenta`, `SolidTetra`, `SolidPyramid` | the initial-stress stiffness ∫ ∇Nᵀ·σ·∇N dV of the centre stress, on the isoparametric functions with the mass rule (whatever the linear formulation) | `solids/SolidIsoparametric` (`buildInitialStressStiffness`), `SolidElementKernel`, `<card>Differential.cpp` |
@@ -362,8 +366,8 @@ move: such a shape is refused by `design/model/FieldTargets`.
 | `Rod2`, `Rod2InlineSection`, `Tube2` | stiffness, mass (lumped, coupled), differential stiffness (axial force), thermal loads, recovery (forces, stresses, strains, margins) | strain energy, tapered `Tube2` |
 | `PointMassMatrix`, `PointMassInertia` | mass, derivatives | curvilinear `CID` |
 | `MassDofProperty`–`MassScalarInline` | mass, derivatives | |
-| `ShellQuad4` | the NASTRAN-95 QUAD4: stiffness (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D: MID1-MID4, MID2 = −1, 12I/T³, TS/T; CompProp, CompPropGlobal as their equivalent section; ZOFFS, T1-T4, THETA/MCID; no drilling stiffness, no ShellDrillingStiffness), mass (translational, lumped or coupled, NonStructMass), loads (FacePressureLoad and ShellPressureLoad with corner values and direction; thermal: the mean temperature change and the PlateTemperatureLoad gradient), recovery (the centre only, in the user frame: stresses, strains, curvatures, forces; plies and failure indices), differential stiffness (its recovered membrane resultants), derivatives (complex step) | strain energy, corner output |
-| `ShellTria3` | the NASTRAN-95 TRIA3, as `ShellQuad4` | as `ShellQuad4` |
+| `ShellQuad4` | the element of docs/shell-quad4-formulation.md: stiffness (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D: MID1-MID4, MID2 = −1, 12I/T³, TS/T; CompProp, CompPropGlobal as their equivalent section; ZOFFS, T1-T4, THETA/MCID; its own drilling term, no ShellDrillingStiffness), mass (lumped on the translations, or coupled with the rotary inertia; NonStructMass), loads (FacePressureLoad and ShellPressureLoad with corner values and direction; thermal: the mean temperature change and the PlateTemperatureLoad gradient), recovery (the centre only, in the user frame: stresses, strains, curvatures, forces; plies and failure indices), differential stiffness (its recovered membrane resultants), derivatives (complex step) | strain energy, corner output |
+| `ShellTria3` | the element of docs/shell-tria3-formulation.md, as `ShellQuad4` | as `ShellQuad4` |
 | `ShellQuad8`, `ShellTria6` | as `ShellQuad4` (flat or curved, every edge node; no drilling stiffness, no ShellDrillingStiffness; rotary inertia in the coupled mass), recovery at the centre and corners | as `ShellQuad4`; an element turning by more than 45° |
 | `ShellQuad4Drilling`, `ShellTria3Drilling` | a membrane with a drilling DOF (`ShellQuad4DrillingMembrane`, `ShellTria3DrillingMembrane`) with the bending of `ShellQuad4DrillingBending` and of the edge-shear triangle (the ShellQuad4Drilling recovered at the centre and corners); a warped ShellQuad4Drilling formed flat in its mean plane and joined to its grid points by rigid offsets along the normal (`ShellQuad4DrillingWarpOffsets`, Taylor 1988), in every facet but the mass (on the grid points) | strain energy; coupling |
 | `ShearPanel4` | stiffness (ShearPanelProp, IsoMat, F1, SensitivityPerturbation), mass, recovery (stresses, strains, forces) | warped panels |

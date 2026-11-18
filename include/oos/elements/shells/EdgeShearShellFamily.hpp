@@ -1,42 +1,41 @@
 #pragma once
 
-// The element families of the NASTRAN-95 ShellQuad4 and ShellTria3 (shellQuad4/ShellQuad4Element,
+// The element families of the ShellQuad4 and ShellTria3 (shellQuad4/ShellQuad4Element,
 // shellTria3/ShellTria3Element): the facets the solver calls, written once over the kernel of each element (ShellQuad4,
 // ShellTria3: "Shell" below, which gives NODES, DOFS, CARD, its Geometry and the functions stiffness, mass, recovery,
-// pressureLoads, thermalLoads, differentialStiffness).
+// pressureLoads, thermalLoads, differentialStiffness). The kernels are the elements of
+// docs/shell-quad4-formulation.md and docs/shell-tria3-formulation.md.
 //
 // What the family adds to the kernels:
 // - the inputs: grid points and their displacement systems, the section (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D;
-// CompProp and CompPropGlobal
-//   as their equivalent section: PlateConstitutive.hpp), the corner thicknesses (T1-T4, TFLAG), the material axis
-//   (THETA from the user x axis, or the projection of MCID's x axis), the offset ZOFFS;
+//   CompProp and CompPropGlobal as their equivalent section: PlateConstitutive.hpp), the corner thicknesses (T1-T4,
+//   TFLAG), the material axis (THETA from the reference direction G1→G2, or the projection of MCID's x axis), the
+//   offset ZOFFS;
 // - the passage between the element frame and the displacement systems of the grid points, with the offset
-//   (ShellNodeFrames: u_reference = u + θ × (ZOFFS n), spec §2.11 and §3.8);
-// - the output rows (ShellRecovery's tables): at the centre only, in the user frame (x along G1→G2, spec §7.1); a
-//   STRESS(CORNER) request gets the centre rows, NASTRAN-95 having no corner output for these elements;
+//   (ShellNodeFrames: u_reference = u + θ × (ZOFFS n); section 11 of the ShellQuad4 document);
+// - the output rows (ShellRecovery's tables): at the centre only, in the reference frame (x along G1→G2); a
+//   STRESS(CORNER) request gets the centre rows;
 // - the design derivatives in closed form, by the complex step (ShellScalar.hpp) through the same kernels.
 //
-// Choices of this project (NASTRAN-95 differs or has no equivalent):
+// Choices of this project:
 // - mass: the lumped mass of the element on the grid points through the rotations alone, and the pressure loads
 //   without the offset, unless ModelParams OffsetDefinition asks for them on the offset (ShellNodeFrames), as the other
-//   shells; the thermal loads always through the offset, consistently with the stiffness (NASTRAN-95's QUAD4 leaves the
-//   offset out of its thermal loads, its TRIA3 does not);
-// - THETA and MCID: the material axis is measured and applied in one frame. NASTRAN-95's QUAD4 measures an MCID's
-//   angle in its element (bisector) frame but applies it from the user frame (G1→G2), which turns the material of a
-//   skewed element by the angle between the two; a THETA of exactly 0.0 on the element would take the ShellProp's MCSID
-//   in NASTRAN-95, a field this solver's ShellProp does not have;
-// - ShellProp T without MID1: the bending-only ShellQuad4 keeps its thickness (NASTRAN-95 forces 1.0E-14 there);
-// - the recovery of a coupled section (MID4, an unsymmetric laminate): the ShellQuad4's membrane forces take the
-// coupling
-//   t² G4 κ (ShellQuad4Recovery.cpp), and the ShellTria3's recovery reads G4 correctly and subtracts the thermal
-//   curvature, so that the forces balance the loads; the other recovery choices of NASTRAN-95's QUAD4 are kept (its
-//   shear factors of the recovery, G2 without 12I/T³ in the stresses);
-// - the differential stiffness (SOL 105): NASTRAN-95 forms it with the sub-triangles of its older QUAD1/TRIA1
-//   elements; here the membrane forces recovered by the element (ShellCentreRecovery, the thermal force removed) act on
-//   the in-plane gradients of u, v, w (ShellDifferential), ∫ (Nx w,x² + 2 Nxy w,x w,y + Ny w,y²) dA and the same terms
-//   on u and v;
-// - no ShellDrillingStiffness: these elements have no drilling stiffness (the solver's automatic constraint of singular
-//   DOFs, PARAM AutoSingularityConstr, removes θz of a flat mesh).
+//   shells; the thermal loads always through the offset, consistently with the stiffness;
+// - THETA and MCID: the material axis is measured and applied in one frame, the element frame;
+// - ShellProp T without MID1: the bending-only section keeps its thickness;
+// - a section without MID3 (or a laminate whose plies give no transverse shear modulus) has no transverse shear
+//   flexibility: the kernels take the shear stiffness of section 4 of the ShellQuad4 document;
+// - the recovery: the forces and moments of a coupled section (MID4, an unsymmetric laminate) take the coupling, and
+//   the thermal strain and curvature are subtracted, so that the forces balance the loads; the fibre stresses are
+//   those of a plate of bending material G2 (without 12I/T³); the transverse shear forces are those conjugate to
+//   the mean shear strain in the energy of the element;
+// - the differential stiffness (SOL 105): the membrane forces recovered by the element (ShellCentreRecovery, the
+//   thermal force removed) act on the in-plane gradients of u, v, w (ShellDifferential),
+//   ∫ (Nx w,x² + 2 Nxy w,x w,y + Ny w,y²) dA and the same terms on u and v;
+// - the rotation about the normal: a section with a membrane and a bending stiffness has the drilling term of the
+//   ShellQuad4 document (section 8, c_d = 4e-4), which ShellDrillingStiffness does not change; a section without one
+//   of them has none (the solver's automatic constraint of singular DOFs, PARAM AutoSingularityConstr, removes what
+//   has no stiffness).
 //
 // Design derivatives: the kernels are templates on the scalar and are evaluated in complex numbers along the rates of
 // their inputs (the section values and the corner thicknesses), which gives the exact first derivatives (complex step,

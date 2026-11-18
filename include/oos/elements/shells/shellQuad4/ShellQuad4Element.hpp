@@ -5,13 +5,14 @@
 //   | ShellQuad4 | EID   | PID | G1 | G2 | G3 | G4 | THETA or MCID | ZOFFS |
 //   |        | TFLAG | T1  | T2 | T3 | T4 |
 //
-// The formulation of NASTRAN-95's QUAD4 (ShellQuad4: degenerated shell with nodal normals, reduced in-plane shear,
-// assumed edge transverse shear with its shear-correction factors, no drilling stiffness), with the facets of
-// EdgeShearShellFamily (sections, offsets, mass, loads, centre recovery in the user frame, membrane-stress
-// differential stiffness, complex-step design derivatives). Problems reported by check(): an unknown grid point, a
-// grid point named twice, a property or material the shells cannot take (ShellSection), a degenerate geometry (parallel
-// diagonals, a corner of 0° or 180°, a Jacobian not positive at an integration point), a thickness that is not
-// positive, an MCID normal to the element, an offset without MID1 and MID2.
+// The element of docs/shell-quad4-formulation.md (ShellQuad4.hpp: directors at the nodes, enhanced membrane strains
+// and curvatures, transverse shear tied at the mid-sides with its residual bending flexibility, a stabilised rotation
+// about the normal), with the facets of EdgeShearShellFamily (sections, offsets, mass, loads, centre recovery in the
+// reference frame, membrane-stress differential stiffness, complex-step design derivatives). Problems reported by
+// check(): an unknown grid point, a grid point named twice, a property or material the shells cannot take
+// (ShellSection), a degenerate geometry (parallel diagonals, a degenerate director, two grid points at one position,
+// a Jacobian not positive at an integration point), a thickness that is not positive, an MCID normal to the element,
+// an offset without MID1 and MID2.
 //
 // ShellQuad4DrillingElement implements the separate shell family with a drilling rotation.
 
