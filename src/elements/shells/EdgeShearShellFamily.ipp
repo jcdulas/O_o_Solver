@@ -279,8 +279,9 @@ void EdgeShearShellFamily<Shell>::computeMass(const ElementBatchView& view, Elem
         const ScalarMatrix<double, DOFS> m =
             Shell::mass(data.geometry, data.values.density, data.values.nonStructuralMass + added, data.thickness,
                         options.formulation);
-        appendMatrix(block, row, data.frames.dofs(),
-                     data.frames.massToDisplacementSystems(edge_shear_detail::matrixOf(m), view.isMassOnOffsets()));
+        appendMatrix(
+            block, row, data.frames.dofs(),
+            data.frames.massMatrixToDisplacementSystems(edge_shear_detail::matrixOf(m), view.isMassOnOffsets()));
     }
 }
 

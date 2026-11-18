@@ -6,7 +6,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <functional>
+#include <numbers>
+#include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace oos::input
@@ -129,6 +134,9 @@ FastenerPiercingTable::FastenerPiercingTable(base::ImportedTable piercings)
         m_weights.insert(m_weights.end(), values.begin(), values.end());
         m_offsets.push_back(static_cast<std::int64_t>(m_grids.size()));
     }
+    m_patchOffsets = m_offsets;
+    m_patchGrids = m_grids;
+    m_patchWeights = m_weights;
     // The validity bitmap of the point grids, least significant bit first (Arrow's layout, read by ValidityView).
     m_pointGridBits.assign((isGiven.size() + 7) / 8 + 1, 0);
     for (std::size_t row = 0; row < isGiven.size(); ++row)
@@ -136,6 +144,156 @@ FastenerPiercingTable::FastenerPiercingTable(base::ImportedTable piercings)
         if (isGiven[row])
             m_pointGridBits[row / 8] = static_cast<std::uint8_t>(m_pointGridBits[row / 8] | (1U << (row % 8)));
     }
+}
+
+namespace
+{
+
+// The cards of the shell elements a fastener pierces.
+constexpr std::array<std::string_view, 6> SHELL_CARDS{"ShellQuad4",         "ShellTria3",         "ShellQuad8",
+                                                      "ShellTria6",         "ShellQuad4Drilling", "ShellTria3Drilling"};
+
+using Point = std::array<double, 3>;
+
+// A shell element at one of its grid points: the batch and the row.
+struct ShellAtGrid
+{
+    std::int32_t gridId = 0;
+    std::size_t batch = 0;
+    std::int64_t row = 0;
+};
+
+// The unit normal of the shell of grid points `ids` (the corners first: three for 3 or 6 grid points, else four):
+// along the cross product of two sides of a triangle, of the diagonals of a quadrilateral. Nothing when a corner is
+// not a grid point of the model or the corners are on a line.
+std::optional<Point> shellNormal(std::span<const std::int32_t> ids,
+                                 const std::function<std::optional<Point>(std::int32_t)>& positionOf)
+{
+    const std::size_t corners = ids.size() == 3 || ids.size() == 6 ? 3 : 4;
+    if (ids.size() < corners)
+        return std::nullopt;
+    std::array<Point, 4> x{};
+    for (std::size_t c = 0; c < corners; ++c)
+    {
+        const std::optional<Point> position = positionOf(ids[c]);
+        if (!position)
+            return std::nullopt;
+        x[c] = *position;
+    }
+    const auto difference = [&](std::size_t a, std::size_t b)
+    { return Point{x[a][0] - x[b][0], x[a][1] - x[b][1], x[a][2] - x[b][2]}; };
+    const Point u = corners == 3 ? difference(1, 0) : difference(2, 0);
+    const Point v = corners == 3 ? difference(2, 0) : difference(3, 1);
+    const Point n{u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+    const double length = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    if (!(length > 0.0))
+        return std::nullopt;
+    return Point{n[0] / length, n[1] / length, n[2] / length};
+}
+
+} // namespace
+
+void FastenerPiercingTable::buildPatches(const NodeTable& nodes, std::span<const ElementBatch> batches)
+{
+    // The rows on a grid point or a side of their element: the others keep the pierced element.
+    const auto isOnBoundary = [&](std::int64_t row)
+    {
+        if (m_elementIds[static_cast<std::size_t>(row)] == 0)
+            return false;
+        const std::span<const double> values = weights()[row];
+        return std::any_of(values.begin(), values.end(),
+                           [](double value) { return std::abs(value) <= PIERCING_ZERO_SHAPE_VALUE; });
+    };
+    bool hasBoundaryRow = false;
+    for (std::int64_t row = 0; row < rowCount() && !hasBoundaryRow; ++row)
+        hasBoundaryRow = isOnBoundary(row);
+    if (!hasBoundaryRow)
+        return;
+
+    // The positions of the grid points by ID, and the shell elements at each grid point, sorted by grid point.
+    const std::span<const std::int32_t> nodeIds = nodes.ids();
+    std::vector<std::pair<std::int32_t, std::int64_t>> nodeRows; // bounded by the grid points
+    nodeRows.reserve(nodeIds.size());
+    for (std::size_t r = 0; r < nodeIds.size(); ++r)
+        nodeRows.emplace_back(nodeIds[r], static_cast<std::int64_t>(r));
+    std::sort(nodeRows.begin(), nodeRows.end());
+    const base::FixedListView<double> positions = nodes.positionsInBasic();
+    const std::function<std::optional<Point>(std::int32_t)> positionOf = [&](std::int32_t id) -> std::optional<Point>
+    {
+        const auto found =
+            std::lower_bound(nodeRows.begin(), nodeRows.end(), std::pair<std::int32_t, std::int64_t>{id, 0});
+        if (found == nodeRows.end() || found->first != id)
+            return std::nullopt;
+        const std::span<const double> x = positions[found->second];
+        return Point{x[0], x[1], x[2]};
+    };
+    std::vector<ShellAtGrid> shells; // bounded by the grid points of the shell elements
+    for (std::size_t b = 0; b < batches.size(); ++b)
+    {
+        if (std::find(SHELL_CARDS.begin(), SHELL_CARDS.end(), batches[b].card()) == SHELL_CARDS.end() ||
+            !batches[b].hasNodes())
+            continue;
+        const ConnectivityView connectivity = batches[b].nodes();
+        for (std::int64_t row = 0; row < connectivity.size(); ++row)
+            for (const std::int32_t id : connectivity[row])
+                if (id != 0)
+                    shells.push_back({id, b, row});
+    }
+    std::sort(shells.begin(), shells.end(), [](const ShellAtGrid& a, const ShellAtGrid& b)
+              { return std::tie(a.gridId, a.batch, a.row) < std::tie(b.gridId, b.batch, b.row); });
+
+    const double cosine = std::cos(PIERCING_PATCH_ANGLE_DEGREES * std::numbers::pi / 180.0);
+    std::vector<std::int64_t> offsets{0};
+    std::vector<std::int32_t> patchGrids; // bounded by the grid points of the shells around the piercing points
+    std::vector<double> patchWeights;
+    for (std::int64_t row = 0; row < rowCount(); ++row)
+    {
+        const std::span<const std::int32_t> ids = grids()[row];
+        const std::span<const double> values = weights()[row];
+        patchGrids.insert(patchGrids.end(), ids.begin(), ids.end());
+        patchWeights.insert(patchWeights.end(), values.begin(), values.end());
+        const std::size_t first = static_cast<std::size_t>(offsets.back());
+        const std::optional<Point> normal = isOnBoundary(row) ? shellNormal(ids, positionOf) : std::nullopt;
+        if (normal)
+        {
+            // The grid points the piercing point lies on: those whose shape function is not zero.
+            std::vector<std::int32_t> held; // at most the grid points of one element
+            for (std::size_t k = 0; k < ids.size(); ++k)
+                if (std::abs(values[k]) > PIERCING_ZERO_SHAPE_VALUE)
+                    held.push_back(ids[k]);
+            // The shell elements at the first of them that hold them all and continue the sheet.
+            const auto range = std::equal_range(shells.begin(), shells.end(), ShellAtGrid{held.front(), 0, 0},
+                                                [](const ShellAtGrid& a, const ShellAtGrid& b)
+                                                { return a.gridId < b.gridId; });
+            for (auto shell = range.first; shell != range.second; ++shell)
+            {
+                const std::span<const std::int32_t> others = batches[shell->batch].nodes()[shell->row];
+                const auto isHeldByOther = [&](std::int32_t id)
+                { return std::find(others.begin(), others.end(), id) != others.end(); };
+                const bool holdsAll = std::all_of(held.begin(), held.end(), isHeldByOther);
+                if (!holdsAll)
+                    continue;
+                const std::optional<Point> other = shellNormal(others, positionOf);
+                if (!other ||
+                    std::abs((*normal)[0] * (*other)[0] + (*normal)[1] * (*other)[1] + (*normal)[2] * (*other)[2]) <
+                        cosine)
+                    continue;
+                for (const std::int32_t id : others)
+                {
+                    if (id == 0 || !positionOf(id) ||
+                        std::find(patchGrids.begin() + static_cast<std::ptrdiff_t>(first), patchGrids.end(), id) !=
+                            patchGrids.end())
+                        continue;
+                    patchGrids.push_back(id);
+                    patchWeights.push_back(0.0);
+                }
+            }
+        }
+        offsets.push_back(static_cast<std::int64_t>(patchGrids.size()));
+    }
+    m_patchOffsets = std::move(offsets);
+    m_patchGrids = std::move(patchGrids);
+    m_patchWeights = std::move(patchWeights);
 }
 
 std::string_view FastenerPiercingTable::card(std::int64_t row) const

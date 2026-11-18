@@ -41,7 +41,11 @@ namespace oos::elements
 // - 9: the ShellQuad8 and ShellTria6 of docs/shell-quad8-tria6-formulation.md: the normals of the grid points and the
 //   drilling factor of the ShellQuad4 and ShellTria3 (the normals of the four cards grouped in direction), the tied
 //   transverse shears and membrane strains of the ShellTria6 with the seven-point rule, the thermal loads of a
-//   dilatation as the loads of the homothety; the x axis of a ShellQuad8 along its edge G1-G2.
-inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 9;
+//   dilatation as the loads of the homothety; the x axis of a ShellQuad8 along its edge G1-G2;
+// - 10: a Fastener or a Weld on a grid point or on a side of the shell it pierces reads the rotation of the sheet
+//   from the shell elements all around the point (FastenerPiercingTable::patchGrids), not from the pierced element
+//   alone; the default y-axis of a fastener along a basic axis no longer depends on round-off (FASTENER_AXIS_TIE);
+//   the diagonal of the mass of a shell carried to the displacement systems is not negative.
+inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 10;
 
 } // namespace oos::elements

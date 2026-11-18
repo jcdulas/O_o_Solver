@@ -173,8 +173,8 @@ void appendHigherOrderShellMass(const ElementBatchView& view, ElementRange range
                                  ? 0.0
                                  : options.addedNonStructuralMass[static_cast<std::size_t>(row)];
         appendMatrix(block, row, data.frames.dofs(),
-                     data.frames.massToDisplacementSystems(data.shell().mass(options.formulation, added),
-                                                           view.isMassOnOffsets()));
+                     data.frames.massMatrixToDisplacementSystems(data.shell().mass(options.formulation, added),
+                                                                 view.isMassOnOffsets()));
     }
 }
 

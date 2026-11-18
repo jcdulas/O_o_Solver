@@ -367,7 +367,10 @@ ModelSnapshot SnapshotBuilder::takeAll()
     if (auto normals = take(TableRole::ShellNormals))
         parts.shellNormals.emplace(readTable(TableRole::ShellNormals, std::move(*normals)));
     if (auto piercings = take(TableRole::FastenerPiercings))
+    {
         parts.fastenerPiercings.emplace(std::move(*piercings));
+        parts.fastenerPiercings->buildPatches(*parts.nodes, parts.elementBatches);
+    }
     if (auto supports = take(TableRole::Supports))
         parts.supports.emplace(readTable(TableRole::Supports, std::move(*supports)));
     if (auto nodes = take(TableRole::ConnectionNodes))

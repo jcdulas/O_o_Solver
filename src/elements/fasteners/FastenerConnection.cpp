@@ -177,7 +177,7 @@ base::Mat3 fastenerAxes(base::Vec3 pointA, base::Vec3 pointB)
     const base::Vec3 xAxis = base::normalized(pointB - pointA);
     std::size_t least = 0;
     for (std::size_t k = 1; k < 3; ++k)
-        if (std::abs(xAxis[k]) < std::abs(xAxis[least]))
+        if (std::abs(xAxis[k]) < std::abs(xAxis[least]) - FASTENER_AXIS_TIE)
             least = k;
     base::Vec3 basic{};
     basic[least] = 1.0;

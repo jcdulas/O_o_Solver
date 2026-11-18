@@ -74,6 +74,15 @@ inline constexpr double PIERCING_PIVOT_TOLERANCE = 1.0e-10;
 // element. The shell rotations take no part (columns zero). The map is exact for every rigid motion of the pierced
 // element.
 //
+// A piercing point on a grid point or on a side of the pierced element (a fastener set on a grid point of the mesh
+// or on a mesh line, the usual place) has zero shape functions at the other grid points of that element, which then
+// fix the rotation of P alone: the slope of the sheet on one side of the point. A sheet that bends symmetrically
+// about the fastener then shows it a rotation, and the rotational springs and the arm of the fastener react to it
+// (two square plates joined at their centre and lifted by their four corners lifted by 0.29, 1.22, 1.22 and 2.15).
+// So the grid points given to this interpolation are those of the patch of the point
+// (input::FastenerPiercingTable::patchGrids): the pierced element, and, for such a point, every shell element that
+// holds the grid point or the side and continues the sheet, their other grid points with the smallest weight.
+//
 // Returns the message of a problem instead: no grid point, shape functions that do not sum to 1, grid points all on
 // P, or collinear grid points (a rotation undetermined).
 [[nodiscard]] std::variant<PiercingMap, std::string> interpolatePiercing(base::Vec3 piercingPoint,

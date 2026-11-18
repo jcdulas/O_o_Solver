@@ -152,9 +152,12 @@ std::variant<SideInterpolation, std::string> interpolateSide(const input::Fasten
     SideInterpolation side;
     const std::span<const double> xyz = table.piercingPoints()[row];
     side.point = {xyz[0], xyz[1], xyz[2]};
-    const std::span<const std::int32_t> ids = table.grids()[row];
-    const std::span<const double> values = table.weights()[row];
-    std::vector<PiercedGrid> grids; // the grid points of one element (at most 8)
+    // The grid points of the pierced element, or of the shell elements around a point on a grid point or a side of
+    // it (FastenerPiercingTable::patchGrids): the rotation of such a point is then that of the sheet on every side
+    // of it, not the slope of one element.
+    const std::span<const std::int32_t> ids = table.patchGrids()[row];
+    const std::span<const double> values = table.patchWeights()[row];
+    std::vector<PiercedGrid> grids; // the grid points of the elements around one point
     for (std::size_t k = 0; k < ids.size(); ++k)
     {
         const std::optional<SideGrid> grid = findGrid(ids[k]);

@@ -588,3 +588,64 @@ for (const mesh of MESHES)
     [2, 5, 5, 8].forEach((sum, k) => ratio(t, `frequency ${k + 1}`, Math.sqrt(rows[k].eigenvalue), sum * unit,
       sum === 2 ? 0.01 : 0.03));
   });
+
+// A closed ring of shells whose grid points lie on the basic axes: the director of such a grid point is along an axis
+// of its displacement system, and the rotary inertia of the coupled mass, which has no term about the director, came
+// out there at minus the round-off of the others; the eigenvalue solution refused that mass. The ring turned by a
+// few degrees about its axis, which has no director along an axis, gives the frequencies to compare with.
+for (const shape of ["ShellQuad4", "ShellQuad8"])
+  test(`a ring of 24 ${shape} with grid points on the basic axes has its modes with the coupled mass`, (t) => {
+    const [around, radius, length] = [24, 0.5, 1.5];
+    const frequencies = (turn) => {
+      const m = shape === "ShellQuad8" ? 2 : 1;
+      const lines = [];
+      const node = (i, j) => 1 + (((i % (m * around)) + m * around) % (m * around)) + j * m * around;
+      for (let j = 0; j <= m; ++j)
+        for (let i = 0; i < m * around; ++i) {
+          if (m === 2 && i % 2 === 1 && j === 1) continue; // no grid point at the centre of a ShellQuad8
+          const angle = turn + (2 * Math.PI * i) / (m * around);
+          lines.push(`Node;${node(i, j)};;${real(radius * Math.cos(angle))};${real(radius * Math.sin(angle))};${
+            real((length * j) / m)}`);
+        }
+      for (let i = 0; i < around; ++i) {
+        const corners = [node(m * i, 0), node(m * (i + 1), 0), node(m * (i + 1), m), node(m * i, m)];
+        const middles = m === 1 ? []
+          : [node(2 * i + 1, 0), node(2 * i + 2, 1), node(2 * i + 1, 2), node(2 * i, 1)];
+        lines.push(`${shape};${i + 1};1;${[...corners, ...middles].join(";")}`);
+      }
+      const clamped = Array.from({ length: m * around }, (_, i) => node(i, 0));
+      const model = [...lines, ...section({ thickness: 0.004, young: 7.1e10, poisson: 0.33, density: 2800 }),
+        "Parameter;CoupledMass;1", ...hold("123456", clamped)];
+      middles = []; // the supports are given at every grid point of the clamped end
+      const run = runModel(modalDeck(model, 6), CLASSIC, "modes");
+      return run.eigenvalues[0].rows.map((row) => Math.sqrt(row.eigenvalue) / (2 * Math.PI));
+    };
+    const onAxes = frequencies(0);
+    const turned = frequencies((3.7 * Math.PI) / 180);
+    t.diagnostic(`frequencies ${onAxes.map((f) => f.toFixed(3)).join(", ")} Hz; turned ${
+      turned.map((f) => f.toFixed(3)).join(", ")} Hz`);
+    onAxes.forEach((f, k) => assert.ok(Math.abs(f / turned[k] - 1) < 1e-7, `mode ${k + 1}: ${f} and ${turned[k]}`));
+  });
+
+// A moment about the normal put on one grid point of a shell is held by the drilling stabilisation alone
+// (ShellDirectors.hpp): the rotation of that grid point is inversely proportional to ShellDrillingStiffness and
+// grows as the area of the elements shrinks (4.08 times for cells half as wide), where the plate around it hardly
+// moves. This is the convention of the element, not a stiffness of the structure: a bar, a rigid element or a
+// load that brings such a moment to a single grid point is to be spread over the neighbouring grid points.
+test("a moment about the normal on one grid point of ShellQuad4 is held by the drilling stabilisation alone", (t) => {
+  const rotation = (n, parameters) => {
+    const g = grid({ ...QUAD4, nu: n, nv: n, position: (a, b) => [PLATE.side * a, PLATE.side * b, 0] });
+    const model = [...g.lines, ...section(PLATE), ...parameters,
+      `PointMomentLoad;2;${g.node(n / 2, n / 2)};;1.;0.;0.;1.`];
+    for (let j = 0; j <= n; ++j)
+      for (let i = 0; i <= n; ++i)
+        if (i === 0 || i === n || j === 0 || j === n) model.push(...hold("123456", [g.node(i, j)]));
+    return nodal(runModel(staticDeck(model), CLASSIC), "displacements", g.node(n / 2, n / 2))[5];
+  };
+  const [coarse, fine] = [rotation(4, []), rotation(8, [])];
+  const stiffer = rotation(8, ["Parameter;ShellDrillingStiffness;10000."]);
+  t.diagnostic(`rotation ${coarse.toExponential(3)} (4 x 4 cells), ${fine.toExponential(3)} (8 x 8), ${
+    stiffer.toExponential(3)} (8 x 8, ShellDrillingStiffness 10000)`);
+  assert.ok(Math.abs(fine / coarse / 4 - 1) < 0.05, `cells half as wide: ${fine / coarse} times the rotation`);
+  assert.ok(Math.abs(fine / stiffer / 100 - 1) < 0.02, `a hundred times the factor: ${fine / stiffer}`);
+});

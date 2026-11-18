@@ -97,6 +97,26 @@ struct ShellNodeFrames
         return carried(local, isMassOnOffsets ? toLocal : rotationToLocal);
     }
 
+    // The mass matrix of an element carried to the grid points (massToDisplacementSystems), its diagonal not
+    // negative. The rotary inertia of a shell has no term about its director; where a director lies along an axis
+    // of a displacement system, the products of the rotation leave that diagonal term at ± round-off of the others,
+    // and the eigenvalue solutions refuse a negative mass. Such a term (below MASS_DIAGONAL_ROUND_OFF of the
+    // largest) is set to zero; a larger negative term is left for them to report. Not for the rate of a mass,
+    // whose terms take any sign.
+    static constexpr double MASS_DIAGONAL_ROUND_OFF = 1.0e-12;
+    [[nodiscard]] base::MatN<6 * N> massMatrixToDisplacementSystems(const base::MatN<6 * N>& local,
+                                                                    bool isMassOnOffsets) const
+    {
+        base::MatN<6 * N> mass = massToDisplacementSystems(local, isMassOnOffsets);
+        double largest = 0.0;
+        for (std::size_t i = 0; i < 6 * N; ++i)
+            largest = std::max(largest, mass(i, i));
+        for (std::size_t i = 0; i < 6 * N; ++i)
+            if (mass(i, i) < 0.0 && mass(i, i) >= -MASS_DIAGONAL_ROUND_OFF * largest)
+                mass(i, i) = 0.0;
+        return mass;
+    }
+
     // M_CD(a, b) = T_aᵀ·M_local(a, b)·T_b for the transformations `transforms`.
     [[nodiscard]] static base::MatN<6 * N> carried(const base::MatN<6 * N>& local,
                                                    const std::array<base::MatN<6>, N>& transforms)

@@ -26,7 +26,9 @@ have their full names in `paramsTable`, such as `WeightToMass` and `ShellQuad4Fo
   `SubcaseTable`, `ParamTable` (the typed Parameter table `paramsTable`), `UnitTable` (components, revision stamps,
   boundaries, load case groups), `MassTable` (non-structural mass), `SectionTable` (BarShapeProp and BeamShapeProp section
   properties), `FastenerPiercingTable` (the piercing points of Fastener and Weld: O_o_Reader's `fastenerPiercings`,
-  with the grid points and shape functions of the shells pierced, in the layout the elements read), `ContactTable`
+  with the grid points and shape functions of the shells pierced, in the layout the elements read, and the patch of
+  each point: for a point on a grid point or a side of the pierced element, the grid points of the shell elements all
+  around it), `ContactTable`
   (glued contact: the node pairs, read as the two surfaces near each other, the glue parameters, the pairs a BCONTACT
   selects), `CoordinateSystemTable`; the normals the ShellNormal cards give at grid points (`shellNormals`, read
   through its contract by the ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6).

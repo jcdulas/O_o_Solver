@@ -152,12 +152,27 @@ std::string idList(const CardUse& use)
     return text;
 }
 
+// The name O_o_Reader gives, among the cards of a model, to the records it did not read as cards: a card name it
+// does not know, or a card it refused (a required field missing, a value out of its range).
+constexpr std::string_view UNREAD_RECORDS = "(unknown cards)";
+
 Diagnostic unsupportedCard(const std::string& card, const CardUse& use)
 {
     Diagnostic diagnostic;
     diagnostic.code = "unsupported-card";
     diagnostic.card = std::string(card);
     diagnostic.id = use.firstIds.empty() ? 0 : use.firstIds.front();
+    if (card == UNREAD_RECORDS)
+    {
+        // The solver has no name for them: the reader's diagnostics name each record and say why.
+        diagnostic.message = base::concatenate(
+            {std::to_string(use.entryCount), use.entryCount == 1 ? " record" : " records",
+             " of the model file ", use.entryCount == 1 ? "was" : "were",
+             " not read as a card: a card name O_o_Reader does not know, or a card it refused (a required field "
+             "missing, a value it does not take); its diagnostics (deck.diagnostics()) name each record and give the "
+             "reason: correct or remove these records"});
+        return diagnostic;
+    }
     diagnostic.message = base::concatenate(
         {"the ", use.kind, " card ", diagnostic.card, " is not supported by this version of O_o_Solver (",
          std::to_string(use.entryCount), use.entryCount == 1 ? " entry" : " entries",

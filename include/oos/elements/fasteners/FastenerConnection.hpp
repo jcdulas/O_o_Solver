@@ -70,7 +70,10 @@ inline constexpr double FASTENER_COINCIDENT_DISTANCE = 1.0e-8;
 // The axes of a fastener whose x-axis runs from A to B, when the property gives no system (FastenerProp MCID = −1, Weld
 // MCID = −1): y is the basic axis least aligned with x, made perpendicular to it, z = x × y (the first of the basic
 // axes X, Y, Z wins a tie): the input format places the element y-axis perpendicular to the element axis, towards the
-// closest basic axis. The columns of the result are x, y, z in the basic system.
+// closest basic axis. The columns of the result are x, y, z in the basic system. Two components of x that differ by
+// less than FASTENER_AXIS_TIE are a tie: a fastener along a basic axis has the two others at round-off of zero, and
+// the y-axis must not depend on which of the two round-offs is the smaller.
+inline constexpr double FASTENER_AXIS_TIE = 1.0e-6;
 [[nodiscard]] base::Mat3 fastenerAxes(base::Vec3 pointA, base::Vec3 pointB);
 
 } // namespace oos::elements

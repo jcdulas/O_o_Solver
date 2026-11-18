@@ -2,6 +2,8 @@
 
 #include "oos/base/arrow/ContractReader.hpp"
 #include "oos/base/arrow/ImportedTable.hpp"
+#include "oos/input/tables/ElementBatch.hpp"
+#include "oos/input/tables/NodeTable.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -29,6 +31,14 @@ struct FastenerPiercingRows
     PiercingRows sideA;
     PiercingRows sideB;
 };
+
+// A shell element around a piercing point belongs to its patch when its normal is within this angle, in direction,
+// of the normal of the pierced element: a web or a rib that meets the sheet along the line the fastener is on does
+// not.
+inline constexpr double PIERCING_PATCH_ANGLE_DEGREES = 20.0;
+// A shape function of the pierced element below this value at the piercing point is zero: the point lies on the
+// grid point or on the side of the element its other grid points span.
+inline constexpr double PIERCING_ZERO_SHAPE_VALUE = 1.0e-9;
 
 // A side of a fastener whose piercing point O_o_Reader did not find: the field of the card the problem is about (its
 // neutral name, nodeA or nodeB when the reader names none) and
@@ -85,6 +95,25 @@ public:
     {
         return {base::ListOffsets(nullptr, m_offsets.data()), m_weights.data(), rowCount()};
     }
+    // The patch of the piercing point: the grid points its motion is read from, and their weights. Inside an element
+    // they are those of grids() and weights(). On a grid point or on a side of the pierced element (a fastener set
+    // on a grid point of the mesh, or on a mesh line), where the element alone would give the slope of the sheet on
+    // one side of the point, they are the grid points of every shell element that holds that grid point or that
+    // side and whose normal is within PIERCING_PATCH_ANGLE_DEGREES of the pierced element's: those of the pierced
+    // element first with their shape functions, then the others with a zero weight (the interpolation gives them
+    // its smallest weight: elements/fasteners/PiercingInterpolation). Before buildPatches(), the pierced element.
+    [[nodiscard]] base::ListView<std::int32_t> patchGrids() const
+    {
+        return {base::ListOffsets(nullptr, m_patchOffsets.data()), m_patchGrids.data(), rowCount()};
+    }
+    [[nodiscard]] base::ListView<double> patchWeights() const
+    {
+        return {base::ListOffsets(nullptr, m_patchOffsets.data()), m_patchWeights.data(), rowCount()};
+    }
+    // Builds the patches from the shell elements of the model (`batches`: the batches of every card; the shells are
+    // those of SHELL_CARDS) and the positions of its grid points. A row of a face of grid points (elementIds() 0), a
+    // row whose grid points the model does not have, and a point inside its element keep the pierced element.
+    void buildPatches(const NodeTable& nodes, std::span<const ElementBatch> batches);
 
     // The rows of a fastener, or nothing when the table has none for it.
     [[nodiscard]] std::optional<FastenerPiercingRows> findFastener(std::int32_t elementId) const;
@@ -107,6 +136,9 @@ private:
     std::vector<std::int64_t> m_offsets; // rowCount() + 1, into m_grids and m_weights
     std::vector<std::int32_t> m_grids;
     std::vector<double> m_weights;
+    std::vector<std::int64_t> m_patchOffsets; // rowCount() + 1, into m_patchGrids and m_patchWeights
+    std::vector<std::int32_t> m_patchGrids;
+    std::vector<double> m_patchWeights;
     std::vector<SideFailure> m_failures; // sorted by elementId, side A first
 };
 
