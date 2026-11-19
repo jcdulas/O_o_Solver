@@ -499,7 +499,8 @@ void ZoneContour::resolve(std::size_t d, std::span<const ZoneSubcaseConstraint> 
     if (snapshot.hasTable(input::TableRole::FastenerPiercings))
     {
         const input::FastenerPiercingTable& piercings = snapshot.fastenerPiercings();
-        const base::ListView<std::int32_t> grids = piercings.grids();
+        // the grid points a fastener side is tied to (those under its footprint, or of the patch of its point)
+        const base::ListView<std::int32_t> grids = piercings.tieGrids();
         const std::span<const std::int32_t> ends = piercings.pointGrids();
         const base::ValidityView hasEnd = piercings.isPointGridGiven();
         for (std::int64_t row = 0; row < piercings.rowCount(); ++row)

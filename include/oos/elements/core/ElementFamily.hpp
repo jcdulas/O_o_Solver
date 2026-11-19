@@ -336,6 +336,23 @@ public:
         return false;
     }
 
+    // The energy ½ uᵀ K_s u of the stabilisation of each element of the range under `displacements`, into `energies`
+    // (one value per row of the range, in row order): what a term K_s of its stiffness that is not a stiffness of the
+    // structure holds, such as the drilling term of the shells with directors (ShellDirectors.hpp), which only keeps
+    // the rotation of a grid point about its normal from being singular. A solution compares its sum with the strain
+    // energy of the model: a notable share means that a load path goes through the stabilisation
+    // (solutions/common/StabilisationEnergy). False when the family has no such term (the default).
+    [[nodiscard]] virtual bool computeStabilisationEnergies(const ElementBatchView& view, ElementRange range,
+                                                            const NodalDisplacements& displacements,
+                                                            std::span<double> energies) const
+    {
+        static_cast<void>(view);
+        static_cast<void>(range);
+        static_cast<void>(displacements);
+        static_cast<void>(energies);
+        return false;
+    }
+
     // The columns of an output kind, in the order recover() fills them; empty for a kind the element does not give.
     [[nodiscard]] virtual std::vector<std::string> outputColumns(ElementOutput output) const;
     // Resets `block` to the columns of `output` and appends the rows of each element of the range. Throws

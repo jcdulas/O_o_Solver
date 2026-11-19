@@ -93,7 +93,8 @@ legs. In the order a plan uses them (`absorption/`):
   blocks it) and its stamp. `fastenerPiercings` has no eligibility columns: its sides are not absorbed
   (`noEligibility`) until the reader gives them.
 - `SpiderWeights` (a RigidInterpolation's weighting matrix from its rows of Gm), `FastenerPiercing` (a fastener side's from the
-  interpolation of its piercing point, `elements::interpolatePiercing`): `u_ref = W·u_legs`.
+  interpolation of its piercing point, `elements::interpolateSide`; its legs are the grid points under the footprint
+  of the fastener, `FastenerPiercingTable::tieGrids`): `u_ref = W·u_legs`.
 - `SpiderChangeOfBasis`: `u_legs = W⁺·u_ref + N·q` by a Householder QR of the scaled `Wᵀ` (rotations scaled by the
   characteristic length), applied to the rows of the legs (`transformRows`, `transformSymmetric`) and to the
   recovery (`expand`); never the flexibility form, never Lagrange multipliers.

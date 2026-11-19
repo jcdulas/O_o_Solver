@@ -637,6 +637,25 @@ void MindlinShell<Shape>::addDrilling(base::MatN<DOFS>& k, double shearModulus) 
 }
 
 template <typename Shape>
+double MindlinShell<Shape>::drillingEnergy(const std::array<double, DOFS>& q) const
+{
+    if (!hasDrilling())
+        return 0.0;
+    double energy = 0.0;
+    for (const QuadraturePoint& point : Shape::massRule())
+    {
+        const SurfacePoint p = pointAt(point.xi, point.eta);
+        const std::array<double, DOFS> row = drillingRowAt(p);
+        double rotation = 0.0; // r = ω − θ_n at the point
+        for (std::size_t i = 0; i < DOFS; ++i)
+            rotation += row[i] * q[i];
+        energy += 0.5 * m_drillingFactor * point.weight * p.determinant * thicknessAt(p.shape) *
+                  m_section.membraneMatrix(2, 2) * rotation * rotation;
+    }
+    return energy;
+}
+
+template <typename Shape>
 double MindlinShell<Shape>::dilatationOf(const ShellTemperatureChange& temperature) const
 {
     if (!m_section.hasMembrane || temperature.isZero())

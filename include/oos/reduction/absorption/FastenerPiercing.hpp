@@ -13,18 +13,18 @@ namespace oos::reduction
 {
 
 // A pierced side of a Fastener or Weld as a spider (fastener sides are absorbed like spiders): on each side the
-// fastener ties its point P (GA or GB, given or generated) to the grid points of the shell element it pierces by the
-// interpolation of elements::interpolatePiercing (a RigidInterpolation weighted by the shape functions at P, through
-// elements::interpolateSide),
+// fastener ties its point P (GA or GB, given or generated) to grid points of the shells by the interpolation of
+// elements::interpolateSide (the grid points under the four corners of the footprint of the fastener; or those of
+// the shell element it pierces, a RigidInterpolation weighted by the shape functions at P),
 //     (u_P, θ_P) = M·u_grids,
-// M the 6 × 6g map of the side (every form of the card; O_o_Reader's piercing rows, through
-// input::FastenerPiercingTable), u_grids the DOFs of the g grid points of the pierced element. That is a spider whose
-// legs are the grid points of the pierced element and whose weighting matrix is W = M: the side is absorbed into
+// M the 6 × 6g map of the side (every form of the card; O_o_Reader's piercing rows and the footprints, through
+// input::FastenerPiercingTable), u_grids the DOFs of those g grid points (FastenerPiercingTable::tieGrids). That is a
+// spider whose legs are these grid points and whose weighting matrix is W = M: the side is absorbed into
 // its unit by the same change of basis (SpiderChangeOfBasis), only P stays on the boundary, and the fastener
 // stiffness between P_A and P_B stays a connection. The rows of W are the motion of P in the basic system
-// (translations, then rotations); its columns the DOFs of the pierced element's grid points M uses (the translations
-// of the grid points only, or the six DOFs of a grid point connected directly), in increasing order; the
-// characteristic length is the mean distance of the grid points of the pierced element to P.
+// (translations, then rotations); its columns the DOFs of the grid points M uses (their translations, and the
+// rotations of those the rotation of the shell is read from), in increasing order; the characteristic length is the
+// mean distance of these grid points to P.
 //
 // When the card gives GA (or GB) as a grid point of the model, the point's own DOFs follow the pierced element by
 // u_GA = A·M·u_grids (assembly::FastenerConstraints, A the rigid offset from P to GA in the displacement system of GA,

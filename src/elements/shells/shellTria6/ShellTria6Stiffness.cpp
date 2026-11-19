@@ -12,4 +12,12 @@ void ShellTria6Element::computeStiffness(const ElementBatchView& view, ElementRa
     appendHigherOrderShellStiffness<QuadraticTriangleShape>(view, range, block);
 }
 
+bool ShellTria6Element::computeStabilisationEnergies(const ElementBatchView& view, ElementRange range,
+                                                     const NodalDisplacements& displacements,
+                                                     std::span<double> energies) const
+{
+    higherOrderShellStabilisationEnergies<QuadraticTriangleShape>(view, range, displacements, energies);
+    return true;
+}
+
 } // namespace oos::elements

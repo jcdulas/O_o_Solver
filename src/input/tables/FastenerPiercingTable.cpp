@@ -7,11 +7,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <functional>
 #include <numbers>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 
 namespace oos::input
@@ -49,6 +47,7 @@ FastenerPiercingTable::FastenerPiercingTable(base::ImportedTable piercings)
     const std::int64_t sourceRows = m_reader.rowCount();
     const std::span<const std::int32_t> ids = m_reader.values<std::int32_t>("elementId");
     const base::DictionaryView cards = m_reader.dictionaryTexts("card");
+    const base::DictionaryView forms = m_reader.dictionaryTexts("form");
     const base::DictionaryView sides = m_reader.dictionaryTexts("side");
     const std::span<const std::int32_t> pointGrids = m_reader.values<std::int32_t>("pointGrid", ALLOW);
     const base::ValidityView hasPointGrid = m_reader.validity("pointGrid");
@@ -123,6 +122,9 @@ FastenerPiercingTable::FastenerPiercingTable(base::ImportedTable piercings)
         m_fastenerIds.push_back(ids[r]);
         m_cardIndices.push_back(cardIndex(cards[row]));
         m_isSideA.push_back(isSideA ? 1 : 0);
+        // The cards that tie a fastener over its cross-section: every Fastener, and the Weld of the two patch forms.
+        const bool isOverSection = cards[row] == "Fastener" || forms[row] == "PartPatch" || forms[row] == "ElemPatch";
+        m_hasCorners.push_back(isOverSection ? 1 : 0);
         m_pointGrids.push_back(pointGrid);
         isGiven.push_back(pointGrid != 0);
         for (std::size_t c = 0; c < 3; ++c)
@@ -137,6 +139,10 @@ FastenerPiercingTable::FastenerPiercingTable(base::ImportedTable piercings)
     m_patchOffsets = m_offsets;
     m_patchGrids = m_grids;
     m_patchWeights = m_weights;
+    m_tieOffsets = m_offsets;
+    m_tieGrids = m_grids;
+    m_cornerFootprint = FootprintSamples(rowCount());
+    m_meanFootprint = FootprintSamples(rowCount());
     // The validity bitmap of the point grids, least significant bit first (Arrow's layout, read by ValidityView).
     m_pointGridBits.assign((isGiven.size() + 7) / 8 + 1, 0);
     for (std::size_t row = 0; row < isGiven.size(); ++row)
@@ -149,103 +155,83 @@ FastenerPiercingTable::FastenerPiercingTable(base::ImportedTable piercings)
 namespace
 {
 
-// The cards of the shell elements a fastener pierces.
-constexpr std::array<std::string_view, 6> SHELL_CARDS{"ShellQuad4",         "ShellTria3",         "ShellQuad8",
-                                                      "ShellTria6",         "ShellQuad4Drilling", "ShellTria3Drilling"};
-
-using Point = std::array<double, 3>;
-
-// A shell element at one of its grid points: the batch and the row.
-struct ShellAtGrid
+// The diameters of the elements of card `card` ("Fastener" or "Weld"), by element ID, sorted: the `diameter` of the
+// property of each (FastenerProp, WeldProp), where it is above 0. An element whose property the model does not
+// have has no entry.
+std::vector<std::pair<std::int32_t, double>> diametersOf(std::string_view card, std::span<const ElementBatch> batches,
+                                                         std::span<const CardTable> properties)
 {
-    std::int32_t gridId = 0;
-    std::size_t batch = 0;
-    std::int64_t row = 0;
-};
-
-// The unit normal of the shell of grid points `ids` (the corners first: three for 3 or 6 grid points, else four):
-// along the cross product of two sides of a triangle, of the diagonals of a quadrilateral. Nothing when a corner is
-// not a grid point of the model or the corners are on a line.
-std::optional<Point> shellNormal(std::span<const std::int32_t> ids,
-                                 const std::function<std::optional<Point>(std::int32_t)>& positionOf)
-{
-    const std::size_t corners = ids.size() == 3 || ids.size() == 6 ? 3 : 4;
-    if (ids.size() < corners)
-        return std::nullopt;
-    std::array<Point, 4> x{};
-    for (std::size_t c = 0; c < corners; ++c)
+    std::vector<std::pair<std::int32_t, double>> diameters; // bounded by the elements of the card
+    const auto batch = std::find_if(batches.begin(), batches.end(),
+                                    [&](const ElementBatch& candidate) { return candidate.card() == card; });
+    const std::string_view propertyCard = card == "Fastener" ? "FastenerProp" : "WeldProp";
+    const auto table = std::find_if(properties.begin(), properties.end(),
+                                    [&](const CardTable& candidate) { return candidate.card() == propertyCard; });
+    if (batch == batches.end() || table == properties.end() || !batch->hasProperty() ||
+        !table->reader().hasColumn("diameter"))
+        return diameters;
+    // The rows of the properties by ID.
+    const std::span<const std::int32_t> propertyIds = table->ids();
+    std::vector<std::pair<std::int32_t, std::size_t>> propertyRows; // bounded by the properties of the card
+    for (std::size_t row = 0; row < propertyIds.size(); ++row)
+        propertyRows.emplace_back(propertyIds[row], row);
+    std::sort(propertyRows.begin(), propertyRows.end());
+    const std::span<const double> values = table->reader().values<double>("diameter");
+    const std::span<const std::int32_t> elementIds = batch->ids();
+    const std::span<const std::int32_t> elementProperties = batch->propertyIds();
+    for (std::size_t row = 0; row < elementIds.size(); ++row)
     {
-        const std::optional<Point> position = positionOf(ids[c]);
-        if (!position)
-            return std::nullopt;
-        x[c] = *position;
+        const auto property = std::lower_bound(propertyRows.begin(), propertyRows.end(),
+                                               std::pair<std::int32_t, std::size_t>{elementProperties[row], 0});
+        if (property == propertyRows.end() || property->first != elementProperties[row])
+            continue;
+        const double diameter = values[property->second];
+        if (std::isfinite(diameter) && diameter > 0.0)
+            diameters.emplace_back(elementIds[row], diameter);
     }
-    const auto difference = [&](std::size_t a, std::size_t b)
-    { return Point{x[a][0] - x[b][0], x[a][1] - x[b][1], x[a][2] - x[b][2]}; };
-    const Point u = corners == 3 ? difference(1, 0) : difference(2, 0);
-    const Point v = corners == 3 ? difference(2, 0) : difference(3, 1);
-    const Point n{u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
-    const double length = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-    if (!(length > 0.0))
-        return std::nullopt;
-    return Point{n[0] / length, n[1] / length, n[2] / length};
+    std::sort(diameters.begin(), diameters.end());
+    return diameters;
 }
 
 } // namespace
 
-void FastenerPiercingTable::buildPatches(const NodeTable& nodes, std::span<const ElementBatch> batches)
+void FastenerPiercingTable::buildPatches(const NodeTable& nodes, std::span<const ElementBatch> batches,
+                                         std::span<const CardTable> properties)
 {
-    // The rows on a grid point or a side of their element: the others keep the pierced element.
+    // The rows on a shell element (not on a face of grid points), and among them those on a grid point or a side of
+    // their element: the others keep the grid points of the pierced element.
+    const auto isOnShell = [&](std::int64_t row) { return m_elementIds[static_cast<std::size_t>(row)] != 0; };
     const auto isOnBoundary = [&](std::int64_t row)
     {
-        if (m_elementIds[static_cast<std::size_t>(row)] == 0)
-            return false;
         const std::span<const double> values = weights()[row];
-        return std::any_of(values.begin(), values.end(),
-                           [](double value) { return std::abs(value) <= PIERCING_ZERO_SHAPE_VALUE; });
+        return isOnShell(row) && std::any_of(values.begin(), values.end(), [](double value)
+                                             { return std::abs(value) <= PIERCING_ZERO_SHAPE_VALUE; });
     };
-    bool hasBoundaryRow = false;
-    for (std::int64_t row = 0; row < rowCount() && !hasBoundaryRow; ++row)
-        hasBoundaryRow = isOnBoundary(row);
-    if (!hasBoundaryRow)
+    bool hasShellRow = false;
+    for (std::int64_t row = 0; row < rowCount() && !hasShellRow; ++row)
+        hasShellRow = isOnShell(row);
+    if (!hasShellRow)
         return;
 
-    // The positions of the grid points by ID, and the shell elements at each grid point, sorted by grid point.
-    const std::span<const std::int32_t> nodeIds = nodes.ids();
-    std::vector<std::pair<std::int32_t, std::int64_t>> nodeRows; // bounded by the grid points
-    nodeRows.reserve(nodeIds.size());
-    for (std::size_t r = 0; r < nodeIds.size(); ++r)
-        nodeRows.emplace_back(nodeIds[r], static_cast<std::int64_t>(r));
-    std::sort(nodeRows.begin(), nodeRows.end());
-    const base::FixedListView<double> positions = nodes.positionsInBasic();
-    const std::function<std::optional<Point>(std::int32_t)> positionOf = [&](std::int32_t id) -> std::optional<Point>
+    // The diameter of the fastener of a row: that of the property of its card; 0 when the model does not have it.
+    const std::vector<std::pair<std::int32_t, double>> fastenerDiameters = diametersOf("Fastener", batches, properties);
+    const std::vector<std::pair<std::int32_t, double>> weldDiameters = diametersOf("Weld", batches, properties);
+    const auto diameterOf = [&](std::int64_t row)
     {
+        const auto& diameters = card(row) == "Fastener" ? fastenerDiameters : weldDiameters;
+        const std::int32_t id = m_fastenerIds[static_cast<std::size_t>(row)];
         const auto found =
-            std::lower_bound(nodeRows.begin(), nodeRows.end(), std::pair<std::int32_t, std::int64_t>{id, 0});
-        if (found == nodeRows.end() || found->first != id)
-            return std::nullopt;
-        const std::span<const double> x = positions[found->second];
-        return Point{x[0], x[1], x[2]};
+            std::lower_bound(diameters.begin(), diameters.end(), std::pair<std::int32_t, double>{id, 0.0});
+        return found != diameters.end() && found->first == id ? found->second : 0.0;
     };
-    std::vector<ShellAtGrid> shells; // bounded by the grid points of the shell elements
-    for (std::size_t b = 0; b < batches.size(); ++b)
-    {
-        if (std::find(SHELL_CARDS.begin(), SHELL_CARDS.end(), batches[b].card()) == SHELL_CARDS.end() ||
-            !batches[b].hasNodes())
-            continue;
-        const ConnectivityView connectivity = batches[b].nodes();
-        for (std::int64_t row = 0; row < connectivity.size(); ++row)
-            for (const std::int32_t id : connectivity[row])
-                if (id != 0)
-                    shells.push_back({id, b, row});
-    }
-    std::sort(shells.begin(), shells.end(), [](const ShellAtGrid& a, const ShellAtGrid& b)
-              { return std::tie(a.gridId, a.batch, a.row) < std::tie(b.gridId, b.batch, b.row); });
 
+    const ShellMeshIndex mesh(nodes, batches);
     const double cosine = std::cos(PIERCING_PATCH_ANGLE_DEGREES * std::numbers::pi / 180.0);
     std::vector<std::int64_t> offsets{0};
     std::vector<std::int32_t> patchGrids; // bounded by the grid points of the shells around the piercing points
     std::vector<double> patchWeights;
+    FootprintSamples corners;
+    FootprintSamples mean;
     for (std::int64_t row = 0; row < rowCount(); ++row)
     {
         const std::span<const std::int32_t> ids = grids()[row];
@@ -253,8 +239,8 @@ void FastenerPiercingTable::buildPatches(const NodeTable& nodes, std::span<const
         patchGrids.insert(patchGrids.end(), ids.begin(), ids.end());
         patchWeights.insert(patchWeights.end(), values.begin(), values.end());
         const std::size_t first = static_cast<std::size_t>(offsets.back());
-        const std::optional<Point> normal = isOnBoundary(row) ? shellNormal(ids, positionOf) : std::nullopt;
-        if (normal)
+        const std::optional<base::Vec3> normal = isOnShell(row) ? mesh.normalOf(ids) : std::nullopt;
+        if (normal && isOnBoundary(row))
         {
             // The grid points the piercing point lies on: those whose shape function is not zero.
             std::vector<std::int32_t> held; // at most the grid points of one element
@@ -262,38 +248,56 @@ void FastenerPiercingTable::buildPatches(const NodeTable& nodes, std::span<const
                 if (std::abs(values[k]) > PIERCING_ZERO_SHAPE_VALUE)
                     held.push_back(ids[k]);
             // The shell elements at the first of them that hold them all and continue the sheet.
-            const auto range = std::equal_range(shells.begin(), shells.end(), ShellAtGrid{held.front(), 0, 0},
-                                                [](const ShellAtGrid& a, const ShellAtGrid& b)
-                                                { return a.gridId < b.gridId; });
-            for (auto shell = range.first; shell != range.second; ++shell)
+            mesh.forEachShellAt(held.front(), [&](const ShellRef& shell)
             {
-                const std::span<const std::int32_t> others = batches[shell->batch].nodes()[shell->row];
+                const std::span<const std::int32_t> others = shell.grids;
                 const auto isHeldByOther = [&](std::int32_t id)
                 { return std::find(others.begin(), others.end(), id) != others.end(); };
-                const bool holdsAll = std::all_of(held.begin(), held.end(), isHeldByOther);
-                if (!holdsAll)
-                    continue;
-                const std::optional<Point> other = shellNormal(others, positionOf);
-                if (!other ||
-                    std::abs((*normal)[0] * (*other)[0] + (*normal)[1] * (*other)[1] + (*normal)[2] * (*other)[2]) <
-                        cosine)
-                    continue;
+                const std::optional<base::Vec3> other = mesh.normalOf(others);
+                if (!std::all_of(held.begin(), held.end(), isHeldByOther) || !other ||
+                    std::abs(base::dot(*normal, *other)) < cosine)
+                    return;
                 for (const std::int32_t id : others)
                 {
-                    if (id == 0 || !positionOf(id) ||
+                    if (id == 0 || !mesh.positionOf(id) ||
                         std::find(patchGrids.begin() + static_cast<std::ptrdiff_t>(first), patchGrids.end(), id) !=
                             patchGrids.end())
                         continue;
                     patchGrids.push_back(id);
                     patchWeights.push_back(0.0);
                 }
-            }
+            });
         }
         offsets.push_back(static_cast<std::int64_t>(patchGrids.size()));
+        const auto r = static_cast<std::size_t>(row);
+        appendFootprint(mesh, m_elementIds[r], values, isOnShell(row) ? diameterOf(row) : 0.0, m_hasCorners[r] != 0,
+                        corners, mean);
     }
     m_patchOffsets = std::move(offsets);
     m_patchGrids = std::move(patchGrids);
     m_patchWeights = std::move(patchWeights);
+    m_cornerFootprint = std::move(corners);
+    m_meanFootprint = std::move(mean);
+
+    // The grid points of the tie of each row: those under its corners, or those of its patch.
+    m_tieOffsets.assign(1, 0);
+    m_tieGrids.clear();
+    for (std::int64_t row = 0; row < rowCount(); ++row)
+    {
+        const auto first = static_cast<std::ptrdiff_t>(m_tieGrids.size());
+        const auto addGrid = [&](std::int32_t id)
+        {
+            if (std::find(m_tieGrids.begin() + first, m_tieGrids.end(), id) == m_tieGrids.end())
+                m_tieGrids.push_back(id);
+        };
+        for (std::int64_t k = 0; k < m_cornerFootprint.count(row); ++k)
+            for (const std::int32_t id : m_cornerFootprint.at(row, k).grids)
+                addGrid(id);
+        if (m_cornerFootprint.count(row) == 0)
+            for (const std::int32_t id : this->patchGrids()[row])
+                addGrid(id);
+        m_tieOffsets.push_back(static_cast<std::int64_t>(m_tieGrids.size()));
+    }
 }
 
 std::string_view FastenerPiercingTable::card(std::int64_t row) const

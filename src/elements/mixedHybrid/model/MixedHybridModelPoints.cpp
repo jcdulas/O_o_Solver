@@ -3,6 +3,7 @@
 #include "oos/elements/mixedHybrid/solid/VolumeShape.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <tuple>
 
@@ -69,38 +70,50 @@ std::optional<ReferencePoint> shellReferencePoint(const MixedShell& shell, std::
 
 } // namespace
 
-std::optional<FormulationModel::PointMotion> MixedHybridModel::shellPointMotion(std::int32_t elementId,
-                                                                                std::span<const std::int32_t> gridRows,
-                                                                                std::span<const double> shapeValues,
-                                                                                const base::Vec3& point) const
+std::optional<FormulationModel::PointMotion> MixedHybridModel::shellPointMotion(
+    std::int32_t elementId, const base::Vec3& point, std::span<const ShellSample> samples) const
 {
-    if (m_shellPart == nullptr || !m_shellPart->usable())
+    if (m_shellPart == nullptr || !m_shellPart->usable() || m_shellOfId.find(elementId) == m_shellOfId.end())
         return std::nullopt;
-    const auto found = m_shellOfId.find(elementId);
-    if (found == m_shellOfId.end())
-        return std::nullopt;
-    const MixedShell& shell = m_shells[found->second];
-    const std::optional<ReferencePoint> at = shellReferencePoint(shell, gridRows, shapeValues);
-    if (!at)
-        return std::nullopt;
-    const ShellPart::PointRows rows = m_shellPart->pointRows(shell.partIndex, (*at)[0], (*at)[1]);
+
+    // The mean over the samples of the motion of the shell carried rigidly to the piercing point P,
+    //   u_P = mean(u + θ × (P − X)),   θ_P = mean(θ),
+    // X the point of the surface of a sample: exact for a rigid motion whatever the samples.
     PointMotion motion;
-    for (std::size_t r = 0; r < 6; ++r)
-        appendPartTerms(rows.rows[r], 1.0, motion.rows[r]);
-    // The translation of the piercing point P with the surface: u + θ × d, d = P − X (zero on a flat element).
-    const std::array<double, 3> d{point[0] - rows.point[0], point[1] - rows.point[1], point[2] - rows.point[2]};
-    for (std::size_t c = 0; c < 3; ++c)
+    double total = 0.0;
+    for (const ShellSample& sample : samples)
     {
-        const std::size_t next = (c + 1) % 3;
-        const std::size_t last = (c + 2) % 3;
-        // (θ × d)_c = θ_next d_last − θ_last d_next
-        if (d[last] != 0.0)
-            appendPartTerms(rows.rows[3 + next], d[last], motion.rows[c]);
-        if (d[next] != 0.0)
-            appendPartTerms(rows.rows[3 + last], -d[next], motion.rows[c]);
+        const auto found = m_shellOfId.find(sample.elementId);
+        if (found == m_shellOfId.end())
+            continue;
+        const MixedShell& shell = m_shells[found->second];
+        const std::optional<ReferencePoint> at = shellReferencePoint(shell, sample.gridRows, sample.shapeValues);
+        if (!at)
+            continue;
+        const ShellPart::PointRows rows = m_shellPart->pointRows(shell.partIndex, (*at)[0], (*at)[1]);
+        for (std::size_t r = 0; r < 6; ++r)
+            appendPartTerms(rows.rows[r], sample.weight, motion.rows[r]);
+        const std::array<double, 3> d{point[0] - rows.point[0], point[1] - rows.point[1], point[2] - rows.point[2]};
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            const std::size_t next = (c + 1) % 3;
+            const std::size_t last = (c + 2) % 3;
+            // (θ × d)_c = θ_next d_last − θ_last d_next
+            if (d[last] != 0.0)
+                appendPartTerms(rows.rows[3 + next], sample.weight * d[last], motion.rows[c]);
+            if (d[next] != 0.0)
+                appendPartTerms(rows.rows[3 + last], -sample.weight * d[next], motion.rows[c]);
+        }
+        total += sample.weight;
     }
+    if (!(total > 0.0))
+        return std::nullopt;
     for (std::vector<FormulationRelationTerm>& row : motion.rows)
+    {
         mergeTerms(row);
+        for (FormulationRelationTerm& term : row)
+            term.coefficient /= total;
+    }
     return motion;
 }
 

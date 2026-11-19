@@ -54,6 +54,16 @@ for full and streamed statics; different selections have separate mass matrices 
   zero pivot): shifted subspace inverse iteration on the factor of K + 1e-14·diag(K) kept despite its failed pivots,
   then a Rayleigh-Ritz projection that keeps the vectors of energy ratio below 1/MaxDiagonalRatio. The static solution attaches
   them to its SingularityError (`mechanisms()`), from which the caller can make a result table.
+- `common/StabilisationEnergy`: the warning `stabilisation-carries-load`. The drilling term of the ShellQuad4,
+  ShellTria3, ShellQuad8 and ShellTria6 is a stabilisation (PARAM ShellDrillingStiffness), which holds next to nothing
+  of the strain energy of a sound model. After each static subcase and each mode of the full path, the sum of the
+  elements' stabilisation energies (`ElementFamily::computeStabilisationEnergies`) is compared with the strain
+  energy (½ u·(p + q) of the applied loads and support forces; ½ s² λ of a mode): above 1 % the run names the
+  subcase or the mode, the share and the elements that hold the most. It means that a moment about the normal of a
+  shell reaches a single grid point (a bar attached at one grid point, a rigid element with its rotations on one grid
+  point, a moment load, a point inertia), where the result depends on the factor and on the size of the elements.
+  Not made for a case with temperatures (its loads are not all in p), with the element formulation that has
+  unknowns outside the grid points, nor on the condensed, streamed and buckling paths.
 
 ## The eigenvalue solutions
 

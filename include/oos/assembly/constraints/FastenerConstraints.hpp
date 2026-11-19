@@ -24,8 +24,9 @@ namespace oos::assembly
 // element by the same interpolation, so that the point is recovered (its displacements follow the pierced element)
 // and whatever else is attached to it (a mass, a load, another element) acts on the pierced element:
 //     u_GA = R_GAᵀ·(u_P + θ_P × (x_GA − x_P)),   θ_GA = R_GAᵀ·θ_P,   (u_P, θ_P) = M·u_grids,
-// M the interpolation of the piercing point P of the side from the grid points of the element it pierces (the
-// RigidInterpolation of elements::interpolatePiercing, through elements::interpolateSide), u_grids their DOFs, R_GA the
+// M the interpolation of the piercing point P of the side from the grid points it is tied to (those under the
+// corners of the footprint of the fastener, or those of the element it pierces: elements::interpolateSide), u_grids
+// their DOFs, R_GA the
 // rotation of the displacement system of GA. The rows are handed to RigidElimination, which resolves them with the
 // rigid elements and MPCs (a grid point of the pierced element that is itself dependent is replaced by its row). A grid
 // point that several fasteners name (the middle point of a stack of three sheets) is constrained once, by the first

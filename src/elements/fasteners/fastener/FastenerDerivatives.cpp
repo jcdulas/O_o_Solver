@@ -30,7 +30,9 @@ int componentOf(const DesignedField& field)
 FieldUse FastenerElement::designFieldUse(const DesignedField& field) const
 {
     // FastenerProp: KT1-KT3 and KR1-KR3 are the stiffnesses (the stiffness and the forces), MASS the mass only, GE a
-    // damping (no static effect); D, the diameter, takes no part in the computations.
+    // damping (no static effect). D, the diameter, sizes the footprint of the fastener on the shells, which is built
+    // when the snapshot is taken (input::FastenerPiercingTable::buildPatches) and stays that of the D of the model:
+    // no computation reads the designed field.
     return findFieldUse(field, {{"FastenerProp", "translationalStiffness", FieldUse::stiffnessAndRecovery()},
                                 {"FastenerProp", "rotationalStiffness", FieldUse::stiffnessAndRecovery()},
                                 {"FastenerProp", "mass", FieldUse::massOnly()},

@@ -112,6 +112,10 @@ public:
     void computeThermalLoads(const ElementBatchView& view, ElementRange range, const ElementTemperatures& temperatures,
                              ElementVectorBlock& block) const override;
     [[nodiscard]] bool isThermallyInert() const noexcept override { return false; }
+    // The energy of the drilling term of each element (Shell::drillingEnergy).
+    [[nodiscard]] bool computeStabilisationEnergies(const ElementBatchView& view, ElementRange range,
+                                                    const NodalDisplacements& displacements,
+                                                    std::span<double> energies) const override;
 
     [[nodiscard]] std::vector<std::string> outputColumns(ElementOutput output) const override;
     void recover(const ElementBatchView& view, ElementRange range, ElementOutput output,

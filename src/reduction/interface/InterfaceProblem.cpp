@@ -678,7 +678,7 @@ void InterfaceProblem::addElementContributions(const InterfaceInputs& inputs, st
             const std::size_t n = dofs.size();
             // The carried columns: an interface DOF is itself; a leg DOF of an absorbed spider its W⁺ row onto the
             // reference DOFs; a DOF of an interior point with no term is dropped (the rotations of the grid points
-            // of a fastener's pierced element, whose interpolation reads the translations only).
+            // around a fastener that its interpolation does not read).
             carriedDofs.clear();
             std::vector<std::int32_t> spiderOfRow(n, -1); // bounded by an element
             std::vector<std::int32_t> slotOfRow(n, -1);

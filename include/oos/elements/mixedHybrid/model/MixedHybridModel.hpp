@@ -235,13 +235,15 @@ public:
     // geometry declarations of the model.
     void describeSurroundings(std::span<const std::int32_t> gridRows,
                               const std::function<void(double)>& mix) const override;
-    // The motion of a point of a shell pierced by a fastener or a weld (section 5.10): the point of the shell placed by
-    // the shape functions of its card (corner grids at the reference corners, mid-side grids at the middles of their
-    // edges), its displacement and rotation there (ShellPart::pointRows) carried rigidly to the piercing point.
-    [[nodiscard]] std::optional<PointMotion> shellPointMotion(std::int32_t elementId,
-                                                              std::span<const std::int32_t> gridRows,
-                                                              std::span<const double> shapeValues,
-                                                              const base::Vec3& point) const override;
+    // The motion of a point of a shell pierced by a fastener or a weld (section 5.10): the mean, over the samples of
+    // the footprint of the fastener, of the displacement and rotation of the shell (ShellPart::pointRows) carried
+    // rigidly to the piercing point; each sample is placed on its shell by the shape functions of its card (corner
+    // grids at the reference corners, mid-side grids at the middles of their edges). A point load on a shell is
+    // singular (its displacement in the plane and its rotation under a moment grow without bound as the element
+    // resolves them), so the motion at the point alone depends on the mesh and on where the point lies in it; over
+    // the footprint of the fastener it converges.
+    [[nodiscard]] std::optional<PointMotion> shellPointMotion(std::int32_t elementId, const base::Vec3& point,
+                                                              std::span<const ShellSample> samples) const override;
     // The translations of a point of a face of a shell or of a solid of the formulation (faceOf: the face of its
     // corners), placed by the shape functions of the face: of the shell at its reference point, of the solid at the
     // point of its reference shape (the functions of its kernel there; its interior fields vanish on a face).

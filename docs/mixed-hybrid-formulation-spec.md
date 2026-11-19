@@ -659,13 +659,36 @@ Phase 6 adds the motion of a point of an element as a linear combination of its 
 function of the formulation model rather than a facet of the families, since the elements that read it (fasteners,
 welds, glue) know the pierced element by its ID or its face, not by a batch row:
 
-- `FormulationModel::shellPointMotion(elementId, gridRows, shapeValues, point)`: the displacement and the rotation of
-  a shell at the point a fastener or a weld pierces. The point of the shell is placed by the shape functions of its
+- `FormulationModel::shellPointMotion(elementId, point, samples)`: the displacement and the rotation of the shells
+  where a fastener or a weld pierces them. Each sample is a point of a shell, placed by the shape functions of its
   card that the fastener piercing table gives, Σ N_j r_j / Σ N_j, r_j the reference corner of a corner grid point
-  and the middle of its edge for a mid-side grid point (the shape functions of a card reproduce the linear functions
-  of its parameters: on a flat element of straight sides this is the point itself). The rotation is that of the
-  shell there (θ = ν × β + ω ν, section 5.4), and the translation is carried rigidly from the point X of the surface
-  to the piercing point P: u_P = u(X) + θ × (P − X). The map is exact for every rigid motion.
+  and the middle of its edge for a mid-side grid point (the shape functions of a card reproduce the linear
+  functions of its parameters: on a flat element of straight sides this is the point itself). The rotation is that
+  of the shell (θ = ν × β + ω ν, section 5.4), and the translation is carried rigidly from the point X of the
+  surface to the piercing point P: u_P = u(X) + θ × (P − X), exact for every rigid motion.
+  The motion is the weighted mean of these over the footprint of the fastener
+  (`input/tables/PiercingFootprint.hpp`, `FastenerPiercingTable::meanFootprint`): the square of the area of its
+  cross-section (side (√π / 2) D, FastenerProp or WeldProp D) about the point, in the tangent plane of the shells
+  there, its sides along those of the pierced shell, sampled at its 3 × 3 Gauss points. Each of them is placed on
+  the shell that holds its nearest point, the pierced one or a shell up to two rings of elements around it that
+  continues its sheet (so the mesh may be finer than the fastener); a point on a side shared by several shells is
+  read on each of them with an equal share of its weight (the rotation of the shell is not single-valued there),
+  and a point the shells do not hold (a fastener on a free edge) is left out. The reason: a point load on a shell
+  is singular (the displacement in the plane under a point force and the rotation under a point moment grow
+  without bound as the elements resolve them), so the motion read at the point alone depends on the mesh and on
+  where the point falls in it. Measured on two plates of ShellQuad4 joined by one fastener of 4 mm (shear
+  compliance, the fastener on a grid point and inside an element, on 4, 8 and 16 cells of 30, 15 and 7.5 mm): 2.23
+  and 1.42, 2.70 and 1.59, 3.37 and 1.79 (×10⁻³) at the point alone; 1.63 and 1.41, 1.68 and 1.56, 1.70 and 1.66
+  over the footprint (1.73 and 1.72 on 32 cells), where the two places come together as the mesh is refined. On a
+  grid point of a symmetric joint the footprint lies in the elements all around and keeps the symmetry (read in one
+  of them, four corners that should lift alike lifted by 1.14, 1.27, 1.27 and 1.39). Without a diameter the one
+  sample is the piercing point.
+  The `ClassicFormulation` ties a Fastener, and a Weld of the forms PartPatch and ElemPatch, over the same square
+  by its four corners (`elements/fasteners/PiercingInterpolation`, `interpolateFootprint`), with the same reading
+  of the shell: the translation of the sheet, the rotation of the shell about the axes of its plane (the rotations
+  of the grid points, by the shape functions) and the rotation of the sheet in its plane (from the translations of
+  the corners). On the same plates its compliance is 1.39 and 1.23 (×10⁻³) on 8 cells of 15 mm, 1.44 and 1.49 on
+  32 cells, 1.68 and 1.59 on 128 cells of 0.9 mm.
 - `FormulationModel::facePointMotion(faceGridRows, shapeValues)`: the translations of a point of a face of a shell
   or of a solid (the primary face of a glued contact), placed the same way on the shell or on the reference shape of
   the solid (the functions of its kernel at that point; the interior fields of a modal analysis vanish on a face).
@@ -674,7 +697,15 @@ The fastener elements (`elements/fasteners/FastenerConnection`, through `resolve
 GB grid points (`assembly/FastenerConstraints`) and the glue (`assembly/GlueConstraints`) use them when the
 formulation has the element, in place of the shape functions of `ClassicFormulation`: their matrices and relations
 name entity DOFs, which the assembly and `RigidElimination` take as any DOF. A side with no element of the
-formulation (a Weld face given by grid points, an element of another card) keeps the classic interpolation. The
+formulation (a Weld face given by grid points, an element of another card) keeps the classic interpolation, over
+the translations of grid points: such a tie loads the shell at points, and gives a joint more compliant than the
+same joint read over a footprint (`wasm/test/validation/fasteners.test.mjs`, sections 8 and 9).
+
+The elements of this formulation resolve the sheets between the fasteners: a stringer fastened to a skin at the
+centre of each cell is not the stringer merged to the skin, as it is with ClassicFormulation elements as large as
+the pitch (which have no shape left to part from each other once tied at their centres), but what the
+ClassicFormulation gives on cells several times smaller (within 4 % of cells cut in 8 × 8 with rivets; the same
+suite, section 7). The
 element views carry the formulation model with the entity layout (`ElementBatchView::formulation`).
 
 ### 5.11 The condensed path
@@ -999,7 +1030,7 @@ fold.
 | A BeamDistributedLoad on a line on a shell edge works on the kinematics of the line (θ = a_T t + t × du/ds, the offset o × f included); a couple about the shell normal is taken, on −μ · du/ds | The load is consistent with the energy of the line; the reference's edge traction puts the couple about μ on −β · t, which differs by the shear γ · t (zero for a Kirchhoff shell, small for a thin one). |
 | The forces of a bar or beam on a shell edge are the section forces of the line kernel along it; the Bar2 row reads its shear forces, axial force and torque at its middle | The shell loads the line along the edge: no end forces describe the forces between the ends. A line alone keeps the end forces of its equilibrium (`r = K x − f`), exact at the ends. |
 | PointsPressureLoad on a face of a shell or a solid of the formulation goes through the pressure facet (section 7), of the sign of the order of its grid points | The consistent load of the element instead of forces at the grid points. |
-| Fasteners, welds and glued contacts read the shells and solids of the formulation at their point over every DOF of the element (section 5.10), the point placed by the shape functions of the card | The reference has no such elements. |
+| Fasteners, welds and glued contacts read the shells and solids of the formulation at their point over every DOF of the element (section 5.10), the point placed by the shape functions of the card; a fastener or a weld reads the shells over the footprint of its cross-section | The reference has no such elements. |
 | Temperatures of a solid: the corner changes interpolated by the functions of the corners of the straight element at the point nearest to each point of the kernel; an expansion that differs between directions is refused under a temperature load | The kernel of the reference takes one expansion coefficient and a temperature field of the position. |
 | A pressure along a direction on a solid face is taken when it is the same at every corner of the face | The kernel's traction field is uniform there. |
 | Membrane-only and bending-only shells (section 4.1): the strains of the part a section lacks are recovered as zero (the generalised inverse of [A B; Bᵀ D], `membraneBendingCompliance`), and the strains of an offset membrane-only section are one split (e, κ) of its strain e + z0 κ | The reference takes both parts; its compliance is the inverse of the whole section. |

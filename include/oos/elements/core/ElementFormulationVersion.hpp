@@ -45,7 +45,15 @@ namespace oos::elements
 // - 10: a Fastener or a Weld on a grid point or on a side of the shell it pierces reads the rotation of the sheet
 //   from the shell elements all around the point (FastenerPiercingTable::patchGrids), not from the pierced element
 //   alone; the default y-axis of a fastener along a basic axis no longer depends on round-off (FASTENER_AXIS_TIE);
-//   the diagonal of the mass of a shell carried to the displacement systems is not negative.
-inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 10;
+//   the diagonal of the mass of a shell carried to the displacement systems is not negative;
+// - 11: a Fastener, and a Weld of the forms PartPatch and ElemPatch, is tied to the shells over the square of the
+//   area of its cross-section (input/tables/PiercingFootprint.hpp): in the ClassicFormulation the shell is read at
+//   the four corners of the square, each on the element it falls on, in place of the grid points of the pierced
+//   element; in the MixedHybridFormulation (every fastener and weld that pierces a shell) by the mean of the motion
+//   of the shells over the square, not at the point alone. In the ClassicFormulation the piercing point of a
+//   Fastener or a Weld takes the rotation of the shell about the axes of its plane (the rotations of the grid
+//   points, by the shape functions), not the slope of the sheet between its grid points; its rotation about the
+//   normal is still that of the translations around it.
+inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 11;
 
 } // namespace oos::elements

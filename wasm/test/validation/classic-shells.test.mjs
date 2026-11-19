@@ -472,6 +472,11 @@ test("a mass with an inertia on a grid point that shells alone hold is pointed o
     .filter((d) => d.code === "inertia-on-shell-normal");
   const told = notices([]);
   assert.equal(told.length, 1, "one notice");
+  // The run confirms it: a mode whose strain energy is in the drilling stabilisation.
+  const carried = runModel(modalDeck(model([]), 4), CLASSIC, "modes").diagnostics
+    .filter((d) => d.code === "stabilisation-carries-load");
+  assert.ok(carried.length >= 1 && /mode \d+ of subcase 1/.test(carried[0].message ?? carried[0].text),
+    "a mode held by the stabilisation is pointed out");
   assert.match(told[0].message ?? told[0].text, /900/);
   // Without the drilling term the automatic constraint removes the rotation, and the inertia about it with it; a
   // bar on the grid point holds the rotation.
@@ -640,7 +645,12 @@ test("a moment about the normal on one grid point of ShellQuad4 is held by the d
     for (let j = 0; j <= n; ++j)
       for (let i = 0; i <= n; ++i)
         if (i === 0 || i === n || j === 0 || j === n) model.push(...hold("123456", [g.node(i, j)]));
-    return nodal(runModel(staticDeck(model), CLASSIC), "displacements", g.node(n / 2, n / 2))[5];
+    const run = runModel(staticDeck(model), CLASSIC);
+    // The run says so: the stabilisation holds the whole strain energy.
+    const warnings = run.diagnostics.filter((d) => d.code === "stabilisation-carries-load");
+    assert.equal(warnings.length, 1, "the warning of the stabilisation that carries the load");
+    assert.match(warnings[0].message ?? warnings[0].text, /subcase 1.*100 % of the strain energy/);
+    return nodal(run, "displacements", g.node(n / 2, n / 2))[5];
   };
   const [coarse, fine] = [rotation(4, []), rotation(8, [])];
   const stiffer = rotation(8, ["Parameter;ShellDrillingStiffness;10000."]);
@@ -649,3 +659,39 @@ test("a moment about the normal on one grid point of ShellQuad4 is held by the d
   assert.ok(Math.abs(fine / coarse / 4 - 1) < 0.05, `cells half as wide: ${fine / coarse} times the rotation`);
   assert.ok(Math.abs(fine / stiffer / 100 - 1) < 0.02, `a hundred times the factor: ${fine / stiffer}`);
 });
+
+// The warning of a load path through the drilling stabilisation (solutions/common/StabilisationEnergy): a cantilever
+// plate with a bar in its plane, loaded across at its free end. Attached to the plate at one grid point, the bar
+// brings there a moment about the normal, which the stabilisation alone holds (it turns by tens of radians): the run
+// says so. Continued over three cells along a line of the plate, the bar brings forces to several grid points and
+// the run says nothing; nor does it for the plate alone under a pressure or a force.
+for (const mesh of [QUAD4, TRIA3_24])
+  test(`a bar attached to ${mesh.name} at one grid point is pointed out, continued along the shell it is not`, (t) => {
+    const n = 8;
+    const run = (cards) => {
+      const g = grid({ ...mesh, nu: n, nv: n, position: (a, b) => [PLATE.side * a, PLATE.side * b, 0] });
+      const tip = g.node(n, n / 2);
+      const model = [...g.lines, ...section(PLATE), ...cards(g, tip),
+        ...hold("123456", Array.from({ length: n + 1 }, (_, j) => g.node(0, j)))];
+      const result = runModel(staticDeck(model), CLASSIC);
+      return { warnings: result.diagnostics.filter((d) => d.code === "stabilisation-carries-load"),
+        rotation: nodal(result, "displacements", tip)[5] };
+    };
+    const bar = (g, tip, cells) => [`Node;9001;;${real(1.5 * PLATE.side)};${real(0.5 * PLATE.side)};0.`,
+      `Bar2;9001;7;${tip};9001;0.;;0.;1.`,
+      ...Array.from({ length: cells }, (_, k) =>
+        `Bar2;${9002 + k};7;${g.node(n - k - 1, n / 2)};${g.node(n - k, n / 2)};0.;;0.;1.`),
+      "BarProp;7;1;1.e-3;1.e-7;1.e-7;1.e-7", "PointForceLoad;2;9001;;1.;0.;1.;0."];
+    const attached = run((g, tip) => bar(g, tip, 0));
+    const continued = run((g, tip) => bar(g, tip, 3));
+    const alone = run((g, tip) => [`PointForceLoad;2;${tip};;1.;0.;1.;1.`,
+      `ShellPressureLoad;2;${real(PLATE.pressure)};1;Through;${g.count()}`]);
+    t.diagnostic(`rotation of the grid point about the normal: ${attached.rotation.toExponential(3)} attached, ${
+      continued.rotation.toExponential(3)} continued`);
+    assert.equal(attached.warnings.length, 1, "attached at one grid point: the warning");
+    assert.match(attached.warnings[0].message ?? attached.warnings[0].text, /ShellDrillingStiffness/);
+    assert.equal(continued.warnings.length, 0, "continued along the shell: no warning");
+    assert.equal(alone.warnings.length, 0, "the plate under a force and a pressure: no warning");
+    assert.ok(Math.abs(attached.rotation) > 100 * Math.abs(continued.rotation),
+      "the attached bar turns the grid point");
+  });

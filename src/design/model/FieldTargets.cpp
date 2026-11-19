@@ -512,8 +512,8 @@ private:
     }
 
     // Among the grid points `moving`, those whose positions a table derived by O_o_Reader reads (the elements
-    // Fastener and Weld pierce, glued contact), with the first thing found that reads them, for the refusals of
-    // refuseMove.
+    // Fastener and Weld pierce and those under their footprints, glued contact), with the first thing found that
+    // reads them, for the refusals of refuseMove.
     void prepareShapeRefusals(const std::set<std::int32_t>& moving)
     {
         const auto add = [&](std::int32_t grid, const auto& describe)
@@ -526,6 +526,8 @@ private:
             const input::FastenerPiercingTable& piercings = m_snapshot.fastenerPiercings();
             const base::ValidityView isGiven = piercings.isPointGridGiven();
             const base::ListView<std::int32_t> grids = piercings.grids();
+            const base::ListView<std::int32_t> tieGrids = piercings.tieGrids();
+            const input::FootprintSamples& footprint = piercings.meanFootprint();
             for (std::int64_t row = 0; row < piercings.rowCount(); ++row)
             {
                 const auto reader = [&]
@@ -535,8 +537,20 @@ private:
                                               " (fastenerPiercings: projections and shape functions O_o_Reader "
                                               "computes from the positions)"});
                 };
+                const auto underFootprint = [&]
+                {
+                    return base::concatenate({"the footprint of ", std::string(piercings.card(row)), " ",
+                                              std::to_string(piercings.fastenerIds()[static_cast<std::size_t>(row)]),
+                                              " on the shells (its points are placed on the elements from the "
+                                              "positions when the snapshot is taken)"});
+                };
                 for (const std::int32_t grid : grids[row])
                     add(grid, reader);
+                for (const std::int32_t grid : tieGrids[row])
+                    add(grid, underFootprint);
+                for (std::int64_t k = 0; k < footprint.count(row); ++k)
+                    for (const std::int32_t grid : footprint.at(row, k).grids)
+                        add(grid, underFootprint);
                 if (isGiven.isValid(row))
                     add(piercings.pointGrids()[static_cast<std::size_t>(row)], reader);
             }

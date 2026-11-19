@@ -97,6 +97,24 @@ ScalarMatrix<T, ShellQuad4::DOFS> ShellQuad4::stiffness(const Geometry& geometry
     return k;
 }
 
+double ShellQuad4::drillingEnergy(const Geometry& geometry, const PlateConstitutive<double>& constitutive,
+                                  const std::array<double, NODES>& thickness, const std::array<double, DOFS>& q)
+{
+    using namespace quad4_detail;
+    if (!constitutive.hasMembrane || !constitutive.hasBending || !(constitutive.drillingFactor > 0.0))
+        return 0.0;
+    double energy = 0.0;
+    for (const PlanePoint<double>& point : planePointsOf(geometry, constitutive, thickness))
+    {
+        const Row<double> drilling = drillingRowAt(geometry, thickness, shapeAt(point.xi, point.eta), point.frame);
+        double rotation = 0.0; // r = ω − θ_n at the point
+        for (std::size_t i = 0; i < DOFS; ++i)
+            rotation += drilling[i] * q[i];
+        energy += 0.5 * constitutive.drillingFactor * point.weight * point.section.a(2, 2) * rotation * rotation;
+    }
+    return energy;
+}
+
 template ScalarMatrix<double, ShellQuad4::DOFS> ShellQuad4::stiffness(const Geometry&, const PlateConstitutive<double>&,
                                                                       const std::array<double, NODES>&);
 template ScalarMatrix<Complex, ShellQuad4::DOFS> ShellQuad4::stiffness(const Geometry&,

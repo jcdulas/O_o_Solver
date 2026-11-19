@@ -1274,9 +1274,11 @@ test("a membrane-only and a bending-only ShellQuad4 on the same grid points are 
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The points of the elements of the formulation that other elements read (spec section 5.10): a fastener that pierces a
-// shell reads its displacement and rotation at the point, a glued contact the displacement of a shell or of a solid face
-// there, over all their unknowns. On fields the elements hold exactly (a pure bending, quadratic) the point moves
-// exactly as the field, where the corner grid points alone would give their bilinear interpolation.
+// shell reads its displacement and rotation over the footprint of its cross-section about the point, a glued
+// contact the displacement of a shell or of a solid face at the point, over all their unknowns. On fields the
+// elements hold exactly (a pure bending, quadratic) a glued point moves exactly as the field, where the corner grid
+// points alone would give their bilinear interpolation, and a fastener reads the mean of the field over its
+// footprint.
 
 // A strip bent by its supports (w = θ x² / (2 L), the rotation −θ x / L about y) and the records `extra` added.
 const BENT_STRIP_ROTATION = 1.0e-3;
@@ -1291,20 +1293,27 @@ function bentStrip(extra) {
 }
 const bentStripDeflection = (x) => (BENT_STRIP_ROTATION * x * x) / (2 * STRIP.length);
 
-test("a Fastener from a bent strip of ShellQuad4 in MixedHybridFormulation reads the motion of the shell at its piercing point", () => {
+test("a Fastener from a bent strip of ShellQuad4 in MixedHybridFormulation reads the motion of the shell over its footprint", () => {
   // A plate above element 2 of the strip (x 0.5 to 1, y 0 to 0.2), joined to it by a fastener at (0.6, 0.07) with GA
-  // and GB given: the plate carries nothing, so the fastener carries nothing and GA moves with the shell there.
+  // and GB given: the plate carries nothing, so the fastener carries nothing and GA moves with the shell there. The
+  // fastener reads the mean, over the square of the area of its cross-section (its side a = (√π / 2) D), of the
+  // motion of the shell carried rigidly to the point, w(X) + w'(X) (x − X) = w(x) − w'' (x − X)² / 2 for this
+  // deflection of constant curvature w'' = θ / L: the deflection there less w'' a² / 24 (the mean of (x − X)² over
+  // the side is a² / 12), and the rotation of the shell at the point, which is linear.
   const x = 0.6;
+  const diameter = 0.1;
+  const side = (Math.sqrt(Math.PI) / 2) * diameter;
+  const deflection = bentStripDeflection(x) - (BENT_STRIP_ROTATION / STRIP.length) * side ** 2 / 24;
   const model = bentStrip(["Node;101;;0.5;0.;0.05", "Node;102;;1.;0.;0.05", "Node;103;;1.;0.2;0.05",
     "Node;104;;0.5;0.2;0.05", "ShellQuad4;100;2;101;102;103;104", "ShellProp;2;1;0.01;1;;1",
     `Node;110;;${real(x)};0.07;0.025`, `Node;111;;${real(x)};0.07;0.`, `Node;112;;${real(x)};0.07;0.05`,
-    "Fastener;201;3;Elements;2;100;110;111;112", "FastenerProp;3;0.1;0;1;1.e5;1.e5;1.e5;1.e3;1.e3;1.e3"]);
+    "Fastener;201;3;Elements;2;100;110;111;112",
+    `FastenerProp;3;${real(diameter)};0;1;1.e5;1.e5;1.e5;1.e3;1.e3;1.e3`]);
   const run = runShells(model.text, "mixed-fastener-bent");
   const slope = (BENT_STRIP_ROTATION * x) / STRIP.length;
-  assertClose(nodal(run, "displacements", 111), [0, 0, bentStripDeflection(x), 0, -slope, 0], 1e-8, "GA",
-    BENT_STRIP_ROTATION);
+  assertClose(nodal(run, "displacements", 111), [0, 0, deflection, 0, -slope, 0], 1e-8, "GA", BENT_STRIP_ROTATION);
   // GB follows the plate, which follows the fastener rigidly: u_B = u_A + θ_A × (x_B − x_A).
-  assertClose(nodal(run, "displacements", 112), [-0.05 * slope, 0, bentStripDeflection(x), 0, -slope, 0], 1e-8, "GB",
+  assertClose(nodal(run, "displacements", 112), [-0.05 * slope, 0, deflection, 0, -slope, 0], 1e-8, "GB",
     BENT_STRIP_ROTATION);
 });
 

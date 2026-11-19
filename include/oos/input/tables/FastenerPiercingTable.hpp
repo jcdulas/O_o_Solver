@@ -2,8 +2,10 @@
 
 #include "oos/base/arrow/ContractReader.hpp"
 #include "oos/base/arrow/ImportedTable.hpp"
+#include "oos/input/tables/CardTable.hpp"
 #include "oos/input/tables/ElementBatch.hpp"
 #include "oos/input/tables/NodeTable.hpp"
+#include "oos/input/tables/PiercingFootprint.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -32,10 +34,6 @@ struct FastenerPiercingRows
     PiercingRows sideB;
 };
 
-// A shell element around a piercing point belongs to its patch when its normal is within this angle, in direction,
-// of the normal of the pierced element: a web or a rib that meets the sheet along the line the fastener is on does
-// not.
-inline constexpr double PIERCING_PATCH_ANGLE_DEGREES = 20.0;
 // A shape function of the pierced element below this value at the piercing point is zero: the point lies on the
 // grid point or on the side of the element its other grid points span.
 inline constexpr double PIERCING_ZERO_SHAPE_VALUE = 1.0e-9;
@@ -61,7 +59,9 @@ struct SideFailure
 //
 // Invariant: the rows are sorted by elementId, then side A before side B, each side once; every row has as many shape
 // functions as grid points, and at least one grid point. The rows are a copy of the found sides of the reader's
-// table (std::vector: about a hundred bytes per side, less than the producer's table, which the snapshot holds anyway).
+// table (std::vector: about a hundred bytes per side, less than the producer's table, which the snapshot holds anyway),
+// with the footprint of a fastener that has a diameter: its four corners and its Gauss points, each with the grid
+// points and the shape functions of its element (about a kilobyte per side).
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns the imported table and the copy.
 class FastenerPiercingTable
@@ -110,10 +110,29 @@ public:
     {
         return {base::ListOffsets(nullptr, m_patchOffsets.data()), m_patchWeights.data(), rowCount()};
     }
-    // Builds the patches from the shell elements of the model (`batches`: the batches of every card; the shells are
-    // those of SHELL_CARDS) and the positions of its grid points. A row of a face of grid points (elementIds() 0), a
-    // row whose grid points the model does not have, and a point inside its element keep the pierced element.
-    void buildPatches(const NodeTable& nodes, std::span<const ElementBatch> batches);
+    // The footprint of the fastener on the shells of each row (input/tables/PiercingFootprint.hpp), for a row on a
+    // shell element whose fastener has a diameter (FastenerProp or WeldProp `diameter`). cornerFootprint: the four
+    // corners of the square of the area of its cross-section, the auxiliary points at which the ClassicFormulation
+    // reads the shells; a row has them when its card ties the fastener over its
+    // cross-section (a Fastener; a Weld of form PartPatch or ElemPatch: the other forms of a Weld name the one
+    // element, or the grid points, a side is tied to) and the shells hold the four. meanFootprint: the Gauss points
+    // of the square, over which a formulation that has the rotation of the shell as a field takes the mean of its
+    // motion (every row on a shell element with a diameter). No sample before buildPatches().
+    [[nodiscard]] const FootprintSamples& cornerFootprint() const noexcept { return m_cornerFootprint; }
+    [[nodiscard]] const FootprintSamples& meanFootprint() const noexcept { return m_meanFootprint; }
+    // The grid points whose motion moves the piercing point of each row in the ClassicFormulation: those of the
+    // elements under the corners of its footprint, each once, or without corners those of its patch.
+    [[nodiscard]] base::ListView<std::int32_t> tieGrids() const
+    {
+        return {base::ListOffsets(nullptr, m_tieOffsets.data()), m_tieGrids.data(), rowCount()};
+    }
+    // Builds the patches and the footprints from the shell elements of the model (`batches`: the batches of every
+    // card; the shells are those of PIERCED_SHELL_CARDS) and the positions of its grid points. A row of a face of
+    // grid points (elementIds() 0), a row whose grid points the model does not have, and a point inside its element
+    // keep the pierced element as their patch. The diameters of the fasteners are read from their batches and
+    // `properties` (the property tables of the model).
+    void buildPatches(const NodeTable& nodes, std::span<const ElementBatch> batches,
+                      std::span<const CardTable> properties);
 
     // The rows of a fastener, or nothing when the table has none for it.
     [[nodiscard]] std::optional<FastenerPiercingRows> findFastener(std::int32_t elementId) const;
@@ -139,6 +158,11 @@ private:
     std::vector<std::int64_t> m_patchOffsets; // rowCount() + 1, into m_patchGrids and m_patchWeights
     std::vector<std::int32_t> m_patchGrids;
     std::vector<double> m_patchWeights;
+    std::vector<std::uint8_t> m_hasCorners; // one per row: its card ties the fastener over its cross-section
+    FootprintSamples m_cornerFootprint;
+    FootprintSamples m_meanFootprint;
+    std::vector<std::int64_t> m_tieOffsets; // rowCount() + 1, into m_tieGrids
+    std::vector<std::int32_t> m_tieGrids;
     std::vector<SideFailure> m_failures; // sorted by elementId, side A first
 };
 

@@ -110,6 +110,10 @@ void appendHigherOrderShellStiffness(const ElementBatchView& view, ElementRange 
 template <typename Shape>
 void appendHigherOrderShellMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                                 ElementMatrixBlock& block);
+// The energy of the drilling term of each element of the range (MindlinShell::drillingEnergy), one value per row.
+template <typename Shape>
+void higherOrderShellStabilisationEnergies(const ElementBatchView& view, ElementRange range,
+                                           const NodalDisplacements& displacements, std::span<double> energies);
 template <typename Shape>
 void appendHigherOrderShellPressures(const ElementBatchView& view, std::span<const ElementPressure> pressures,
                                      ElementVectorBlock& block);

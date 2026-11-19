@@ -321,6 +321,28 @@ ScalarMatrix<T, ShellTria3::DOFS> ShellTria3::stiffness(const Geometry& geometry
     return k;
 }
 
+double ShellTria3::drillingEnergy(const Geometry& geometry, const PlateConstitutive<double>& constitutive,
+                                  const std::array<double, NODES>& thickness, const std::array<double, DOFS>& q)
+{
+    if (!constitutive.hasMembrane || !constitutive.hasBending || !(constitutive.drillingFactor > 0.0))
+        return 0.0;
+    double energy = 0.0;
+    for (std::size_t p = 0; p < 3; ++p)
+    {
+        const Shape shape = shapeAt(EDGE_MIDPOINTS[p][0], EDGE_MIDPOINTS[p][1]);
+        const Frame frame = frameAt(geometry, shape);
+        const PointSection<double> section =
+            sectionAt(constitutive, interpolated(shape, thickness), 0.0, frame.area);
+        const Row<double> drilling =
+            director_shell::drillingRowAt(geometry.position, geometry.normal, thickness, shape, frame);
+        double rotation = 0.0; // r = ω − θ_n at the point
+        for (std::size_t i = 0; i < DOFS; ++i)
+            rotation += drilling[i] * q[i];
+        energy += 0.5 * constitutive.drillingFactor * POINT_WEIGHT * frame.area * section.a(2, 2) * rotation * rotation;
+    }
+    return energy;
+}
+
 template ScalarMatrix<double, ShellTria3::DOFS> ShellTria3::stiffness(const Geometry&, const PlateConstitutive<double>&,
                                                                       const std::array<double, NODES>&);
 template ScalarMatrix<Complex, ShellTria3::DOFS> ShellTria3::stiffness(const Geometry&,

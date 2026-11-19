@@ -15,14 +15,18 @@ namespace oos::elements
 {
 
 // How a Fastener or Weld reaches the model: its two piercing points A and B (GA and GB, given on the card or
-// found by projection on the shells), each moving with the reference point of a RigidInterpolation interpolation
-// element whose independent points are the grid points of the shell element it pierces, weighted by the shape functions
-// of that element at the point (PiercingInterpolation), so that the motions of A and B in the basic system are
-//     w = (u_A, θ_A, u_B, θ_B) = M·u,   u the DOFs of the grid points of both pierced elements (six each, in their
-//     displacement systems, each grid point once; the interpolation reads their translations only).
+// found by projection on the shells), each moving with the normal fibre of the shell of its side
+// (PiercingInterpolation): the translation and the rotation of the shell read at the four corners of the square of
+// the cross-section of the fastener, each on its shell element (a Fastener, a Weld of the patch forms), or at the
+// point itself by the shape functions of the shell element it pierces (the other forms of a Weld, a fastener
+// without corners); the rotation about the normal of the sheet from the translations around the point. The motions
+// of A and B in the basic system are then
+//     w = (u_A, θ_A, u_B, θ_B) = M·u,   u the DOFs of the grid points both sides are tied to (six each, in their
+//     displacement systems, each grid point once: their translations and their rotations).
 // A side connected directly (Weld ALIGN, the GS of a Weld ELEMID without SHIDB) is that grid point itself. A side
 // that pierces a shell of a formulation with unknowns besides its grid points reads the displacement and the rotation
-// of that shell at the point over its own DOFs instead (resolveSideMotion, FormulationModel::shellPointMotion).
+// of the shells over the same square, over their own DOFs, instead (resolveSideMotion,
+// FormulationModel::shellPointMotion).
 //
 // The auxiliary points GA and GB of a fastener are eliminated at element level by default (WeldProp MSET = OFF, the
 // default: the constraint equations are condensed into the element, whose matrix couples the grid points of the
@@ -32,14 +36,14 @@ namespace oos::elements
 // DOFs dependent on the grid points of the pierced element by the same rows (so that it is recovered and anything else
 // attached to it acts on the pierced element).
 //
-// The sizes are those of one element (at most 8 grid points of the pierced element per side): std::vector is the
-// right container.
+// The sizes are those of a few elements (the grid points of the elements under the four corners of a side, or of
+// the patch of its point): std::vector is the right container.
 struct FastenerConnection
 {
     base::Vec3 pointA;
     base::Vec3 pointB;
-    // The DOFs both sides read, each once: six per grid point of a pierced element, or the DOFs of a pierced shell of
-    // a formulation with entities.
+    // The DOFs both sides read, each once: six per grid point a side is tied to, or the DOFs of the shells of a
+    // formulation with entities under the footprint of a side.
     std::vector<ElementDof> dofList;
     std::vector<double> map; // M: 12 rows of dofList.size(), row-major
 

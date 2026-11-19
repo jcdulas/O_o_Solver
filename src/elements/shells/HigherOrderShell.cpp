@@ -179,6 +179,19 @@ void appendHigherOrderShellMass(const ElementBatchView& view, ElementRange range
 }
 
 template <typename Shape>
+void higherOrderShellStabilisationEnergies(const ElementBatchView& view, ElementRange range,
+                                           const NodalDisplacements& displacements, std::span<double> energies)
+{
+    const HigherOrderShellColumns columns(view);
+    for (std::int64_t row = range.first; row < range.last; ++row)
+    {
+        const HigherOrderShellData<Shape> data = resolveHigherOrderShell<Shape>(view, columns, row).required();
+        energies[static_cast<std::size_t>(row - range.first)] =
+            data.shell().drillingEnergy(data.frames.localDisplacements(displacements));
+    }
+}
+
+template <typename Shape>
 void appendHigherOrderShellPressures(const ElementBatchView& view, std::span<const ElementPressure> pressures,
                                      ElementVectorBlock& block)
 {
@@ -488,6 +501,8 @@ bool higherOrderShellLayerRates(const ElementBatchView& view, std::int64_t row, 
     template void recoverHigherOrderShellOutputs<Shape>(const ElementBatchView&, ElementRange,                         \
                                                         std::span<const RecoveryOutput>, const NodalDisplacements&,    \
                                                         std::span<ElementResultBlock>);                                \
+    template void higherOrderShellStabilisationEnergies<Shape>(const ElementBatchView&, ElementRange,                  \
+                                                               const NodalDisplacements&, std::span<double>);          \
     template void higherOrderShellSlopes<Shape>(const ElementBatchView&, std::int64_t,                                 \
                                                 std::span<const RecoveryOutput>, std::span<RecoverySlopes>);           \
     template void completeHigherOrderShellFailureRows<Shape>(                                                          \

@@ -51,6 +51,10 @@ public:
     void computeStiffness(const ElementBatchView& view, ElementRange range, ElementMatrixBlock& block) const override;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                      ElementMatrixBlock& block) const override;
+    // The energy of the drilling term of each element (MindlinShell::drillingEnergy).
+    [[nodiscard]] bool computeStabilisationEnergies(const ElementBatchView& view, ElementRange range,
+                                                    const NodalDisplacements& displacements,
+                                                    std::span<double> energies) const override;
     [[nodiscard]] std::vector<std::string> outputColumns(ElementOutput output) const override;
     void recover(const ElementBatchView& view, ElementRange range, ElementOutput output,
                  const NodalDisplacements& displacements, ElementResultBlock& block) const override;

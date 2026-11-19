@@ -92,6 +92,12 @@ struct ShellTria3
 
     // The mass in the element frame: ρ t + NSM per unit area on the translations, lumped or coupled; the coupled
     // form has the rotary inertia ρ t³/12 of the normals.
+    // The energy of the drilling term of K under the local displacements `q`: ½ Σ j c_d A33 (b_d q)² over the three
+    // mid-sides, zero for a section without that term.
+    [[nodiscard]] static double drillingEnergy(const Geometry& geometry, const PlateConstitutive<double>& constitutive,
+                                               const std::array<double, NODES>& thickness,
+                                               const std::array<double, DOFS>& q);
+
     template <typename T>
     [[nodiscard]] static ScalarMatrix<T, DOFS> mass(const Geometry& geometry, const T& density,
                                                     const T& nonStructuralMass, const std::array<T, NODES>& thickness,

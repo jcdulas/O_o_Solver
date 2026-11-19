@@ -181,6 +181,14 @@ void readFastenerSides(const input::FastenerPiercingTable& piercings, std::vecto
     const std::span<const std::int32_t> elementIds = piercings.fastenerIds();
     const base::ListView<std::int32_t> grids = piercings.grids();
     const base::ListView<double> weights = piercings.weights();
+    const base::ListView<std::int32_t> tieGrids = piercings.tieGrids();
+    const input::FootprintSamples& corners = piercings.cornerFootprint();
+    const auto mixReal = [](StampHasher& stamp, double value)
+    {
+        std::uint64_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        stamp.mix(bits);
+    };
     std::int64_t first = 0;
     while (first < piercings.rowCount())
     {
@@ -195,8 +203,11 @@ void readFastenerSides(const input::FastenerPiercingTable& piercings, std::vecto
         spider.card = std::string(piercings.card(first));
         spider.referenceNodeId =
             piercings.isPointGridGiven().isValid(first) ? piercings.pointGrids()[static_cast<std::size_t>(first)] : 0;
-        // The stamp of the side: what its interpolation depends on, in table order (the points by number, each with
-        // its grid points and the bits of its weights): equal content gives equal stamps.
+        // The legs of the side: the grid points its interpolation reads (those under the corners of the footprint of
+        // the fastener, or those of the patch of the point: FastenerPiercingTable::tieGrids). The stamp of the
+        // side: what its interpolation depends on, in table order (the points by number, each with the grid points
+        // and the bits of the shape functions of its pierced element, its legs, and the corners of its footprint
+        // with their grid points and the bits of their shape functions): equal content gives equal stamps.
         StampHasher stamp;
         stamp.mix(static_cast<std::int64_t>(spider.key.elementId));
         stamp.mix(static_cast<std::int64_t>(spider.key.side));
@@ -204,15 +215,21 @@ void readFastenerSides(const input::FastenerPiercingTable& piercings, std::vecto
         {
             stamp.mix(PIERCING_POINT_NUMBER);
             for (const std::int32_t grid : grids[row])
+                stamp.mix(static_cast<std::int64_t>(grid));
+            for (const double weight : weights[row])
+                mixReal(stamp, weight);
+            for (const std::int32_t grid : tieGrids[row])
             {
                 spider.legNodeIds.push_back(grid);
                 stamp.mix(static_cast<std::int64_t>(grid));
             }
-            for (const double weight : weights[row])
+            for (std::int64_t k = 0; k < corners.count(row); ++k)
             {
-                std::uint64_t bits = 0;
-                std::memcpy(&bits, &weight, sizeof(bits));
-                stamp.mix(bits);
+                const input::FootprintSample corner = corners.at(row, k);
+                for (const std::int32_t grid : corner.grids)
+                    stamp.mix(static_cast<std::int64_t>(grid));
+                for (const double value : corner.shapeValues)
+                    mixReal(stamp, value);
             }
         }
         sortAndMakeUnique(spider.legNodeIds);

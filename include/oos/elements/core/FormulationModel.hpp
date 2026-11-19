@@ -203,21 +203,29 @@ public:
     {
         std::array<std::vector<FormulationRelationTerm>, 6> rows;
     };
-    // The motion of the point `point` (basic) of the shell of ID `elementId` that a fastener or a weld pierces:
-    // `gridRows` (node table rows) and `shapeValues` are grid points of its card and their shape functions at the
-    // point, as the fastener piercing table gives them, which place the point on the shell. The translations are those
-    // of the motion of the shell there carried rigidly to `point` (u + θ × (point − X), X the point of its surface).
-    // Empty when the formulation has no such shell or a grid point is not one of its own: the grid points of the
-    // element then carry the point (elements/fasteners/PiercingInterpolation). None by default.
-    [[nodiscard]] virtual std::optional<PointMotion> shellPointMotion(std::int32_t elementId,
-                                                                      std::span<const std::int32_t> gridRows,
-                                                                      std::span<const double> shapeValues,
-                                                                      const base::Vec3& point) const
+    // One point of a shell that a fastener or a weld reads: the shell (its ID), the weight of the point, and what
+    // places the point on the shell, as the fastener piercing table gives it: grid points of its card (`gridRows`,
+    // node table rows) and their shape functions at the point.
+    struct ShellSample
+    {
+        std::int32_t elementId = 0;
+        double weight = 0.0;
+        std::span<const std::int32_t> gridRows;
+        std::span<const double> shapeValues;
+    };
+    // The motion of the point `point` (basic) of the shell of ID `elementId` that a fastener or a weld pierces: the
+    // weighted mean over `samples` (the footprint of the fastener on the shells,
+    // input::FastenerPiercingTable::meanFootprint, or the piercing point alone) of the motion of the shell at each
+    // sample carried rigidly to `point`, u + θ × (point − X) and θ, X the point of the surface of the sample. A
+    // sample on a shell the formulation does not have is left out.
+    // Empty when the formulation does not have the shell `elementId` or no sample is on a shell of its own: the grid
+    // points of the element then carry the point (elements/fasteners/PiercingInterpolation). None by default.
+    [[nodiscard]] virtual std::optional<PointMotion> shellPointMotion(std::int32_t elementId, const base::Vec3& point,
+                                                                      std::span<const ShellSample> samples) const
     {
         static_cast<void>(elementId);
-        static_cast<void>(gridRows);
-        static_cast<void>(shapeValues);
         static_cast<void>(point);
+        static_cast<void>(samples);
         return std::nullopt;
     }
     // The translations (rows 0 to 2; the rotations empty) of a point of a face of an element of the formulation (a

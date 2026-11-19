@@ -369,7 +369,7 @@ ModelSnapshot SnapshotBuilder::takeAll()
     if (auto piercings = take(TableRole::FastenerPiercings))
     {
         parts.fastenerPiercings.emplace(std::move(*piercings));
-        parts.fastenerPiercings->buildPatches(*parts.nodes, parts.elementBatches);
+        parts.fastenerPiercings->buildPatches(*parts.nodes, parts.elementBatches, parts.propertyTables);
     }
     if (auto supports = take(TableRole::Supports))
         parts.supports.emplace(readTable(TableRole::Supports, std::move(*supports)));

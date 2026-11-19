@@ -8,13 +8,21 @@
 //   |       | KR2 | KR3  | MASS  | GE  |     |      |       |       |
 //
 // Connectivity (fasteners/FastenerConnection): the piercing points A and B on the shells of sides A and B (TYPE PROP:
-// the shells of properties IDA, IDB; ELEM: the shell elements IDA, IDB; located by GS, by XS-ZS or given as GA, GB),
-// each moving with the reference point of a RigidInterpolation interpolation element whose independent points are the
-// grid points of the shell element it pierces, weighted by the shape functions of that element at the point
-// (fasteners/PiercingInterpolation): the piercing points, their elements and shape functions come from the fastener
-// piercing table the reader computes. The auxiliary points are eliminated at element level: the element matrix couples
-// the grid points of the two pierced elements (FastenerConnection::condense). FastenerProp D plays no part in the
-// stiffness.
+// the shells of properties IDA, IDB; ELEM: the shell elements IDA, IDB; located by GS, by XS-ZS or given as GA, GB).
+// The fastener is tied to each shell over its cross-section: a square of the area π D² / 4 about the piercing point
+// (FastenerProp D; input/tables/PiercingFootprint.hpp), at whose four corners, the auxiliary points, the shell is
+// read (the shape functions of the element each corner is on, over the translations and the rotations of its grid
+// points); the piercing point takes their mean translation, the rotation of the shell about the axes of its plane,
+// and the rotation of the corners in the plane of the sheet: it follows the normal fibre of the shell, not the
+// slope of the sheet between its grid points (fasteners/PiercingInterpolation, interpolateFootprint). The piercing
+// points, their elements and shape functions
+// come from the fastener piercing table the reader computes, the footprints from the table of the solver
+// (input::FastenerPiercingTable). The auxiliary points are eliminated at element level: the element matrix couples
+// the grid points of the elements under the two footprints (FastenerConnection::condense). A side whose corners
+// the shells do not all hold (a fastener on a free edge, the square halved three times), or without D, reads the
+// shell at the point itself, by the shape functions of the element it pierces (interpolatePiercing). A shell of the
+// MixedHybridFormulation is read over the same square, by the mean of its motion
+// (FormulationModel::shellPointMotion).
 //
 // Stiffness (FastenerProp: KT1-KT3, KR1-KR3 the translational and rotational stiffnesses in the fastener system): six
 // uncoupled springs on the relative motion of B and A at the middle point p of A-B, in the fastener system E (x from

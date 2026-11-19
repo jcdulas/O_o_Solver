@@ -21,13 +21,13 @@ folders in that order, which is the order in which the pieces depend on one anot
   RigidBodyMulti, RigidBodyStar, RigidBar by the rigid transfer from six independent DOFs, RigidRod by the extension equation, RigidInterpolation by the
   weighted least-squares fit (rotational weights scaled by Lc², REFC or UM dependent). Other rigid cards are refused.
 - `constraints/FastenerConstraints`: the six rows of each Fastener or Weld GA or GB that is a grid point of the model,
-  dependent on the grid points of the element its side pierces by the interpolation of
-  `elements/fasteners/PiercingInterpolation` (the fastener elements condense their auxiliary points themselves; these
-  rows recover a given GA or GB and pass what is attached to it to the pierced element; a point named by two fasteners
-  is constrained once). Handed to RigidElimination as its last argument, built
+  dependent on the grid points its side is tied to (those under the footprint of the fastener, or those of the
+  element it pierces) by the interpolation of `elements/fasteners/PiercingInterpolation` (the fastener elements
+  condense their auxiliary points themselves; these rows recover a given GA or GB and pass what is attached to it to
+  the shells; a point named by two fasteners is constrained once). Handed to RigidElimination as its last argument, built
   from `snapshot.fastenerPiercings()` when the snapshot has the table. A side that pierces a shell of an element
-  formulation with entities reads that shell at the point over all its DOFs (`elements::resolveSideMotion`,
-  FormulationModel::shellPointMotion).
+  formulation with entities reads the shells under its footprint over all their DOFs
+  (`elements::resolveSideMotion`, FormulationModel::shellPointMotion).
 - `constraints/GlueConstraints`: the glue equations of glued contact, the node-to-surface tie of the open-source
   solver CalculiX (G. Dhondt, CalculiX CrunchiX User's Manual 2.21, section 7.132 *TIE). The two surfaces come from
   O_o_Reader's contactNodePairs taken with the reader's own rule (rule="components"): the grid points of each

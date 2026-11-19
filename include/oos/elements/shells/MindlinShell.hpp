@@ -232,6 +232,9 @@ public:
                                                                  const std::array<double, DOFS>& q,
                                                                  const std::array<std::int32_t, N>& gridIds) const;
     [[nodiscard]] double area() const noexcept { return m_area; }
+    // The energy of the drilling term of K under the local displacements `q`: ½ c_d ∫ t G1_33 (r q)² dA, zero for a
+    // shell without that term.
+    [[nodiscard]] double drillingEnergy(const std::array<double, DOFS>& q) const;
 
     // The rates along a rate of the section at fixed geometry and thickness (the AnisoMat2D terms of
     // ShellSectionRate): every part of K is linear in G1, D, [B] and the shear S, so dK is K's sum at the rates, the

@@ -182,7 +182,9 @@ register it in `ElementRegistry::standard()` after the card's default.
   the drilling term, c_d = 10⁻⁶ × PARAM `ShellDrillingStiffness` (100 by default; 0: no term, and the automatic
   constraint of singular DOFs removes the rotation where nothing else holds it). It is a stabilisation: an inertia or
   a moment about the normal on one grid point is held by it alone, and a modal analysis points out the
-  PointMassInertia in that case (`inertia-on-shell-normal`).
+  PointMassInertia in that case (`inertia-on-shell-normal`), and a static or a modal analysis the solutions whose
+  strain energy is held by the drilling term for more than 1 % (`stabilisation-carries-load`: a bar attached to a
+  shell at one grid point, a moment about the normal on one grid point).
   The thermal loads take the dilatation of the free strain as K q, q the homothety of the element: a warped mesh,
   or one whose normals are shared, expands freely under a uniform temperature rise (Sanders 1959: a uniform
   dilatation bends nothing).
@@ -360,8 +362,10 @@ Shape variables (DesignNodeMove) need nothing more from a family either: `design
 whose grid points (those of the DOFs of their matrices, and the orientation point G0 or GO) a shape moves, and the same
 facets run on snapshots whose positions (`xyzGlobal`) are moved along the basis vector by ±h, ±h/2; a family whose
 computations read no position (the scalar springs and masses) gives exact zeros. What a family reads from a table
-O_o_Reader derives from the positions (the piercing points of Fastener and Weld, `fastenerPiercings`) cannot follow a
-move: such a shape is refused by `design/model/FieldTargets`.
+O_o_Reader derives from the positions (the piercing points of Fastener and Weld, `fastenerPiercings`), and the
+footprints the snapshot builds on them, cannot follow a move: such a shape is refused by `design/model/FieldTargets`.
+A designed FastenerProp or WeldProp D does not move the footprint either, which stays that of the D of the model
+(for a Weld D still sizes the beam).
 
 ## Element status
 

@@ -90,6 +90,12 @@ struct ShellQuad4
                                                          const PlateConstitutive<T>& constitutive,
                                                          const std::array<T, NODES>& thickness);
 
+    // The energy of the drilling term of K under the local displacements `q` (document section 8):
+    // ½ Σ j c_d A33 (b_d q)², zero for a section without that term.
+    [[nodiscard]] static double drillingEnergy(const Geometry& geometry, const PlateConstitutive<double>& constitutive,
+                                               const std::array<double, NODES>& thickness,
+                                               const std::array<double, DOFS>& q);
+
     // The mass (document section 10) in the element frame: ρ t + NSM per unit area on the translations, lumped or
     // coupled; the coupled form has the rotary inertia ρ t³/12 of the directors.
     template <typename T>

@@ -7,14 +7,18 @@
 //   | WeldProp | PID  | MID  | D    |       |       | MSET  |      | TYPE |
 //   |       | LDMIN| LDMAX|
 //
-// Connectivity (fasteners/FastenerConnection, the fastener piercing table the reader computes): each piercing point
-// moves with the reference point of a RigidInterpolation interpolation element whose independent points are the grid
-// points of the shell element it pierces (PARTPAT: a shell of PIDA or PIDB; ELPAT: SHIDA, SHIDB or a neighbour; ELEMID:
-// SHIDA, SHIDB; GRIDID: the face of the grid points GA1-GA8, GB1-GB8), weighted by the shape functions of that element
-// at the point (fasteners/PiercingInterpolation); ALIGN connects GA and GB directly, and ELEMID without SHIDB or GRIDID
-// with SPTYP Q or T (a point-to-patch connection) connects GS directly as side B. The auxiliary points are eliminated
-// at element level (WeldProp MSET = OFF, the default; MSET = ON puts the same constraint equations in the m set, which
-// gives the same solution and is treated alike).
+// Connectivity (fasteners/FastenerConnection, the fastener piercing table the reader computes). The patch forms
+// (PARTPAT: a shell of PIDA or PIDB; ELPAT: SHIDA, SHIDB or a neighbour) tie the weld to each shell over its
+// cross-section, as a Fastener (FastenerElement.hpp): the shell is read at the four corners of a square of the
+// area π D² / 4 about the piercing point, each on its shell element (fasteners/PiercingInterpolation,
+// interpolateFootprint). The point forms tie each piercing point to what the card names: the shell is read at the
+// point itself, by the shape functions of the shell element it pierces (ELEMID: SHIDA, SHIDB) or of the face of
+// grid points (GRIDID: GA1-GA8, GB1-GB8) over the translations and the rotations of its grid points
+// (interpolatePiercing);
+// ALIGN connects GA and GB directly, and ELEMID without SHIDB or GRIDID with SPTYP Q or T (a point-to-patch
+// connection) connects GS directly as side B. The auxiliary points are eliminated at element level (WeldProp MSET =
+// OFF, the default; MSET = ON puts the same constraint equations in the m set, which gives the same solution and
+// is treated alike).
 //
 // Stiffness: a shear-deformable (Timoshenko) beam of circular section of diameter D between A and B (A = πD²/4,
 // I = πD⁴/64, J = πD⁴/32), E and G of the IsoMat of WeldProp MID, by bars_beams/BeamFlexibility (the flexibility

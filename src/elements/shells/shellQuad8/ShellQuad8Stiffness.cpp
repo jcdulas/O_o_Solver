@@ -12,4 +12,12 @@ void ShellQuad8Element::computeStiffness(const ElementBatchView& view, ElementRa
     appendHigherOrderShellStiffness<SerendipityQuadShape>(view, range, block);
 }
 
+bool ShellQuad8Element::computeStabilisationEnergies(const ElementBatchView& view, ElementRange range,
+                                                     const NodalDisplacements& displacements,
+                                                     std::span<double> energies) const
+{
+    higherOrderShellStabilisationEnergies<SerendipityQuadShape>(view, range, displacements, energies);
+    return true;
+}
+
 } // namespace oos::elements

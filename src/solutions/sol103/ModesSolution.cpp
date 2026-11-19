@@ -1,3 +1,4 @@
+#include "oos/solutions/common/StabilisationEnergy.hpp"
 #include "oos/solutions/sol103/ModesSolution.hpp"
 
 #include "oos/assembly/assemble/MassAssembler.hpp"
@@ -299,6 +300,15 @@ void solveCondensedGroup(const CondensedGroupContext& context)
         if (options.cancellation != nullptr)
             options.cancellation->throwIfCancelled();
         const std::span<const double> modeG(&vectors.vectors(0, mode), gSize);
+        // The stabilisation of the elements against the strain energy of the mode, ½ φᵀ K φ = ½ s² λ with the
+        // generalised mass s² (a model without entities).
+        if (context.model.formulation() == nullptr)
+            reportStabilisationEnergy(
+                stabilisationEnergyOf(context.model.elementSet(), dofMap, modeG),
+                0.5 * solve.scales[mode] * solve.scales[mode] * solution.eigenvalues[mode],
+                base::concatenate({"mode ", std::to_string(mode + 1), " of subcase ",
+                                   std::to_string(context.subcases[context.group.front()].subcase.label)}),
+                sink);
         for (std::size_t k = 0; k < context.group.size(); ++k)
         {
             const std::size_t s = context.group[k];
@@ -733,6 +743,15 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
                 if (cancellation != nullptr)
                     cancellation->throwIfCancelled();
                 const std::span<const double> modeG(&solve.eigenvectors(0, mode), gSize);
+                // The stabilisation of the elements against the strain energy of the mode, ½ φᵀ K φ = ½ s² λ with
+                // the generalised mass s² (a model without entities).
+                if (model.formulation() == nullptr)
+                    reportStabilisationEnergy(
+                        stabilisationEnergyOf(model.elementSet(), dofMap, modeG),
+                        0.5 * solve.scales[mode] * solve.scales[mode] * solution.eigenvalues[mode],
+                        base::concatenate({"mode ", std::to_string(mode + 1), " of subcase ",
+                                           std::to_string(subcases[group.front()].subcase.label)}),
+                        sink);
                 for (std::size_t k = 0; k < group.size(); ++k)
                 {
                     const std::size_t s = group[k];

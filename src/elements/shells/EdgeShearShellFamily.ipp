@@ -263,6 +263,21 @@ void EdgeShearShellFamily<Shell>::computeStiffness(const ElementBatchView& view,
     }
 }
 
+template <typename Shell>
+bool EdgeShearShellFamily<Shell>::computeStabilisationEnergies(const ElementBatchView& view, ElementRange range,
+                                                               const NodalDisplacements& displacements,
+                                                               std::span<double> energies) const
+{
+    const Columns columns(view);
+    for (std::int64_t row = range.first; row < range.last; ++row)
+    {
+        const Data data = resolve(view, columns, row).required();
+        energies[static_cast<std::size_t>(row - range.first)] = Shell::drillingEnergy(
+            data.geometry, data.constitutive, data.thickness, data.frames.localDisplacements(displacements));
+    }
+    return true;
+}
+
 // The kernel's translational mass, ρ t + NSM per unit area (the ShellProp's NSM and the NSM cards' share; ρ of MID1, of
 // MID2 without MID1, ShellSection), through the offset only under ModelParams OffsetDefinition LoadRecoveryOffsets or
 // ElemOffsetZ.

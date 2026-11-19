@@ -1,3 +1,4 @@
+#include "oos/solutions/common/StabilisationEnergy.hpp"
 #include "oos/solutions/sol101/StaticSolution.hpp"
 
 #include "oos/assembly/dofs/EntityForceCarry.hpp"
@@ -1818,6 +1819,20 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             stiffnessRecovery.strainEnergy(subcase.label, state.elementDisplacementsOrAll(),
                                            plan.of(output::OutputKind::StrainEnergy), budget, elementTables,
                                            cancellation);
+        // The stabilisation of the elements against the strain energy of the case, ½ uᵀ K u = ½ u·(p + q) with the
+        // applied loads p and the support forces q (the forces of the relations do no work). Not for a case with
+        // temperatures, whose loads are not all in p, nor for a model with entities or a vector that is not the whole
+        // g set.
+        const auto gSetSize = static_cast<std::size_t>(dofMap.gSetSize());
+        if (!entityCarry && !temperatures && state.displacements.size() == gSetSize &&
+            state.applied.size() == gSetSize && state.spcForces.size() == gSetSize)
+        {
+            double work = 0.0;
+            for (std::size_t i = 0; i < gSetSize; ++i)
+                work += state.displacements[i] * (state.applied[i] + state.spcForces[i]);
+            reportStabilisationEnergy(stabilisationEnergyOf(elementSet, dofMap, state.displacements), 0.5 * work,
+                                      base::concatenate({"subcase ", std::to_string(subcase.label)}), sink);
+        }
         for (output::ElementResultTable& table : elementTables)
         {
             envelopes.offer(table);

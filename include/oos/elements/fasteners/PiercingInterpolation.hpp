@@ -28,9 +28,9 @@ struct PiercedGrid
     double shapeValue = 0.0;
 };
 
-// The map from the DOFs of the grid points of the element one side pierces (six per grid point, in its displacement
-// system, grid after grid) to the motion of the piercing point P in the basic system, (u_P, θ_P) = M·u_grids: 6 rows
-// of 6·gridCount, row-major.
+// The map from the DOFs of the grid points one side is tied to (six per grid point, in its displacement system, grid
+// after grid: their translations and their rotations) to the motion of the piercing point P in the basic system,
+// (u_P, θ_P) = M·u_grids: 6 rows of 6·gridCount, row-major.
 struct PiercingMap
 {
     std::size_t gridCount = 0;
@@ -43,12 +43,12 @@ struct PiercingMap
 // not hold an interpolation.
 inline constexpr double PIERCING_WEIGHT_SUM_TOLERANCE = 1.0e-8;
 
-// The smallest weight of a grid point of the pierced element, as a fraction of its largest shape function. A piercing
-// point on an edge or at a grid point of the element gives zero shape functions to the other grid points, and the
-// rotation about that edge (or every rotation) would be determined by nothing; with this floor those grid points
-// determine it, and the result is within about this fraction of the limit of the interpolation as the point
-// approaches the edge. Negative shape functions (the corners of a quadratic element) are raised to it too, since a
-// least-squares weight must not be negative. A choice of this implementation.
+// The smallest weight of a grid point in the rigid fit that gives the rotation of the piercing point about the normal
+// of the sheet, as a fraction of the largest shape function. A piercing point on an edge or at a grid point of the
+// element gives zero shape functions to the other grid points, and that rotation would be determined by nothing;
+// with this floor those grid points determine it, and the result is within about this fraction of the limit of the
+// fit as the point approaches the edge. Negative shape functions (the corners of a quadratic element) are raised
+// to it too, since a least-squares weight must not be negative. A choice of this implementation.
 inline constexpr double PIERCING_WEIGHT_FLOOR = 1.0e-3;
 
 // The smallest pivot of the scaled normal matrix of the interpolation, relative to its largest diagonal term: below
@@ -56,40 +56,50 @@ inline constexpr double PIERCING_WEIGHT_FLOOR = 1.0e-3;
 // undetermined.
 inline constexpr double PIERCING_PIVOT_TOLERANCE = 1.0e-10;
 
-// The interpolation of the piercing point P of one fastener side from the grid points of the shell element it
-// pierces: P moves with the reference point of a RigidInterpolation interpolation element (an element of NASTRAN-95,
-// NASA's open-source release, among its rigid elements in mis/criggp.f; implemented for the RigidInterpolation card by
-// assembly/constraints/RigidElementEquations, which the elements layer cannot call) whose independent points are the
-// grid points of that element with their translations (components 123), weighted by the shape functions N_i of the
-// element at P. The motion of P is the weighted least-squares rigid motion of the grid translations:
+// The motion of the piercing point P of a fastener side, in the ClassicFormulation: P moves with the normal fibre
+// of the shell under it, as the kinematics of a shell with transverse shear give it,
 //
-//     (u_P, θ_P) = argmin Σ w_i·|R_i·u_i − (u_P + θ_P × r_i)|²,   r_i = x_i − x_P,   w_i = max(N_i, f·max_j N_j),
+//     u_P = ū + θ_P × (P − X̄),      θ_P = (I − n·nᵀ)·β + n·nᵀ·θ_fit,
 //
-// R_i the rotation from the displacement system of grid i to the basic system, f = PIERCING_WEIGHT_FLOOR. With the rows
-// B_i = [I, −[r_i]×] the normal equations give (u_P, θ_P) = A⁻¹·Σ w_i·B_iᵀ·R_i·u_i, A = Σ w_i·B_iᵀ·B_i, solved with
-// the rotations scaled by Lc, the mean distance of the grid points to P (so that A is of order 1 and the result does
-// not depend on the length unit, as the RigidInterpolation of RigidElementEquations). For a linear element whose shape
-// functions are all above the floor, Σ N_i·r_i = 0 (the isoparametric map gives x_P = Σ N_i·x_i), so u_P = Σ
-// N_i·R_i·u_i: the shape-function interpolation of the translations, and θ_P the weighted mean rotation of the pierced
-// element. The shell rotations take no part (columns zero). The map is exact for every rigid motion of the pierced
-// element.
+// with, at the point X̄ of the sheet under P (n its normal there):
+//   - ū the translation of the sheet, by the shape functions of the element over the translations of its grid
+//     points;
+//   - β the rotation of the shell, by the same shape functions over the rotations of its grid points: the rotation
+//     of its normal fibre, which a fastener through the thickness follows. Only its part about the axes of the
+//     plane of the sheet is read: the rotation of a grid point about the normal is not a motion of the shell (its
+//     stiffness is the drilling stabilisation);
+//   - θ_fit the rotation of the least-squares rigid motion of the translations of the grid points around P, read
+//     about the normal only: the rotation of the sheet in its plane, ½(∂v/∂x − ∂u/∂y).
+// The map is exact for every rigid motion of the shells.
 //
-// A piercing point on a grid point or on a side of the pierced element (a fastener set on a grid point of the mesh
-// or on a mesh line, the usual place) has zero shape functions at the other grid points of that element, which then
-// fix the rotation of P alone: the slope of the sheet on one side of the point. A sheet that bends symmetrically
-// about the fastener then shows it a rotation, and the rotational springs and the arm of the fastener react to it
-// (two square plates joined at their centre and lifted by their four corners lifted by 0.29, 1.22, 1.22 and 2.15).
-// So the grid points given to this interpolation are those of the patch of the point
-// (input::FastenerPiercingTable::patchGrids): the pierced element, and, for such a point, every shell element that
-// holds the grid point or the side and continues the sheet, their other grid points with the smallest weight.
+// The rotation about the axes of the plane is not taken from the translations (the slope of the sheet between its
+// grid points), as an interpolation element over translations does: an element with transverse shear bends by the
+// rotations of its grid points, and the slope of its deflection over the width of one element is not the rotation
+// of the sheet at a grid point of it. On the flange of a stiffener one element wide, bolted to a skin along one of
+// its edges and lifted by the other, the slope across the flange tied the lifted edge to the skin through the arm
+// and the rotational springs of each fastener: the edge lifted by 0.62 of what it does with the same bolts written
+// as springs between the grid points (0.21 with bolts a hundred times stiffer); with the rotations of the grid
+// points it lifts by 0.97 and 0.93 of it (wasm/test/validation/fasteners.test.mjs, section 13).
+//
+// interpolatePiercing is the side tied to the grid points of the shell element it pierces (a Weld of a point form, a
+// fastener without corners): `grids` are those of the patch of the point (input::FastenerPiercingTable::patchGrids:
+// the pierced element first, then, for a point on a grid point or on a side of it, the other grid points of the shell
+// elements that hold it and continue the sheet, with a shape function of zero). X̄ = Σ N_i·x_i, ū and β are read
+// with the shape functions N_i of the pierced element at P; θ_fit is that of
+//
+//     argmin Σ w_i·|R_i·u_i − (u + θ × r_i)|²,   r_i = x_i − x_P,   w_i = max(N_i, f·max_j N_j),
+//
+// R_i the rotation from the displacement system of grid i to the basic system, f = PIERCING_WEIGHT_FLOOR (the
+// least-squares fit of a RigidInterpolation interpolation element over translations: an element of NASTRAN-95, NASA's
+// open-source release, among its rigid elements in mis/criggp.f; solved with the rotations scaled by Lc, the mean
+// distance of the grid points to P, so that the result does not depend on the length unit). The grid points of the
+// patch beyond the pierced element take part in this fit only: on a grid point of the mesh the rotation of the
+// sheet in its plane is then that of the elements all around it, not of one of them.
 //
 // Returns the message of a problem instead: no grid point, shape functions that do not sum to 1, grid points all on
 // P, or collinear grid points (a rotation undetermined).
 [[nodiscard]] std::variant<PiercingMap, std::string> interpolatePiercing(base::Vec3 piercingPoint,
                                                                          std::span<const PiercedGrid> grids);
-
-// The map of a side connected directly to a grid point of the model (Weld ALIGN): (u_P, θ_P) = (R·u, R·θ).
-[[nodiscard]] PiercingMap directGridMap(const base::Mat3& gridFrame);
 
 // A grid point of the model as the interpolation of a side reads it: its row (in the node table and the DOF map),
 // its position and its displacement system in the basic system.
@@ -100,12 +110,52 @@ struct SideGrid
     base::Mat3 frame;
 };
 
+// One auxiliary point of a fastener side: a corner of the square that stands for its cross-section on the shells
+// (input/tables/PiercingFootprint.hpp), on one shell element: its weight, the grid points of that element (their
+// indices among the grid points given with the auxiliary points) and the shape functions of the element at the
+// point.
+struct AuxiliaryPoint
+{
+    double weight = 0.0;
+    std::vector<std::size_t> gridIndices;
+    std::vector<double> shapeValues;
+};
+
+// The motion of the piercing point P of a fastener side tied over its cross-section (the formulas of
+// interpolatePiercing): the sheet is read at the auxiliary points, the corners of the square of the fastener, each
+// on its shell element,
+//
+//     u_k = Σ_j N_kj·R_j·u_j,   β_k = Σ_j N_kj·R_j·θ_j   at X_k = Σ_j N_kj·x_j,
+//
+// and ū = Σ w_k·u_k at X̄ = Σ w_k·X_k, β = Σ w_k·β_k, θ_fit the rotation of the least-squares rigid motion of the
+// u_k about P, n the normal of the square. For the four corners of a square with equal weights, ū is the mean of
+// their translations and n·θ_fit = ½(∂v/∂x − ∂u/∂y) of the bilinear surface through them, in axes x, y of the
+// square. The size of the tie is then that of the fastener, not that of the element, and the joint stops softening
+// once the elements are as small as the fastener. The map is over the six DOFs of each grid point of `grids`.
+//
+// The tie holds the mean translation of the corners, not each of them: the sheet strains freely under the fastener,
+// and under the load of the fastener that mean is less than the motion at the piercing point (in a strip of
+// stiffness EA loaded along its length, by about F·d/(2·EA), d the half side of the square). The fastener is so
+// held a little more stiffly than at a point, which shows only beside a fastener about as stiff as the sheet over
+// the length d: in a row of such fasteners the end ones carry more, and the inner ones may carry a small load of
+// the other sign (wasm/test/validation/fasteners.test.mjs, section 4).
+//
+// Returns the message of a problem instead, as interpolatePiercing.
+[[nodiscard]] std::variant<PiercingMap, std::string> interpolateFootprint(base::Vec3 piercingPoint,
+                                                                          std::span<const SideGrid> grids,
+                                                                          std::span<const AuxiliaryPoint> points);
+
+// The map of a side connected directly to a grid point of the model (Weld ALIGN): (u_P, θ_P) = (R·u, R·θ).
+[[nodiscard]] PiercingMap directGridMap(const base::Mat3& gridFrame);
+
 // The lookup of a grid point by ID (nothing when the model does not define it). Each caller gives its own: the element
 // families read the snapshot, the assembly and the reduction the DOF map; both give the same rows and geometry.
 using SideGridLookup = std::function<std::optional<SideGrid>(std::int32_t gridId)>;
 
 // One side of a fastener resolved from the fastener piercing table: its piercing point, the rows of the grid points
-// of the element it pierces (in the order of the table) and the map of interpolatePiercing over them.
+// that move it and the map over them: the grid points under the corners of its footprint and the map of
+// interpolateFootprint (input::FastenerPiercingTable::cornerFootprint), or without corners the grid points of the
+// patch of the point and the map of interpolatePiercing.
 struct SideInterpolation
 {
     base::Vec3 point;
@@ -122,11 +172,11 @@ struct SideInterpolation
                                                                            const SideGridLookup& findGrid);
 
 // The motion of the piercing point P of one side as rows over DOFs of the model, (u_P, θ_P) = map·u(dofs) in the basic
-// system: over the six DOFs of each grid point of the pierced element (the RigidInterpolation of interpolateSide), or,
-// when the pierced shell is an element of a formulation with unknowns besides its grid points, over the DOFs of that
-// shell: the displacement and the rotation of its surface at P (FormulationModel::shellPointMotion,
-// docs/mixed-hybrid-formulation-spec.md section 5.10), its grid translations and the unknowns of its edges and
-// interior.
+// system: over the six DOFs of each grid point of interpolateSide, or, when the pierced shell is an element of a
+// formulation with unknowns besides its grid points, over the DOFs of the shells under the footprint of the
+// fastener: the mean of the displacement and of the rotation of their surface (FormulationModel::shellPointMotion,
+// docs/mixed-hybrid-formulation-spec.md section 5.10), their grid translations and the unknowns of their edges and
+// interiors.
 struct SideMotion
 {
     base::Vec3 point;
