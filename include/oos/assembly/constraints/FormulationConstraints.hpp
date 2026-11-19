@@ -30,6 +30,8 @@ namespace oos::assembly
                                              const elements::FormulationModel* model, elements::EntityLayout::Kind kind,
                                              base::MemoryBudget& budget, base::DiagnosticSink& sink);
 
+class GlueConstraints;
+
 // The g-DOFs that something other than the element formulation uses, for the observer relations of section 5.4: the
 // grid components a concentrated load of any set acts on, those an element of another formulation stiffens (the
 // stiffened components of the node-block connectivity: the formulation's own shells and solids stiffen no rotation),
@@ -56,7 +58,11 @@ struct UsedElsewhere
 // The grid components a relation of the model makes dependent (a rigid element, a multipoint constraint) are read
 // along the edges and faces as those a support holds are: an edge whose two grid points have a component held or
 // dependent follows them, its entity DOFs made dependent on those grid components by the map that carries the values
-// of a support along the edge (the relations "that follow", after the ties).
+// of a support along the edge (the relations "that follow", after the ties). The grid points a glued contact ties
+// are left out: each follows its own point of a face, and the side between two of them keeps its own unknowns.
+// Carried along their chords, the sides of a glued sheet stay straight on a face that bends: a cantilever of two
+// glued layers was 1.4 times too stiff, 2.5 times when the two layers bend side by side
+// (wasm/test/validation/glue.test.mjs, section 5: 1.5 % and 0.01 % off the closed forms with the sides left free).
 //
 // A determined component that a support holds or a relation makes dependent, and that no edge reads (the rotation at
 // one grid point of shells alone: the clamp that holds a free body, a rigid element joined to the shells at one grid
@@ -72,9 +78,13 @@ class FormulationConstraints
 public:
     // `spc`: the set with its derived supports (withFormulationSupports). `userRelations`: the eliminations of the
     // model's own relations (rigid elements, MPCs, fasteners, glue), to know which DOFs they make dependent.
+    // `glue`: the glued contact among them (nullptr: none). The grid points it ties each follow their own point of
+    // a face: the side between two of them is not carried along its chord as between two grid points of a rigid
+    // element (it would stay straight on a face that bends), its own unknowns stay free.
     FormulationConstraints(const elements::FormulationModel& model, elements::EntityLayout::Kind kind,
                            const DofMap& dofMap, const SpcSet& spc, const UsedElsewhere& usedElsewhere,
-                           const RigidElimination& userRelations, base::DiagnosticSink& sink);
+                           const RigidElimination& userRelations, base::DiagnosticSink& sink,
+                           const GlueConstraints* glue);
 
     // The ties and the observer relations, for RigidElimination.
     [[nodiscard]] const FormulationRelations& relations() const noexcept { return m_relations; }

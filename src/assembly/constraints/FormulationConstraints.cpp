@@ -1,5 +1,6 @@
 #include "oos/assembly/constraints/FormulationConstraints.hpp"
 
+#include "oos/assembly/constraints/GlueConstraints.hpp"
 #include "oos/assembly/dofs/EntityForceCarry.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
 
@@ -249,9 +250,17 @@ void UsedElsewhere::markIndependentTerms(const RigidElimination& gm)
 FormulationConstraints::FormulationConstraints(const elements::FormulationModel& model,
                                                elements::EntityLayout::Kind kind, const DofMap& dofMap,
                                                const SpcSet& spc, const UsedElsewhere& usedElsewhere,
-                                               const RigidElimination& userRelations, base::DiagnosticSink& sink)
+                                               const RigidElimination& userRelations, base::DiagnosticSink& sink,
+                                               const GlueConstraints* glue)
     : m_model(&model), m_kind(kind), m_dofMap(&dofMap), m_relations(dofMap), m_held(heldGridComponentsOf(spc, dofMap))
 {
+    // The DOFs the glue makes dependent, increasing: each follows its own point of a face, so no edge is carried
+    // between two of them.
+    std::vector<base::DofIndex> glued; // bounded by the rows of the glue
+    if (glue != nullptr)
+        for (std::size_t i = 0; i < glue->rowCount(); ++i)
+            glued.push_back(glue->dependentDof(i));
+    std::sort(glued.begin(), glued.end());
     // The grid components the formulation reads along its edges and faces: those the set holds and those a relation
     // of the model makes dependent (a rigid element, a multipoint constraint).
     m_followed = m_held;
@@ -259,7 +268,7 @@ FormulationConstraints::FormulationConstraints(const elements::FormulationModel&
     for (const base::DofIndex dof : userRelations.mDofs())
     {
         const DofLabel label = dofMap.labelOf(dof);
-        if (label.kind != input::PointKind::Grid)
+        if (label.kind != input::PointKind::Grid || std::binary_search(glued.begin(), glued.end(), dof))
             continue;
         m_followed.push_back({label.row, static_cast<int>(label.component), 0.0, true});
         hasDependentGrids = true;

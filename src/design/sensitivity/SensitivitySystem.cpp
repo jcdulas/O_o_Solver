@@ -288,7 +288,7 @@ SensitivitySystem::SensitivitySystem(const assembly::ElementSet& elementSet, con
         usedElsewhere.markStiffened(m_connectivity->usedComponents(), dofMap);
         usedElsewhere.markIndependentTerms(*m_gm);
         m_formulation = std::make_shared<const assembly::FormulationConstraints>(
-            *formulation, dofMap.layoutKind(), dofMap, *m_spc, usedElsewhere, *m_gm, sink);
+            *formulation, dofMap.layoutKind(), dofMap, *m_spc, usedElsewhere, *m_gm, sink, m_glue.get());
         excludedDofs.assign(m_formulation->excludedDofs().begin(), m_formulation->excludedDofs().end());
         m_gm = std::make_unique<assembly::RigidElimination>(
             rigidElements, m_mpc.get(), dofMap, budget, sink, m_fasteners.get(), m_glue.get(),

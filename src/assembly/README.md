@@ -35,11 +35,15 @@ folders in that order, which is the order in which the pieces depend on one anot
   `constraints/GlueSearch` projects every candidate point on the primary faces near it; a point is tied to the face
   whose nearest point is nearest when its orthogonal distance is within the position tolerance (the pair's ErrorHandling, else
   the default) and its projection within the face or no farther outside, parallel to it, than the default tolerance,
-  2.5 % of the typical element size (here the mean edge length of the primary faces). The tie is
-  u_s = R_sᵀ·Σ N_i·R_i·u_i on the translations only, for solids and shells alike as in CalculiX (shells there are
-  expanded into solids, whose connection to 1D and 2D elements is hinged): shell rotations stay free, IGLUE 3 and 4
-  are warned. Grid points are never moved (CalculiX's ADJUST=NO; its default, moving them onto the face, is not done:
-  the snapshot geometry is immutable), a gap kept is warned. Exact elimination only (no penalty); the weights are those
+  2.5 % of the typical element size (here the mean edge length of the primary faces). On the face of a solid the tie
+  is u_s = R_sᵀ·Σ N_i·R_i·u_i on the translations, as in CalculiX. On the face of a shell the point follows the
+  normal fibre of the shell (docs/shell-quad4-formulation.md, sections 3 and 8): u_s = R_sᵀ·(Σ N_i·R_i·u_i + θ_P × d),
+  θ_P the rotation of the grid points about the axes of the face and that of the sheet in its plane about its
+  normal, d the vector from the tied point to the glued point, so that a rigid motion gives no tie force whatever
+  the gap between the mid-surfaces. IGLUE 3 and 4 tie the rotations of the glued grid point to θ_P too (a single
+  line of glued points then carries a moment); on the face of a solid they are warned. Grid points are never moved
+  (CalculiX's ADJUST=NO; its default, moving them onto the face, is not done: the snapshot geometry is immutable),
+  a gap kept on the face of a solid is warned. Exact elimination only (no penalty); the weights are those
   at the tied point within the face (`constraints/FaceShapeFunctions`: linear or quadratic, quadrilateral or
   triangular faces, absent mid-side points; `clampToFace`). `constraints/GluedContactPairs` selects the pairs of the
   subcase's BCONTACT, refuses touching contact (IGLUE 0) and a model without the columns the glue reads
@@ -51,7 +55,8 @@ folders in that order, which is the order in which the pieces depend on one anot
 - `constraints/FormulationConstraints`: what an element formulation with unknowns outside the grid points adds to a
   constraint set (the mixed hybrid formulation, docs/mixed-hybrid-formulation-spec.md sections 5.4 to 5.6): its ties,
   the edges and faces that follow the grid components a relation of the model makes dependent (as they follow a
-  support), the observer relations of the rotations of shell grid points that something else uses, the excluded set
+  support; not those of a glued contact, whose grid points each follow their own point of a face), the observer
+  relations of the rotations of shell grid points that something else uses, the excluded set
   of those nothing uses, and the tied rows of a rotation held or dependent at a grid point where no edge reads it (the
   mean rotation of the shells written on one of their unknowns). Its relations name the independent DOFs of the
   model's relations, never their dependent ones. The supports along a direction that is no basic axis

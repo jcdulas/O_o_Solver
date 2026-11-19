@@ -133,10 +133,11 @@ std::optional<FormulationModel::PointMotion> MixedHybridModel::facePointMotion(
         const std::optional<ReferencePoint> at = shellReferencePoint(*shell, faceGridRows, shapeValues);
         if (!at)
             return std::nullopt;
-        const ShellDisplacementRows rows =
-            m_shellPart->displacementRowsAt(shell->partIndex, std::span<const ReferencePoint>(&*at, 1)).front();
-        for (std::size_t c = 0; c < 3; ++c)
-            appendPartTerms(rows.rows[c], 1.0, motion.rows[c]);
+        // the displacement and the rotation of the shell there: a point glued off the surface follows the rotation
+        const ShellPart::PointRows rows = m_shellPart->pointRows(shell->partIndex, (*at)[0], (*at)[1]);
+        for (std::size_t r = 0; r < 6; ++r)
+            appendPartTerms(rows.rows[r], 1.0, motion.rows[r]);
+        motion.point = base::Vec3{rows.point[0], rows.point[1], rows.point[2]};
     }
     else if (const MixedSolid* solid = solidOf(face->card, face->batchRow))
     {

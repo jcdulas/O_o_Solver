@@ -5,6 +5,8 @@
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/math/Mat3.hpp"
 #include "oos/base/math/Vec3.hpp"
+#include "oos/elements/core/MatrixKernels.hpp"
+#include "oos/input/tables/PiercingFootprint.hpp"
 
 #include <algorithm>
 #include <array>
@@ -23,6 +25,7 @@ namespace
 {
 
 constexpr int TRANSLATIONS = 3;
+constexpr int COMPONENTS = 6;
 constexpr std::uint8_t TRANSLATION_MASK = 0b000111;
 
 // What another constraint does to a DOF.
@@ -42,6 +45,13 @@ struct GlueRecord
     std::array<std::int32_t, MAX_GLUE_FACE_POINTS> faceRows{}; // −1 for an absent mid-side point
     std::array<double, MAX_GLUE_FACE_POINTS> shapeValues{};
     std::uint8_t componentMask = 0; // bit c − 1: component c of the point is tied
+    // The face is that of a shell of the ClassicFormulation: the point follows the normal fibre of the shell at the
+    // tied point (GlueConstraints.hpp, "the tie"), with:
+    std::uint8_t readsShell = 0;
+    base::Vec3 normal; // n, the unit normal of the face at the tied point
+    base::Vec3 arm;    // from the tied point of the face to the secondary point
+    // w_i: the rotation of the sheet in its plane at the tied point, ω = Σ w_i·u_i (u_i in the basic system)
+    std::array<base::Vec3, MAX_GLUE_FACE_POINTS> turn{};
 };
 
 // One face of a row of contactNodePairs, keyed by its pair (sorted, then made distinct).
@@ -50,6 +60,7 @@ struct FaceKey
     std::int32_t pairIndex = 0;
     std::int32_t pointCount = 0;
     std::array<std::int32_t, MAX_GLUE_FACE_POINTS> gridIds{};
+    std::int32_t elementId = 0; // the element the face is of (0: not given); not part of the key
 
     [[nodiscard]] auto tie() const { return std::tie(pairIndex, pointCount, gridIds); }
 };
@@ -86,6 +97,7 @@ struct PairTally
     double firstOutsideDistance = 0.0; // its distance to the nearest face looked at (infinity: none near)
     double largestGap = 0.0;           // the largest distance from a tied point to its face
     std::int32_t largestGapPoint = 0;
+    std::int64_t gapFollowedCount = 0; // tied points off their faces that follow the rotation of a shell
 
     void leaveOut(LeftOut reason, std::int32_t nodeId)
     {
@@ -200,6 +212,53 @@ std::variant<GlueFace, std::string> glueFaceOf(const FaceKey& key, const DofMap&
     return face;
 }
 
+// The IDs of the shell elements of the model, sorted (4 bytes per shell: budgeted).
+base::BudgetedBuffer<std::int32_t> shellElementIds(const input::ModelSnapshot& snapshot, base::MemoryBudget& budget)
+{
+    std::size_t count = 0;
+    for (const std::string_view card : input::PIERCED_SHELL_CARDS)
+        if (const input::ElementBatch* batch = snapshot.findElementBatch(card))
+            count += batch->ids().size();
+    base::BudgetedBuffer<std::int32_t> ids(budget, count, "glue: shell elements");
+    std::size_t filled = 0;
+    for (const std::string_view card : input::PIERCED_SHELL_CARDS)
+        if (const input::ElementBatch* batch = snapshot.findElementBatch(card))
+            for (const std::int32_t id : batch->ids())
+                ids[filled++] = id;
+    std::sort(ids.data(), ids.data() + filled);
+    return ids;
+}
+
+// Fills what a record reads of a shell face at its tied point (GlueRecord): the normal n = x_,ξ × x_,η, the arm to
+// the secondary point, and the vectors w_i of the rotation of the sheet in its plane,
+//     ω = ½·n·(∇ × u) = Σ_i w_i·u_i,   w_i = ½·n × ∇N_i,   ∇N_i = N_i,ξ·a¹ + N_i,η·a²,
+// a¹, a² the contravariant vectors of the tangents (a^α·x_,β = δ_αβ, in the tangent plane). False for a face whose
+// tangents are parallel there (no normal).
+bool readShellFace(GlueRecord& record, const GlueFace& face, FaceCoordinates at, base::Vec3 secondaryPoint)
+{
+    const FaceShapeDerivatives d = faceShapeDerivatives(face.grids(), at.xi, at.eta);
+    base::Vec3 alongXi;
+    base::Vec3 alongEta;
+    for (std::size_t k = 0; k < static_cast<std::size_t>(face.pointCount); ++k)
+    {
+        alongXi = alongXi + d.dXi[k] * face.positions[k];
+        alongEta = alongEta + d.dEta[k] * face.positions[k];
+    }
+    const base::Vec3 across = base::cross(alongXi, alongEta);
+    const double area = base::norm(across);
+    if (!(area > 0.0))
+        return false;
+    record.normal = across / area;
+    record.arm = secondaryPoint - face.pointAt(at);
+    // a¹ = (x_,η × n) / (x_,ξ·(x_,η × n)),   a² = (n × x_,ξ) / (x_,η·(n × x_,ξ)): both denominators are the area
+    const base::Vec3 first = base::cross(alongEta, record.normal) / area;
+    const base::Vec3 second = base::cross(record.normal, alongXi) / area;
+    for (std::size_t k = 0; k < static_cast<std::size_t>(face.pointCount); ++k)
+        record.turn[k] = 0.5 * base::cross(record.normal, d.dXi[k] * first + d.dEta[k] * second);
+    record.readsShell = 1;
+    return true;
+}
+
 // The diagnostics of one pair once its points are processed. The glue fields are named by their keywords (`names`);
 // the fields of a contact table stand for those of every card that sets them.
 void reportPair(const GluedPairReport& report, const PairTally& tally, base::EntityId subcase,
@@ -280,22 +339,28 @@ void reportPair(const GluedPairReport& report, const PairTally& tally, base::Ent
                                "first, grid point ",
                                std::to_string(tally.firstPartlyTied), ", by ", tally.firstPartConstraint,
                                "): those components keep their constraint, the others are tied"})));
-    if (pair.asksForRotations() && report.tiedPointCount > 0)
+    if (pair.asksForRotations() && report.tiedPointCount > report.rotationTiedPointCount)
         sink.report(pairDiagnostic(
             base::Severity::Warning, "glue-rotations-not-tied", pair,
             base::concatenate({pairName(pair), ": ", glueOptionLabel, " ", std::to_string(pair.glueOption),
-                               " asks for a glue of the shell rotations too; O_o_Solver ties the translations of the "
-                               "grid points only (the tie of a surface; the rotations of a shell grid point stay "
-                               "free): a moment passes through tie forces at points apart, not at a single line of "
-                               "points"})));
+                               " asks for a glue of the shell rotations too; ",
+                               std::to_string(report.tiedPointCount - report.rotationTiedPointCount), " of the ",
+                               std::to_string(report.tiedPointCount),
+                               " tied grid points have their translations tied only: the rotations are tied to the "
+                               "rotation of a shell of the ClassicFormulation, and their face is not one (the face of "
+                               "a solid, an element of another formulation) or their rotations are held or dependent "
+                               "already. There a moment passes through tie forces at points apart, not at a single "
+                               "line of points"})));
+    // A gap is followed where the face is a shell: only the points that do not follow it are reported.
     if (tally.largestGap > 0.0)
         sink.report(pairDiagnostic(
             base::Severity::Warning, "glue-gap-kept", pair,
             base::concatenate({pairName(pair), ": tied grid points lie off their faces, the largest by ",
                                std::to_string(tally.largestGap), " (grid point ", std::to_string(tally.largestGapPoint),
-                               "); O_o_Solver never moves a grid point, so the gap is kept: a rigid rotation of the "
-                               "bodies strains the glue by the rotation times the gap"})));
-    if (report.tiedPointCount > 0 && report.tiedPointCount <= 2)
+                               "), on faces that have no rotation (solids); O_o_Solver never moves a grid point, so "
+                               "the gap is kept: a rigid rotation of the bodies strains the glue by the rotation "
+                               "times the gap"})));
+    if (report.tiedPointCount > 0 && report.tiedPointCount <= 2 && report.rotationTiedPointCount == 0)
         sink.report(pairDiagnostic(
             base::Severity::Warning, "glued-pair-hinge", pair,
             base::concatenate({pairName(pair), " in subcase ", std::to_string(subcase), " ties ",
@@ -336,7 +401,11 @@ void reportPair(const GluedPairReport& report, const PairTally& tally, base::Ent
                            tolerance,
                            ": ",
                            std::to_string(report.tiedPointCount),
-                           " grid points tied by their translations to ",
+                           " grid points tied by their translations (",
+                           std::to_string(report.rotationTiedPointCount),
+                           " by their rotations too, ",
+                           std::to_string(tally.gapFollowedCount),
+                           " off their faces following the rotation of a shell) to ",
                            std::to_string(report.faceCornerCount),
                            " face corners (mesh ratio ",
                            std::to_string(report.faceCornerCount > 0 ? static_cast<double>(report.tiedPointCount) /
@@ -395,6 +464,7 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
             continue;
         FaceKey key;
         key.pairIndex = found->second;
+        key.elementId = node.primaryElementId.value_or(0);
         key.pointCount = static_cast<std::int32_t>(node.face.size()); // more than 8: refused by glueFaceOf
         std::copy_n(node.face.begin(), std::min(node.face.size(), MAX_GLUE_FACE_POINTS), key.gridIds.begin());
         faceKeys[faceKeyCount++] = key;
@@ -411,7 +481,16 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
         static_cast<std::size_t>(std::unique(faceKeys.data(), faceKeys.data() + faceKeyCount,
                                              [](const FaceKey& a, const FaceKey& b) { return a.tie() == b.tie(); }) -
                                  faceKeys.data());
-    // The faces that can interpolate, in pair order; the others reported.
+    // The faces that can interpolate, in pair order; the others reported. A face of a shell of the ClassicFormulation
+    // is marked: a point tied to it follows the rotation of the shell (an element of a formulation with entities
+    // gives its own motion, FormulationModel::facePointMotion).
+    const base::BudgetedBuffer<std::int32_t> shellIds = shellElementIds(snapshot, budget);
+    const auto isClassicShell = [&](std::int32_t elementId)
+    {
+        return context.formulation == nullptr && elementId != 0 &&
+               std::binary_search(shellIds.data(), shellIds.data() + shellIds.size(), elementId);
+    };
+    base::BudgetedBuffer<std::uint8_t> faceIsShell(budget, faceKeyCount, "glue: primary faces");
     base::BudgetedBuffer<GlueFace> faces(budget, faceKeyCount, "glue: primary faces");
     std::vector<std::size_t> faceBegin(m_pairs.size() + 1, 0); // bounded by the pairs of one contact table
     std::size_t faceCount = 0;
@@ -426,6 +505,7 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
                 tally.firstInvalidFace = std::move(*problem);
             continue;
         }
+        faceIsShell[faceCount] = isClassicShell(key.elementId) ? 1 : 0;
         faces[faceCount++] = std::get<GlueFace>(face);
         faceBegin[static_cast<std::size_t>(key.pairIndex) + 1] = faceCount;
     }
@@ -535,11 +615,29 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
                 candidate.shapeValues[k] = projection.shape.values[k];
                 candidate.faceRows[k] = face.gridIds[k] == 0 ? -1 : *dofMap.points().findGrid(face.gridIds[k]);
             }
+            // A shell face: the point follows the normal fibre of the shell, gap included. An element of a
+            // formulation with entities that gives its rotation there does too (forEachTerm).
+            const bool followsRotation =
+                (faceIsShell[faceBegin[p] + static_cast<std::size_t>(projection.face)] != 0 &&
+                 readShellFace(candidate, face, projection.coordinates, position)) ||
+                (context.formulation != nullptr &&
+                 [&]
+                 {
+                     const auto count = static_cast<std::size_t>(candidate.facePointCount);
+                     const auto motion = context.formulation->facePointMotion(
+                         {candidate.faceRows.data(), count}, {candidate.shapeValues.data(), count});
+                     return motion && motion->point.has_value();
+                 }());
             const double gap = base::norm(position - face.pointAt(projection.coordinates));
-            if (gap > GLUE_GAP_TOLERANCE * report.typicalElementSize && gap > tally.largestGap)
+            if (gap > GLUE_GAP_TOLERANCE * report.typicalElementSize)
             {
-                tally.largestGap = gap;
-                tally.largestGapPoint = nodeId;
+                if (followsRotation)
+                    ++tally.gapFollowedCount;
+                else if (gap > tally.largestGap)
+                {
+                    tally.largestGap = gap;
+                    tally.largestGapPoint = nodeId;
+                }
             }
 
             // The translations tied; a component another constraint already holds or makes dependent keeps that
@@ -579,6 +677,15 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
                 tally.firstPartlyTied = nodeId;
                 tally.firstPartConstraint = takenText;
             }
+            // The rotations too when the pair asks for them and the face is a shell (those that are free).
+            bool hasRotationTied = false;
+            if (report.pair.asksForRotations() && candidate.readsShell != 0)
+                for (int component = TRANSLATIONS + 1; component <= COMPONENTS; ++component)
+                    if (states[static_cast<std::size_t>(dofMap.gridDof(*pointRow, component))] == FREE)
+                    {
+                        mask = static_cast<std::uint8_t>(mask | (1U << (component - 1)));
+                        hasRotationTied = true;
+                    }
             candidate.componentMask = mask;
             if (closesLoop(*pointRow, candidate))
             {
@@ -590,6 +697,8 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
             glueOwner[static_cast<std::size_t>(*pointRow)] = static_cast<std::int32_t>(recordCount);
             ++recordCount;
             ++report.tiedPointCount;
+            if (hasRotationTied)
+                ++report.rotationTiedPointCount;
         }
     }
 
@@ -611,11 +720,11 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
     for (std::size_t p = 0; p < m_pairs.size(); ++p)
         reportPair(m_pairs[p], tallies[p], subcase, sink);
 
-    // 3. The rows, by record then component; a row of component c of the point:
-    //     u_s,c = Σ_i Σ_k N_i·(R_sᵀ·R_i)(c, k)·u_i,k     (k over the translations),
-    // or u_s,c = Σ_b R_s(b, c)·u_b(P) over the DOFs of an element of the formulation that has the face. The
-    // coefficients are computed twice (to size the buffers exactly, then to write them): cheap against the memory of an
-    // upper bound (8 face points × 3 terms per row).
+    // 3. The rows, by record then component (GlueConstraints.hpp, "the tie"). With (u_P, θ_P) the motion of the face
+    //    at the tied point over the DOFs it reads, in the basic system, and d the arm to the secondary point,
+    //        u_s = R_sᵀ·(u_P + θ_P × d),   θ_s = R_sᵀ·θ_P;
+    //    a face without rotation gives u_s = R_sᵀ·u_P. The coefficients are computed twice (to size the buffers
+    //    exactly, then to write them): cheap against the memory of an upper bound.
     const auto faceMotionOf = [&](const GlueRecord& record) -> std::optional<elements::FormulationModel::PointMotion>
     {
         if (context.formulation == nullptr)
@@ -628,32 +737,75 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
                                  const std::optional<elements::FormulationModel::PointMotion>& motion, int component,
                                  auto visit)
     {
-        const auto c = static_cast<std::size_t>(component - 1);
+        const bool isRotation = component > TRANSLATIONS;
+        const auto c = static_cast<std::size_t>(isRotation ? component - TRANSLATIONS - 1 : component - 1);
         const base::Mat3 toPoint = dofMap.cdToBasic(record.pointRow).transposed();
         if (motion)
         {
+            // An element of the formulation: its rows of u_P, and of θ_P × d = −[d]×·θ_P when it gives its rotation.
             std::map<base::DofIndex, double> sums; // one term per DOF
+            const auto add = [&](const std::vector<elements::FormulationRelationTerm>& terms, double factor)
+            {
+                if (factor != 0.0)
+                    for (const elements::FormulationRelationTerm& term : terms)
+                        sums[dofMap.dofOf(term.dof)] += factor * term.coefficient;
+            };
+            base::Mat3 carry; // u_P + carry·θ_P
+            if (motion->point)
+                carry = (-1.0) * elements::crossProductMatrix(dofMap.positionInBasic(record.pointRow) - *motion->point);
             for (std::size_t b = 0; b < 3; ++b)
-                if (toPoint(c, b) != 0.0)
-                    for (const elements::FormulationRelationTerm& term : motion->rows[b])
-                        sums[dofMap.dofOf(term.dof)] += toPoint(c, b) * term.coefficient;
+            {
+                add(motion->rows[b], toPoint(c, b));
+                for (std::size_t e = 0; e < 3; ++e)
+                    add(motion->rows[3 + e], toPoint(c, b) * carry(b, e));
+            }
             for (const auto& [dof, coefficient] : sums)
                 if (coefficient != 0.0)
                     visit(dof, coefficient);
             return;
         }
+        // A face of grid points. A shell (readsShell) has the rotation
+        //     θ_P = Σ_i [ N_i·(I − n·nᵀ)·R_i·θ_i + n·(w_i·R_i·u_i) ]:
+        // that of its grid points about the axes of its plane, that of the sheet in its plane about its normal.
+        base::Mat3 inPlane = base::Mat3::identity();
+        base::Mat3 carry;
+        if (record.readsShell != 0)
+        {
+            for (std::size_t r = 0; r < 3; ++r)
+                for (std::size_t k = 0; k < 3; ++k)
+                    inPlane(r, k) -= record.normal[r] * record.normal[k];
+            carry = (-1.0) * elements::crossProductMatrix(record.arm);
+        }
         for (std::int32_t i = 0; i < record.facePointCount; ++i)
         {
             const std::int32_t faceRow = record.faceRows[static_cast<std::size_t>(i)];
             const double shapeValue = record.shapeValues[static_cast<std::size_t>(i)];
-            if (faceRow < 0 || shapeValue == 0.0)
+            if (faceRow < 0)
                 continue;
-            const base::Mat3 transfer = toPoint * dofMap.cdToBasic(faceRow);
+            const base::Mat3 toBasic = dofMap.cdToBasic(faceRow);
+            // The blocks of the row on the translations and on the rotations of the face point, in the basic system.
+            base::Mat3 onTranslations;
+            base::Mat3 onRotations;
+            if (record.readsShell != 0)
+            {
+                base::Mat3 aboutNormal; // n·w_iᵀ: the rotation in the plane, from the translations
+                for (std::size_t r = 0; r < 3; ++r)
+                    for (std::size_t k = 0; k < 3; ++k)
+                        aboutNormal(r, k) = record.normal[r] * record.turn[static_cast<std::size_t>(i)][k];
+                const base::Mat3 aboutPlane = shapeValue * inPlane;
+                onTranslations = isRotation ? aboutNormal : shapeValue * base::Mat3::identity() + carry * aboutNormal;
+                onRotations = isRotation ? aboutPlane : carry * aboutPlane;
+            }
+            else
+                onTranslations = shapeValue * base::Mat3::identity();
+            const base::Mat3 translationTransfer = toPoint * onTranslations * toBasic;
+            const base::Mat3 rotationTransfer = toPoint * onRotations * toBasic;
             for (std::size_t k = 0; k < 3; ++k)
             {
-                const double coefficient = shapeValue * transfer(c, k);
-                if (coefficient != 0.0)
-                    visit(dofMap.gridDof(faceRow, static_cast<int>(k) + 1), coefficient);
+                if (translationTransfer(c, k) != 0.0)
+                    visit(dofMap.gridDof(faceRow, static_cast<int>(k) + 1), translationTransfer(c, k));
+                if (record.readsShell != 0 && rotationTransfer(c, k) != 0.0)
+                    visit(dofMap.gridDof(faceRow, static_cast<int>(k) + 4), rotationTransfer(c, k));
             }
         }
     };
@@ -664,7 +816,7 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
     for (std::size_t r = 0; r < recordCount; ++r)
     {
         const std::optional<elements::FormulationModel::PointMotion> motion = faceMotionOf(records[r]);
-        for (int component = 1; component <= TRANSLATIONS; ++component)
+        for (int component = 1; component <= COMPONENTS; ++component)
         {
             if (!isTied(records[r], component))
                 continue;
@@ -684,7 +836,7 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
         const GlueRecord& record = records[r];
         const GluedPair& pair = m_pairs[static_cast<std::size_t>(record.pairIndex)].pair;
         const std::optional<elements::FormulationModel::PointMotion> motion = faceMotionOf(record);
-        for (int component = 1; component <= TRANSLATIONS; ++component)
+        for (int component = 1; component <= COMPONENTS; ++component)
         {
             if (!isTied(record, component))
                 continue;

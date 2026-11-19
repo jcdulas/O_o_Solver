@@ -78,7 +78,7 @@ ConstrainedSystem::ConstrainedSystem(const AnalysisModel& model, const Constrain
                     for (int component = 1; component <= 6; ++component)
                         usedElsewhere.flags[static_cast<std::size_t>(dofMap.gridDof(node, component))] = 1;
         m_formulation = std::make_shared<const assembly::FormulationConstraints>(
-            *formulation, model.layoutKind(), dofMap, *m_spc, usedElsewhere, *m_gm, sink);
+            *formulation, model.layoutKind(), dofMap, *m_spc, usedElsewhere, *m_gm, sink, m_glue.get());
         m_excludedDofs.assign(m_formulation->excludedDofs().begin(), m_formulation->excludedDofs().end());
         m_gm = std::make_shared<assembly::RigidElimination>(
             rigidElements, m_mpc.get(), dofMap, budget, sink, m_fasteners.get(), m_glue.get(),

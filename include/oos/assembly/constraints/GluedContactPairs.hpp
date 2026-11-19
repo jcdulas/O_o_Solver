@@ -32,8 +32,8 @@ struct GluedPair
     std::string glueOptionSource; // the card that sets IGLUE, as O_o_Reader names it; may be empty
     std::int64_t nodePairCount = 0;
 
-    // IGLUE 3 and 4 (and −3, −4) ask for a glue of the rotations of shells too, which the tie of GlueConstraints does
-    // not make (translations only): reported.
+    // IGLUE 3 and 4 (and −3, −4) ask for a glue of the rotations of shells too: GlueConstraints ties them on the
+    // faces of shells, and reports the points whose face has no rotation.
     [[nodiscard]] bool asksForRotations() const noexcept
     {
         return std::abs(glueOption) == 3 || std::abs(glueOption) == 4;

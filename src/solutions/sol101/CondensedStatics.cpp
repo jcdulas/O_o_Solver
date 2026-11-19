@@ -2583,7 +2583,7 @@ std::unique_ptr<assembly::FormulationConstraints> formulationConstraintsOf(
                         usedElsewhere.flags[static_cast<std::size_t>(dofMap.gridDof(node, component))] = 1;
     }
     return std::make_unique<assembly::FormulationConstraints>(*formulation, dofMap.layoutKind(), dofMap, spc,
-                                                              usedElsewhere, userRelations, sink);
+                                                              usedElsewhere, userRelations, sink, &glue);
 }
 
 // The g-set element forces Σ_e K_e·u_e of the elements not excluded (sorted IDs), in batch and row order.

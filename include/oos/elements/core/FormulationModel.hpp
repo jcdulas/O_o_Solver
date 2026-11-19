@@ -202,6 +202,9 @@ public:
     struct PointMotion
     {
         std::array<std::vector<FormulationRelationTerm>, 6> rows;
+        // The point of the surface of the element the rows are those of (basic), when the formulation gives it
+        // (facePointMotion of a shell: what is carried from it follows its rotation).
+        std::optional<base::Vec3> point;
     };
     // One point of a shell that a fastener or a weld reads: the shell (its ID), the weight of the point, and what
     // places the point on the shell, as the fastener piercing table gives it: grid points of its card (`gridRows`,
@@ -228,10 +231,11 @@ public:
         static_cast<void>(samples);
         return std::nullopt;
     }
-    // The translations (rows 0 to 2; the rotations empty) of a point of a face of an element of the formulation (a
-    // shell, or a face of a solid) given by the grid points of the face (node table rows: its corners, then its
-    // mid-side points, −1 for an absent one) and their shape functions at the point: the primary face of a glued
-    // contact. Empty when no element of the formulation has that face. None by default.
+    // The motion of a point of a face of an element of the formulation (a shell, or a face of a solid) given by the
+    // grid points of the face (node table rows: its corners, then its mid-side points, −1 for an absent one) and
+    // their shape functions at the point: the primary face of a glued contact. A shell gives its translations (rows
+    // 0 to 2), its rotation (rows 3 to 5) and the point of its surface there; a solid its translations alone (the
+    // rotations empty, no point). Empty when no element of the formulation has that face. None by default.
     [[nodiscard]] virtual std::optional<PointMotion> facePointMotion(std::span<const std::int32_t> faceGridRows,
                                                                      std::span<const double> shapeValues) const
     {

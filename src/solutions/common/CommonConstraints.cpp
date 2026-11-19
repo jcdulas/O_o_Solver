@@ -56,7 +56,7 @@ void addFormulationConstraints(const input::ModelSnapshot& snapshot, const assem
         usedElsewhere.markStiffened(stiffenedComponents, dofMap);
     usedElsewhere.markIndependentTerms(userRelations);
     const assembly::FormulationConstraints own(formulation, dofMap.layoutKind(), dofMap, spc, usedElsewhere,
-                                               userRelations, quiet);
+                                               userRelations, quiet, &glue);
     const assembly::FormulationRelations& rows = own.relations();
     for (std::size_t i = 0; i < rows.rowCount(); ++i)
     {

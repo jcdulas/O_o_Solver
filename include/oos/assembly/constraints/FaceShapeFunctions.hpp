@@ -25,6 +25,15 @@ struct FaceCoordinates
     double eta = 0.0;
 };
 
+// The derivatives of the shape functions of a face with respect to its local coordinates at one point, one per point
+// of the face, those of absent mid-side points 0.
+struct FaceShapeDerivatives
+{
+    std::array<double, 8> dXi{};
+    std::array<double, 8> dEta{};
+    std::size_t count = 0;
+};
+
 // The shape functions of the face of a shell or solid at the local coordinates (ξ, η) of a point on it (glued
 // contact: u_s = Σ N_i(ξ, η)·u_i), for the faces of O_o_Reader's contactNodePairs: `face` the grid
 // points in the element's order, the corners first, then the mid-side points in the order of the edges, 0 for an
@@ -46,6 +55,12 @@ struct FaceCoordinates
 // coordinates that are not finite numbers.
 [[nodiscard]] std::variant<FaceShapeValues, std::string> faceShapeFunctions(std::span<const std::int32_t> face,
                                                                             double xi, double eta);
+
+// The derivatives ∂N_i/∂ξ and ∂N_i/∂η of the functions of faceShapeFunctions at (ξ, η): the tangents of the face,
+// x_,ξ = Σ N_i,ξ·x_i and x_,η = Σ N_i,η·x_i, and the gradient of what the face interpolates (the rotation of a shell in
+// its plane: GlueConstraints). Precondition: a face faceShapeFunctions accepts.
+[[nodiscard]] FaceShapeDerivatives faceShapeDerivatives(std::span<const std::int32_t> face, double xi,
+                                                        double eta) noexcept;
 
 // The local coordinates of a point brought back onto its face, for a face of `pointCount` points: on a quadrilateral ξ
 // and η clamped to [−1, 1] each (the closest point of the parametric square); on a triangle a negative area
