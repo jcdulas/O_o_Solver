@@ -421,26 +421,28 @@ void reportPair(const GluedPairReport& report, const PairTally& tally, base::Ent
                            " candidate points and ",
                            std::to_string(report.primaryFaceCount),
                            " primary faces",
-                           report.tiedEdgeCount + report.freeEdgeCount > 0
+                           report.tiedEdgeCount + report.tiedFaceCount + report.freeBoundaryCount > 0
                                ? base::concatenate({"; ", std::to_string(report.tiedEdgeCount),
                                                     " edges of the glued surface tied along their length (",
                                                     std::to_string(report.rotationTiedEdgeCount),
-                                                    " by their rotation too), ",
-                                                    std::to_string(report.freeEdgeCount),
+                                                    " by their rotation too) and ",
+                                                    std::to_string(report.tiedFaceCount),
+                                                    " faces of solids over their extent, ",
+                                                    std::to_string(report.freeBoundaryCount),
                                                     " left to their own unknowns (a point of theirs is off the "
                                                     "primary faces)"})
                                : std::string()})));
 }
 
-// The rows of the edges `traces` of the glued surface of a pair (those between two of its tied grid points), with an
-// element formulation that has unknowns along its edges (GlueConstraints.hpp, "the edges of such a formulation"):
-// appended to `dependents`, `offsets` and `terms`. Counts the edges in the report of the pair and marks in
-// `turnsWithFace` the grid points at the ends of the edges tied by their rotation.
-void tieEdges(GluedPairReport& report, std::span<const elements::FormulationModel::EdgeTrace* const> traces,
-              std::span<const GlueFace> faces, const DofMap& dofMap, const GlueContext& context,
-              std::span<const std::uint8_t> states, base::MemoryBudget& budget,
-              std::vector<base::DofIndex>& dependents, std::vector<std::int64_t>& offsets,
-              std::vector<ConstraintTerm>& terms, std::span<std::uint8_t> turnsWithFace)
+// The rows of the edges and faces `traces` of the glued surface of a pair (those between its grid points that lie on
+// a face), with an element formulation that has unknowns along its edges and over its faces (GlueConstraints.hpp,
+// "the edges and faces of such a formulation"): appended to `dependents`, `offsets` and `terms`. Counts them in the
+// report of the pair and marks in `turnsWithFace` the grid points at the ends of the edges tied by their rotation.
+void tieBoundaries(GluedPairReport& report, std::span<const elements::FormulationModel::BoundaryTrace* const> traces,
+                   std::span<const GlueFace> faces, const DofMap& dofMap, const GlueContext& context,
+                   std::span<const std::uint8_t> states, base::MemoryBudget& budget,
+                   std::vector<base::DofIndex>& dependents, std::vector<std::int64_t>& offsets,
+                   std::vector<ConstraintTerm>& terms, std::span<std::uint8_t> turnsWithFace)
 {
     const GlueTolerances tolerances{report.positionTolerance, report.inPlaneTolerance};
     const GlueSearch search(faces, tolerances.position + tolerances.inPlane, budget);
@@ -467,11 +469,11 @@ void tieEdges(GluedPairReport& report, std::span<const elements::FormulationMode
 
     std::vector<elements::FormulationModel::PointMotion> motions; // of the points of one edge
     std::vector<base::Mat3> carries;                              // u(P) + carry·θ(P) at each of them
-    for (const elements::FormulationModel::EdgeTrace* const edge : traces)
+    for (const elements::FormulationModel::BoundaryTrace* const edge : traces)
     {
-        const elements::FormulationModel::EdgeTrace& trace = *edge;
-        // The motion of the face under each point of the edge; an edge that leaves the primary faces, or lies on a
-        // face no element of the formulation has, keeps its own unknowns.
+        const elements::FormulationModel::BoundaryTrace& trace = *edge;
+        // The motion of the primary face under each point of the edge or face; one that leaves the primary faces,
+        // or lies on a face no element of the formulation has, keeps its own unknowns.
         motions.clear();
         carries.clear();
         bool hasRotation = true;
@@ -496,13 +498,13 @@ void tieEdges(GluedPairReport& report, std::span<const elements::FormulationMode
         }
         if (motions.size() != trace.points.size())
         {
-            ++report.freeEdgeCount;
+            ++report.freeBoundaryCount;
             continue;
         }
         const bool tiesRotation = report.pair.asksForRotations() && hasRotation;
         bool isTied = false;
         bool isTurned = false;
-        for (const elements::FormulationModel::EdgeMoment& moment : trace.moments)
+        for (const elements::FormulationModel::BoundaryUnknown& moment : trace.unknowns)
         {
             if (moment.isRotation && !tiesRotation)
                 continue;
@@ -525,6 +527,8 @@ void tieEdges(GluedPairReport& report, std::span<const elements::FormulationMode
                     add(motions[g].rows[3 + e],
                         weight[0] * carries[g](0, e) + weight[1] * carries[g](1, e) + weight[2] * carries[g](2, e));
             }
+            // what the grid points and the edges of a face of solids carry, taken out
+            add(moment.terms, 1.0);
             std::sort(reached.begin(), reached.end());
             for (const base::DofIndex dof : reached)
             {
@@ -541,7 +545,7 @@ void tieEdges(GluedPairReport& report, std::span<const elements::FormulationMode
             isTurned = isTurned || moment.isRotation;
         }
         if (isTied)
-            ++report.tiedEdgeCount;
+            ++(trace.gridRows.size() == 2 ? report.tiedEdgeCount : report.tiedFaceCount);
         if (isTurned)
         {
             ++report.rotationTiedEdgeCount;
@@ -837,58 +841,60 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
         }
     }
 
-    // 2b. The edges of the glued surface between two tied grid points, with an element formulation that has unknowns
-    //     along its edges (GlueConstraints.hpp, "the edges of such a formulation"). Their rows are gathered in
-    //     vectors (their number is not known before the faces are searched) and copied to budgeted buffers.
+    // 2b. The edges and faces of the glued surface between its grid points that lie on a face, with an element
+    //     formulation that has unknowns along its edges and over its faces (GlueConstraints.hpp, "the edges and
+    //     faces of such a formulation"). Their rows are gathered in vectors (their number is not known before the
+    //     faces are searched) and copied to budgeted buffers.
     if (context.formulation != nullptr && recordCount > 0)
     {
         std::vector<std::int32_t> surfaceRows; // increasing; bounded by the points of the glued surfaces
         for (std::size_t g = 0; g < gridCount; ++g)
             if (surfaceOf[g] != 0)
                 surfaceRows.push_back(static_cast<std::int32_t>(g));
-        std::vector<elements::FormulationModel::EdgeTrace> traces; // as the formulation gives them
-        context.formulation->edgeTraces(surfaceRows, traces);
-        // The unknowns of these edges, and the edges of each pair: those between two grid points of its glued
-        // surface (an edge between the points of two pairs keeps its own unknowns).
-        std::vector<base::DofIndex> edgeDofs;
-        std::vector<std::vector<const elements::FormulationModel::EdgeTrace*>> tracesOf(m_pairs.size());
-        for (const elements::FormulationModel::EdgeTrace& trace : traces)
+        std::vector<elements::FormulationModel::BoundaryTrace> traces; // as the formulation gives them
+        context.formulation->boundaryTraces(surfaceRows, traces);
+        // The unknowns of these edges and faces, and those of each pair: between grid points of its glued surface
+        // (an edge or a face between the points of two pairs keeps its own unknowns).
+        std::vector<base::DofIndex> boundaryDofs;
+        std::vector<std::vector<const elements::FormulationModel::BoundaryTrace*>> tracesOf(m_pairs.size());
+        for (const elements::FormulationModel::BoundaryTrace& trace : traces)
         {
-            for (const elements::FormulationModel::EdgeMoment& moment : trace.moments)
-                edgeDofs.push_back(dofMap.dofOf(moment.dof));
-            const std::int32_t first = surfaceOf[static_cast<std::size_t>(trace.gridRows[0])];
-            const std::int32_t second = surfaceOf[static_cast<std::size_t>(trace.gridRows[1])];
-            if (first == second)
+            for (const elements::FormulationModel::BoundaryUnknown& moment : trace.unknowns)
+                boundaryDofs.push_back(dofMap.dofOf(moment.dof));
+            const std::int32_t first = surfaceOf[static_cast<std::size_t>(trace.gridRows.front())];
+            if (std::all_of(trace.gridRows.begin(), trace.gridRows.end(),
+                            [&](std::int32_t row) { return surfaceOf[static_cast<std::size_t>(row)] == first; }))
                 tracesOf[static_cast<std::size_t>(first - 1)].push_back(&trace);
         }
-        std::sort(edgeDofs.begin(), edgeDofs.end());
-        edgeDofs.erase(std::unique(edgeDofs.begin(), edgeDofs.end()), edgeDofs.end());
-        m_edgeDofs = base::BudgetedBuffer<base::DofIndex>(budget, edgeDofs.size(), "glue edge unknowns");
-        std::copy(edgeDofs.begin(), edgeDofs.end(), m_edgeDofs.data());
+        std::sort(boundaryDofs.begin(), boundaryDofs.end());
+        boundaryDofs.erase(std::unique(boundaryDofs.begin(), boundaryDofs.end()), boundaryDofs.end());
+        m_boundaryDofs = base::BudgetedBuffer<base::DofIndex>(budget, boundaryDofs.size(), "glue edge unknowns");
+        std::copy(boundaryDofs.begin(), boundaryDofs.end(), m_boundaryDofs.data());
 
-        std::vector<base::DofIndex> edgeDependents;
-        std::vector<std::int64_t> edgeOffsets{0};
-        std::vector<ConstraintTerm> edgeTerms;
+        std::vector<base::DofIndex> boundaryDependents;
+        std::vector<std::int64_t> boundaryOffsets{0};
+        std::vector<ConstraintTerm> boundaryTerms;
         base::BudgetedBuffer<std::uint8_t> turnsWithFace(budget, gridCount, "glue: points of the turned edges");
         for (std::size_t p = 0; p < m_pairs.size(); ++p)
         {
             if (tracesOf[p].empty())
                 continue;
             const std::span<const GlueFace> pairFaces(faces.data() + faceBegin[p], faceBegin[p + 1] - faceBegin[p]);
-            tieEdges(m_pairs[p], tracesOf[p], pairFaces, dofMap, context, states.span(), budget, edgeDependents,
-                     edgeOffsets, edgeTerms, turnsWithFace.span());
+            tieBoundaries(m_pairs[p], tracesOf[p], pairFaces, dofMap, context, states.span(), budget,
+                          boundaryDependents, boundaryOffsets, boundaryTerms, turnsWithFace.span());
         }
         // the tied grid points whose rotation the edges carry
         for (std::size_t r = 0; r < recordCount; ++r)
             if (turnsWithFace[static_cast<std::size_t>(records[r].pointRow)] != 0)
                 ++m_pairs[static_cast<std::size_t>(records[r].pairIndex)].rotationTiedPointCount;
-        m_edgeRowCount = edgeDependents.size();
-        m_edgeDependents = base::BudgetedBuffer<base::DofIndex>(budget, edgeDependents.size(), "glue edge rows");
-        m_edgeOffsets = base::BudgetedBuffer<std::int64_t>(budget, edgeOffsets.size(), "glue edge rows");
-        m_edgeTerms = base::BudgetedBuffer<ConstraintTerm>(budget, edgeTerms.size(), "glue edge terms");
-        std::copy(edgeDependents.begin(), edgeDependents.end(), m_edgeDependents.data());
-        std::copy(edgeOffsets.begin(), edgeOffsets.end(), m_edgeOffsets.data());
-        std::copy(edgeTerms.begin(), edgeTerms.end(), m_edgeTerms.data());
+        m_boundaryRowCount = boundaryDependents.size();
+        m_boundaryDependents =
+            base::BudgetedBuffer<base::DofIndex>(budget, boundaryDependents.size(), "glue edge rows");
+        m_boundaryOffsets = base::BudgetedBuffer<std::int64_t>(budget, boundaryOffsets.size(), "glue edge rows");
+        m_boundaryTerms = base::BudgetedBuffer<ConstraintTerm>(budget, boundaryTerms.size(), "glue edge terms");
+        std::copy(boundaryDependents.begin(), boundaryDependents.end(), m_boundaryDependents.data());
+        std::copy(boundaryOffsets.begin(), boundaryOffsets.end(), m_boundaryOffsets.data());
+        std::copy(boundaryTerms.begin(), boundaryTerms.end(), m_boundaryTerms.data());
     }
 
     // The distinct face corners each pair's points depend on (the mesh ratio of the report): a mark per grid point,

@@ -251,8 +251,10 @@ public:
     [[nodiscard]] std::optional<PointMotion> facePointMotion(std::span<const std::int32_t> faceGridRows,
                                                              std::span<const double> shapeValues) const override;
     // The edges of the shells between two of the grid points `gridRows`, each with the points of its rule and its
-    // displacement and rotation unknowns as moments of the motion of those points (ShellPart::edgeMoments).
-    void edgeTraces(std::span<const std::int32_t> gridRows, std::vector<EdgeTrace>& traces) const override;
+    // displacement and rotation unknowns as moments of the motion of those points (ShellPart::edgeMoments); then
+    // the edges and faces of the skin of the solids whose grid points are all among them, each with the points of
+    // its projection and its functions as projections of the motion of those points (SolidPart::skinTraces).
+    void boundaryTraces(std::span<const std::int32_t> gridRows, std::vector<BoundaryTrace>& traces) const override;
     // The CD-to-basic rotation of a grid of the model.
     [[nodiscard]] const base::Mat3& gridFrame(std::size_t gridIndex) const { return m_gridFrames[gridIndex]; }
     // The index of a grid of the model from its node table row (−1 when no element of the formulation uses it).
@@ -276,6 +278,8 @@ private:
     // The ElementDofs of an unknown of a tie, with their coefficients (a grid translation in the basic system is a
     // combination of the CD components).
     void appendTieTerms(const TieUnknown& unknown, double factor, std::vector<FormulationRelationTerm>& terms) const;
+    // The edges and faces of the skin of the solids whose grid points are all among `gridRows` (boundaryTraces).
+    void solidBoundaryTraces(std::span<const std::int32_t> gridRows, std::vector<BoundaryTrace>& traces) const;
     // The shell elements of every shell card of the snapshot.
     void readShells(const SnapshotIndex& index);
     // The ShellPart of the shells (and of the lines on their edges), and its entities.

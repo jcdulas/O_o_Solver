@@ -195,8 +195,10 @@ std::optional<FormulationModel::PointMotion> MixedHybridModel::facePointMotion(
     return motion;
 }
 
-void MixedHybridModel::edgeTraces(std::span<const std::int32_t> gridRows, std::vector<EdgeTrace>& traces) const
+void MixedHybridModel::boundaryTraces(std::span<const std::int32_t> gridRows,
+                                      std::vector<BoundaryTrace>& traces) const
 {
+    solidBoundaryTraces(gridRows, traces);
     if (m_shellPart == nullptr || !m_shellPart->usable())
         return;
     const auto isGiven = [&](std::int32_t row) { return std::binary_search(gridRows.begin(), gridRows.end(), row); };
@@ -208,13 +210,13 @@ void MixedHybridModel::edgeTraces(std::span<const std::int32_t> gridRows, std::v
     const std::vector<EdgeKey>& edges = m_shellPart->topology().edges;
     for (std::size_t e = 0; e < edges.size(); ++e)
     {
-        const std::array<std::int32_t, 2> rows{m_gridRows[edges[e].lower], m_gridRows[edges[e].higher]};
+        const std::vector<std::int32_t> rows{m_gridRows[edges[e].lower], m_gridRows[edges[e].higher]};
         if (!isGiven(rows[0]) || !isGiven(rows[1]))
             continue;
         const ShellPart::EdgeMoments moments = m_shellPart->edgeMoments(e);
         if (moments.points.empty())
             continue; // the edge of a line element that no shell has
-        EdgeTrace trace;
+        BoundaryTrace trace;
         trace.gridRows = rows;
         for (const SpaceVector& point : moments.points)
             trace.points.push_back(base::Vec3{point[0], point[1], point[2]});
@@ -222,19 +224,58 @@ void MixedHybridModel::edgeTraces(std::span<const std::int32_t> gridRows, std::v
         // the displacement unknown (l, c): the moment l of the component c
         for (std::size_t i = 0; i < moments.displacementUnknowns.size(); ++i)
         {
-            EdgeMoment moment{entityDofOf(moments.displacementUnknowns[i]), false, {}};
+            BoundaryUnknown moment{entityDofOf(moments.displacementUnknowns[i]), false, {}, {}};
             moment.weights.assign(pointCount, base::Vec3{});
             for (std::size_t g = 0; g < pointCount; ++g)
                 moment.weights[g][i % 3] = moments.displacementWeights[i / 3][g];
-            trace.moments.push_back(std::move(moment));
+            trace.unknowns.push_back(std::move(moment));
         }
         for (std::size_t l = 0; l < moments.rotationUnknowns.size(); ++l)
         {
-            EdgeMoment moment{entityDofOf(moments.rotationUnknowns[l]), true, {}};
+            BoundaryUnknown moment{entityDofOf(moments.rotationUnknowns[l]), true, {}, {}};
             for (const SpaceVector& weight : moments.rotationWeights[l])
                 moment.weights.push_back(base::Vec3{weight[0], weight[1], weight[2]});
-            trace.moments.push_back(std::move(moment));
+            trace.unknowns.push_back(std::move(moment));
         }
+        traces.push_back(std::move(trace));
+    }
+}
+
+void MixedHybridModel::solidBoundaryTraces(std::span<const std::int32_t> gridRows,
+                                           std::vector<BoundaryTrace>& traces) const
+{
+    if (m_solidPart == nullptr)
+        return;
+    // the grids of the model among the given grid points, increasing (the grids of the solids are those of the model)
+    std::vector<std::size_t> grids;
+    for (const std::int32_t row : gridRows)
+        if (const std::int32_t grid = gridIndexOfRow(row); grid >= 0)
+            grids.push_back(static_cast<std::size_t>(grid));
+    std::sort(grids.begin(), grids.end());
+    for (const SolidSkinTrace& skin : m_solidPart->skinTraces(grids))
+    {
+        BoundaryTrace trace;
+        for (const std::size_t grid : skin.grids)
+            trace.gridRows.push_back(m_gridRows[grid]);
+        for (const SolidPoint& point : skin.points)
+            trace.points.push_back(base::Vec3{point[0], point[1], point[2]});
+        // the function m along the basic axis c: the DOF 3 m + c of the entity
+        for (std::size_t m = 0; m < skin.weights.rows(); ++m)
+            for (std::size_t c = 0; c < 3; ++c)
+            {
+                BoundaryUnknown unknown{
+                    ElementDof::entity(m_solidEntityRow[skin.entity], static_cast<int>(3 * m + c)), false, {}, {}};
+                unknown.weights.assign(skin.points.size(), base::Vec3{});
+                for (std::size_t p = 0; p < skin.points.size(); ++p)
+                    unknown.weights[p][c] = skin.weights(m, p);
+                for (const TieTerm& term : skin.terms[m])
+                {
+                    TieUnknown along = term.unknown;
+                    along.dof += c;
+                    appendTieTerms(along, term.coefficient, unknown.terms);
+                }
+                trace.unknowns.push_back(std::move(unknown));
+            }
         traces.push_back(std::move(trace));
     }
 }

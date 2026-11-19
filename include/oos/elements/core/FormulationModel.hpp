@@ -244,28 +244,32 @@ public:
         static_cast<void>(shapeValues);
         return std::nullopt;
     }
-    // An unknown of an edge of the formulation as a moment of the motion of the points of the edge (section 5.10):
-    // its value is Σ_g weights[g]·u(points[g]) for a moment of the displacement of the edge, and
-    // Σ_g weights[g]·θ(points[g]) for a moment of its rotation (`isRotation`), u and θ in the basic system, the
-    // points those of EdgeTrace.
-    struct EdgeMoment
+    // An unknown of an edge or of a face of the formulation as a function of the motion of the points of that edge
+    // or face (section 5.10): its value is
+    //     Σ_g weights[g]·u(points[g]) + Σ terms     (a displacement unknown), or
+    //     Σ_g weights[g]·θ(points[g]) + Σ terms     (a rotation unknown, `isRotation`),
+    // u and θ the motion of the points of the BoundaryTrace in the basic system, the terms on other DOFs of the
+    // formulation (what the grid points and the edges of a face of solids carry, taken out; none for a shell edge,
+    // whose unknowns are moments of the motion alone).
+    struct BoundaryUnknown
     {
         ElementDof dof;
         bool isRotation = false;
-        std::vector<base::Vec3> weights; // one per point of the edge
+        std::vector<base::Vec3> weights; // one per point
+        std::vector<FormulationRelationTerm> terms;
     };
-    // An edge of the formulation between two grid points (node table rows): the points of the rule along it (basic)
-    // and the unknowns it carries, each as a moment of the motion of those points.
-    struct EdgeTrace
+    // An edge or a face of the formulation whose grid points are `gridRows` (node table rows: the two of an edge,
+    // those of a face): the points of its rule (basic) and the unknowns it carries.
+    struct BoundaryTrace
     {
-        std::array<std::int32_t, 2> gridRows{};
+        std::vector<std::int32_t> gridRows;
         std::vector<base::Vec3> points;
-        std::vector<EdgeMoment> moments;
+        std::vector<BoundaryUnknown> unknowns;
     };
-    // The edges of the shells of the formulation whose two grid points are both in `gridRows` (node table rows,
-    // increasing), appended to `traces`: a glued contact ties their unknowns to the motion of the face under them
-    // (assembly::GlueConstraints). None by default.
-    virtual void edgeTraces(std::span<const std::int32_t> gridRows, std::vector<EdgeTrace>& traces) const
+    // The edges of the shells, and the edges and faces of the skin of the solids, whose grid points are all in
+    // `gridRows` (node table rows, increasing), appended to `traces`: a glued contact ties their unknowns to the
+    // motion of the face under them (assembly::GlueConstraints). None by default.
+    virtual void boundaryTraces(std::span<const std::int32_t> gridRows, std::vector<BoundaryTrace>& traces) const
     {
         static_cast<void>(gridRows);
         static_cast<void>(traces);

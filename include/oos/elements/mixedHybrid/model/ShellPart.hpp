@@ -614,7 +614,7 @@ public:
     // the shell there. The other components stay those of the element.
     [[nodiscard]] PointRows pointRowsOnEdges(std::size_t shell, double xi, double eta) const;
     // The unknowns of edge `edge` of the topology as moments of a motion along the edge, at the points of the edge
-    // rule (a glued contact ties them to the motion of the face under the edge, FormulationModel::edgeTraces; the
+    // rule (a glued contact ties them to the motion of the face under the edge, FormulationModel::boundaryTraces; the
     // moments are those of the supports along an edge, supportsOf):
     //   displacement unknown (l, c) = Σ_g displacementWeights[l][g]·u_c(points[g]),
     //                                 the moment ∫ W u_c P_l(2s − 1) ds, l = 0 … k − 2;

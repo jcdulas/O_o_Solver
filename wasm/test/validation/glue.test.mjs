@@ -7,7 +7,7 @@
 // the point and the face. With GlueOption 3 or 4 the rotations of the point are tied to that rotation too. In the
 // MixedHybridFormulation, whose elements have unknowns along their edges, the edges between glued grid points are
 // tied along their length the same way (their displacement, and with GlueOption 3 or 4 their rotation about
-// themselves).
+// themselves), and so are the edges and the faces of the skin of glued solids.
 //
 // What is checked:
 //   1. two plates glued face to face with a gap between their mid-surfaces follow a rigid motion (both formulations);
@@ -16,7 +16,8 @@
 //   4. what the glue says of the rotations it ties, and of those it cannot tie (the face of a solid);
 //   5. small glued joints against their closed forms, in both formulations: a beam of two glued layers (with and
 //      without a gap between them), a lap splice in bending and in tension, a web glued on a rigid skin, the first
-//      frequency of a beam of two layers, a plate glued on a solid under a uniform strain.
+//      frequency of a beam of two layers, a plate glued on a solid under a uniform strain, two blocks of solids
+//      glued end to end.
 //
 // A case that a formulation does not hold within its criterion keeps the criterion and is marked "todo" with what is
 // measured.
@@ -30,6 +31,12 @@ const FORMULATIONS = [{ name: "ClassicFormulation", options: CLASSIC }, { name: 
   options: MIXED }];
 const ALUMINIUM = { young: 7.0e10, poisson: 0.3, density: 2700 };
 const q = real;
+
+// The options of a formulation for a model with solids whose edges `sharpEdges` (pairs of grid point IDs) are those
+// of their boxes: the MixedHybridFormulation reads the skin of the solids as a smooth surface across the edges
+// that are not declared sharp.
+const withSharpEdges = (name, options, sharpEdges) =>
+  (name === "MixedHybridFormulation" ? { ...options, formulationGeometry: { sharpEdges } } : options);
 
 const add = (a, b) => a.map((value, i) => value + b[i]);
 const scale = (factor, a) => a.map((value) => factor * value);
@@ -67,6 +74,39 @@ class Deck {
     const nodes = [];
     for (let j = 0; j <= ny; ++j) for (let i = 0; i <= nx; ++i) nodes.push(node(i, j));
     return { node, elements, nodes, nx, ny };
+  }
+
+  // A box of nx × ny × nz SolidHexa from x0 to x1 along X, `width` along Y and `height` along Z, its grid points and
+  // elements numbered after `first`. Returns node(i, j, k), the elements, the grid points of the section i (face) and
+  // the edges of the mesh along the twelve edges of the box (sharp).
+  box({ first, x0, x1, width, height, nx, ny, nz, property }) {
+    const node = (i, j, k) => first + 1 + i + (nx + 1) * (j + (ny + 1) * k);
+    for (let k = 0; k <= nz; ++k)
+      for (let j = 0; j <= ny; ++j)
+        for (let i = 0; i <= nx; ++i)
+          this.node(node(i, j, k), [x0 + (x1 - x0) * i / nx, width * j / ny, height * k / nz]);
+    const elements = [];
+    for (let k = 0; k < nz; ++k)
+      for (let j = 0; j < ny; ++j)
+        for (let i = 0; i < nx; ++i) {
+          elements.push(first + 1 + i + nx * (j + ny * k));
+          this.add("SolidHexa", elements.at(-1), property, node(i, j, k), node(i + 1, j, k), node(i + 1, j + 1, k),
+            node(i, j + 1, k), node(i, j, k + 1), node(i + 1, j, k + 1), node(i + 1, j + 1, k + 1),
+            node(i, j + 1, k + 1));
+        }
+    const sharp = [];
+    for (const j of [0, ny])
+      for (const k of [0, nz]) for (let i = 0; i < nx; ++i) sharp.push([node(i, j, k), node(i + 1, j, k)]);
+    for (const i of [0, nx])
+      for (const k of [0, nz]) for (let j = 0; j < ny; ++j) sharp.push([node(i, j, k), node(i, j + 1, k)]);
+    for (const i of [0, nx])
+      for (const j of [0, ny]) for (let k = 0; k < nz; ++k) sharp.push([node(i, j, k), node(i, j, k + 1)]);
+    const face = (i) => {
+      const ids = [];
+      for (let k = 0; k <= nz; ++k) for (let j = 0; j <= ny; ++j) ids.push(node(i, j, k));
+      return ids;
+    };
+    return { node, elements, face, sharp };
   }
 
   // The body `secondary` (its elements) glued on the body `primary` (its elements, or { property } for the skin of
@@ -463,35 +503,59 @@ for (const theoryCase of THEORY_CASES)
     });
   }
 
-// A plate glued on a face of a solid whose grid points are given a uniform strain, u_x = ε·x: the shape functions of
-// the face hold a linear field, so the plate has it too, to the rounding of the solution (measured: 2.7e-16). The
-// solid of the MixedHybridFormulation does not take that strain from its grid points (the forces of its supports are
-// 2.6 times those of the uniform strain; a rigid motion given the same way leaves it without a force): the plate
-// reads what the face does, 3.8 % of the largest translation off the strain.
-const SOLID_STRAIN_TODO = { ClassicFormulation: null, MixedHybridFormulation: "a solid of this formulation whose " +
-  "grid points are given u_x = ε·x is not in a uniform strain" };
+// A plate glued on a face of a solid whose grid points are given a uniform strain, u_x = ε·x: the face holds a
+// linear field, so the plate has it too, to the rounding of the solution (measured: 2.7e-16 and 8.1e-16).
 for (const { name, options } of FORMULATIONS)
-  test(`5.8. a plate glued on a solid under a uniform strain has that strain (${name})`,
-    SOLID_STRAIN_TODO[name] ? { todo: SOLID_STRAIN_TODO[name] } : {}, (t) => {
+  test(`5.8. a plate glued on a solid under a uniform strain has that strain (${name})`, (t) => {
+    const deck = new Deck();
+    const strain = 1.0e-3;
+    const solid = deck.box({ first: 0, x0: 0, x1: 0.1, width: 0.1, height: 0.05, nx: 1, ny: 1, nz: 1, property: 3 });
+    deck.add("SolidProp", 3, 1);
+    for (let id = 1; id <= 8; ++id)
+      [strain * deck.positions.get(id)[0], 0, 0].forEach((value, c) => deck.add("SinglePointConstr", 1, id, c + 1,
+        q(value)));
+    const plate = deck.plate({ first: 100, nx: 2, ny: 2, origin: [0.02, 0.03, 0.05], alongX: [0.03, 0, 0],
+      alongY: [0, 0.025, 0], property: 1 });
+    shellCards(deck, [1], THEORY.thickness, 0);
+    deck.glue({ property: 3 }, plate.elements, 1);
+    const run = runModel(deck.statics(false), withSharpEdges(name, options, solid.sharp));
+    const worst = Math.max(...plate.nodes.map((id) => {
+      const u = nodal(run, "displacements", id).slice(0, 3);
+      return norm([u[0] - strain * deck.positions.get(id)[0], u[1], u[2]]);
+    }));
+    t.diagnostic(`the glued plate less the uniform strain: ${(worst / (strain * 0.1)).toExponential(2)} of the ` +
+      "largest translation");
+    assert.ok(worst <= 1e-8 * strain * 0.1, `${worst}`);
+  });
+
+// Two blocks of solids of 100 × 40 × 20 mm glued end to end, clamped at one end and loaded across at the other, on
+// meshes of their sections that do not face each other: the cantilever of the two blocks together,
+//     δ = P·L³/(3·E·I) + P·L/(κ·G·A).
+// The glued block has the finer section twice, then the coarser one. Measured: 0.9952, 0.9958 and 1.0066 in the
+// ClassicFormulation; 1.0024, 1.0012 and 1.0027 in the MixedHybridFormulation (1.17, 1.08 and 1.31 with the edges and
+// the faces of the glued block following their grid points alone).
+const BLOCKS = { length: 0.2, width: 0.04, height: 0.02 };
+for (const [primarySection, gluedSection] of [[[1, 2], [2, 2]], [[2, 2], [3, 3]], [[3, 3], [2, 2]]])
+  for (const { name, options } of FORMULATIONS)
+    test(`5.9. two blocks of solids glued end to end bend as one beam, sections of ${primarySection.join(" × ")} ` +
+      `and ${gluedSection.join(" × ")} cells (${name})`, (t) => {
+      const { length, width, height } = BLOCKS;
       const deck = new Deck();
-      const strain = 1.0e-3;
-      const corners = [[0, 0], [0.1, 0], [0.1, 0.1], [0, 0.1]];
-      [0, 0.05].forEach((z, layer) => corners.forEach(([x, y], k) => deck.node(1 + k + 4 * layer, [x, y, z])));
-      deck.add("SolidHexa", 1, 3, 1, 2, 3, 4, 5, 6, 7, 8);
       deck.add("SolidProp", 3, 1);
-      for (let id = 1; id <= 8; ++id)
-        [strain * deck.positions.get(id)[0], 0, 0].forEach((value, c) => deck.add("SinglePointConstr", 1, id, c + 1,
-          q(value)));
-      const plate = deck.plate({ first: 100, nx: 2, ny: 2, origin: [0.02, 0.03, 0.05], alongX: [0.03, 0, 0],
-        alongY: [0, 0.025, 0], property: 1 });
-      shellCards(deck, [1], THEORY.thickness, 0);
-      deck.glue({ property: 3 }, plate.elements, 1);
-      const run = runModel(deck.statics(false), options);
-      const worst = Math.max(...plate.nodes.map((id) => {
-        const u = nodal(run, "displacements", id).slice(0, 3);
-        return norm([u[0] - strain * deck.positions.get(id)[0], u[1], u[2]]);
-      }));
-      t.diagnostic(`the glued plate less the uniform strain: ${(worst / (strain * 0.1)).toExponential(2)} of the ` +
-        "largest translation");
-      assert.ok(worst <= 1e-8 * strain * 0.1, `${worst}`);
+      deck.add("SolidProp", 4, 1);
+      deck.add("IsoMat", 1, q(ALUMINIUM.young), "", q(0), q(ALUMINIUM.density));
+      const first = deck.box({ first: 0, x0: 0, x1: length / 2, width, height, nx: 4, ny: primarySection[0],
+        nz: primarySection[1], property: 3 });
+      const second = deck.box({ first: 10000, x0: length / 2, x1: length, width, height, nx: 4, ny: gluedSection[0],
+        nz: gluedSection[1], property: 4 });
+      deck.add("SinglePointConstrList", 1, 123, ...first.face(0));
+      deck.glue({ property: 3 }, second.elements, 1);
+      const end = second.face(4);
+      end.forEach((id) => deck.add("PointForceLoad", 2, id, "", q(1), q(0), q(0), q(1 / end.length)));
+      const run = runModel(deck.statics(), withSharpEdges(name, options, [...first.sharp, ...second.sharp]));
+      const theory = length ** 3 / (3 * ALUMINIUM.young * width * height ** 3 / 12) +
+        length / ((5 / 6) * (ALUMINIUM.young / 2) * width * height);
+      const value = meanOf(run, end, 2);
+      t.diagnostic(`${value.toExponential(5)} for ${theory.toExponential(5)}: ratio ${(value / theory).toFixed(4)}`);
+      assert.ok(Math.abs(value / theory - 1) <= 0.01, `${value} for ${theory}`);
     });

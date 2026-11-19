@@ -242,6 +242,22 @@ struct SolidTie
     std::vector<TieTerm> terms;
 };
 
+// An edge or a face of the skin of the solids with what gives its functions from a displacement field known at
+// points (SolidPart::skinTraces): the points of the projection on the edge or the face (basic), and, for the
+// function m along the basic axis c, the DOF 3 m + c of `entity`,
+//     q(m, c) = Σ_p weights(m, p) u_c(points[p]) + Σ_t terms[m][t].coefficient × (the component c of its unknown),
+// the terms taking out what the grids and, on a face, the functions of its edges carry: a Grid unknown (its `dof`
+// 0: the translation c of the grid) or a SolidEntity unknown (its `dof` 3 n, the function n of an edge: its DOF
+// 3 n + c). The projections are those of the ties with the shells (EdgeProjection, FaceProjection).
+struct SolidSkinTrace
+{
+    std::vector<std::size_t> grids; // the two grids of an edge, or the grids of a face in its cyclic order
+    std::size_t entity = 0;
+    std::vector<SolidPoint> points;
+    Matrix weights; // functions × points
+    std::vector<std::vector<TieTerm>> terms;
+};
+
 // An entity of the solids: an edge, a face or the interior of one solid, with its DOF count and a position (for the
 // geometric ordering of the factorisation).
 struct SolidPartEntity
@@ -547,6 +563,12 @@ public:
     // the kernels of the solids around its edges (kernelOf); a solid whose kernel is refused is left out of the mean.
     // Reference: src/tdnns/solid.rs::Solids::ties
     [[nodiscard]] std::vector<SolidTie> ties(const std::function<bool(const TieUnknown&)>& isHeld = {}) const;
+
+    // The edges and the faces of the skin whose grids are all among `grids` (increasing), with what gives their
+    // functions from a displacement field known at their points (SolidSkinTrace): a glued contact makes them follow
+    // the face they lie on. The edges first, then the faces, by key; an edge or a face that follows a shell or a line
+    // is left to its tie, and a face one of whose edges carries no functions is left out.
+    [[nodiscard]] std::vector<SolidSkinTrace> skinTraces(std::span<const std::size_t> grids) const;
 
 private:
     // A row of a tie being written: coefficient by unknown.

@@ -606,4 +606,108 @@ void SolidPart::addRotationTies(std::size_t edge, std::vector<PendingTie>& out) 
     }
 }
 
+// ---- the functions of the skin from a field known at points
+
+std::vector<SolidSkinTrace> SolidPart::skinTraces(std::span<const std::size_t> grids) const
+{
+    std::vector<SolidSkinTrace> out;
+    const auto isGiven = [&](std::size_t grid) { return std::binary_search(grids.begin(), grids.end(), grid); };
+    const std::span<const SolidPoint> x = m_input.gridPositions;
+    const EdgeProjection projection = EdgeProjection::of(m_traceDegree);
+    // An edge: the curve X(s) = (1 − s) X_a + s X_b + Σ_n g_n b_n(s), and the projection of the field less its
+    // linear part (tie 1): coefficient m = Σ_p a(m, p) u(s_p) + a0[m] u(a) + a1[m] u(b).
+    for (std::size_t e = 0; e < m_edges.size(); ++e)
+    {
+        const SolidPartEdge& edge = m_edges[e];
+        if (!m_edgeEntities[e] || !edge.onSkin || edge.follows || edge.geometry.empty() ||
+            !isGiven(edge.grids.lower) || !isGiven(edge.grids.higher))
+            continue;
+        SolidSkinTrace trace;
+        trace.grids = {edge.grids.lower, edge.grids.higher};
+        trace.entity = *m_edgeEntities[e];
+        for (const double s : projection.parameters)
+        {
+            const std::vector<double> functions = edgeFunctions(m_traceDegree, s);
+            SolidPoint point = add3(scl3(x[edge.grids.lower], 1.0 - s), scl3(x[edge.grids.higher], s));
+            for (std::size_t n = 0; n < edge.geometry.size(); ++n)
+                point = add3(point, scl3(edge.geometry[n], functions[n]));
+            trace.points.push_back(point);
+        }
+        trace.weights = projection.weights;
+        for (std::size_t m = 0; m < edge.geometry.size(); ++m)
+            trace.terms.push_back({{gridUnknown(edge.grids.lower, 0), projection.lowerWeights[m]},
+                                   {gridUnknown(edge.grids.higher, 0), projection.upperWeights[m]}});
+        out.push_back(std::move(trace));
+    }
+    // A face: the surface X(c) = Σ_i φ_i(c) X_i + Σ_kn φ_kn(c) g_kn + Σ_m φ_m(c) g_m (its grids, its edges, its own
+    // functions), and the projection of the field less what its grids and its edges carry (tie 2):
+    // coefficient m = Σ_p b(m, p) (u(c_p) − Σ_i φ_i(c_p) u_i − Σ_kn φ_kn(c_p) q_kn).
+    for (std::size_t f = 0; f < m_faces.size(); ++f)
+    {
+        const SolidPartFace& face = m_faces[f];
+        const std::span<const std::size_t> cycle = face.view();
+        if (!m_faceEntities[f] || !face.onSkin() || face.follows || face.geometry.empty() ||
+            !std::all_of(cycle.begin(), cycle.end(), isGiven))
+            continue;
+        const std::size_t nf = face.count;
+        std::vector<base::EntityId> order;
+        std::vector<std::size_t> edges;
+        bool hasEdgeFunctions = true;
+        for (std::size_t i = 0; i < nf; ++i)
+        {
+            order.push_back(static_cast<base::EntityId>(face.grids[i]));
+            edges.push_back(m_edgeIndex.at(EdgeKey::of(face.grids[i], face.grids[(i + 1) % nf])));
+            hasEdgeFunctions = hasEdgeFunctions && m_edgeEntities[edges.back()].has_value();
+        }
+        if (!hasEdgeFunctions)
+            continue;
+        const FaceProjection fp = FaceProjection::of(order, m_traceDegree, m_faceDegree);
+        if (fp.interiorCount != face.geometry.size())
+            throw base::InternalError("the functions of a face of the skin are not those of its projection");
+        SolidSkinTrace trace;
+        trace.grids.assign(cycle.begin(), cycle.end());
+        trace.entity = *m_faceEntities[f];
+        const std::size_t firstInterior = nf + nf * fp.perEdge;
+        for (std::size_t p = 0; p < fp.points.size(); ++p)
+        {
+            const std::vector<double>& phi = fp.functionValues[p];
+            SolidPoint point{};
+            for (std::size_t i = 0; i < nf; ++i)
+                point = add3(point, scl3(x[face.grids[i]], phi[i]));
+            for (std::size_t k = 0; k < nf; ++k)
+                for (std::size_t n = 0; n < fp.perEdge && n < m_edges[edges[k]].geometry.size(); ++n)
+                    point = add3(point, scl3(m_edges[edges[k]].geometry[n], phi[nf + k * fp.perEdge + n]));
+            for (std::size_t m = 0; m < fp.interiorCount; ++m)
+                point = add3(point, scl3(face.geometry[m], phi[firstInterior + m]));
+            trace.points.push_back(point);
+        }
+        trace.weights = Matrix(fp.interiorCount, fp.points.size());
+        for (std::size_t m = 0; m < fp.interiorCount; ++m)
+        {
+            std::vector<double> onGrids(nf, 0.0);
+            std::vector<double> onEdges(nf * fp.perEdge, 0.0);
+            for (std::size_t p = 0; p < fp.points.size(); ++p)
+            {
+                const double b = fp.weights(m, p);
+                const std::vector<double>& phi = fp.functionValues[p];
+                trace.weights(m, p) = b;
+                for (std::size_t i = 0; i < nf; ++i)
+                    onGrids[i] -= b * phi[i];
+                for (std::size_t j = 0; j < nf * fp.perEdge; ++j)
+                    onEdges[j] -= b * phi[nf + j];
+            }
+            std::vector<TieTerm> terms;
+            for (std::size_t i = 0; i < nf; ++i)
+                terms.push_back({gridUnknown(face.grids[i], 0), onGrids[i]});
+            for (std::size_t k = 0; k < nf; ++k)
+                for (std::size_t n = 0; n < fp.perEdge; ++n)
+                    terms.push_back(
+                        {entityUnknown(*m_edgeEntities[edges[k]], COMPONENTS * n), onEdges[k * fp.perEdge + n]});
+            trace.terms.push_back(std::move(terms));
+        }
+        out.push_back(std::move(trace));
+    }
+    return out;
+}
+
 } // namespace oos::elements::mixedHybrid

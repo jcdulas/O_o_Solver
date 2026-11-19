@@ -51,16 +51,18 @@ folders in that order, which is the order in which the pieces depend on one anot
   SinglePointConstr'd DOF); a point tied by an earlier pair keeps that tie, an equation closing a loop of glue equations is left
   out; each case is reported per pair. A primary face of an element of a formulation with entities
   (`GlueContext::formulation`) gives the displacement of that element at the tied point over all its DOFs
-  (FormulationModel::facePointMotion) instead of Σ N_i·R_i·u_i. With such a formulation the edges of shells
-  between two tied grid points are tied along their length: each of their unknowns is a moment of the motion of the
-  points of the edge (FormulationModel::edgeTraces), made that moment of the motion of the face under the edge (with
-  IGLUE 3 and 4 the rotation about the edge too); these rows (`edgeRow`) are relations of the formulation, which
-  FormulationConstraints takes. Handed to RigidElimination after the MPCs.
+  (FormulationModel::facePointMotion) instead of Σ N_i·R_i·u_i. With such a formulation the edges of shells and
+  the edges and faces of the skin of solids between tied grid points are tied over their extent: each of their
+  unknowns is a function of the motion of the points of the edge or face (FormulationModel::boundaryTraces), made
+  that function of the motion of the face under it (with IGLUE 3 and 4 the rotation of an edge of shells about
+  itself too); these rows (`boundaryRow`) are relations of the formulation, which FormulationConstraints takes.
+  Handed to RigidElimination after the MPCs.
 - `constraints/FormulationConstraints`: what an element formulation with unknowns outside the grid points adds to a
   constraint set (the mixed hybrid formulation, docs/mixed-hybrid-formulation-spec.md sections 5.4 to 5.6): its ties,
   the edges and faces that follow the grid components a relation of the model makes dependent (as they follow a
-  support; an edge of shells between two grid points of a glued contact follows the face under it instead, by the
-  rows of `GlueConstraints::edgeRow`), the observer relations of the rotations of shell grid points that something else uses, the excluded set
+  support; an edge or a face between grid points of a glued contact follows the face under it instead, by the rows
+  of `GlueConstraints::boundaryRow`), the observer relations of the rotations of shell grid points that something
+  else uses, the excluded set
   of those nothing uses, and the tied rows of a rotation held or dependent at a grid point where no edge reads it (the
   mean rotation of the shells written on one of their unknowns). Its relations name the independent DOFs of the
   model's relations, never their dependent ones. The supports along a direction that is no basic axis
