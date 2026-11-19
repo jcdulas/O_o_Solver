@@ -37,6 +37,11 @@ SpaceVector basisVector(std::size_t c)
     return e;
 }
 
+// A point of the reference element is on an edge within this (of the parameter of the edge, and of its length across
+// it): the round-off of a point placed on an edge by the shape functions of a face.
+constexpr double ON_EDGE_TOLERANCE = 1e-9;
+// Two edges of a shell at a point make a corner when 1 − cos² of the angle of their tangents exceeds this.
+constexpr double CORNER_EDGES_APART = 1e-6;
 // An edge is curved when a point of it leaves its chord by more than this fraction of the chord.
 constexpr double CURVED_EDGE_RATIO = 1e-10;
 // Two directions held at the two grids of an edge are one when they are parallel within this (1 − |cosine|).
@@ -692,6 +697,130 @@ ShellPart::PointRows ShellPart::pointRows(std::size_t shell, double xi, double e
         for (const auto& [unknown, coefficient] : rows[r])
             if (coefficient != 0.0)
                 out.rows[r].push_back({unknown, coefficient});
+    return out;
+}
+
+ShellPart::PointRows ShellPart::pointRowsOnEdges(std::size_t shell, double xi, double eta) const
+{
+    PointRows out = pointRows(shell, xi, eta);
+    const ShellElementData& el = m_shells[shell];
+    // The edges of the reference element the point lies on (two at a corner), each with the parameter of the edge
+    // from its lower grid.
+    struct EdgeAt
+    {
+        std::size_t localEdge = 0;
+        double s = 0.0;
+    };
+    std::array<EdgeAt, 2> edgesAt{};
+    std::size_t edgeCount = 0;
+    for (std::size_t k = 0; k < el.cornerCount && edgeCount < edgesAt.size(); ++k)
+    {
+        const auto [start, direction] = referenceEdgePointAndDirection(el.cornerCount, k, 0.0);
+        const double lengthSquared = direction[0] * direction[0] + direction[1] * direction[1];
+        const double tau = ((xi - start[0]) * direction[0] + (eta - start[1]) * direction[1]) / lengthSquared;
+        const double across = (xi - start[0]) * direction[1] - (eta - start[1]) * direction[0];
+        if (std::fabs(across) > ON_EDGE_TOLERANCE * std::sqrt(lengthSquared) || tau < -ON_EDGE_TOLERANCE ||
+            tau > 1.0 + ON_EDGE_TOLERANCE)
+            continue;
+        const double clamped = std::clamp(tau, 0.0, 1.0);
+        edgesAt[edgeCount++] = {k, el.edgeSigns[k] > 0.0 ? clamped : 1.0 - clamped};
+    }
+    if (edgeCount == 0)
+        return out;
+
+    // The directions d_i the rotation about each edge is carried by: θ = θ_element + Σ_i d_i (r_i − t_i · θ_element),
+    // r_i the rotation about edge i and t_i its unit tangent. One edge: d = t. Two edges (a corner): the vectors of
+    // their plane with d_i · t_j = δ_ij, so that θ · t_i = r_i for both; edges that run on (no corner between them)
+    // carry nothing more than one does.
+    std::array<ShellEdgeRotationFrame, 2> frames{};
+    for (std::size_t i = 0; i < edgeCount; ++i)
+        frames[i] = edgeRotationFrame(shell, edgesAt[i].localEdge, edgesAt[i].s);
+    std::array<SpaceVector, 2> carriers{frames[0].tangent, SpaceVector{}};
+    if (edgeCount == 2)
+    {
+        const double cosine = dot3(frames[0].tangent, frames[1].tangent);
+        const double determinant = 1.0 - cosine * cosine;
+        if (determinant < CORNER_EDGES_APART)
+            edgeCount = 1;
+        else
+        {
+            carriers[0] = scl3(sub3(frames[0].tangent, scl3(frames[1].tangent, cosine)), 1.0 / determinant);
+            carriers[1] = scl3(sub3(frames[1].tangent, scl3(frames[0].tangent, cosine)), 1.0 / determinant);
+        }
+    }
+    std::array<std::map<std::size_t, double>, 3> rows;
+    for (std::size_t r = 0; r < 3; ++r)
+        for (const ShellPartTerm& term : out.rows[3 + r])
+            rows[r][term.unknown] += term.coefficient;
+    const std::array<std::map<std::size_t, double>, 3> ofElement = rows;
+    for (std::size_t i = 0; i < edgeCount; ++i)
+    {
+        const std::size_t edge = m_topology.edgeIndex.at(
+            EdgeKey::of(m_input.shells[shell].corners.at(edgesAt[i].localEdge),
+                        m_input.shells[shell].corners.at(edgesAt[i].localEdge + 1)));
+        const std::size_t first = m_entities[edgeEntity(edge)].firstUnknown;
+        for (std::size_t r = 0; r < 3; ++r)
+        {
+            if (carriers[i][r] == 0.0)
+                continue;
+            // − d_i (t_i · θ_element): the rotation of the element about the edge taken off
+            for (std::size_t c = 0; c < 3; ++c)
+                for (const auto& [unknown, coefficient] : ofElement[c])
+                    rows[r][unknown] -= carriers[i][r] * frames[i].tangent[c] * coefficient;
+            // + d_i r_i, r_i = Σ_l a_l P_l(2s − 1) / (W² |X_s|)
+            for (std::size_t l = 0; l < m_input.degree; ++l)
+                rows[r][first + edgeRotationDof(l)] +=
+                    carriers[i][r] * legendreValue(l, 2.0 * edgesAt[i].s - 1.0) / frames[i].measure;
+        }
+    }
+    for (std::size_t r = 0; r < 3; ++r)
+    {
+        out.rows[3 + r].clear();
+        for (const auto& [unknown, coefficient] : rows[r])
+            if (coefficient != 0.0)
+                out.rows[3 + r].push_back({unknown, coefficient});
+    }
+    return out;
+}
+
+ShellPart::EdgeMoments ShellPart::edgeMoments(std::size_t edge) const
+{
+    EdgeMoments out;
+    if (m_topology.edgeElements[edge].empty())
+        return out;
+    const std::size_t k = m_input.degree;
+    // the edge as its first shell runs it (the same curve from every shell of the edge)
+    const std::size_t ie = m_topology.edgeElements[edge].front();
+    const ShellElementData el = element(ie);
+    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const ShellElementDefinition def = el.definition();
+    const std::size_t kk = localEdgeOf(ie, edge);
+    const std::size_t first = m_entities[edgeEntity(edge)].firstUnknown;
+    const double sk = el.edgeSigns[kk];
+    const std::size_t pointCount = re.edgeParameters.size();
+    out.displacementWeights.assign(k - 1, std::vector<double>(pointCount, 0.0));
+    out.rotationWeights.assign(k, std::vector<SpaceVector>(pointCount, SpaceVector{}));
+    for (std::size_t l = 0; l + 1 < k; ++l)
+        for (std::size_t c = 0; c < 3; ++c)
+            out.displacementUnknowns.push_back(first + 3 * l + c);
+    for (std::size_t l = 0; l < k; ++l)
+        out.rotationUnknowns.push_back(first + edgeRotationDof(l));
+    for (std::size_t gi = 0; gi < pointCount; ++gi)
+    {
+        const PointGeometry g = edgeGeometry(def, re.h1Count, kk, gi);
+        const auto tv = referenceEdgePointAndDirection(el.cornerCount, kk, re.edgeParameters[gi]).second;
+        // the parameter of the edge from its lower grid, and the weight W of the map there
+        const double s = sk > 0.0 ? re.edgeParameters[gi] : 1.0 - re.edgeParameters[gi];
+        const double we = def.edgeWeights[kk][gi];
+        out.points.push_back(g.x);
+        for (std::size_t l = 0; l + 1 < k; ++l)
+            out.displacementWeights[l][gi] = re.edgeWeights[gi] * legendreValue(l, 2.0 * s - 1.0) * we;
+        // X_s = s_k X_τ: the tangent of the map in the canonical direction of the edge
+        const SpaceVector xs = scl3(add3(scl3(g.a[0], tv[0]), scl3(g.a[1], tv[1])), sk);
+        for (std::size_t l = 0; l < k; ++l)
+            out.rotationWeights[l][gi] = scl3(
+                xs, static_cast<double>(2 * l + 1) * re.edgeWeights[gi] * legendreValue(l, 2.0 * s - 1.0) * we * we);
+    }
     return out;
 }
 

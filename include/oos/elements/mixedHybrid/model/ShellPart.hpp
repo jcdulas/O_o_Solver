@@ -605,6 +605,31 @@ public:
         SpaceVector point{};
     };
     [[nodiscard]] PointRows pointRows(std::size_t shell, double xi, double eta) const;
+    // pointRows for a point that may lie on an edge of the shell (the point a glued contact ties to a face,
+    // FormulationModel::facePointMotion). On an edge the rotation about the edge is that of the edge, its rotation
+    // unknowns a(s) = Σ_l a_l P_l(2s − 1) over the measure W² |X_s| (ShellEdgeRotationFrame), in place of that of
+    // the displacement of the element: the unknowns of the edge are the rotation about it in this formulation, one
+    // value for the shells of the edge, and the one a support of the edge holds (the slope of the displacement of an
+    // element across a clamped edge is not zero at a point of it). At a corner the rotation about the two edges of
+    // the shell there. The other components stay those of the element.
+    [[nodiscard]] PointRows pointRowsOnEdges(std::size_t shell, double xi, double eta) const;
+    // The unknowns of edge `edge` of the topology as moments of a motion along the edge, at the points of the edge
+    // rule (a glued contact ties them to the motion of the face under the edge, FormulationModel::edgeTraces; the
+    // moments are those of the supports along an edge, supportsOf):
+    //   displacement unknown (l, c) = Σ_g displacementWeights[l][g]·u_c(points[g]),
+    //                                 the moment ∫ W u_c P_l(2s − 1) ds, l = 0 … k − 2;
+    //   rotation unknown l = Σ_g rotationWeights[l][g]·θ(points[g]),
+    //                        the coefficient (2l + 1) ∫ W² (θ · X_s) P_l(2s − 1) ds, l = 0 … k − 1,
+    // s the parameter of the edge from its lower grid, u and θ in the basic system. Empty for an edge no shell has.
+    struct EdgeMoments
+    {
+        std::vector<SpaceVector> points;
+        std::vector<std::size_t> displacementUnknowns; // (l, c) at 3 l + c
+        std::vector<std::vector<double>> displacementWeights;
+        std::vector<std::size_t> rotationUnknowns;
+        std::vector<std::vector<SpaceVector>> rotationWeights;
+    };
+    [[nodiscard]] EdgeMoments edgeMoments(std::size_t edge) const;
     // The reference point of shell `shell` at the parameter s ∈ [0, 1] of its edge `localEdge` (from its corner
     // localEdge to its corner localEdge + 1), s from the lower grid of the edge: the parameter of the shell is τ = s
     // where the shell runs the edge from its lower grid, 1 − s otherwise.

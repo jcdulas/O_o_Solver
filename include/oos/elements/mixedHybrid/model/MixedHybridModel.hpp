@@ -244,11 +244,15 @@ public:
     // the footprint of the fastener it converges.
     [[nodiscard]] std::optional<PointMotion> shellPointMotion(std::int32_t elementId, const base::Vec3& point,
                                                               std::span<const ShellSample> samples) const override;
-    // The translations of a point of a face of a shell or of a solid of the formulation (faceOf: the face of its
-    // corners), placed by the shape functions of the face: of the shell at its reference point, of the solid at the
-    // point of its reference shape (the functions of its kernel there; its interior fields vanish on a face).
+    // The motion of a point of a face of a shell or of a solid of the formulation (faceOf: the face of its
+    // corners), placed by the shape functions of the face: of the shell at its reference point (its translations,
+    // its rotation and the point of its surface, ShellPart::pointRowsOnEdges), of the solid at the point of its
+    // reference shape (its translations: the functions of its kernel there; its interior fields vanish on a face).
     [[nodiscard]] std::optional<PointMotion> facePointMotion(std::span<const std::int32_t> faceGridRows,
                                                              std::span<const double> shapeValues) const override;
+    // The edges of the shells between two of the grid points `gridRows`, each with the points of its rule and its
+    // displacement and rotation unknowns as moments of the motion of those points (ShellPart::edgeMoments).
+    void edgeTraces(std::span<const std::int32_t> gridRows, std::vector<EdgeTrace>& traces) const override;
     // The CD-to-basic rotation of a grid of the model.
     [[nodiscard]] const base::Mat3& gridFrame(std::size_t gridIndex) const { return m_gridFrames[gridIndex]; }
     // The index of a grid of the model from its node table row (−1 when no element of the formulation uses it).

@@ -254,13 +254,11 @@ FormulationConstraints::FormulationConstraints(const elements::FormulationModel&
                                                const GlueConstraints* glue)
     : m_model(&model), m_kind(kind), m_dofMap(&dofMap), m_relations(dofMap), m_held(heldGridComponentsOf(spc, dofMap))
 {
-    // The DOFs the glue makes dependent, increasing: each follows its own point of a face, so no edge is carried
-    // between two of them.
-    std::vector<base::DofIndex> glued; // bounded by the rows of the glue
-    if (glue != nullptr)
-        for (std::size_t i = 0; i < glue->rowCount(); ++i)
-            glued.push_back(glue->dependentDof(i));
-    std::sort(glued.begin(), glued.end());
+    // The unknowns of the edges between two grid points a glued contact ties (increasing): each of these grid points
+    // follows its own point of a face, so such an edge is not carried along its chord; the glue ties it along its
+    // length, or leaves it to itself.
+    const std::span<const base::DofIndex> gluedEdgeDofs =
+        glue != nullptr ? glue->edgeDofs() : std::span<const base::DofIndex>();
     // The grid components the formulation reads along its edges and faces: those the set holds and those a relation
     // of the model makes dependent (a rigid element, a multipoint constraint).
     m_followed = m_held;
@@ -268,7 +266,7 @@ FormulationConstraints::FormulationConstraints(const elements::FormulationModel&
     for (const base::DofIndex dof : userRelations.mDofs())
     {
         const DofLabel label = dofMap.labelOf(dof);
-        if (label.kind != input::PointKind::Grid || std::binary_search(glued.begin(), glued.end(), dof))
+        if (label.kind != input::PointKind::Grid)
             continue;
         m_followed.push_back({label.row, static_cast<int>(label.component), 0.0, true});
         hasDependentGrids = true;
@@ -317,7 +315,8 @@ FormulationConstraints::FormulationConstraints(const elements::FormulationModel&
             for (const elements::FormulationRelationTerm& term : support.carriedTo)
                 isCarried[static_cast<std::size_t>(dofMap.dofOf(term.dof))] = 1;
             const base::DofIndex dof = dofMap.dofOf(support.dof);
-            if (isDerived(spc, dof) || !taken.insert(dof).second)
+            if (isDerived(spc, dof) || std::binary_search(gluedEdgeDofs.begin(), gluedEdgeDofs.end(), dof) ||
+                !taken.insert(dof).second)
                 continue;
             row.clear();
             for (const elements::FormulationRelationTerm& term : support.carriedTo)
@@ -331,6 +330,27 @@ FormulationConstraints::FormulationConstraints(const elements::FormulationModel&
         for (const DerivedSupportDof& derived : spc.derivedSupports())
             for (const ConstraintTerm& term : derived.carriedTo)
                 isCarried[static_cast<std::size_t>(term.dof)] = 1;
+    }
+
+    // The edges a glued contact ties along their length (section 5.10): each unknown of such an edge is the moment
+    // of the motion of the face under the edge, by the row of the glue; one a support holds or a relation above
+    // determines keeps to that.
+    if (glue != nullptr && glue->edgeRowCount() > 0)
+    {
+        std::set<base::DofIndex> determined;
+        for (std::size_t i = 0; i < m_relations.rowCount(); ++i)
+            determined.insert(m_relations.dependentDof(i));
+        for (std::size_t i = 0; i < glue->edgeRowCount(); ++i)
+        {
+            const base::DofIndex dof = glue->edgeDependentDof(i);
+            if (isDerived(spc, dof) || isHeld(spc, dof) || !determined.insert(dof).second)
+                continue;
+            row.clear();
+            for (const ConstraintTerm& term : glue->edgeRow(i))
+                row.push_back({elementDofOf(dofMap.labelOf(term.dof)), term.coefficient});
+            addRelation(m_relations, elementDofOf(dofMap.labelOf(dof)), row);
+            ++m_gluedEdgeCount;
+        }
     }
 
     // The determined grid components (section 5.4): read along an edge, tied where no edge reads them, observed, or
@@ -712,9 +732,18 @@ FormulationRelations FormulationConstraints::relationsOn(const elements::Formula
             addRelation(relations, found->second->dof, row);
         }
     }
+    // The edges a glued contact ties: the rows of the glue, as this set has them (already on independent DOFs).
+    const std::size_t firstGluedEdge = m_tieCount + m_followedDofs.size();
+    for (std::size_t i = firstGluedEdge; i < firstGluedEdge + m_gluedEdgeCount; ++i)
+    {
+        row.clear();
+        for (const ConstraintTerm& term : m_relations.row(i))
+            row.push_back({elementDofOf(m_dofMap->labelOf(term.dof)), term.coefficient});
+        relations.add(elementDofOf(m_dofMap->labelOf(m_relations.dependentDof(i))), row);
+    }
     // The observer relations.
     std::vector<elements::FormulationRelationTerm> determinedTerms;
-    for (std::size_t i = m_tieCount + m_followedDofs.size(); i < m_firstTiedRow; ++i)
+    for (std::size_t i = firstGluedEdge + m_gluedEdgeCount; i < m_firstTiedRow; ++i)
     {
         const linalg::NodeDof nodeDof = m_dofMap->nodeDofOf(m_relations.dependentDof(i));
         determinedTerms.clear();

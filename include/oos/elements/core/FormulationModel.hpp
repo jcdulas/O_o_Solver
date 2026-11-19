@@ -234,7 +234,8 @@ public:
     // The motion of a point of a face of an element of the formulation (a shell, or a face of a solid) given by the
     // grid points of the face (node table rows: its corners, then its mid-side points, −1 for an absent one) and
     // their shape functions at the point: the primary face of a glued contact. A shell gives its translations (rows
-    // 0 to 2), its rotation (rows 3 to 5) and the point of its surface there; a solid its translations alone (the
+    // 0 to 2), its rotation (rows 3 to 5; at a point of an edge of the shell, the rotation about the edge is that
+    // the formulation gives the edge) and the point of its surface there; a solid its translations alone (the
     // rotations empty, no point). Empty when no element of the formulation has that face. None by default.
     [[nodiscard]] virtual std::optional<PointMotion> facePointMotion(std::span<const std::int32_t> faceGridRows,
                                                                      std::span<const double> shapeValues) const
@@ -242,6 +243,32 @@ public:
         static_cast<void>(faceGridRows);
         static_cast<void>(shapeValues);
         return std::nullopt;
+    }
+    // An unknown of an edge of the formulation as a moment of the motion of the points of the edge (section 5.10):
+    // its value is Σ_g weights[g]·u(points[g]) for a moment of the displacement of the edge, and
+    // Σ_g weights[g]·θ(points[g]) for a moment of its rotation (`isRotation`), u and θ in the basic system, the
+    // points those of EdgeTrace.
+    struct EdgeMoment
+    {
+        ElementDof dof;
+        bool isRotation = false;
+        std::vector<base::Vec3> weights; // one per point of the edge
+    };
+    // An edge of the formulation between two grid points (node table rows): the points of the rule along it (basic)
+    // and the unknowns it carries, each as a moment of the motion of those points.
+    struct EdgeTrace
+    {
+        std::array<std::int32_t, 2> gridRows{};
+        std::vector<base::Vec3> points;
+        std::vector<EdgeMoment> moments;
+    };
+    // The edges of the shells of the formulation whose two grid points are both in `gridRows` (node table rows,
+    // increasing), appended to `traces`: a glued contact ties their unknowns to the motion of the face under them
+    // (assembly::GlueConstraints). None by default.
+    virtual void edgeTraces(std::span<const std::int32_t> gridRows, std::vector<EdgeTrace>& traces) const
+    {
+        static_cast<void>(gridRows);
+        static_cast<void>(traces);
     }
 
     using SolidSelection = std::function<bool(std::string_view card, std::int32_t elementId)>;

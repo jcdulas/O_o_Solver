@@ -47,6 +47,12 @@ struct GluedPairReport
     std::int64_t outsidePointCount = 0;      // no face within the tolerances: not tied
     std::int64_t leftOutPointCount = 0; // already dependent or held, glued twice, a loop of glue
     std::int64_t faceCornerCount = 0;   // the distinct face corners the tied points depend on (the mesh ratio)
+    // With an element formulation that has unknowns along its edges: the edges of the glued surface (between two
+    // of its grid points that lie on a face) tied along their length, those of them tied by their rotation too, and
+    // those left to their own unknowns (a point of theirs is off the primary faces).
+    std::int64_t tiedEdgeCount = 0;
+    std::int64_t rotationTiedEdgeCount = 0;
+    std::int64_t freeEdgeCount = 0;
 };
 
 // The glue equations of the glued contact of a subcase: the node-to-surface tie of the open-source solver CalculiX
@@ -101,7 +107,21 @@ struct GluedPairReport
 //   (FormulationModel::facePointMotion, docs/mixed-hybrid-formulation-spec.md section 5.10): u_s = R_sᵀ·(u(P) +
 //   θ(P) × d) for a shell (its own rotation field, d from the point of its surface), u_s = R_sᵀ·u(P) for a solid.
 //   The rotations of the secondary grid point are not tied there (the elements of such a formulation do not read
-//   the rotations of the grid points): IGLUE 3 and 4 get the warning.
+//   the rotations of the grid points).
+// - The edges of such a formulation. Its elements have unknowns along their edges, which the grid points do not
+//   hold: an edge of the glued surface between two of its grid points that lie on a face (tied, or left to a
+//   support or to another relation that holds their translations) is tied along its length. Each unknown of the
+//   edge is a moment of the motion of the points of the edge (FormulationModel::edgeTraces: the points of the rule
+//   of the edge and the weights of each unknown); it is made that moment of the motion of the face under the edge,
+//   every point of the rule projected on the primary faces as a grid point is:
+//       q = Σ_g w_g·(u(P_g) + θ(P_g) × d_g)   for a moment of the displacement,
+//       q = Σ_g w_g·θ(P_g)                    for a moment of the rotation about the edge (IGLUE 3 and 4, on the
+//                                             face of a shell),
+//   P_g the point of the face under the point g and d_g the arm between them. An edge one of whose points no face
+//   takes keeps its own unknowns, as does an unknown a support holds. These rows are not rows of this glue for
+//   RigidElimination: they are relations of the formulation, as the edges that follow a support are
+//   (edgeRowCount; FormulationConstraints takes them). With them a single line of tied grid points carries a
+//   moment under IGLUE 3 and 4: the rotation of the edges along the line is that of the face.
 // - The translation tie of the manual, for solids: it ties the displacements of three-dimensional elements only,
 //   shells and beams being expanded into them (section 7.132, first paragraph), and "the connection between 3D
 //   elements and all other elements (1D or 2D) is always hinged" (section 6.2.11). The tie of a shell above is this
@@ -163,6 +183,21 @@ public:
     }
     [[nodiscard]] base::EntityId sourceIdOf(std::size_t i) const noexcept { return m_sourceIds[i]; }
 
+    // The rows of the edges of the glued surface (above, "the edges of such a formulation"): the unknown of an edge
+    // each makes dependent and its terms on the DOFs of the faces, by increasing DOF. None without an element
+    // formulation.
+    [[nodiscard]] std::size_t edgeRowCount() const noexcept { return m_edgeRowCount; }
+    [[nodiscard]] base::DofIndex edgeDependentDof(std::size_t i) const noexcept { return m_edgeDependents[i]; }
+    [[nodiscard]] std::span<const ConstraintTerm> edgeRow(std::size_t i) const noexcept
+    {
+        return {m_edgeTerms.data() + m_edgeOffsets[i],
+                static_cast<std::size_t>(m_edgeOffsets[i + 1] - m_edgeOffsets[i])};
+    }
+    // The unknowns of every edge of the formulation between two grid points of a glued surface that lie on a face
+    // (FormulationModel::edgeTraces), tied by a row above or left to themselves, increasing: the formulation does
+    // not carry these edges along their chords (FormulationConstraints).
+    [[nodiscard]] std::span<const base::DofIndex> edgeDofs() const noexcept { return m_edgeDofs.span(); }
+
     // The glued pairs of the subcase, in the order of contactPairsTable.
     [[nodiscard]] const std::vector<GluedPairReport>& pairs() const noexcept { return m_pairs; }
 
@@ -175,6 +210,11 @@ private:
     base::BudgetedBuffer<base::EntityId> m_sourceIds;
     std::size_t m_rowCount = 0;
     std::int64_t m_termCount = 0;
+    base::BudgetedBuffer<base::DofIndex> m_edgeDependents;
+    base::BudgetedBuffer<std::int64_t> m_edgeOffsets;
+    base::BudgetedBuffer<ConstraintTerm> m_edgeTerms;
+    std::size_t m_edgeRowCount = 0;
+    base::BudgetedBuffer<base::DofIndex> m_edgeDofs;
 };
 
 } // namespace oos::assembly

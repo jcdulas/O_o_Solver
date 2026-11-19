@@ -560,9 +560,10 @@ follows only when its two grid points have their three translations held or depe
 points off its chord), their three rotations too: its trace is then that of the chord plus θ × δ, δ the offset of
 the edge from its chord and θ the rotation between its grid points (two translations do not tell the rotation about
 the chord, which moves the points of a curved edge). An edge that lacks them keeps to its grid points: its own
-unknowns stay free. The grid points that a glued contact ties are not read this way: each follows its own point of
-a face, the edge between two of them is no rigid side, and it keeps its own unknowns (carried along its chord it
-stays straight on a face that bends: section 5.10). The relations of the formulation name the independent DOFs of the model's relations in place of their dependent ones
+unknowns stay free. An edge of shells between two grid points that a glued contact ties is not read this way: each
+of these grid points follows its own point of a face, the edge between them is no rigid side, and it follows the
+face under it along its length (section 5.10; carried along its chord it stays straight on a face that bends). The
+relations of the formulation name the independent DOFs of the model's relations in place of their dependent ones
 (`FormulationConstraints::addRelation`), so that no relation of the formulation chains through a relation of the
 model, which the condensed path may eliminate elsewhere.
 
@@ -695,41 +696,62 @@ welds, glue) know the pierced element by its ID or its face, not by a batch row:
   solid (the primary face of a glued contact), placed the same way on the shell or on the reference shape of the
   solid (the functions of its kernel at that point; the interior fields of a modal analysis vanish on a face). A
   solid gives its translations. A shell gives its translations, its rotation (θ = ν × β + ω ν) and the point X of
-  its surface there: a grid point glued at S, off the surface, moves by u(X) + θ × (S − X), so that the glue follows
-  a rigid motion whatever the gap between the two mid-surfaces (two plates glued 4 mm apart: 2e-13 of the largest
-  translation, against 0.97 % with the translations of the surface alone).
+  its surface there: a point glued at S, off the surface, moves by u(X) + θ × (S − X), so that the glue follows a
+  rigid motion whatever the gap between the two mid-surfaces (two plates glued 4 mm apart: 2e-13 of the largest
+  translation, against 0.97 % with the translations of the surface alone). At a point of an edge of the shell the
+  rotation about the edge is that of the edge, its rotation unknowns a(s) = Σ_l a_l P_l(2s − 1) over W² |X_s|, in
+  place of that of the displacement of the element (`ShellPart::pointRowsOnEdges`; at a corner, the rotation about
+  the two edges of the shell there): the unknowns of the edge are the rotation about it in this formulation, one
+  value for the shells of the edge, and the one a support holds. The slope of the displacement of an element across
+  a clamped edge is not zero at a point of it: read there, the grid points of a layer glued beside a clamp moved by
+  3e-7 to 5e-7 m along a strip whose clamp gives zero, and the layer slipped at its end.
+- `FormulationModel::edgeTraces(gridRows)`: the edges of the shells between two of the given grid points, each with
+  the points of its rule (2k + 4) and its unknowns as moments of the motion of those points
+  (`ShellPart::edgeMoments`): the displacement unknown (l, c) is ∫ W u_c P_l(2s − 1) ds, the rotation unknown l is
+  (2l + 1) ∫ W² (θ · X_s) P_l(2s − 1) ds, as the supports along an edge take them (section 5.6).
 
-Accuracy of the glue. A glued contact ties the grid points of the glued sheet, and nothing else of it: the unknowns
-of its edges and of its interior stay free (section 5.6). Measured against closed forms on strips of 200 × 40 × 2 mm
-glued face to face, ten cells of 20 mm under twelve of 16.7 mm (`wasm/test/validation/glue.test.mjs`, section 5;
-the ratio to the closed form, `ClassicFormulation` then this formulation):
+The glue of the edges. A glued contact ties grid points, and the elements of this formulation have unknowns along
+their edges that the grid points do not hold. An edge of shells between two tied grid points is therefore tied
+along its length: each of its displacement unknowns is made the same moment of the motion of the face under the
+edge, Σ_g w_g (u(X_g) + θ(X_g) × (S_g − X_g)), every point S_g of the rule of the edge projected on the primary faces
+as a grid point is and read by `facePointMotion`; with GlueOption 3 or 4, on the face of a shell, its rotation
+unknowns are made the moments of the rotation of the face, Σ_g w_g θ(X_g), so that a single line of tied grid points
+carries a moment (the rotation of the edges along the line is that of the face). An edge one of whose points no
+face takes keeps its own unknowns, as an unknown a support or a tie holds keeps to that. `assembly/GlueConstraints`
+computes these rows (`edgeRow`) and `assembly/FormulationConstraints` takes them as relations of the formulation,
+in the place of the edges that follow a relation of the model: the condensed path, the design sensitivities and
+the elimination see them as they see those. The interior unknowns of the glued shells stay free, and the edges and
+faces of glued solids follow their tied grid points as they follow a support (section 5.6).
+
+Measured against closed forms on strips of 200 × 40 × 2 mm glued face to face, ten cells of 20 mm under twelve of
+16.7 mm (`wasm/test/validation/glue.test.mjs`, section 5; the ratio to the closed form, `ClassicFormulation` then
+this formulation):
 
 | Joint | Classic | Mixed hybrid |
 |---|---|---|
-| cantilever of two glued layers, both clamped: end deflection | 1.013 | 1.015 |
+| cantilever of two glued layers, both clamped: end deflection | 1.013 | 1.001 |
+| the same, the upper layer held by the glue alone | 1.039 | 1.007 |
 | the same, the two layers on one mid-surface (they bend side by side) | 0.996 | 1.000 |
-| the same, the upper layer held by the glue alone | 1.039 | 1.280 |
-| lap splice under an end force: end deflection | 1.022 | 1.042 |
-| lap splice pulled along its length: stretch | 1.000 | 1.094 |
-| first frequency of a simply supported beam of two glued layers | 0.979 | 0.976 |
+| lap splice under an end force: end deflection | 1.022 | 1.006 |
+| lap splice pulled along its length: stretch | 1.000 | 1.008 |
+| web glued by its rotations on a thick skin, pushed at its top | 1.000 | 1.009 |
+| first frequency of a simply supported beam of two glued layers | 0.979 | 0.997 |
 
-With the edges between glued grid points carried along their chords, as between the grid points of a rigid element,
-the first two rows were 0.719 and 0.398 and the frequency 1.167: the edges of the glued layer stayed straight on a
-layer that bends. Two limits remain, both of a tie made at points on elements of degree four:
+The second row on other meshes (cells of the lower layer by cells of the upper one): 1.012 and 1.006 on 10 × 2 and
+20 × 4 cells that face each other, 1.007, 1.004 and 1.003 on 10 × 2 by 12 × 3, 20 × 4 by 24 × 6 and 40 × 8 by 48 × 12,
+1.011 and 1.016 on 12 × 3 by 10 × 2 and 24 × 6 by 20 × 4. What the two earlier ties gave on the cases of the table:
 
-- a force in the plane of a sheet at a point dents the sheet around it, and these elements resolve the dent: the
-  glued grid points of a sheet pulled in its plane give 9 % more stretch than the two bars (the last cell before a
-  line of grid point forces stretches 0.045 for 0.020);
-- the rotation of a shell read at a point of a clamped edge is not the zero of the clamp (the clamp holds the
-  rotation unknown of the edge, not the slope of the displacement in the element): a layer held by the glue alone
-  beside a clamp slips at its end, 28 % more deflection on ten cells, 16 % on twenty and 9 % on forty.
+- the grid points alone, the edges between them free: 1.015, 1.280, 1.000, 1.042, 1.094 and 0.976 (no web: a
+  single line of tied grid points was a hinge). The layers slip between their tied points, and a layer held by the
+  glue alone beside a clamp slips at its end (1.157 and 1.087 on cells two and four times smaller);
+- the edges carried along their chords, as between the grid points of a rigid element: 0.719 for the first row,
+  0.398 for the third and 1.167 for the frequency. The edges of the glued layer stay straight on a layer that
+  bends.
 
-  The glued grid points on the clamped side move 3e-7 to 5e-7 m along the strip where the clamp gives zero.
-
-A tie of the moments of the edges of the glued sheet to the motion of the face under them (in place of its grid
-points alone), and the rotation about a held edge read from the rotation unknown of that edge, are later work
-(section 14). The rotations of a glued grid point are not tied (GlueOption 3 and 4 get a warning): a single line of
-glued grid points is a hinge.
+A force at a grid point dents a sheet in its plane around the point, and these elements resolve the dent: a line of
+grid point forces at the end of a strip moves 0.045 where the bar gives 0.020 over the last cell (the splice of the
+table is read one cell before its loaded end). The rotations of a glued grid point are not tied themselves: the
+elements of this formulation do not read them.
 
 The fastener elements (`elements/fasteners/FastenerConnection`, through `resolveSideMotion`), the rows of the GA and
 GB grid points (`assembly/FastenerConstraints`) and the glue (`assembly/GlueConstraints`) use them when the
@@ -1164,7 +1186,7 @@ Each phase ends with the full test suite passing and its own checks of section 1
 | 5 | solids of every shape, mid-side nodes, skin reading, ties 1 to 4, solid loads and recovery, the grid point stress table | the same, for solids and mixed models |
 | 6 | the extensions the owner chose (section 15): point interpolation facet (fasteners, welds, glue), pin flags of lines alone, membrane-only and bending-only shells, condensed and streamed paths, components, superelements and the condensation cache, design derivatives | each with its own checks |
 | 7 | finishing: supports read along the edges inside the shells and along directions that are no basic axis, rigid elements and multipoint constraints read along the edges, rotations no edge reads tied to the mean rotation of the shells, rotations the lines do not stiffen following the shells, grid point force balance and force tables carried to the grid points, entity names in the messages of the factorisations, the pivot ratio test at entity DOFs, the geometry report as warnings, the validation suite of section 13.3 (`wasm/test/validation`) and the defects it found, the particular stresses of body forces in the solids (section 10.3), the formulation's refusals listed by the support check before a run (`api::checkSupport`), curved edges that follow a relation of the model (section 5.6), mesh transitions on straight boundaries and re-entrant corners beside triangles (section 4.4) | each with its own checks |
-| later | not chosen yet: supports along a direction that turns along an edge (a cylindrical CD along a circle, section 5.6), the particular stresses of the inertia of an inertia relief, of a trim analysis and of the vectors of a kept load basis in the solids (section 10.3), loads in the differential stiffness facet (following pressure), the pivot reference on the condensed and streamed paths, the glue tied along the edges of the glued sheet and the rotation read from the unknown of a held edge (section 5.10) | |
+| later | not chosen yet: supports along a direction that turns along an edge (a cylindrical CD along a circle, section 5.6), the particular stresses of the inertia of an inertia relief, of a trim analysis and of the vectors of a kept load basis in the solids (section 10.3), loads in the differential stiffness facet (following pressure), the pivot reference on the condensed and streamed paths, the edges and faces of glued solids and the interiors of glued shells tied to the face under them (section 5.10) | |
 
 ## 15. Decisions of the owner (15 November 2026)
 

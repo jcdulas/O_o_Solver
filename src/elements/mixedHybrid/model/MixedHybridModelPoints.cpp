@@ -134,7 +134,8 @@ std::optional<FormulationModel::PointMotion> MixedHybridModel::facePointMotion(
         if (!at)
             return std::nullopt;
         // the displacement and the rotation of the shell there: a point glued off the surface follows the rotation
-        const ShellPart::PointRows rows = m_shellPart->pointRows(shell->partIndex, (*at)[0], (*at)[1]);
+        // (on an edge of the shell, the rotation about the edge is that of the edge)
+        const ShellPart::PointRows rows = m_shellPart->pointRowsOnEdges(shell->partIndex, (*at)[0], (*at)[1]);
         for (std::size_t r = 0; r < 6; ++r)
             appendPartTerms(rows.rows[r], 1.0, motion.rows[r]);
         motion.point = base::Vec3{rows.point[0], rows.point[1], rows.point[2]};
@@ -192,6 +193,50 @@ std::optional<FormulationModel::PointMotion> MixedHybridModel::facePointMotion(
     for (std::vector<FormulationRelationTerm>& row : motion.rows)
         mergeTerms(row);
     return motion;
+}
+
+void MixedHybridModel::edgeTraces(std::span<const std::int32_t> gridRows, std::vector<EdgeTrace>& traces) const
+{
+    if (m_shellPart == nullptr || !m_shellPart->usable())
+        return;
+    const auto isGiven = [&](std::int32_t row) { return std::binary_search(gridRows.begin(), gridRows.end(), row); };
+    const auto entityDofOf = [&](std::size_t unknown)
+    {
+        const ShellPartUnknown described = m_shellPart->describe(unknown);
+        return ElementDof::entity(m_shellEntityRow[described.index], static_cast<int>(described.component));
+    };
+    const std::vector<EdgeKey>& edges = m_shellPart->topology().edges;
+    for (std::size_t e = 0; e < edges.size(); ++e)
+    {
+        const std::array<std::int32_t, 2> rows{m_gridRows[edges[e].lower], m_gridRows[edges[e].higher]};
+        if (!isGiven(rows[0]) || !isGiven(rows[1]))
+            continue;
+        const ShellPart::EdgeMoments moments = m_shellPart->edgeMoments(e);
+        if (moments.points.empty())
+            continue; // the edge of a line element that no shell has
+        EdgeTrace trace;
+        trace.gridRows = rows;
+        for (const SpaceVector& point : moments.points)
+            trace.points.push_back(base::Vec3{point[0], point[1], point[2]});
+        const std::size_t pointCount = moments.points.size();
+        // the displacement unknown (l, c): the moment l of the component c
+        for (std::size_t i = 0; i < moments.displacementUnknowns.size(); ++i)
+        {
+            EdgeMoment moment{entityDofOf(moments.displacementUnknowns[i]), false, {}};
+            moment.weights.assign(pointCount, base::Vec3{});
+            for (std::size_t g = 0; g < pointCount; ++g)
+                moment.weights[g][i % 3] = moments.displacementWeights[i / 3][g];
+            trace.moments.push_back(std::move(moment));
+        }
+        for (std::size_t l = 0; l < moments.rotationUnknowns.size(); ++l)
+        {
+            EdgeMoment moment{entityDofOf(moments.rotationUnknowns[l]), true, {}};
+            for (const SpaceVector& weight : moments.rotationWeights[l])
+                moment.weights.push_back(base::Vec3{weight[0], weight[1], weight[2]});
+            trace.moments.push_back(std::move(moment));
+        }
+        traces.push_back(std::move(trace));
+    }
 }
 
 } // namespace oos::elements::mixedHybrid

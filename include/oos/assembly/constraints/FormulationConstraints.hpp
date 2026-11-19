@@ -58,11 +58,13 @@ struct UsedElsewhere
 // The grid components a relation of the model makes dependent (a rigid element, a multipoint constraint) are read
 // along the edges and faces as those a support holds are: an edge whose two grid points have a component held or
 // dependent follows them, its entity DOFs made dependent on those grid components by the map that carries the values
-// of a support along the edge (the relations "that follow", after the ties). The grid points a glued contact ties
-// are left out: each follows its own point of a face, and the side between two of them keeps its own unknowns.
-// Carried along their chords, the sides of a glued sheet stay straight on a face that bends: a cantilever of two
-// glued layers was 1.4 times too stiff, 2.5 times when the two layers bend side by side
-// (wasm/test/validation/glue.test.mjs, section 5: 1.5 % and 0.01 % off the closed forms with the sides left free).
+// of a support along the edge (the relations "that follow", after the ties). An edge of shells between two grid
+// points that a glued contact ties is not carried that way: each of these grid points follows its own point of a
+// face, and carried along its chord the edge would stay straight on a face that bends (a cantilever of two glued
+// layers was 1.4 times too stiff, 2.5 times when the two layers bend side by side:
+// wasm/test/validation/glue.test.mjs, section 5). Its unknowns follow the face under the edge, by the rows the glue
+// gives for them (GlueConstraints::edgeRow, taken here as relations of the formulation, after those that follow),
+// or stay free where the glue leaves the edge to itself.
 //
 // A determined component that a support holds or a relation makes dependent, and that no edge reads (the rotation at
 // one grid point of shells alone: the clamp that holds a free body, a rigid element joined to the shells at one grid
@@ -78,9 +80,9 @@ class FormulationConstraints
 public:
     // `spc`: the set with its derived supports (withFormulationSupports). `userRelations`: the eliminations of the
     // model's own relations (rigid elements, MPCs, fasteners, glue), to know which DOFs they make dependent.
-    // `glue`: the glued contact among them (nullptr: none). The grid points it ties each follow their own point of
-    // a face: the side between two of them is not carried along its chord as between two grid points of a rigid
-    // element (it would stay straight on a face that bends), its own unknowns stay free.
+    // `glue`: the glued contact among them (nullptr: none), for the edges between the grid points it ties
+    // (GlueConstraints::edgeDofs and edgeRow); an unknown of such an edge that a support or a tie of the formulation
+    // determines keeps to that.
     FormulationConstraints(const elements::FormulationModel& model, elements::EntityLayout::Kind kind,
                            const DofMap& dofMap, const SpcSet& spc, const UsedElsewhere& usedElsewhere,
                            const RigidElimination& userRelations, base::DiagnosticSink& sink,
@@ -154,12 +156,15 @@ private:
     std::vector<base::DofIndex> m_excluded;
     // The grid components the set holds, and those with the ones the model's relations make dependent (the ties and
     // the edges that follow are asked with them); the relations in order: m_tieCount ties, the edges and faces that
-    // follow a relation of the model (their dependent DOFs in m_followedDofs), the observer relations, then from
-    // m_firstTiedRow the tied rows (m_tiedRows): relationsOn.
+    // follow a relation of the model (their dependent DOFs in m_followedDofs), the edges a glued contact ties
+    // (m_gluedEdgeCount), the observer relations, then from m_firstTiedRow the tied rows (m_tiedRows): relationsOn.
     std::vector<elements::HeldGridComponent> m_held;
     std::vector<elements::HeldGridComponent> m_followed;
     std::size_t m_tieCount = 0;
     std::vector<base::DofIndex> m_followedDofs;
+    // The relations of the edges a glued contact ties along their length (GlueConstraints::edgeRow), after those of
+    // the edges that follow: their rows are those of the glue, the same on every model of the layout.
+    std::size_t m_gluedEdgeCount = 0;
     std::size_t m_firstTiedRow = 0;
     std::vector<TiedRow> m_tiedRows;
     // The rows eliminated from m_firstTiedRow on (constraintRowsOn): the first m_supportRowCount are the supports',
