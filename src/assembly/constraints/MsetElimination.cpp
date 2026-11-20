@@ -123,6 +123,15 @@ void MsetElimination::reduce(const linalg::BlockSparseMatrix& kgg, const linalg:
             termNodes[termOffsets[r] + t] = dofMap.nodeDofOf(row[t].dof);
     }
 
+    // Gmᵀ·K̄mm·Gm is summed in two steps for each m DOF d: y = Σ_e K(d, e)·(the row of e) over the m DOFs e coupled
+    // to d, then K(j, k) += c_j·y_k for the terms c_j of the row of d. Summed pair by pair, (d, e) costs the product
+    // of the lengths of their two rows, and the relations of an element formulation have hundreds of terms each with
+    // tens of dependent DOFs coupled to one another (the edges and the interior of a glued element). `sums` is y
+    // over the g set, `reached` the DOFs where it is written (increasing once sorted), both cleared after each d.
+    std::vector<double> sums(static_cast<std::size_t>(dofMap.gSetSize()), 0.0);
+    std::vector<std::uint8_t> isReached(sums.size(), 0);
+    std::vector<base::DofIndex> reached;         // bounded by the terms of the rows coupled to one m DOF
+    std::vector<linalg::NodeDof> reachedNodes;   // their nodes and components
     std::vector<base::DofIndex> coupled; // the DOFs of the nodes coupled to one node: bounded by a node's degree
     for (std::size_t r = 0; r < gm.rowCount(); ++r)
     {
@@ -142,12 +151,17 @@ void MsetElimination::reduce(const linalg::BlockSparseMatrix& kgg, const linalg:
                 continue;
             if (const std::optional<std::size_t> rowE = gm.findRow(i))
             {
-                // Gmᵀ·K̄mm·Gm: d and e = i both dependent.
-                const std::span<const ConstraintTerm> termsE = gm.row(*rowE);
-                const linalg::NodeDof* nodesE = termNodes.data() + termOffsets[*rowE];
-                for (std::size_t j = 0; j < rowD.size(); ++j)
-                    for (std::size_t m = 0; m < termsE.size(); ++m)
-                        access.add(out, nodesD[j], nodesE[m], rowD[j].coefficient * kid * termsE[m].coefficient);
+                // Gmᵀ·K̄mm·Gm: d and e = i both dependent; the first step, y += K(d, e)·(the row of e).
+                for (const ConstraintTerm& term : gm.row(*rowE))
+                {
+                    const auto at = static_cast<std::size_t>(term.dof);
+                    if (isReached[at] == 0)
+                    {
+                        isReached[at] = 1;
+                        reached.push_back(term.dof);
+                    }
+                    sums[at] += kid * term.coefficient;
+                }
                 continue;
             }
             // K̄nm·Gm and its transpose: i independent.
@@ -158,6 +172,23 @@ void MsetElimination::reduce(const linalg::BlockSparseMatrix& kgg, const linalg:
                 access.add(out, term.dof, i, value);
             }
         }
+        if (reached.empty())
+            continue;
+        // the second step, K(j, k) += c_j·y_k
+        std::sort(reached.begin(), reached.end());
+        reachedNodes.clear();
+        for (const base::DofIndex dof : reached)
+            reachedNodes.push_back(dofMap.nodeDofOf(dof));
+        for (std::size_t j = 0; j < rowD.size(); ++j)
+            for (std::size_t m = 0; m < reached.size(); ++m)
+                access.add(out, nodesD[j], reachedNodes[m],
+                           rowD[j].coefficient * sums[static_cast<std::size_t>(reached[m])]);
+        for (const base::DofIndex dof : reached)
+        {
+            sums[static_cast<std::size_t>(dof)] = 0.0;
+            isReached[static_cast<std::size_t>(dof)] = 0;
+        }
+        reached.clear();
     }
 }
 

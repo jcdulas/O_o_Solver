@@ -3,9 +3,11 @@
 // Internal to the geometry of the mixed hybrid formulation: the reading of the shared edge curves of a mesh
 // (Topology::fromMesh). Document 25 of the reference, 3.2, and document 26, 3.2.
 //
-// No angle criterion: the declaration of the edges (smooth or raw) alone decides. A raw edge is straight, and a mesh
-// line does not go on across a raw edge: a fold, or a corner of the boundary, is kept by declaring raw the edge that
-// runs along it or out of it.
+// The states of the edges are those of the topology (Topology::states and partners, from the declarations and the
+// fold angle of the input). A raw edge is straight, and a mesh line does not go on across a raw edge. A sharp edge
+// follows its own mesh line, which is geometry for the elements on both sides, and each side ends there as at a
+// junction where no element faces it: the lines that reach it are prolonged from their other grids. Which line goes
+// on into which follows the rules of candidates, or the lines declared (MeshReadingInput::declaredLines).
 //
 // Every smooth edge follows its mesh line (parallels and meridians of a sphere stay parallels and meridians): it is
 // the conic tangent to the line at its two grids. The tangent of a mesh line at a grid is that of the circle through
@@ -105,8 +107,7 @@ private:
     [[nodiscard]] bool isRaw(std::size_t a, std::size_t b) const { return m_topology.isRaw(a, b); }
 
     [[nodiscard]] std::size_t other(std::size_t e, std::size_t a, std::size_t b) const;
-    [[nodiscard]] Vector3 across(std::size_t e, std::size_t a, std::size_t d) const;
-    [[nodiscard]] std::optional<std::size_t> facing(std::size_t e, std::size_t a, std::size_t d);
+    [[nodiscard]] std::optional<std::size_t> facing(std::size_t e, std::size_t a, std::size_t d) const;
     [[nodiscard]] bool hasTriangle(std::size_t a) const;
     [[nodiscard]] bool triangleEdge(std::size_t a, std::size_t b) const;
     [[nodiscard]] std::pair<std::vector<RingStep>, bool> ring(std::size_t e, std::size_t a, std::size_t b);
@@ -150,8 +151,6 @@ private:
     const Topology& m_topology;
     // The edges (with elements) at each grid, in edge order.
     std::map<std::size_t, std::vector<std::size_t>> m_nodeEdges;
-    // For each edge, the element that faces each of its elements across it.
-    std::map<EdgeKey, std::map<std::size_t, std::size_t>> m_facing;
     // The continuations of each edge a → b at a (candidates; the reference computes them on each query).
     std::map<GridPair, std::map<std::size_t, bool>> m_candidates;
     std::map<GridPair, Continuation> m_continuation;

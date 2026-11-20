@@ -284,6 +284,18 @@ void ElementFamily::recoverUnderLineLoads(const ElementBatchView& /*view*/, std:
     refuseFacet("recovery under line loads");
 }
 
+std::vector<std::int64_t> ElementFamily::stationRows(const ElementBatchView& /*view*/) const
+{
+    return {};
+}
+
+void ElementFamily::recoverStationRows(const ElementBatchView& view, std::span<const std::int64_t> /*rows*/,
+                                       std::span<const ElementLineLoad> loads, ElementOutput output,
+                                       const NodalDisplacements& displacements, ElementResultBlock& block) const
+{
+    recoverUnderLineLoads(view, loads, output, displacements, block);
+}
+
 void ElementFamily::requireOutput(ElementOutput output) const
 {
     if (outputColumns(output).empty())

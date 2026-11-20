@@ -262,6 +262,27 @@ $$
 \begin{Bmatrix}\mathbf N\\\mathbf M\end{Bmatrix}=\mathsf C\,(\mathsf B\mathbf d+\mathsf G\boldsymbol\alpha)-\mathbf S_0 .
 $$
 
+- **Values at the grids.** With the transverse shear forces of an integration point taken as
+  those conjugate to its tied shears $\gamma_a(p)$ in the energy $\sum_pj_p\boldsymbol\gamma'^{\mathsf T}H\boldsymbol\gamma'$
+  ($\mathbf Q'=H\boldsymbol\gamma'$, $p_\eta$ and $p_\xi$ as in section 7),
+
+$$
+Q_x(p)=\tfrac12\big(\sqrt{s_{x0}}+\sqrt{s_{x1}}\big)_pQ'_x(p)+\frac{j_{p_\eta}}{j_p}\tfrac12\big(\sqrt{s_{x0}}-\sqrt{s_{x1}}\big)_{p_\eta}Q'_x(p_\eta),
+$$
+
+  and $Q_y(p)$ alike with $p_\xi$, the values $f_p$ of the four integration points (resultants,
+  strains $\mathsf B\mathbf d+\mathsf G\boldsymbol\alpha$, fibre stresses), each brought from its local
+  frame to the element axes turned onto its tangent plane, give at grid i the value of the
+  bilinear surface through them:
+
+$$
+f_i=\sum_p\tfrac14\,(1+3\,\xi_i\xi_p)(1+3\,\eta_i\eta_p)\,f_p .
+$$
+
+  The curvature along a direction in which the rotations vary linearly is constant over the
+  element: the moment of a grid differs from the moment of the centre only by what the
+  enhanced strains and the variation across that direction give, the linear part of the moment
+  under a shear force being carried by the factors of section 7.
 - **Differential stiffness** of the membrane forces $\mathbf N=(N_{11},N_{22},N_{12})$: with
   $G_a$ (3 × 24) the local gradient $\partial\mathbf U/\partial x_a$ of the translations of the
   reference surface (the part of L at ζ = 0 that multiplies the $\mathbf u_i$),
@@ -318,4 +339,8 @@ $$
   bending flexibility of the transverse shear.
 - T. J. R. Hughes, F. Brezzi, On drilling degrees of freedom, Comput. Methods Appl. Mech.
   Eng. 72 (1989): rotation about the normal.
+- E. Hinton, J. S. Campbell, Local and global smoothing of discontinuous finite element
+  functions using a least squares method, Int. J. Numer. Methods Eng. 8 (1974); J. Barlow,
+  Optimal stress locations in finite element models, Int. J. Numer. Methods Eng. 10 (1976):
+  values at the grids from those of the 2 × 2 points.
 - S. P. Timoshenko, J. M. Gere, Mechanics of Materials: beam with shear deformation.

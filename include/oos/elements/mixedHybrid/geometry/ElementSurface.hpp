@@ -86,8 +86,13 @@ struct EdgeGeometry
 {
     EdgeKey grids{};
     std::size_t elements = 0;
+    // The state the reading gave the edge (Topology::states): raw, sharp, or neither (smooth, or an edge of one
+    // element), where it comes from, and the angle (radians) measured between the normals of its elements at its
+    // grids, which the fold angle is compared with.
     bool raw = false;
     bool sharp = false;
+    EdgeStateOrigin origin = EdgeStateOrigin::Outline;
+    double angle = 0.0;
     // The largest angle (radians) between the normals of two elements of the edge, along it.
     double kink = 0.0;
     // On an edge of one shell (the outline of the mesh): how far the reading bends the outline in its surface

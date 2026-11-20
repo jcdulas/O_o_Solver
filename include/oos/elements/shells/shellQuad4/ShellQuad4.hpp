@@ -112,6 +112,18 @@ struct ShellQuad4
                                                                   const std::array<T, 2>& fibres,
                                                                   const PlateThermalStrain& thermal);
 
+    // The element gives the values of its corners too (cornerRecovery), which EdgeShearShellFamily writes when an
+    // output asks for them (RecoveryOutput::hasCorners).
+    static constexpr bool HAS_CORNER_RECOVERY = true;
+
+    // The recovery operators of the four corners G1 to G4, each with the rows of the centre's and in the element
+    // frame: the values of the 2 × 2 integration points with the enhanced strains (document section 12), read at the
+    // corners on the bilinear surface through them (ShellQuad4CornerRecovery.cpp). `fibres`: Z1 and Z2 at each corner.
+    [[nodiscard]] static std::array<CentreRecoveryOperator<double, DOFS>, NODES> cornerRecovery(
+        const Geometry& geometry, const PlateConstitutive<double>& constitutive,
+        const std::array<double, NODES>& thickness, const std::array<std::array<double, 2>, NODES>& fibres,
+        const PlateThermalStrain& thermal);
+
     // The nodal loads of a pressure (document section 12), on the element-frame translations: `cornerPressures`
     // P1-P4, along
     // the vector `direction` (element frame, unit) when given, else along the surface normal.

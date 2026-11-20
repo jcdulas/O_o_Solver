@@ -259,10 +259,28 @@ public:
     [[nodiscard]] const base::Mat3& gridFrame(std::size_t gridIndex) const { return m_gridFrames[gridIndex]; }
     // The index of a grid of the model from its node table row (−1 when no element of the formulation uses it).
     [[nodiscard]] std::int32_t gridIndexOfRow(std::int32_t row) const;
+    [[nodiscard]] std::vector<SurfaceEdgeReading> surfaceEdges() const override { return m_surfaceEdges; }
 
 private:
-    // The problems of the model as a whole (section 4.4: the geometry declarations).
+    // The geometry declarations of the model (section 4.4): those of the program, with those of the deck (the
+    // SurfaceEdge, SurfaceFacet and SurfaceLine cards) added where the program does not name the same edge or the
+    // same mesh line; an empty declaration when the deck says only that it was prepared (the GeometryDeclarations
+    // parameter); none when neither gives any.
+    void readDeclarations(const SnapshotIndex& index);
+    // The problems of the model as a whole (section 4.4): no geometry declaration, or declarations that give one
+    // edge side two states.
     void checkDeclarations(const SnapshotIndex& index);
+    // The index of the grid of the model of a grid point ID (−1 when no element of the formulation uses it).
+    [[nodiscard]] std::int32_t gridIndexOfId(const SnapshotIndex& index, std::int32_t id) const;
+    // The fold angle of the model and the declarations of the smooth and sharp edges and of the mesh lines, given to
+    // the reading of the shells where they name edges of shells.
+    void declareShellGeometry(const SnapshotIndex& index, ShellPartInput& input);
+    // The same given to the reading of the skin of the solids.
+    void declareSkinGeometry(const SnapshotIndex& index, SolidPartInput& input) const;
+    // Marks the declarations that name edges of the solids (once the SolidPart is built).
+    void markSkinDeclarationsUsed(const SnapshotIndex& index);
+    // The declarations that name no edge of the shells nor of the solids, as problems of the model.
+    void reportUnknownDeclarations();
     // The line elements of every line card of the snapshot.
     void readLines(const SnapshotIndex& index);
     // The model's grids (every grid point an element uses, by increasing ID) and the edges of the lines.
@@ -290,6 +308,9 @@ private:
     // The largest angle along each edge of the shells between the normal of the surface read and the normal of the
     // plane of the corners of a shell of the edge (the rounding of the reading).
     [[nodiscard]] std::map<EdgeKey, double> edgeRoundings() const;
+    // The report of the skin of the solids: its edges in the table of the edges read, a summary, and the edges that
+    // the fold angle alone made sharp with an angle near it (a coarse curved skin, or a shallow fold).
+    void reportSkinGeometry();
     // The solid elements of every solid card of the snapshot.
     void readSolids(const SnapshotIndex& index);
     // The SolidPart of the solids, its entities in both layouts (the interior fields of a modal analysis apart:
@@ -395,9 +416,24 @@ private:
     std::set<std::int32_t> m_solidOnlyGrids;    // the grids of solids that no line or shell has: no rotation
     std::map<std::int32_t, std::size_t> m_solidMidSideGrids; // the mid-side grids of the solids: grid → its edge
 
-    // The geometry declarations of the snapshot, and the elements at each grid (index): (kind, index in m_lines,
-    // m_shells or m_solids), for describeSurroundings.
+    // The geometry declarations of the model (readDeclarations), and the elements at each grid (index): (kind, index
+    // in m_lines, m_shells or m_solids), for describeSurroundings.
     std::optional<input::FormulationGeometry> m_declarations;
+    // The edges of the surfaces read (surfaceEdges), filled by the two geometry reports.
+    std::vector<SurfaceEdgeReading> m_surfaceEdges;
+    // The fold angle of the model (radians): the model's ShellNormalAngle, which decides the state of the edges that
+    // nothing declares (zero or negative: they are sharp).
+    double m_foldAngle = 0.0;
+    // For each smooth edge, sharp edge and mesh line of the declarations (in their order): a surface of the model has
+    // the edges it names, or it was already reported.
+    struct DeclarationUse
+    {
+        std::vector<char> smoothEdges;
+        std::vector<char> sharpEdges;
+        std::vector<char> lineContinuations;
+        std::vector<char> lineEnds;
+    };
+    DeclarationUse m_declarationUse;
     std::vector<std::vector<std::pair<std::uint8_t, std::size_t>>> m_elementsAtGrid;
 };
 

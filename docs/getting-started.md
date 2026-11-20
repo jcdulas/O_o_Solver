@@ -85,7 +85,10 @@ geometric conventions and current limits.
 
 The `elementFormulation` option (or the `ElementFormulation` model parameter) chooses the formulation of the whole
 model. `MixedHybridFormulation` puts every shell, line and solid card in the mixed hybrid formulation together; it
-needs the `formulationGeometry` option, which declares the raw edges, raw elements and sharp edges of the mesh (see
-the [specification](mixed-hybrid-formulation-spec.md)).
+needs geometry declarations, from the `formulationGeometry` option or from the `SurfaceEdge`, `SurfaceFacet` and
+`SurfaceLine` cards of the deck: the smooth, sharp and raw edges of the mesh, its raw elements and its mesh lines. An
+empty declaration (`formulationGeometry: {}`, or `Parameter;GeometryDeclarations;Given` in the deck) leaves every edge
+to the model's `ShellNormalAngle`. `model.surfaceEdges()` gives what was read at every edge (see the
+[specification](mixed-hybrid-formulation-spec.md), sections 4.4 and 10.5).
 
 The [module guide](modules.md) covers assembly, linear algebra, reduction, output and design calculations.

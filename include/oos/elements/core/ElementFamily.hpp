@@ -113,11 +113,15 @@ enum class LayerOutput : std::uint8_t
 };
 
 // One output of a recovery: an element output (recover()) or a layer output (recoverLayers()).
+// `hasCorners`: an element output asked with the corner rows of the families that write them on request only (the
+// ShellQuad4: its centre rows first, then those of each corner; recoverOutputs() and recoverySlopesOfOutputs() read
+// it, recover() and recoverySlopes() give the centre rows). The other families write the same rows either way.
 struct RecoveryOutput
 {
     bool isLayer = false;
     ElementOutput output = ElementOutput::Stresses;
     LayerOutput layerOutput = LayerOutput::Stresses;
+    bool hasCorners = false;
 
     [[nodiscard]] static constexpr RecoveryOutput of(ElementOutput element) noexcept
     {
@@ -127,9 +131,18 @@ struct RecoveryOutput
     {
         return {true, ElementOutput::Stresses, layer};
     }
+    // The same element output with the corner rows.
+    [[nodiscard]] constexpr RecoveryOutput withCorners(bool corners) const noexcept
+    {
+        RecoveryOutput result = *this;
+        result.hasCorners = corners && !isLayer;
+        return result;
+    }
     [[nodiscard]] constexpr bool operator==(const RecoveryOutput& other) const noexcept
     {
-        return isLayer == other.isLayer && (isLayer ? layerOutput == other.layerOutput : output == other.output);
+        return isLayer == other.isLayer &&
+               (isLayer ? layerOutput == other.layerOutput
+                        : output == other.output && hasCorners == other.hasCorners);
     }
 };
 
@@ -425,6 +438,17 @@ public:
     virtual void recoverUnderLineLoads(const ElementBatchView& view, std::span<const ElementLineLoad> loads,
                                        ElementOutput output, const NodalDisplacements& displacements,
                                        ElementResultBlock& block) const;
+
+    // The rows of the batch recovered in the layout of the elements under line loads whatever their loads: those a
+    // card of the model gives output stations to (a Bar2 with a Bar2Stations). Increasing, once each; none by default.
+    [[nodiscard]] virtual std::vector<std::int64_t> stationRows(const ElementBatchView& view) const;
+    // Resets `block` to outputColumnsUnderLineLoads(output) and appends the rows of each element of `rows`
+    // (increasing batch rows: the elements `loads` names and elements of stationRows()), with those of `loads` that
+    // are on it (contiguous per element, in the order of the rows) and without load for the others. By default, for a
+    // family without station rows, recoverUnderLineLoads(view, loads, ...).
+    virtual void recoverStationRows(const ElementBatchView& view, std::span<const std::int64_t> rows,
+                                    std::span<const ElementLineLoad> loads, ElementOutput output,
+                                    const NodalDisplacements& displacements, ElementResultBlock& block) const;
 
     // The element type of the result tables of the data contract that hold the rows of recover() (underLineLoads
     // false) or of recoverUnderLineLoads() (true), as O_o_Reader's MemoryResults names its containers ("ShellQuad4",

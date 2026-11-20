@@ -63,6 +63,14 @@ std::string_view tableName(TableRole role) noexcept
         return "sectionsTable";
     case TableRole::ShellNormals:
         return "shellNormals";
+    case TableRole::BarStations:
+        return "barStations";
+    case TableRole::SurfaceEdges:
+        return "surfaceEdges";
+    case TableRole::SurfaceFacets:
+        return "surfaceFacets";
+    case TableRole::SurfaceLines:
+        return "surfaceLines";
     case TableRole::FastenerPiercings:
         return "fastenerPiercings";
     case TableRole::Supports:
@@ -132,6 +140,14 @@ std::string_view prerequisiteOf(TableRole role) noexcept
         return "the section properties of BarShapeProp and BeamShapeProp";
     case TableRole::ShellNormals:
         return "the normals the ShellNormal cards give at grid points";
+    case TableRole::BarStations:
+        return "the output stations the Bar2Stations cards give to bars";
+    case TableRole::SurfaceEdges:
+        return "the edges the SurfaceEdge cards declare smooth, sharp or raw";
+    case TableRole::SurfaceFacets:
+        return "the shells the SurfaceFacet cards declare raw";
+    case TableRole::SurfaceLines:
+        return "the mesh lines the SurfaceLine cards declare";
     case TableRole::FastenerPiercings:
         return "the piercing points of Fastener and Weld on the shells, with the shape functions of the "
                "elements pierced";

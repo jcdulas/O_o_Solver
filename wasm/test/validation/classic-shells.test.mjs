@@ -695,3 +695,253 @@ for (const mesh of [QUAD4, TRIA3_24])
     assert.ok(Math.abs(attached.rotation) > 100 * Math.abs(continued.rotation),
       "the attached bar turns the grid point");
   });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The corner rows of the ShellQuad4 (docs/shell-quad4-formulation.md, section 12)
+//
+// With the CornerResults describer the ShellQuad4 writes, after its centre rows, the rows of its four grid points:
+// the values of its 2 x 2 integration points, with the enhanced strains, read at the corners on the bilinear surface
+// through them. The ShellTria3 has its centre rows only.
+
+// The rows of an element table as objects of its columns, with their element and grid point (0 for the centre).
+function elementRows(run, elementType, kind, subcase = 1) {
+  const table = run.elementTables.find((t) => t.elementType === elementType && t.kind === kind &&
+    t.subcase === subcase);
+  assert.ok(table, `a ${elementType} ${kind} table of subcase ${subcase}`);
+  const width = table.components.length;
+  return Array.from(table.ids, (id, r) => {
+    const row = { id, nodeId: table.nodeIds[r], layer: table.layers[r] };
+    table.components.forEach((name, c) => { row[name] = table.values[r * width + c]; });
+    return row;
+  });
+}
+
+const CORNER_OUTPUT = ["StressOutput;All;CornerResults", "StrainOutput;All;CornerResults",
+  "ElemForceOutput;All;CornerResults"];
+const CENTRE_OUTPUT = ["StressOutput;All", "StrainOutput;All", "ElemForceOutput;All"];
+// A static deck of one subcase with element output requests.
+const outputDeck = (model, requests) =>
+  staticDeck(model).replace("DisplacementOutput;All", ["DisplacementOutput;All", ...requests].join("\n"));
+
+// The strip of section 1 (ν = 0) of n × `across` cells of `mesh`, clamped at X = 0, with the cards `loads(g, tip)`
+// give for the grid points `tip` of its free end.
+function loadedStrip({ mesh = QUAD4, n, across, loads, requests = CORNER_OUTPUT }) {
+  const g = grid({ ...mesh, nu: n, nv: across, position: (a, b) => [STRIP.length * a, STRIP.width * b, 0] });
+  const tip = Array.from({ length: across + 1 }, (_, j) => g.node(n, j));
+  const model = [...g.lines, ...section({ ...STRIP, poisson: 0 }),
+    ...hold("123456", Array.from({ length: across + 1 }, (_, j) => g.node(0, j))), ...loads(g, tip)];
+  return { g, run: runModel(outputDeck(model, requests), CLASSIC) };
+}
+
+// The share of a load spread evenly over the free end, at its grid point j of `across` + 1.
+const tipShare = (j, across) => (j === 0 || j === across ? 0.5 : 1) / across;
+
+test("the ShellQuad4 writes its centre and its four corners with CornerResults, its centre alone without", () => {
+  // A strip pulled by a unit force: N_x = 1 / b and σ_x = N_x / t at every place, ε_x = σ_x / E.
+  const pull = (g, tip) => tip.map((id, j) => `PointForceLoad;2;${id};;${real(tipShare(j, 2))};1.;0.;0.`);
+  const [n, across] = [4, 2];
+  const corners = loadedStrip({ n, across, loads: pull });
+  const centres = loadedStrip({ n, across, loads: pull, requests: CENTRE_OUTPUT });
+  const force = 1 / STRIP.width;
+  const forces = elementRows(corners.run, "ShellQuad4", "forces");
+  assert.equal(forces.length, n * across * 5, "the centre and the four corners of each element");
+  forces.forEach((row, r) => {
+    // The cell of element e (1-based, row by row) and the grid point of its place: 0, then G1 to G4.
+    const [i, j] = [(row.id - 1) % n, Math.floor((row.id - 1) / n)];
+    const places = [0, corners.g.node(i, j), corners.g.node(i + 1, j), corners.g.node(i + 1, j + 1),
+      corners.g.node(i, j + 1)];
+    assert.equal(row.nodeId, places[r % 5], `the place of row ${r} of element ${row.id}`);
+    for (const [name, expected] of [["nx", force], ["ny", 0], ["nxy", 0], ["qx", 0], ["qy", 0]])
+      assert.ok(Math.abs(row[name] - expected) < 1e-8 * force, `${name} of element ${row.id} at ${row.nodeId}: ${
+        row[name]}`);
+    for (const name of ["mx", "my", "mxy"])
+      assert.ok(Math.abs(row[name]) < 1e-8 * force * STRIP.thickness, `${name} of element ${row.id} at ${
+        row.nodeId}: ${row[name]}`);
+  });
+  const stresses = elementRows(corners.run, "ShellQuad4", "stress");
+  assert.equal(stresses.length, n * across * 10, "two fibres at each of the five places");
+  for (const row of stresses) {
+    assert.ok(Math.abs(row.oxx / (force / STRIP.thickness) - 1) < 1e-8, `oxx of element ${row.id} at ${row.nodeId}`);
+    assert.ok(Math.abs(row.vonMises / (force / STRIP.thickness) - 1) < 1e-8, `von Mises at ${row.nodeId}`);
+    assert.ok(Math.abs(Math.abs(row.fiberDistance) / (STRIP.thickness / 2) - 1) < 1e-12, "the fibre distance");
+  }
+  // STRCUR (the default strain form): the membrane strains (layer 1) and the curvatures (layer 2) at each place.
+  const strains = elementRows(corners.run, "ShellQuad4", "strain");
+  assert.equal(strains.length, n * across * 10, "the membrane strains and the curvatures at each of the five places");
+  for (const row of strains)
+    assert.ok(Math.abs(row.exx - (row.layer === 1 ? force / (STRIP.thickness * STRIP.young) : 0)) <
+      1e-8 * force / (STRIP.thickness * STRIP.young), `exx of element ${row.id} at ${row.nodeId}, row ${row.layer}`);
+  // Without the describer: the centre rows, the same values to the bit.
+  for (const kind of ["forces", "stress", "strain"]) {
+    const alone = elementRows(centres.run, "ShellQuad4", kind);
+    const kept = elementRows(corners.run, "ShellQuad4", kind).filter((row) => row.nodeId === 0);
+    assert.deepEqual(alone, kept, `the centre rows of the ${kind} table`);
+  }
+});
+
+test("the ShellTria3 writes its centre alone, with or without CornerResults", () => {
+  const pull = (g, tip) => tip.map((id, j) => `PointForceLoad;2;${id};;${real(tipShare(j, 2))};1.;0.;0.`);
+  const [n, across] = [4, 2];
+  const { run } = loadedStrip({ mesh: TRIA3_24, n, across, loads: pull });
+  const forces = elementRows(run, "ShellTria3", "forces");
+  assert.equal(forces.length, 2 * n * across, "one row per triangle");
+  for (const row of forces) {
+    assert.equal(row.nodeId, 0, `the place of element ${row.id}`);
+    // The x axis of a triangle is along its first side, not always along the strip: the sum of the two forces is
+    // the pull, whatever the axes.
+    assert.ok(Math.abs((row.nx + row.ny) * STRIP.width - 1) < 1e-8, `nx + ny of element ${row.id}: ${
+      row.nx + row.ny}`);
+  }
+});
+
+for (const across of [1, 2])
+  test(`the corners of ShellQuad4 give the fibre forces of a strip bent in its plane, ${across} cell(s) across`, () => {
+    // A couple M = F b on the free end, as the consistent loads of the linear traction of a beam: two forces
+    // F = N b / 6 at its corners (the middle grid point of two cells takes none). N_x = 12 M y / b³ from the middle
+    // of the width: ± 6 F / b at the edges, 0 on the middle line, whatever the element a grid point is read from.
+    // The rotations about the normal do not follow the bending in the plane, least of all at the clamped end, where
+    // they are held: the drilling term, a stabilisation of 1e-4 of the shear stiffness, takes 8e-5 of the edge force
+    // there.
+    const [n, F, TOLERANCE] = [4, 1, 2e-4];
+    const couple = (g, tip) => [`PointForceLoad;2;${tip[0]};;${real(F)};-1.;0.;0.`,
+      `PointForceLoad;2;${tip[across]};;${real(F)};1.;0.;0.`];
+    const { g, run } = loadedStrip({ n, across, loads: couple });
+    const height = new Map(); // by grid point: its distance from the middle of the width
+    for (let j = 0; j <= across; ++j)
+      for (let i = 0; i <= n; ++i) height.set(g.node(i, j), STRIP.width * (j / across - 0.5));
+    const edge = 6 * F / STRIP.width;
+    for (const row of elementRows(run, "ShellQuad4", "forces")) {
+      const y = row.nodeId === 0 ? null : height.get(row.nodeId);
+      // The centre of an element is at the middle of its own cell.
+      const expected = y === null ? null : 2 * edge * y / STRIP.width;
+      if (expected !== null)
+        assert.ok(Math.abs(row.nx - expected) < TOLERANCE * edge, `nx of element ${row.id} at ${row.nodeId}: ${
+          row.nx}, expected ${expected}`);
+      assert.ok(Math.abs(row.ny) < TOLERANCE * edge && Math.abs(row.nxy) < TOLERANCE * edge,
+        `ny and nxy of element ${row.id} at ${row.nodeId}: ${row.ny}, ${row.nxy}`);
+    }
+    for (const row of elementRows(run, "ShellQuad4", "stress").filter((r) => r.nodeId !== 0)) {
+      const expected = 2 * edge * height.get(row.nodeId) / STRIP.width / STRIP.thickness;
+      assert.ok(Math.abs(row.oxx - expected) < TOLERANCE * edge / STRIP.thickness,
+        `oxx of element ${row.id} at ${row.nodeId}, fibre ${row.layer}: ${row.oxx}, expected ${expected}`);
+    }
+  });
+
+test("the corners of ShellQuad4 give the moment and the fibre stresses of a strip bent by end moments", () => {
+  // A moment M about Y spread over the free end: the moment per unit width M / b and the fibre stresses
+  // ± 6 M / (b t²) at the centre and at every corner (a constant state).
+  const [n, across, M] = [4, 2, 1];
+  const moment = (g, tip) => tip.map((id, j) => `PointMomentLoad;2;${id};;${real(M * tipShare(j, across))};0.;1.;0.`);
+  const { run } = loadedStrip({ n, across, loads: moment });
+  const perWidth = M / STRIP.width;
+  for (const row of elementRows(run, "ShellQuad4", "forces")) {
+    assert.ok(Math.abs(Math.abs(row.mx) / perWidth - 1) < 1e-7, `mx of element ${row.id} at ${row.nodeId}: ${row.mx}`);
+    assert.ok(Math.abs(row.my) < 1e-7 * perWidth && Math.abs(row.mxy) < 1e-7 * perWidth && Math.abs(row.qx) < 1e-7 &&
+      Math.abs(row.nx) < 1e-7, `the other forces of element ${row.id} at ${row.nodeId}`);
+  }
+  const fibre = 6 * perWidth / STRIP.thickness ** 2;
+  const rows = elementRows(run, "ShellQuad4", "stress");
+  for (const row of rows)
+    assert.ok(Math.abs(Math.abs(row.oxx) / fibre - 1) < 1e-7, `oxx of element ${row.id} at ${row.nodeId}, fibre ${
+      row.layer}: ${row.oxx}`);
+  // The two fibres of a place have opposite stresses.
+  for (let r = 0; r < rows.length; r += 2)
+    assert.ok(Math.abs(rows[r].oxx + rows[r + 1].oxx) < 1e-7 * fibre, `the fibres of element ${rows[r].id} at ${
+      rows[r].nodeId}`);
+});
+
+test("the corners of ShellQuad4 give the shear force of a cantilever strip, and its moment within the element", (t) => {
+  // A unit force on the free end: q_x = 1 / b at every place. The curvature of the element along the strip is
+  // constant (the linear part of the moment is carried by the residual bending flexibility of its transverse
+  // shear, document section 7), so the moment of its corners is that of its centre, M (L − x_c) / b: exact at the
+  // centre, off by half a cell of the gradient at the corners.
+  const [n, across] = [8, 1];
+  const shear = (g, tip) => tip.map((id, j) => `PointForceLoad;2;${id};;${real(tipShare(j, across))};0.;0.;1.`);
+  const { run } = loadedStrip({ n, across, loads: shear });
+  const cell = STRIP.length / n;
+  let worst = 0;
+  for (const row of elementRows(run, "ShellQuad4", "forces")) {
+    assert.ok(Math.abs(Math.abs(row.qx) * STRIP.width - 1) < 1e-7, `qx of element ${row.id} at ${row.nodeId}: ${
+      row.qx}`);
+    const centre = (STRIP.length - (row.id - 0.5) * cell) / STRIP.width;
+    if (row.nodeId === 0)
+      assert.ok(Math.abs(Math.abs(row.mx) / centre - 1) < 1e-7, `mx of the centre of element ${row.id}: ${row.mx}`);
+    worst = Math.max(worst, Math.abs(Math.abs(row.mx) - centre));
+  }
+  t.diagnostic(`moment of the corners off the centre's by at most ${worst.toExponential(3)} (half a cell of the ` +
+    `gradient: ${(0.5 * cell / STRIP.width).toExponential(3)})`);
+  assert.ok(worst <= 0.5 * cell / STRIP.width * (1 + 1e-7), `corner moments within the element: ${worst}`);
+});
+
+test("the corner rows of ShellQuad4 of a block of load cases are those of each case alone", () => {
+  // Nine subcases (the recovery by blocks, from the slopes of the rows) of the strip under a force along Z and a
+  // couple in its plane, each scaled: the rows of every place are the first case's times its factor.
+  const [n, across, cases] = [4, 2, 9];
+  const g = grid({ ...QUAD4, nu: n, nv: across, position: (a, b) => [STRIP.length * a, STRIP.width * b, 0] });
+  const tip = Array.from({ length: across + 1 }, (_, j) => g.node(n, j));
+  const model = [...g.lines, ...section({ ...STRIP, poisson: 0.3 }),
+    ...hold("123456", Array.from({ length: across + 1 }, (_, j) => g.node(0, j)))];
+  for (let c = 1; c <= cases; ++c)
+    model.push(`PointForceLoad;${10 + c};${tip[0]};;${real(c)};-1.;0.;0.5`,
+      `PointForceLoad;${10 + c};${tip[across]};;${real(c)};1.;0.;0.5`);
+  const subcases = Array.from({ length: cases }, (_, k) => [`SubcaseStart;${k + 1}`, `StaticLoadSelection;${11 + k}`])
+    .flat();
+  const text = ["[executive]", "SolutionSequence;101", "[case]", "SinglePointConstrSelection;1",
+    "DisplacementOutput;All", ...CORNER_OUTPUT, ...subcases, "[model]", ...completed(model)].join("\n") + "\n";
+  const run = runModel(text, CLASSIC);
+  for (const kind of ["forces", "stress", "strain"]) {
+    const first = elementRows(run, "ShellQuad4", kind, 1);
+    assert.equal(first.length, n * across * (kind === "forces" ? 5 : 10), `the rows of the ${kind} table`);
+    const linear = { forces: ["nx", "ny", "nxy", "mx", "my", "mxy", "qx", "qy"], stress: ["oxx", "oyy", "txy"],
+      strain: ["exx", "eyy", "exy"] }[kind];
+    const scale = Math.max(...first.flatMap((row) => linear.map((name) => Math.abs(row[name]))));
+    for (let c = 2; c <= cases; ++c)
+      elementRows(run, "ShellQuad4", kind, c).forEach((row, r) => {
+        assert.equal(row.nodeId, first[r].nodeId, `the place of row ${r} of subcase ${c}`);
+        for (const name of linear)
+          assert.ok(Math.abs(row[name] - c * first[r][name]) < 1e-9 * c * scale,
+            `${name} of element ${row.id} at ${row.nodeId}, subcase ${c}: ${row[name]}, expected ${
+              c * first[r][name]}`);
+      });
+  }
+});
+
+for (const warped of [false, true])
+  test(`the corners of ${warped ? "warped " : ""}ShellQuad4 on a cylinder under pressure give its hoop force`, (t) => {
+    // A quarter of an open cylinder (R = 1, t = 0.01) under an internal pressure p, with its planes of symmetry:
+    // the hoop force p R and no axial force, at the centre and at the corners of every element. The elements are
+    // flat facets of 11.25 degrees, or quadrilaterals warped by moving their grid points on the cylinder.
+    const [n, pressure, radius] = [8, 100, 1];
+    const moved = (a, b, salt) => {
+      const inner = a > 0 && a < 1 && b > 0 && b < 1;
+      const s = Math.sin(12.9898 * a * n + 78.233 * b * n + 37.719 * salt) * 43758.5453;
+      return inner && warped ? (0.2 / n) * (2 * (s - Math.floor(s)) - 1) : 0;
+    };
+    const g = grid({ ...QUAD4, nu: n, nv: n, position: (a, b) => {
+      const [x, angle] = [a + moved(a, b, 1), (Math.PI / 2) * (b + moved(a, b, 2))];
+      return [x, radius * Math.sin(angle), radius * Math.cos(angle)];
+    } });
+    const line = (pick) => Array.from({ length: n + 1 }, (_, k) => pick(k));
+    const model = [...g.lines, "ShellProp;1;1;0.01;1;;1", "IsoMat;1;7.e10;;0.3;0.",
+      ...hold("156", line((j) => g.node(0, j))),   // the plane X = 0
+      ...hold("246", line((i) => g.node(i, 0))),   // the plane Y = 0
+      ...hold("345", line((i) => g.node(i, n))),   // the plane Z = 0
+      `ShellPressureLoad;2;${real(pressure)};1;Through;${g.count()}`];
+    const run = runModel(outputDeck(model, CORNER_OUTPUT), CLASSIC);
+    const hoop = pressure * radius;
+    const worst = { centre: 0, corner: 0, axial: 0 };
+    // The x axis of an element is along G1→G2, off the axis of the cylinder on the warped mesh: the principal
+    // membrane forces are the hoop force and the axial one.
+    for (const row of elementRows(run, "ShellQuad4", "forces")) {
+      const place = row.nodeId === 0 ? "centre" : "corner";
+      const [mean, radiusOfCircle] = [0.5 * (row.nx + row.ny), Math.hypot(0.5 * (row.nx - row.ny), row.nxy)];
+      const principal = [mean + radiusOfCircle, mean - radiusOfCircle].sort((a, b) => Math.abs(b) - Math.abs(a));
+      worst[place] = Math.max(worst[place], Math.abs(Math.abs(principal[0]) / hoop - 1));
+      worst.axial = Math.max(worst.axial, Math.abs(principal[1]) / hoop);
+    }
+    t.diagnostic(`hoop force off p R by ${worst.centre.toExponential(2)} at the centres, ${
+      worst.corner.toExponential(2)} at the corners; axial force ${worst.axial.toExponential(2)} of p R`);
+    const bound = warped ? { centre: 0.03, corner: 0.08, axial: 0.08 } : { centre: 0.01, corner: 0.02, axial: 0.02 };
+    for (const name of ["centre", "corner", "axial"])
+      assert.ok(worst[name] <= bound[name], `${name}: ${worst[name]}, bound ${bound[name]}`);
+  });

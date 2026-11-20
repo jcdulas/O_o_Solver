@@ -53,18 +53,46 @@ struct ElementFormulationChoice
 // An edge of the mesh by its two grid point IDs, the lower first.
 using GridEdge = std::array<std::int32_t, 2>;
 
+// The side of an edge that a declaration names: the edge, and the shell element whose side of it is meant (0: every
+// side). A side matters at an edge of three shells or more.
+struct EdgeSide
+{
+    GridEdge grids{};
+    std::int32_t elementId = 0;
+
+    friend auto operator<=>(const EdgeSide&, const EdgeSide&) = default;
+};
+
+// A mesh line that goes on through a grid point: {from, through, to} says that, at `through`, the line of edge
+// from − through goes on into edge through − to (and back); kept with from < to.
+using LineContinuation = std::array<std::int32_t, 3>;
+// A mesh line that ends: {from, at} says that the line of edge from − at ends at grid point `at`.
+using LineEnd = std::array<std::int32_t, 2>;
+
 // The geometry declarations of the formulation that reads the surface of its shells and the skin of its solids from
-// the mesh (MixedHybridFormulation, docs/mixed-hybrid-formulation-spec.md section 4.4): where the surface is not
-// smooth. The reading has no angle criterion, so the model says it. Given by the program that builds the snapshot;
-// every list sorted, without repetition, each edge with its lower grid point ID first.
+// the mesh (MixedHybridFormulation, docs/mixed-hybrid-formulation-spec.md section 4.4): where the surface is smooth,
+// where it folds, and which mesh line goes on into which. Where nothing is declared the model's ShellNormalAngle
+// decides the state of an edge and the rules of the reading the mesh lines. Given by the program that builds the
+// snapshot; every list sorted, without repetition, each edge with its lower grid point ID first.
 struct FormulationGeometry
 {
-    // Straight edges along which the surface of the shells may fold; the mesh lines that cross one end there.
+    // Puts the lists in the form the snapshot keeps them in: each edge with its lower grid point ID first, each
+    // continuation with its lower end first, every list sorted, without repetition. Throws std::invalid_argument
+    // for an edge of one grid point or a mesh line that names a grid point twice.
+    void normalise();
+
+    // Edges across which the surface (of the shells, of the skin of the solids) is smooth.
+    std::vector<EdgeSide> smoothEdges;
+    // Edges along which the surface folds, each keeping its own line (the rim of a cylinder closed by a flat end, the
+    // edges of a block, the rim of a bore); the mesh lines that would cross one end there.
+    std::vector<EdgeSide> sharpEdges;
+    // Straight edges along which the surface of the shells folds.
     std::vector<GridEdge> rawEdges;
     // Shell elements whose edges are all raw: facets.
     std::vector<std::int32_t> rawElements;
-    // Edges across which the skin of the solids is not smooth (the edges of a block, the rim of a bore).
-    std::vector<GridEdge> sharpEdges;
+    // The mesh lines declared, in place of the rules of the reading at the grid point and edge they name.
+    std::vector<LineContinuation> lineContinuations;
+    std::vector<LineEnd> lineEnds;
 
     friend bool operator==(const FormulationGeometry&, const FormulationGeometry&) = default;
 };
@@ -192,6 +220,26 @@ public:
     {
         return m_shellNormals ? &*m_shellNormals : nullptr;
     }
+    // The geometry declarations of the deck: the SurfaceEdge, SurfaceFacet and SurfaceLine cards (surfaceEdges,
+    // surfaceFacets, surfaceLines), each nullptr when the model has none. The formulation that reads its geometry
+    // from the mesh adds them to those of the program (formulationGeometry).
+    [[nodiscard]] const base::ContractReader* surfaceEdges() const noexcept
+    {
+        return m_surfaceEdges ? &*m_surfaceEdges : nullptr;
+    }
+    [[nodiscard]] const base::ContractReader* surfaceFacets() const noexcept
+    {
+        return m_surfaceFacets ? &*m_surfaceFacets : nullptr;
+    }
+    [[nodiscard]] const base::ContractReader* surfaceLines() const noexcept
+    {
+        return m_surfaceLines ? &*m_surfaceLines : nullptr;
+    }
+    // The output stations the Bar2Stations cards give to bars (barStations), or nullptr when the model has none.
+    [[nodiscard]] const base::ContractReader* barStations() const noexcept
+    {
+        return m_barStations ? &*m_barStations : nullptr;
+    }
     // The FreeBodySupport and FreeBodySupportSet points (dofSetsTable), read through its contract by the solution
     // drivers.
     [[nodiscard]] const base::ContractReader& supports() const;
@@ -261,6 +309,10 @@ private:
         std::optional<base::ContractReader> laminateSummary;
         std::optional<SectionTable> sections;
         std::optional<base::ContractReader> shellNormals;
+        std::optional<base::ContractReader> barStations;
+        std::optional<base::ContractReader> surfaceEdges;
+        std::optional<base::ContractReader> surfaceFacets;
+        std::optional<base::ContractReader> surfaceLines;
         std::optional<FastenerPiercingTable> fastenerPiercings;
         std::optional<base::ContractReader> supports;
         std::optional<base::ContractReader> connectionNodes;
@@ -303,6 +355,10 @@ private:
     std::optional<base::ContractReader> m_laminateSummary;
     std::optional<SectionTable> m_sections;
     std::optional<base::ContractReader> m_shellNormals;
+    std::optional<base::ContractReader> m_barStations;
+    std::optional<base::ContractReader> m_surfaceEdges;
+    std::optional<base::ContractReader> m_surfaceFacets;
+    std::optional<base::ContractReader> m_surfaceLines;
     std::optional<FastenerPiercingTable> m_fastenerPiercings;
     std::optional<base::ContractReader> m_supports;
     std::optional<base::ContractReader> m_connectionNodes;

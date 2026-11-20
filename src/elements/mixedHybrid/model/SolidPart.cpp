@@ -339,7 +339,13 @@ void SolidPart::readSkin(const EdgeProjection& projection)
     const std::vector<SkinFace> skin = skinFaces(x, cells);
     if (skin.empty())
         return;
-    const SkinReading reading = readSolidSkin(x, skin, m_input.sharpEdges);
+    SkinDeclarations declarations;
+    declarations.sharpEdges = m_input.sharpEdges;
+    declarations.smoothEdges = m_input.smoothEdges;
+    declarations.foldAngle = m_input.foldAngle;
+    declarations.declaredLines = m_input.declaredLines;
+    const SkinReading reading = readSolidSkin(x, skin, declarations);
+    m_skinStates = reading.states;
 
     // each edge: its conic (the mean of its readings) projected on the functions of the edge
     for (const auto& [key, conic] : reading.conics)

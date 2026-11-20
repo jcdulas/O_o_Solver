@@ -110,61 +110,15 @@ std::size_t SurfaceReconstruction::other(std::size_t e, std::size_t a, std::size
     return next[0] == b ? next[1] : next[0];
 }
 
-// The unit direction into element e, normal to its edge a − d.
-// Reference: Reconstruction::across.
-Vector3 SurfaceReconstruction::across(std::size_t e, std::size_t a, std::size_t d) const
+// The element that element e is smooth with across its edge a − d (Topology::partners): the other element of a
+// smooth edge of two; at a junction of more, the element that faces it; none across a sharp edge, where each side
+// ends. Across a raw edge the two elements keep each other, and the callers ask isRaw.
+// Reference: Reconstruction::facing (which has no sharp edge).
+std::optional<std::size_t> SurfaceReconstruction::facing(std::size_t e, std::size_t a, std::size_t d) const
 {
-    const ShellCorners& s = shell(e);
-    Vector3 centroid{};
-    for (std::size_t k = 0; k < s.count; ++k)
-        centroid = add3(centroid, scl3(position(s.grids[k]), 1.0 / static_cast<double>(s.count)));
-    const Vector3 ed = unit3(sub3(position(d), position(a)));
-    const Vector3 v = sub3(centroid, position(a));
-    return unit3(sub3(v, scl3(ed, dot3(v, ed))));
-}
-
-// The element that faces e across its edge a − d: the other element of an edge of two; at a junction of more, the
-// element whose direction into it is the most opposite, when e is the most opposite for it too.
-// Reference: Reconstruction::facing.
-std::optional<std::size_t> SurfaceReconstruction::facing(std::size_t e, std::size_t a, std::size_t d)
-{
-    const EdgeKey key = EdgeKey::of(a, d);
-    auto found = m_facing.find(key);
-    if (found == m_facing.end())
-    {
-        const std::vector<std::size_t>& es = m_topology.edgeElements[m_topology.indexOf(a, d)];
-        std::map<std::size_t, std::size_t> pair;
-        if (es.size() == 2)
-        {
-            pair[es[0]] = es[1];
-            pair[es[1]] = es[0];
-        }
-        else if (es.size() > 2)
-        {
-            std::vector<Vector3> dirs;
-            for (const std::size_t el : es)
-                dirs.push_back(across(el, key.lower, key.higher));
-            std::vector<std::size_t> best(es.size());
-            for (std::size_t i = 0; i < es.size(); ++i)
-            {
-                // the first of the most opposite directions
-                std::optional<std::size_t> bestOther;
-                for (std::size_t o = 0; o < es.size(); ++o)
-                    if (o != i && (!bestOther || dot3(dirs[i], dirs[o]) < dot3(dirs[i], dirs[*bestOther])))
-                        bestOther = o;
-                best[i] = *bestOther;
-            }
-            for (std::size_t i = 0; i < es.size(); ++i)
-            {
-                const std::size_t o = best[i];
-                if (best[o] == i && dot3(dirs[i], dirs[o]) < 0.0)
-                    pair[es[i]] = es[o];
-            }
-        }
-        found = m_facing.emplace(key, std::move(pair)).first;
-    }
-    const auto it = found->second.find(e);
-    if (it == found->second.end())
+    const std::map<std::size_t, std::size_t>& partners = m_topology.partners[m_topology.indexOf(a, d)];
+    const auto it = partners.find(e);
+    if (it == partners.end())
         return std::nullopt;
     return it->second;
 }
@@ -299,6 +253,13 @@ std::optional<SurfaceReconstruction::TransitionEdge> SurfaceReconstruction::tran
 std::map<std::size_t, bool> SurfaceReconstruction::candidatesAt(std::size_t a, std::size_t b)
 {
     std::map<std::size_t, bool> found;
+    // a declared line replaces the rules below for this edge at this grid: it goes on into the edges named, smoothly
+    if (const auto declared = m_input.declaredLines.find({a, b}); declared != m_input.declaredLines.end())
+    {
+        for (const std::size_t c : declared->second)
+            found.emplace(c, true);
+        return found;
+    }
     const std::vector<std::size_t>& es = elementsOf(a, b);
     if (!hasTriangle(a))
     {
@@ -325,9 +286,11 @@ std::map<std::size_t, bool> SurfaceReconstruction::candidatesAt(std::size_t a, s
         }
         return found;
     }
-    const bool boundary = es.size() == 1;
     for (const std::size_t e : es)
     {
+        // the edge bounds the surface on the side of e: the outline, a sharp edge, or a junction where no element
+        // faces e
+        const bool boundary = !facing(e, a, b);
         const std::pair<std::vector<RingStep>, bool> walk = ring(e, a, b);
         const std::vector<RingStep>& steps = walk.first;
         const bool closed = walk.second;
@@ -1177,9 +1140,9 @@ Vector3 SurfaceReconstruction::tangent(std::size_t a, std::size_t b)
     const double lineVariance = tangentUncertaintySquared(a, b);
     double variance = lineVariance;
     Vector3 t{};
-    if (owners.size() > 2)
+    if (owners.size() > 2 || m_topology.states[idx].state == EdgeState::Sharp)
     {
-        // a junction of more than two elements: the line is geometry for all of them
+        // a junction of more than two elements, or a sharp edge: the line is geometry for all of them
         t = line;
     }
     else

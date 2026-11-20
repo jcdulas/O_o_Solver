@@ -153,6 +153,38 @@ void ReplacedElementFamily::recoverUnderLineLoads(const elements::ElementBatchVi
     m_inner->recoverUnderLineLoads(view, kept, output, displacements, block);
 }
 
+std::vector<std::int64_t> ReplacedElementFamily::stationRows(const elements::ElementBatchView& view) const
+{
+    std::vector<std::int64_t> kept; // bounded by the station rows of the batch
+    for (const std::int64_t row : m_inner->stationRows(view))
+        if (!isReplaced(view.elementId(row)))
+            kept.push_back(row);
+    return kept;
+}
+
+void ReplacedElementFamily::recoverStationRows(const elements::ElementBatchView& view,
+                                               std::span<const std::int64_t> rows,
+                                               std::span<const elements::ElementLineLoad> loads,
+                                               elements::ElementOutput output,
+                                               const elements::NodalDisplacements& displacements,
+                                               elements::ElementResultBlock& block) const
+{
+    std::vector<std::int64_t> keptRows; // bounded by the rows given
+    for (const std::int64_t row : rows)
+        if (!isReplaced(view.elementId(row)))
+            keptRows.push_back(row);
+    std::vector<elements::ElementLineLoad> keptLoads; // bounded by the loads of the batch
+    for (const elements::ElementLineLoad& load : loads)
+        if (!isReplaced(view.elementId(load.elementRow)))
+            keptLoads.push_back(load);
+    if (keptRows.empty())
+    {
+        block.reset(m_inner->outputColumnsUnderLineLoads(output));
+        return;
+    }
+    m_inner->recoverStationRows(view, keptRows, keptLoads, output, displacements, block);
+}
+
 void ReplacedElementFamily::recoverLayers(const elements::ElementBatchView& view, elements::ElementRange range,
                                           elements::LayerOutput output,
                                           const elements::NodalDisplacements& displacements,

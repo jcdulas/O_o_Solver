@@ -1,6 +1,7 @@
 // Checks of what a glued contact reads of the shells of the mixed hybrid formulation (model/ShellPart.hpp): the
-// unknowns of an edge as moments of the motion of its points (edgeMoments), and the motion of a point that may lie
-// on an edge, where the rotation about the edge is that of the edge (pointRowsOnEdges).
+// unknowns of an edge as moments of the motion of its points (edgeMoments), the interior unknowns of a shell as the
+// projection of the motion of its points (interiorMoments), and the motion of a point that may lie on an edge,
+// where the rotation about the edge is that of the edge (pointRowsOnEdges).
 
 #include "CheckRunner.hpp"
 #include "ShellPartCheckSupport.hpp"
@@ -108,6 +109,41 @@ CHECK_CASE("shellpart: the unknowns of an edge are the moments of the motion of 
                           what + ": the displacement unknowns of the edges, error " + sci(displacementError / scale));
             runner.expect(rotationError <= 1e-10 * scale,
                           what + ": the rotation unknowns of the edges, error " + sci(rotationError / scale));
+        }
+}
+
+CHECK_CASE("shellpart: the interior unknowns of a shell are the projection of the motion of its points")
+{
+    const std::array<mh::SpaceVector, 3> a{{{1e-3, 2e-4, 3e-4}, {-3e-4, -5e-4, 1e-4}, {2e-4, -4e-4, 6e-4}}};
+    const mh::SpaceVector b{1e-4, -2e-4, 3e-4};
+    for (const bool isCurved : {false, true})
+        for (const bool triangles : {false, true})
+        {
+            const mh::ShellPart part = partOf(isCurved ? curvedPanel() : skewedPlate(), triangles);
+            const mh::Vector exact = affineVector(part, a, b);
+            const double scale = maxAbsOf(exact);
+            const std::string what = std::string(isCurved ? "cylinder panel" : "flat plate") +
+                                     (triangles ? ", triangles" : ", quadrilaterals");
+            double error = 0.0;
+            std::size_t count = 0;
+            for (std::size_t ie = 0; ie < part.input().shells.size(); ++ie)
+            {
+                const mh::ShellPart::InteriorMoments moments = part.interiorMoments(ie);
+                count += moments.unknowns.size();
+                for (std::size_t i = 0; i < moments.unknowns.size(); ++i)
+                {
+                    const std::size_t c = i % 3;
+                    double value = valueOf(moments.terms[i], exact);
+                    for (std::size_t q = 0; q < moments.points.size(); ++q)
+                    {
+                        const mh::SpaceVector& x = moments.points[q];
+                        value += moments.weights[i][q] * (b[c] + a[c][0] * x[0] + a[c][1] * x[1] + a[c][2] * x[2]);
+                    }
+                    error = std::max(error, std::fabs(value - exact[moments.unknowns[i]]));
+                }
+            }
+            runner.expect(count > 0, what + ": interior unknowns");
+            runner.expect(error <= 1e-10 * scale, what + ": the interior unknowns, error " + sci(error / scale));
         }
 }
 

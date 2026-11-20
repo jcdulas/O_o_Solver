@@ -13,8 +13,10 @@
 //   offset ZOFFS;
 // - the passage between the element frame and the displacement systems of the grid points, with the offset
 //   (ShellNodeFrames: u_reference = u + θ × (ZOFFS n); section 11 of the ShellQuad4 document);
-// - the output rows (ShellRecovery's tables): at the centre only, in the reference frame (x along G1→G2); a
-//   STRESS(CORNER) request gets the centre rows;
+// - the output rows (ShellRecovery's tables), in the reference frame (x along G1→G2): those of the centre, and for
+//   an output asked with its corners (RecoveryOutput::hasCorners: the CornerResults describer of a request) those of
+//   the four grid points of a ShellQuad4 after them (section 12 of its document: the values of the 2 × 2 points read
+//   at the corners); a ShellTria3 has its centre rows only, and the plies of a laminate are those of the centre;
 // - the design derivatives in closed form, by the complex step (ShellScalar.hpp) through the same kernels.
 //
 // Choices of this project:

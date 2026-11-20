@@ -8,7 +8,8 @@
 // Run: node --test wasm/test/validation/shell-dynamics.test.mjs
 
 import assert from "node:assert/strict";
-import { CLASSIC, CRITERIA, MIXED, nodal, real, runModel, test } from "./support.mjs";
+import { CLASSIC, CRITERIA, MIXED, innerEdges, nodal, prepared, real, runModel, surfaceRecords, test }
+  from "./support.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Helpers
@@ -49,7 +50,9 @@ function jitter(i, j, salt) {
 // quadrilaterals are then warped); the grid points of the columns of `straightColumns` move in t only and those of
 // the rows of `straightRows` in s only. closed: the mesh closes on itself in s (a cylinder). node(i, j) is the grid
 // point of column i and row j, points the grid points with their parameters and positions, elements the element IDs,
-// centroid(element) the mean of the corners of an element.
+// centroid(element) the mean of the corners of an element. smooth() gives the records that declare the surface
+// smooth, as a preprocessor writes them for a curved surface without fold: every edge between two elements, whatever
+// the angle the elements turn by (spec section 4.4).
 function mesh({ nx, ny, map, shape = "ShellQuad4", distortion = 0, closed = false, property = 1,
   straightColumns = [], straightRows = [] }) {
   const columns = closed ? nx : nx + 1;
@@ -89,13 +92,14 @@ function mesh({ nx, ny, map, shape = "ShellQuad4", distortion = 0, closed = fals
     const grids = corners.get(element).map((id) => byId.get(id));
     return ["x", "y", "z"].map((axis) => grids.reduce((sum, grid) => sum + grid[axis], 0) / grids.length);
   };
-  return { lines, node, points, elements, corners, centroid, nx, ny, shape };
+  const smooth = () => surfaceRecords({ smoothEdges: innerEdges([...corners.values()]) });
+  return { lines, node, points, elements, corners, centroid, smooth, nx, ny, shape };
 }
 
-// The text of a model file.
+// The text of a model file, with the declarations of its geometry (`prepared`).
 function deck(solution, caseLines, modelLines) {
-  return ["[executive]", `SolutionSequence;${solution}`, "[case]", ...caseLines, "[model]", ...modelLines, ""]
-    .join("\n");
+  return ["[executive]", `SolutionSequence;${solution}`, "[case]", ...caseLines, "[model]",
+    ...prepared(modelLines), ""].join("\n");
 }
 
 const MODES_CASE = ["SubcaseStart;1", "SinglePointConstrSelection;1", "EigenMethodSelection;3"];
@@ -468,7 +472,7 @@ const CYLINDER = { radius: 1.0, length: 2.0 };
 function cylinderModes({ nt, nz, thickness, shape, distortion, count }) {
   const m = mesh({ nx: nt, ny: nz, closed: true, shape, distortion, map: (s, t) => [
     CYLINDER.radius * Math.cos(2 * Math.PI * s), CYLINDER.radius * Math.sin(2 * Math.PI * s), CYLINDER.length * t] });
-  const lines = [...m.lines, shellProp(thickness), isoMat(), eigenMethod(count)];
+  const lines = [...m.lines, ...m.smooth(), shellProp(thickness), isoMat(), eigenMethod(count)];
   for (let i = 0; i < nt; ++i) lines.push(`SinglePointConstrList;1;12;${m.node(i, 0)};${m.node(i, nz)}`);
   return deck(103, MODES_CASE, lines);
 }
@@ -498,9 +502,11 @@ const CYLINDER_MODE_CASES = [
 
 for (const { name, thickness, nt, nz, shape, distortion } of CYLINDER_MODE_CASES)
   test(`modes of a cylinder between diaphragms, ${name}: the harmonics of the shear-deformable shell`, () => {
-    // The rigid translation along the axis is free (one zero frequency), then four pairs of harmonics.
-    const { values, run } = eigenRows(cylinderModes({ nt, nz, thickness, shape, distortion, count: 9 }), MIXED,
-      "modes");
+    // The rigid translation along the axis is free (one zero frequency), then four pairs of harmonics. With 16
+    // elements round the cylinder each turns by 22.5 degrees, more than the fold angle of the model: the model file
+    // declares the surface smooth, as a preprocessor declares it.
+    const text = cylinderModes({ nt, nz, thickness, shape, distortion, count: 9 });
+    const { values, run } = eigenRows(text, MIXED, "modes");
     const check = measurements();
     const harmonics = cylinderHarmonics(thickness, 4);
     check.small("rigid-body frequency", Math.sqrt(Math.abs(values[0])), Math.sqrt(values[1]), 1e-3);
@@ -529,7 +535,7 @@ for (const { name, nt, nz, shape, distortion } of RING_MESHES)
     const [radius, width, thickness] = [1.0, 0.1, 0.01];
     const m = mesh({ nx: nt, ny: nz, closed: true, shape, distortion, map: (s, t) => [
       radius * Math.cos(2 * Math.PI * s), radius * Math.sin(2 * Math.PI * s), width * t] });
-    const lines = [...m.lines, shellProp(thickness), isoMat(0), eigenMethod(16)];
+    const lines = [...m.lines, ...m.smooth(), shellProp(thickness), isoMat(0), eigenMethod(16)];
     const text = deck(103, [...FREE_MODES_CASE, "DisplacementOutput;All"], lines);
     const { values, run } = eigenRows(text, MIXED, "modes");
     const check = measurements();
@@ -605,7 +611,7 @@ function cylinderBuckling({ nt, nz, shape, distortion, radius = 1.0, thickness =
   const length = (waves * Math.PI * Math.sqrt(radius * thickness)) / (12 * (1 - NU ** 2)) ** 0.25;
   const m = mesh({ nx: nt, ny: nz, shape, distortion, map: (s, t) => [
     radius * Math.cos((Math.PI * s) / 2), radius * Math.sin((Math.PI * s) / 2), length * t] });
-  const lines = [...m.lines, shellProp(thickness), isoMat(), eigenMethod(4)];
+  const lines = [...m.lines, ...m.smooth(), shellProp(thickness), isoMat(), eigenMethod(4)];
   for (const { id, i, j, x, y } of m.points) {
     const isEnd = j === 0 || j === nz;
     for (const set of [1, 3]) {
@@ -863,7 +869,8 @@ for (const relief of ["-1", "-2"])
       const [radius, length, thickness, traction] = [1.0, 1.0, 0.01, 100.0];
       const m = mesh({ nx: 6, ny: 6, shape, distortion, map: (s, t) => [
         radius * Math.cos((Math.PI * s) / 2), radius * Math.sin((Math.PI * s) / 2), length * t] });
-      const lines = [...m.lines, shellProp(thickness), isoMat(), `Parameter;InertiaRelief;${relief}`];
+      const lines = [...m.lines, ...m.smooth(), shellProp(thickness), isoMat(),
+        `Parameter;InertiaRelief;${relief}`];
       for (const element of m.elements)
         lines.push(`FacePressureLoad;2;${element};${real(traction)};;;;;;0;0.6;0.;0.8`);
       if (relief === "-1") lines.push(`FreeBodySupport;${m.node(0, 0)};123;${m.node(6, 0)};13;${m.node(0, 6)};1`);
@@ -901,7 +908,8 @@ for (const { name, nt, nz, shape, distortion, relief } of [...RING_MESHES.map((r
     const [radius, width, thickness, force] = [1.0, 0.1, 0.01, 1.0];
     const m = mesh({ nx: nt, ny: nz, closed: true, shape, distortion, map: (s, t) => [
       radius * Math.cos(2 * Math.PI * s), radius * Math.sin(2 * Math.PI * s), width * t] });
-    const lines = [...m.lines, shellProp(thickness), isoMat(0), `Parameter;InertiaRelief;${relief}`];
+    const lines = [...m.lines, ...m.smooth(), shellProp(thickness), isoMat(0),
+      `Parameter;InertiaRelief;${relief}`];
     if (relief === "-1")
       lines.push(`FreeBodySupport;${m.node(0, 0)};123;${m.node(nt / 4, 0)};13;${m.node(0, nz)};2`);
     for (let j = 0; j <= nz; ++j) {
@@ -1240,7 +1248,8 @@ function pressurisedSector({ degrees, shape, distortion }) {
   const m = mesh({ nx: 6, ny: 3, shape, distortion, map: (s, t) => [
     radius * Math.cos(sector * s), radius * Math.sin(sector * s), length * t] });
   const lines = ["CylindricalFrame2;7;;0.;0.;0.;0.;0.;1.;1.;0.;0.",
-    ...m.lines.map((line) => (line.startsWith("Node;") ? `${line};7` : line)), shellProp(thickness), isoMat(),
+    ...m.lines.map((line) => (line.startsWith("Node;") ? `${line};7` : line)), ...m.smooth(),
+    shellProp(thickness), isoMat(),
     `ShellPressureLoad;2;${real(pressure)};1;Through;${m.elements.length}`];
   for (const { id, i, j } of m.points) {
     const straight = i === 0 || i === 6;

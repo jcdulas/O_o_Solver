@@ -172,20 +172,58 @@ Where the groups meet, some unknowns follow others (document 34, section 8.2; do
 linear relation: dependent unknown = combination of independent unknowns.
 
 1. An edge of the solids that is an edge of shells: its functions follow the trace of the shell, by the L2 projection
-   of that trace less the linear part of its two grid points.
+   of that trace less the linear part of its two grid points. Where none of the shells of the edge lies on a face of
+   the solids (a plate that continues the solids, a fin that stands on them), the trace of the shell is instead that
+   of the mean of the skin of the solids over the thickness of the shell (below).
 2. A face of the solids covered by a shell (a triangle, a quadrilateral, or half of a quadrilateral whose diagonal is
    an edge of the solids): its functions follow the displacement of the shell, by the same projection less what the
    grid points and the edges carry.
 3. A line alone on an edge of the solids: its displacement functions follow those of the solid edge.
-4. The rotation about an edge of shells or of lines alone that solids have, where no shell of the edge lies on a face
-   of the solids (a fin standing on a block, a beam along its edge): the edge rotation unknowns follow half the curl
-   of the solids, averaged over the solids of the edge.
+4. The rotation about an edge of shells or of lines alone that solids have, where a shell of the edge does not lie
+   on a face of the solids (a fin standing on a block, a beam along its edge): the edge rotation unknowns follow the
+   rotation of the fibre of that shell read on the skin of the solids over its thickness (below); for the lines
+   alone, and where the skin does not hold the fibre, half the curl of the solids, averaged over the solids of the
+   edge.
 5. At a grid point of line elements, the rotation of the lines in a direction where they have no stiffness (a rod; a
    bar bending in one plane) is written on the other components.
 6. A line alone that ends at a grid point of shells where no line lies on a shell edge: its rotation Λ is the mean
    rotation of the shells at their corners there.
 
 A line alone that ends at a single grid point of a solid is pinned there: its Λ is its own.
+
+**A shell on solids, over its thickness** (not in the reference, whose solids "are not told the thickness of the
+shell": its tie 1 takes the trace of the solids on the line of the edge and its tie 4 their mean rotation there, so
+that the force and the moment of the shell enter the solids as a force and a couple on a line, under which a
+continuum gives way the more the finer its mesh: section 12). At each point X(s) of the edge the fibre of the shell is
+the segment X + z n, n the normal of the shell and z from z0 − h / 2 to z0 + h / 2 (h the thickness, z0 the offset of
+the section). The displacement u of the skin of the solids is read along it: each point is placed on the face of the
+skin that holds it (the point of the face closest to it, within 1e-6 h), and the fibre is cut where it crosses the
+sides of the faces, each piece taking a five-point Gauss rule, so that the integrals below are those of the skin
+itself, a polynomial on each face. Then:
+
+- tie 4: θ · t = ∫ (z − z̄) u · (t × n) dz / ∫ (z − z̄)² dz, the least squares slope of the displacement across the
+  fibre (a rotation ω moves the fibre by z ω × n, and (ω × n) · (t × n) = ω · t). It is the moment of the
+  displacement of the fibre about its middle: the couple M of the shell enters the solids as the traction
+  12 M z / h³, linear over the thickness. For a uniform strain it is the rotation of the fibre, the mean rotation
+  plus the shear between the fibre and the conormal. It is read where the skin holds at least a quarter of the
+  fibre at every point of the edge rule;
+- tie 1: the moments of the displacement of the edge of the shell are those of the mean of the skin over the fibre,
+  q(l, c) = ∫ W ū_c P_l(2s − 1) ds with ū = (1 / h) ∫ u dz: the force of the shell enters the solids as a traction
+  uniform over the thickness. The relation is written on the functions of the edge of the solids, as tie 1 is
+  (their share of the mean inverted). It applies where no shell of the edge lies on a face of the solids, the skin
+  holds the whole fibre at every point of the edge, and the section has no offset.
+
+Both pass a rigid motion exactly, and tie 1 a uniform strain; in a uniform strain tie 4 reads the rotation of the
+fibre, that of the surface the shell stands on, where the reference's has the mean rotation of the solids (they
+differ by the shear between the fibre and the conormal). Where the skin curves across the fibre, its mean over the
+thickness is not its value on the line of the edge: under a curvature κ of the solids, a fin stands ν κ h² / 24 off
+the line of its foot (the anticlastic curvature of the face under it), a displacement of order (h / L)² of the
+bending's (2.5e-6 on the fin of the validation suite). They need the fibre in the skin: a shell whose normal at the
+edge is not tangent to the skin of the solids (an oblique fin), or whose edge is inside the solids, keeps the ties
+on the line. Measured on a strip of solids continued by shells (`wasm/test/validation/mixed-meshes.test.mjs`): the
+tip deflection under a pressure and the stiffness in tension are those of the beam to 1e-5 with 4 × 1 × 2, 8 × 1 × 2,
+8 × 1 × 4 and 12 × 1 × 6 solids; on the line they were 1.26, 1.41, 2.08 and (16 × 1 × 6) 3.82 times the deflection, and
+0.932 to 0.896 of the stiffness.
 
 ### 3.5 Unknowns at k = 4
 
@@ -213,7 +251,8 @@ These are properties of the formulation; the port reproduces them and does not t
   - imposed curvatures on irregular meshes whose inner edges are read smooth;
   - the membrane force at the centre of unsymmetric laminates at 4 × 4 elements.
 - The geometry must be exact, or G1, where the shell is smooth: any kink between two elements is a fold for this
-  shell (section 4.4).
+  shell. Where the surface is smooth is decided by the fold angle of the model and by the declarations (section 4.4);
+  which mesh line goes on into which is declared where the rules of the reading are not the ones wanted.
 - Two shell triangles on a quadrilateral face of a solid are tied to it by their grid points and edges only. A line
   alone on an edge with a mid-side node is straight.
 - A rotation held at one grid point of shells with no line element there is no unknown of the shells: it is read
@@ -223,18 +262,14 @@ These are properties of the formulation; the port reproduces them and does not t
   reproduced by the reference on the same meshes:
   - distorted triangles on a curved surface keep kinks of 1 to 3 degrees however fine the mesh, which the shell takes
     as folds: the Scordelis-Lo roof is 30 % off and a pressurised cylinder up to 50 %, without converging. Such a
-    mesh is warned (`geometry-kink`, section 10.5); its triangles are declared raw, or given mid-side nodes, or
-    replaced by quadrilaterals, which read the same surfaces to 0.3 % when distorted;
-  - a corner of the outline of the shells where a triangle meets another element is read as an outline that goes on:
-    its two edges are rounded in the surface, and a triangle left without an angle there is refused
-    (`degenerate-geometry`); the edges of the corner are declared raw (warned by `geometry-rounding`);
-  - on a skin of solids, a mesh line of three grid points on a flat face is read as a curve when its middle grid
-    point is off-centre: faces two cells wide lose the exactness of the linear stress states (1e-6 to 4e-6) and a
-    strongly zigzagging line is refused as a fold; three cells or more per side, mid-side nodes or sharp edges
-    avoid it;
-  - a shell that continues solids, or stands on them (tie 4), passes its moment to them along a line: the solids are
-    not told the thickness of the shell, and the joint softens as the solids are refined (a cantilever continued by
-    solids deflects 1.26 to 3.8 times too much); a soft shell on stiff solids is exact;
+    mesh is warned (`geometry-kink`, section 10.5); its triangles are given mid-side nodes, or replaced by
+    quadrilaterals, which read the same surfaces to 0.3 % when distorted. Declared raw (facets), the roof is within
+    0.1 %, but a pressurised cylinder and the frequencies of a cylinder are not within their criteria: facets are no
+    general remedy;
+  - a shell that continues solids, or stands on them, with its fibre out of their skin (an oblique fin, an edge inside
+    the solids), and a line alone along an edge of solids, pass their moment to them along a line (section 3.4): the
+    joint softens as the solids are refined. A shell whose fibre lies in the skin is read over its thickness and does
+    not;
   - an inertia, a spring or a moment at a grid point of shells acts on their mean rotation there: the answer to a
     concentrated moment is 1 to 2.5 % softer or stiffer than a fine `ClassicFormulation` model, whose own answer
     depends on its mesh;
@@ -242,6 +277,21 @@ These are properties of the formulation; the port reproduces them and does not t
     opposite to the thick-wall solution (0.5 % at R / t = 100);
   - the rotary inertia of a line acts on the slope of its axis, not on the rotation of its section: the higher
     bending frequencies of a short shear-flexible beam are 0.3 to 1.1 % below Timoshenko's.
+- What the mesh alone does not say is no limit of the formulation once the model file declares it (section 4.4).
+  Measured by the same suite, on model files that carry the declaration as a preprocessor writes it:
+  - a corner of the outline of the shells where a triangle meets another element is read as an outline that goes on
+    when nothing is declared: its two edges are rounded in the surface (3.9 % of the pressure on a flange lost), and
+    a triangle left without an angle there is refused (`degenerate-geometry`) or warned (`geometry-rounding`). With
+    the line of the outline declared ended at the corner, or its two edges raw, the plate carries its area whatever
+    the corner its triangles start from;
+  - on a skin of solids, a mesh line of three grid points on a flat face is read as a curve when its middle grid
+    point is off-centre: the linear stress states lose 1e-6 to 4e-6 of exactness with two or three cells along a
+    side. With every line of such a plane declared ended at every grid point each edge is straight, and the states
+    are exact (1e-13);
+  - the outline of a rib on a cambered skin declared raw is straight, a roof at each rib where the skin has a
+    camber: an in-plane displacement of a wing box is then 51 % from the `ClassicFormulation` value on a finer mesh.
+    Declared sharp for the rib alone, the skin goes on across the rib, the outline follows the camber, and the
+    same displacement is 0.05 % from that value (the other tip displacements under 1 %, for 2 % before).
 - A force at a grid point of shells or solids is a concentrated force on a continuum of degree 4: the grid point
   moves more than the section around it (the displacement under a point force has no limit as the element
   resolves it), and the stresses at that grid point mean nothing. The rest of the structure is not affected, and the
@@ -302,46 +352,103 @@ These are properties of the formulation; the port reproduces them and does not t
 
 ### 4.4 Declarations of the geometry
 
-The surface of the shells is read from the mesh by the reading of the reference: smooth and raw edges, rational
-patches, normals fitted at the grid points (documents 25 and 26 of the crate). The skin of the solids is read the same
-way, across their sharp edges. The reading has no angle criterion, by the owner's choice: the model declares where
-the surface is not smooth.
+The surface of the shells is read from the mesh by the reading of the reference: rational patches, edges that follow
+their mesh lines, normals fitted at the grid points (documents 25 and 26 of the crate). The skin of the solids is read
+the same way. What decides where the surface is smooth is not the reference's: the owner's decisions of 20 November
+2026 (section 15) replace its convention that every edge is smooth unless declared raw.
 
-| Declaration | Meaning |
-|---|---|
-| raw edge (two grid points) | a straight edge along which the surface may fold; the mesh lines that cross it end there |
-| raw element | its edges are raw: a facet |
-| sharp edge of a solid skin (two grid points) | the skin is not smooth across it (edges of a block, rim of a bore); the edge follows its own line and may be curved |
+**States.** An edge of two elements or more has one of three states:
 
-Two rules of the reading of the mesh lines are not in the reference (`SurfaceReconstruction::candidatesAt`):
+| State | Across the edge | Along the edge | Mesh lines that cross it |
+|---|---|---|---|
+| smooth | the surface keeps one tangent plane | the edge follows its mesh line | go on |
+| sharp | the surface folds | the edge follows its own mesh line and may be curved (the rim of a cylinder closed by a flat end, the rim of a bore) | end there |
+| raw (shells only) | the surface folds | the edge is straight | end there |
+
+**The fold angle.** Where nothing declares an edge, the model parameter `ShellNormalAngle` decides (20 degrees by
+default, the angle within which the `ClassicFormulation` shells share a normal at a grid point):
+
+- the measure is the angle between the normals of the two elements at each of the two grid points of the edge; the
+  normal of a quadrilateral at a corner is the cross product of its two edges there (that of its bilinear surface,
+  which follows a warped element), and the numbering sense of the elements plays no part;
+- the edge is smooth when both angles are at most the fold angle, sharp otherwise; a zero or negative angle makes
+  every such edge sharp; the angle never makes an edge raw;
+- at an edge of three shells or more, each shell is paired with the shell most opposite to it across the edge, when
+  the choice is mutual (the reference's rule); a pair is smooth under the same test, and a shell without a smooth
+  partner ends at the junction as at a sharp edge;
+- on the skin of the solids the same test, between the normals of the two faces of the edge.
+
+A curved surface meshed with elements that each turn by more than the fold angle is therefore read as facets, with a
+warning (`geometry-fold-by-angle`, section 10.5); a fold shallower than the angle is read smooth, and rounded.
+
+**Declarations.** They come before the angle, edge by edge, by grid point and element IDs:
+
+| Declaration | Form | Meaning |
+|---|---|---|
+| smooth edge | `[g1, g2]` or `[g1, g2, element]` | the surface is smooth across the edge |
+| sharp edge | `[g1, g2]` or `[g1, g2, element]` | the surface folds along the edge, which keeps its own line |
+| raw edge | `[g1, g2]` | an edge of shells: the surface folds along it and the edge is straight |
+| raw element | `element` | every edge of this shell that nothing declares smooth or sharp is raw: a facet |
+| line continuation | `[g1, g, g2]` | at grid point g, the mesh line of edge g1 - g goes on into edge g - g2, and back |
+| line end | `[g1, g]` | the mesh line of edge g1 - g ends at grid point g |
+
+- A smooth or sharp edge and a declared line apply to every surface that has the edges they name: the shells, the
+  skin of the solids, or both where a shell lies on the skin.
+- The element of a smooth or sharp edge names the side of that shell at an edge of three shells or more: sharp, the
+  shell is smooth with no other across the edge; smooth, it is smooth with the shell that faces it.
+- A declared line replaces the rules of the reading for the edge and the grid point it names: only the continuations
+  declared there hold. Several are allowed at a junction, one per sheet.
+- The order is: a declaration of the edge, then a raw element, then the fold angle.
+
+The solver holds no other criterion: which mesh line goes on into which, where the outline turns a corner, is the
+preprocessor's to decide and declare. Without a declaration the rules of the reading apply
+(`SurfaceReconstruction::candidates`), those of the reference with these changes:
 
 - A mesh transition on a boundary that goes straight on. Between quadrilaterals a line goes on across one
   quadrilateral on each side (a quadrilateral is a quarter of a turn), so three quadrilaterals between two edges
-  that no element faces across (the outline, or a junction seen from one of its sides) are a re-entrant corner. The
-  same three quadrilaterals are what a mesh transition leaves on a straight boundary. They are told apart by the
-  corners of the three elements at the grid point: under 225 degrees in all, the boundary goes on and the two lines
-  inside end there. Read as a corner, a transition of a rib on its junction with a skin bent the straight junction
-  towards the mesh line inside the rib (kinks of 27 degrees between coplanar shells, a skin seven times too stiff).
+  that no element faces across (the outline, a sharp edge, or a junction seen from one of its sides) are a
+  re-entrant corner. The same three quadrilaterals are what a mesh transition leaves on a straight boundary. They
+  are told apart by the corners of the three elements at the grid point: under 225 degrees in all, the boundary goes
+  on and the two lines inside end there. Read as a corner, a transition of a rib on its junction with a skin bent
+  the straight junction towards the mesh line inside the rib (kinks of 27 degrees between coplanar shells, a skin
+  seven times too stiff).
 - A side of a junction or of the outline that has quadrilaterals only at a grid point is read as between
   quadrilaterals, whatever the other sides have. The reference takes the rule of the grid points that have a
   triangle as soon as one element at the grid point is a triangle, on any side: a re-entrant corner of three
   quadrilaterals beside a triangle of another surface was rounded (the outline going round the corner).
+- An edge that no element faces across on the side of one of its elements (a sharp edge, a side of a junction) is a
+  boundary of that side: with triangles there, its line goes on by the rule of the outline.
 
-The input format has no card for these declarations yet. Phase 2 takes them from the program, as the formulation
-choice is taken:
+**How they are given.** Two ways, which add up; where both name the same edge or the same mesh line, the program
+wins, as for the choice of the formulation:
 
-- `SnapshotBuilder::setFormulationGeometry` and `api::ModelInput`;
-- in JavaScript, `modelFromReader(oor, deck, { formulationGeometry: { rawEdges: [[g1, g2], ...], rawElements: [...],
-  sharpEdges: [[g1, g2], ...] } })`, with grid point and element IDs;
-- the declarations enter the snapshot's identity, as the formulation choice does.
+- the program: `SnapshotBuilder::setFormulationGeometry`, `api::ModelInput::setFormulationGeometry`, and in
+  JavaScript `modelFromReader(oor, deck, { formulationGeometry: { smoothEdges, sharpEdges, rawEdges, rawElements,
+  lineContinuations, lineEnds } })`;
+- the deck, by three cards of the O_o model format, which the solver reads as the tables `surfaceEdges`,
+  `surfaceFacets` and `surfaceLines`:
 
-The declarations come from the program only; the reader's data contract does not change (section 15, decision 3).
+  | Record | Meaning |
+  |---|---|
+  | `SurfaceEdge;id;g1;g2;state;element` | `state` is `Smooth`, `Sharp` or `Raw`; `element` is optional, and not allowed with `Raw` |
+  | `SurfaceFacet;element` | a raw element |
+  | `SurfaceLine;id;g1;g;g2` | with g2 a line continuation; without it, the line of edge g1 - g ends at g |
 
-The declarations are mandatory (section 15, decision 2): a model with shells or solids in the new formulation and no
-declarations is refused (`geometry-declarations-missing`). An empty declaration (`formulationGeometry: {}`) is
-accepted and says that every edge is smooth, the reference's convention; a fold that is not declared is then
-rounded. The geometry report (section 10.5) shows the largest kink and the largest rounding per edge. A declaration
-that names an edge or element that is not in the model is refused (`geometry-declaration-unknown`).
+The declarations enter the identity of the model of the formulation, as the formulation choice does.
+
+**Mandatory.** A model with shells or solids in the new formulation and no declaration at all is refused
+(`geometry-declarations-missing`). An empty declaration is accepted and says that the fold angle decides every edge
+and the rules of the reading every mesh line: `formulationGeometry: {}` from the program,
+`Parameter;GeometryDeclarations;Given` in a deck without any of the three cards.
+
+| Refusal | Case |
+|---|---|
+| `geometry-declarations-missing` | no declaration, from the program or from the deck |
+| `geometry-declaration-unknown` | a declaration names an edge, an element or two edges that neither the shells nor the solids have |
+| `geometry-declaration-conflict` | an edge side declared both smooth and sharp, an edge declared raw and also smooth or sharp, a mesh line both ended and continued at one grid point |
+
+What the preprocessor has to detect and declare, situation by situation, is specified for it in
+`O_o_Viewer/docs/geometry-declarations.md`.
 
 ### 4.5 Choosing the formulation
 
@@ -710,6 +817,10 @@ welds, glue) know the pierced element by its ID or its face, not by a batch row:
   - an edge of shells, with the points of its rule (2k + 4) and its unknowns as moments of the motion
     (`ShellPart::edgeMoments`): the displacement unknown (l, c) is ∫ W u_c P_l(2s − 1) ds, the rotation unknown l is
     (2l + 1) ∫ W² (θ · X_s) P_l(2s − 1) ds, as the supports along an edge take them (section 5.6);
+  - the interior of a shell, with the points of the rule of the element and its interior displacement unknowns as
+    the projection that gives the element its map (`ShellPart::interiorMoments`): with u = P / W, the interior
+    coefficients of P are G⁻¹ ∫ N_interior (W u − Σ_boundary N_i x_i), what the corners and the edges carry taken
+    out;
   - an edge or a face of the skin of the solids, with the points of its projection (12 along an edge, 10 per
     direction on a face) and its functions as the projections of ties 1 and 2 (`SolidPart::skinTraces`): the
     coefficient m of an edge is Σ_p a(m, p) u(s_p) + a0[m] u(lower grid) + a1[m] u(higher grid), that of a face
@@ -729,7 +840,9 @@ computes these rows (`boundaryRow`) and `assembly/FormulationConstraints` takes 
 in the place of the edges that follow a relation of the model: the condensed path, the design sensitivities and
 the elimination see them as they see those. The edges and the faces of the skin of glued solids are tied the same
 way: each of their functions is made the projection above of the motion of the face under it (a solid has no
-rotation unknown). The interior unknowns of the glued shells stay free.
+rotation unknown). The interior displacement unknowns of a glued shell whose corners are all on the glued surface
+follow the face too, by the projection above: the whole displacement of the glued sheet is then that of the face
+under it, and only its shear and rotation unknowns stay its own.
 
 Measured against closed forms on strips of 200 × 40 × 2 mm glued face to face, ten cells of 20 mm under twelve of
 16.7 mm (`wasm/test/validation/glue.test.mjs`, section 5; the ratio to the closed form, `ClassicFormulation` then
@@ -737,24 +850,32 @@ this formulation):
 
 | Joint | Classic | Mixed hybrid |
 |---|---|---|
-| cantilever of two glued layers, both clamped: end deflection | 1.013 | 1.001 |
-| the same, the upper layer held by the glue alone | 1.039 | 1.007 |
+| cantilever of two glued layers, both clamped: end deflection | 1.013 | 1.000 |
+| the same, the upper layer held by the glue alone | 1.039 | 1.003 |
 | the same, the two layers on one mid-surface (they bend side by side) | 0.996 | 1.000 |
-| lap splice under an end force: end deflection | 1.022 | 1.006 |
+| lap splice under an end force: end deflection | 1.022 | 1.004 |
 | lap splice pulled along its length: stretch | 1.000 | 1.008 |
 | web glued by its rotations on a thick skin, pushed at its top | 1.000 | 1.009 |
-| first frequency of a simply supported beam of two glued layers | 0.979 | 0.997 |
+| first frequency of a simply supported beam of two glued layers | 0.979 | 0.999 |
 
-The second row on other meshes (cells of the lower layer by cells of the upper one): 1.012 and 1.006 on 10 × 2 and
-20 × 4 cells that face each other, 1.007, 1.004 and 1.003 on 10 × 2 by 12 × 3, 20 × 4 by 24 × 6 and 40 × 8 by 48 × 12,
-1.011 and 1.016 on 12 × 3 by 10 × 2 and 24 × 6 by 20 × 4. What the two earlier ties gave on the cases of the table:
+The second row on other meshes (cells of the lower layer by cells of the upper one): 1.004 and 1.003 on 10 × 2 and
+20 × 4 cells that face each other, 1.003, 1.003 and 1.003 on 10 × 2 by 12 × 3, 20 × 4 by 24 × 6 and 40 × 8 by 48 × 12,
+1.004 and 1.013 on 12 × 3 by 10 × 2 and 24 × 6 by 20 × 4. What the earlier ties gave on the cases of the table:
 
 - the grid points alone, the edges between them free: 1.015, 1.280, 1.000, 1.042, 1.094 and 0.976 (no web: a
   single line of tied grid points was a hinge). The layers slip between their tied points, and a layer held by the
   glue alone beside a clamp slips at its end (1.157 and 1.087 on cells two and four times smaller);
 - the edges carried along their chords, as between the grid points of a rigid element: 0.719 for the first row,
   0.398 for the third and 1.167 for the frequency. The edges of the glued layer stay straight on a layer that
-  bends.
+  bends;
+- the grid points and the edges, the interiors of the glued shells free: 1.001, 1.007, 1.000, 1.006, 1.008, 1.009
+  and 0.997 (1.012 to 1.003 and 1.016 on the other meshes of the second row).
+
+The relations of the edges and of the interior of a glued element have hundreds of terms each, tens of them coupled
+to one another through the element: `assembly/MsetElimination` sums Gmᵀ·K̄mm·Gm over the coupled dependent DOFs
+first (K̄mm·Gm, then the product with Gmᵀ) in place of pair by pair, which costs the product of the lengths of two
+rows for every pair. The cantilever of the table then takes 5 s for 27 (8 s with the interiors free, pair by pair),
+and the same one on 40 × 8 cells under 48 × 12, 116 s for 626.
 
 Two blocks of solids of 100 × 40 × 20 mm glued end to end, sections of 1 × 2 cells under 2 × 2, 2 × 2 under 3 × 3
 and 3 × 3 under 2 × 2, against the cantilever of the two together: 0.995, 0.996 and 1.007 with `ClassicFormulation`,
@@ -1079,9 +1200,32 @@ the reference at the ends (`line_state`). The stresses follow from the forces as
 
 ### 10.5 Geometry report
 
-A table (or diagnostics) per edge: the largest angle between the normals of its elements, and whether it was declared
-raw or sharp (`geometry_report` of the reference). It lets the user see where the reading left kinks or rounded a
-fold.
+What the reading made of the surfaces, edge by edge, in two forms.
+
+**The table of the edges read** (`api::surfaceEdges`, `Model.surfaceEdges()` in JavaScript), one row per edge of the
+shells, then of the skin of the solids, each by increasing grid point IDs:
+
+| Column | Content |
+|---|---|
+| `grid1`, `grid2` | the grid point IDs of the edge, the lower first |
+| `surface` | `Shells` or `SolidSkin` |
+| `state` | `Smooth`, `Sharp` or `Raw`; at a junction, `Sharp` when at least one side ends there |
+| `origin` | `Declared`, `RawElement`, `Angle` (the fold angle), `Junction` (a shell of a junction that no other faces) or `Outline` (an edge of one element) |
+| `angle` | the larger of the angles measured between the normals of its elements at its two grid points, in degrees |
+| `kink` | the largest angle left between the normals of the surface read on both sides, along the edge, in degrees (shells) |
+| `rounding` | how far the surface read turns from the plane of the corners of an element along the edge, in degrees (shells) |
+
+The table is built with the model of the formulation and does not need the declarations: for a model without any, it
+shows what the fold angle alone decides, which is what a preprocessor shows before the user declares anything.
+
+**The diagnostics** of a run (`geometry_report` of the reference, extended):
+
+- `geometry-report`: a summary for the shells (the edges, how many raw, how many sharp and how many of these by the
+  fold angle alone, the largest kink, rounding and turn of the outline) and one for the skin of the solids;
+- `geometry-fold-by-angle`: a warning for an edge that the fold angle alone made sharp while its angle is under twice
+  the fold angle, which a curved surface meshed coarsely gives as a shallow fold does; the edges above are folds and
+  are only counted. The nearest to the fold angle are named first;
+- `geometry-kink`, `geometry-rounding`, `degenerate-geometry`: section 11.
 
 ## 11. Support catalog and checks
 
@@ -1104,6 +1248,8 @@ fold.
 | A BeamDistributedLoad on a line on a shell edge works on the kinematics of the line (θ = a_T t + t × du/ds, the offset o × f included); a couple about the shell normal is taken, on −μ · du/ds | The load is consistent with the energy of the line; the reference's edge traction puts the couple about μ on −β · t, which differs by the shear γ · t (zero for a Kirchhoff shell, small for a thin one). |
 | The forces of a bar or beam on a shell edge are the section forces of the line kernel along it; the Bar2 row reads its shear forces, axial force and torque at its middle | The shell loads the line along the edge: no end forces describe the forces between the ends. A line alone keeps the end forces of its equilibrium (`r = K x − f`), exact at the ends. |
 | PointsPressureLoad on a face of a shell or a solid of the formulation goes through the pressure facet (section 7), of the sign of the order of its grid points | The consistent load of the element instead of forces at the grid points. |
+| The state of an edge (smooth, sharp, raw) is decided by the model's `ShellNormalAngle` where nothing declares it; a sharp edge of shells keeps its own line; edges can be declared smooth, sharp for one side of a junction, and mesh lines continued or ended (section 4.4) | The owner's decisions of 20 November 2026 (section 15): the reference has raw edges and elements and the sharp edges of the skin alone, every other edge being smooth; its reading rounds every fold that is not declared and takes the outline round the corners its rules do not see. The preprocessor decides and declares; the solver keeps one default. |
+| A side of an edge that no element faces across (a sharp edge, a side of a junction) is a boundary of that side for the continuation of its line where it has triangles | The reference has this rule on the outline only; a sharp edge between triangles would have no line. |
 | Fasteners, welds and glued contacts read the shells and solids of the formulation at their point over every DOF of the element (section 5.10), the point placed by the shape functions of the card; a fastener or a weld reads the shells over the footprint of its cross-section | The reference has no such elements. |
 | Temperatures of a solid: the corner changes interpolated by the functions of the corners of the straight element at the point nearest to each point of the kernel; an expansion that differs between directions is refused under a temperature load | The kernel of the reference takes one expansion coefficient and a temperature field of the position. |
 | A pressure along a direction on a solid face is taken when it is the same at every corner of the face | The kernel's traction field is uniform there. |
@@ -1117,18 +1263,20 @@ fold.
 | A rotation held at one grid point of shells, or made dependent there by a relation of the model, is tied to the mean rotation of the shells (section 5.6); the edges and faces follow the relations of the model as they follow supports | The reference has no rigid element and reads a held rotation along the edges only: the six components held at one grid point would not hold a free body, and a rigid element joined at one grid point would hinge. |
 | Grid point force balance with the forces of the entity DOFs carried to the grid points (section 10.1) | The reference has no such table. |
 | A mesh transition on a straight outline or junction keeps it straight, and a side with quadrilaterals only is read as between quadrilaterals (section 4.4) | The reference reads three quadrilaterals at a boundary grid point as a re-entrant corner whatever their angles, and a quadrilateral side beside a triangle by the triangle rule. |
+| A shell that continues solids or stands on them is tied to them over its thickness: the displacement of its edge to the mean of the skin over its fibre, the rotation about its edge to the slope of the skin across the fibre (section 3.4) | The reference ties both on the line of the edge: a force and a couple on a line of a continuum, a joint that softens without bound as the solids are refined (1.26 to 3.8 times the deflection of a beam). |
+| The functions of the corners and edges of a shell triangle are orthogonal to its interior functions on the triangle itself (`h1Space`) | The reference takes the product of the reference square for the triangle too: the functions then depend on the corner the element starts from, and with them the share of a distributed load between the grid points in the applied load table (22 % on one grid point of an assembly). The space and the solution are the same. |
 
 Implementation notes. The rows of the element tables are those of section 10; the grid point stress table of section
 10.3 has the element type `SolidGridPoints` (one row per grid point, its ID as element and place, the columns of the
 stress rows of the solids, basic system). The geometry report of section 10.5 is a set of diagnostics:
 `geometry-report` (information: the counts and the largest kink and rounding); `geometry-kink` (an edge whose normals
-differ by more than 1°: a warning along an edge of one or two shells that is not declared raw, which the shell takes
-as a fold; an information along a raw edge or a junction); `geometry-rounding` (an edge along which the surface read
-turns from the plane of the corners of a shell by more than 15°: an information, and a warning above 30°, a fold
-that is not declared raw; and a warning for an edge of the outline that leaves its chord by more than 30° in the
-surface: a corner of the outline read as a curve). A shell left without an angle at a corner by the reading is
-refused (`degenerate-geometry`), with the edges to declare raw. A moment at a grid point of solids alone is refused
-(`load-unsupported`); an element or relation using such a rotation is warned (`rotation-held`).
+differ by more than 1°: a warning along an edge of one or two shells that is read smooth, which the shell takes as a
+fold; an information along a raw or sharp edge or a junction); `geometry-rounding` (an edge along which the surface
+read turns from the plane of the corners of a shell by more than 15°: an information, and a warning above 30°, a fold
+read smooth; and a warning for an edge of the outline that leaves its chord by more than 30° in the surface: a corner
+of the outline read as a curve); `geometry-fold-by-angle` (section 10.5). A shell left without an angle at a corner
+by the reading is refused (`degenerate-geometry`), with the edges to declare raw. A moment at a grid point of solids
+alone is refused (`load-unsupported`); an element or relation using such a rotation is warned (`rotation-held`).
 
 ## 13. Verification
 
@@ -1158,6 +1306,12 @@ of section 13.6 (shells in statics; shells in modes, buckling and inertia relief
 assemblies through every path). The cases that do not meet their criterion are listed with their reason in
 `wasm/test/validation/known-limits.mjs` and reported as "todo": a limit of section 3.6, later work of section 14, or
 a defect outside the formulation. No criterion is loosened there.
+
+The model files of the suite carry the declarations of their geometry (section 4.4) as a preprocessor writes them,
+by `SurfaceEdge`, `SurfaceFacet` and `SurfaceLine` records, or by `Parameter;GeometryDeclarations;Given` where there
+is nothing to declare; the program only chooses the formulation. A curved surface without fold declares every inner
+edge smooth, a fold its edges raw or sharp, a skin of solids its sharp and smooth edges, an outline its corners that
+the mesh does not show. The `formulationGeometry` option of the program is checked by the fast suite.
 
 ### 13.4 Checks of this repository
 
@@ -1200,15 +1354,15 @@ Each phase ends with the full test suite passing and its own checks of section 1
 | 5 | solids of every shape, mid-side nodes, skin reading, ties 1 to 4, solid loads and recovery, the grid point stress table | the same, for solids and mixed models |
 | 6 | the extensions the owner chose (section 15): point interpolation facet (fasteners, welds, glue), pin flags of lines alone, membrane-only and bending-only shells, condensed and streamed paths, components, superelements and the condensation cache, design derivatives | each with its own checks |
 | 7 | finishing: supports read along the edges inside the shells and along directions that are no basic axis, rigid elements and multipoint constraints read along the edges, rotations no edge reads tied to the mean rotation of the shells, rotations the lines do not stiffen following the shells, grid point force balance and force tables carried to the grid points, entity names in the messages of the factorisations, the pivot ratio test at entity DOFs, the geometry report as warnings, the validation suite of section 13.3 (`wasm/test/validation`) and the defects it found, the particular stresses of body forces in the solids (section 10.3), the formulation's refusals listed by the support check before a run (`api::checkSupport`), curved edges that follow a relation of the model (section 5.6), mesh transitions on straight boundaries and re-entrant corners beside triangles (section 4.4) | each with its own checks |
-| later | not chosen yet: supports along a direction that turns along an edge (a cylindrical CD along a circle, section 5.6), the particular stresses of the inertia of an inertia relief, of a trim analysis and of the vectors of a kept load basis in the solids (section 10.3), loads in the differential stiffness facet (following pressure), the pivot reference on the condensed and streamed paths, the interiors of glued shells tied to the face under them (section 5.10) | |
+| later | not chosen yet: supports along a direction that turns along an edge (a cylindrical CD along a circle, section 5.6), the particular stresses of the inertia of an inertia relief, of a trim analysis and of the vectors of a kept load basis in the solids (section 10.3), loads in the differential stiffness facet (following pressure), the pivot reference on the condensed and streamed paths | |
 
 ## 15. Decisions of the owner (15 November 2026)
 
 1. **Name of the formulation.** `MixedHybridFormulation`.
 2. **Model without geometry declarations.** Refused: the declarations are mandatory for a model with shells or solids
-   in the new formulation; an empty declaration says every edge is smooth (section 4.4).
+   in the new formulation; an empty declaration says every edge is smooth (section 4.4). Changed by decision 16.
 3. **Where the declarations come from.** From the program only (`SnapshotBuilder`, `ModelInput`, the
-   `formulationGeometry` option of `modelFromReader`). No card in the reader's data contract.
+   `formulationGeometry` option of `modelFromReader`). No card in the reader's data contract. Changed by decision 17.
 4. **Mass under `CoupledMass` lumped.** The consistent mass, with an informational diagnostic.
 5. **Grid point stresses of the solids.** The element rows, plus a table of the means at the grid points (section
    10.3).
@@ -1226,6 +1380,25 @@ Each phase ends with the full test suite passing and its own checks of section 1
     flags of lines alone; membrane-only and bending-only shells; the condensed and streamed paths, components,
     superelements, the condensation cache and the design derivatives.
 13. **Scope of the branch.** Phases 1 to 6 in one go.
+
+Decisions of 20 November 2026, on the geometry declarations (section 4.4). They replace decisions 2 and 3 where
+they differ.
+
+14. **Smooth or not.** Where nothing declares an edge, the model's `ShellNormalAngle` decides, measured between the
+    normals of the two elements at each grid point of the edge, for the shells and for the skin of the solids. A
+    curved mesh coarser than the angle becomes faceted, with a warning.
+15. **Mesh lines.** The preprocessor decides them: it declares continuations and ends. The solver adds no rule of
+    its own.
+16. **Mandatory declaration.** Kept; an empty one says that the angle decides (it said that every edge was smooth).
+17. **Where the declarations come from.** The program and the deck (`SurfaceEdge`, `SurfaceFacet`, `SurfaceLine`,
+    the parameter `GeometryDeclarations`); the program wins where both name the same edge.
+18. **Granularity.** An edge by its two grid points, with an optional element for one side of a junction.
+19. **Folds.** A fold keeps its own line (sharp), on the shells as on the skin of the solids. Raw keeps its meaning,
+    a straight edge, and the angle never gives it.
+20. **Report.** The solver gives the table of the edges read (section 10.5); the angle warning names the edges under
+    twice the angle and counts the others.
+21. **Roles.** The solver computes and holds no rule of interpretation beyond the angle; what a model needs decided
+    upstream is specified for the preprocessor in `O_o_Viewer/docs/geometry-declarations.md`.
 
 ## 16. References
 

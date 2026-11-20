@@ -15,12 +15,45 @@ export declare function loadOosSolver(options?: Record<string, unknown> & { thre
 
 export type Analysis = "statics" | "modes" | "buckling" | "aeroelastic";
 
+// An edge by its two grid point IDs, or the side of one shell element of it (which matters at an edge of three shells
+// or more).
+export type EdgeSide = [number, number] | [number, number, number];
+
 // The geometry declarations of the mixed hybrid formulation: where the surface of the shells and the skin of the
-// solids are not smooth (grid point IDs for the edges, element IDs for the raw elements).
+// solids are smooth, where they fold, and which mesh line goes on into which (grid point and element IDs). Where
+// nothing is declared, the model's ShellNormalAngle decides the state of an edge.
 export interface FormulationGeometry {
+  // The surface is smooth across the edge.
+  smoothEdges?: EdgeSide[];
+  // The surface folds along the edge, which keeps its own line.
+  sharpEdges?: EdgeSide[];
+  // The surface of the shells folds along the edge, which is straight.
   rawEdges?: [number, number][];
+  // Shell elements whose edges are all raw: facets.
   rawElements?: number[];
-  sharpEdges?: [number, number][];
+  // [g1, g, g2]: at grid point g, the mesh line of edge g1 - g goes on into edge g - g2.
+  lineContinuations?: [number, number, number][];
+  // [g1, g]: the mesh line of edge g1 - g ends at grid point g.
+  lineEnds?: [number, number][];
+}
+
+// The edges of the surfaces that MixedHybridFormulation read from the mesh, column by column, one entry per edge.
+export interface SurfaceEdges {
+  // The IDs of the two grid points of the edge, the lower first.
+  grid1: Int32Array;
+  grid2: Int32Array;
+  surface: ("Shells" | "SolidSkin")[];
+  // At a junction of three shells or more, "Sharp" when one side at least ends there.
+  state: ("Smooth" | "Sharp" | "Raw")[];
+  // Where the state comes from: a declaration, a raw element, the model's ShellNormalAngle, a shell of a junction that
+  // no other faces, or an edge of one element.
+  origin: ("Declared" | "RawElement" | "Angle" | "Junction" | "Outline")[];
+  // Degrees: the angle measured between the normals of the elements of the edge at its grid points; the angle left
+  // between the normals of the surface read on both sides; how far the surface read turns from the plane of the
+  // corners of an element (the last two on the shells only).
+  angle: Float64Array;
+  kink: Float64Array;
+  rounding: Float64Array;
 }
 
 // The options of modelFromReader.
@@ -217,6 +250,9 @@ export interface AeroelasticResult {
 export interface Model {
   tableNames(): string[];
   checkSupport(analysis: Analysis): SupportCheck;
+  // What MixedHybridFormulation read at every edge of the surface of the shells and of the skin of the solids; every
+  // array is empty for a model in another formulation.
+  surfaceEdges(): SurfaceEdges;
   delete(): void;
 }
 

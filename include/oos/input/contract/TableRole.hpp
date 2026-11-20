@@ -41,6 +41,11 @@ enum class TableRole
     LaminateSummary,    // laminateSummary: one row per laminate, with its lamination option LAM
     Sections,           // sectionsTable(types=BarShapeProp, BeamShapeProp): section properties
     ShellNormals,       // shellNormals: cardTable(deck, "ShellNormal"), the normals given at grid points
+    BarStations,        // barStations: cardTable(deck, "Bar2Stations"), the output stations given to bars
+    // The geometry declarations of the deck (docs/mixed-hybrid-formulation-spec.md section 4.4):
+    SurfaceEdges,       // surfaceEdges: cardTable(deck, "SurfaceEdge"), the edges declared smooth, sharp or raw
+    SurfaceFacets,      // surfaceFacets: cardTable(deck, "SurfaceFacet"), the shells declared raw
+    SurfaceLines,       // surfaceLines: cardTable(deck, "SurfaceLine"), the mesh lines declared
     FastenerPiercings,  // fastenerPiercings: where Fastener and Weld pierce the shells (contract 60)
     // dofSetsTable(cards=FreeBodySupport, FreeBodySupportSet): the DOFs of FreeBodySupport and FreeBodySupportSet
     Supports,
@@ -64,7 +69,7 @@ enum class TableRole
                         // AeroWeightingMatrix, AeroWeightingFactor (contract 57)
 };
 
-inline constexpr std::array<TableRole, 46> ALL_TABLE_ROLES{TableRole::Nodes,
+inline constexpr std::array<TableRole, 50> ALL_TABLE_ROLES{TableRole::Nodes,
                                                            TableRole::ScalarPoints,
                                                            TableRole::Materials,
                                                            TableRole::Spc,
@@ -92,6 +97,10 @@ inline constexpr std::array<TableRole, 46> ALL_TABLE_ROLES{TableRole::Nodes,
                                                            TableRole::LaminateSummary,
                                                            TableRole::Sections,
                                                            TableRole::ShellNormals,
+                                                           TableRole::BarStations,
+                                                           TableRole::SurfaceEdges,
+                                                           TableRole::SurfaceFacets,
+                                                           TableRole::SurfaceLines,
                                                            TableRole::FastenerPiercings,
                                                            TableRole::Supports,
                                                            TableRole::ConnectionNodes,

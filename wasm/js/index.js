@@ -178,8 +178,9 @@ export class OosSolver {
   // formulation the card does not have is refused by checkSupport and run.
   // `options.elementFormulation` chooses the formulation of the whole model ("MixedHybridFormulation"), before the
   // model's ElementFormulation parameter. `options.formulationGeometry` gives the geometry declarations of that
-  // formulation: { rawEdges: [[g1, g2], ...], rawElements: [id, ...], sharpEdges: [[g1, g2], ...] } (grid point and
-  // element IDs; an empty object says that every edge is smooth).
+  // formulation, by grid point and element IDs: { smoothEdges, sharpEdges: [[g1, g2] or [g1, g2, element], ...],
+  // rawEdges: [[g1, g2], ...], rawElements: [id, ...], lineContinuations: [[g1, g, g2], ...],
+  // lineEnds: [[g1, g], ...] }. An empty object says that the model's ShellNormalAngle decides every edge.
   // `options.condensation`: true also takes the component tables of the model, which a condensed static analysis reads
   // (run(model, "statics", { condensation: "all" })).
   // The model's ModelParams OffsetDefinition is read (where the mass of an offset element is; another value than
@@ -196,12 +197,26 @@ export class OosSolver {
       if (options.elementFormulation !== undefined) input.setModelFormulation(options.elementFormulation);
       if (options.formulationGeometry !== undefined) {
         const geometry = options.formulationGeometry ?? {};
-        const flatEdges = (edges) => (edges ?? []).flatMap((edge) => {
-          if (!Array.isArray(edge) || edge.length !== 2) throw new Error("formulationGeometry: each edge is [g1, g2]");
-          return edge;
+        // the groups of `size` IDs of a list of a declaration, flat
+        const flat = (name, size, form) => (geometry[name] ?? []).flatMap((item) => {
+          if (!Array.isArray(item) || item.length !== size)
+            throw new Error(`formulationGeometry.${name}: each item is ${form}`);
+          return item;
         });
-        input.setFormulationGeometry(flatEdges(geometry.rawEdges), geometry.rawElements ?? [],
-          flatEdges(geometry.sharpEdges));
+        // an edge with the element of one side, or 0 for the whole edge
+        const flatSides = (name) => (geometry[name] ?? []).flatMap((side) => {
+          if (!Array.isArray(side) || (side.length !== 2 && side.length !== 3))
+            throw new Error(`formulationGeometry.${name}: each item is [g1, g2] or [g1, g2, element]`);
+          return [side[0], side[1], side[2] ?? 0];
+        });
+        input.setFormulationGeometry({
+          smoothEdges: flatSides("smoothEdges"),
+          sharpEdges: flatSides("sharpEdges"),
+          rawEdges: flat("rawEdges", 2, "[g1, g2]"),
+          rawElements: geometry.rawElements ?? [],
+          lineContinuations: flat("lineContinuations", 3, "[g1, g, g2]"),
+          lineEnds: flat("lineEnds", 2, "[g1, g]"),
+        });
       }
       const versions = reader.modelVersions(deck);
       input.setVersions(versions.structure, versions.content);
@@ -237,6 +252,28 @@ export class OosSolver {
       // The normals given at grid points, which the ShellQuad4 and ShellTria3 take as their directors there.
       if (deck.cardCounts().ShellNormal > 0) {
         putTable("shellNormals", packageOf(reader.cardTable(deck, "ShellNormal", ["nodeId", "frameId", "vector"])));
+      }
+
+      // The geometry declarations of the deck: where the surface of the shells and the skin of the solids are
+      // smooth, where they fold, and which mesh line goes on into which. The formulation that reads its geometry from
+      // the mesh adds them to those of `options.formulationGeometry`.
+      const counts = deck.cardCounts();
+      if (counts.SurfaceEdge > 0) {
+        putTable("surfaceEdges", packageOf(reader.cardTable(deck, "SurfaceEdge",
+          ["id", "node1Id", "node2Id", "state", "elementId"])));
+      }
+      if (counts.SurfaceFacet > 0) {
+        putTable("surfaceFacets", packageOf(reader.cardTable(deck, "SurfaceFacet", ["elementId"])));
+      }
+      if (counts.SurfaceLine > 0) {
+        putTable("surfaceLines", packageOf(reader.cardTable(deck, "SurfaceLine",
+          ["id", "node1Id", "throughNodeId", "node2Id"])));
+      }
+
+      // The output stations given to bars, where the Bar2 writes its forces and stresses besides its ends.
+      if (deck.cardCounts().Bar2Stations > 0) {
+        putTable("barStations", packageOf(reader.cardTable(deck, "Bar2Stations",
+          ["id", "stationScale", "listedStations", "stationCount", "station1", "stationSpacing"])));
       }
 
       // The offset convention the model selects (ModelParams OffsetDefinition; the last one given).

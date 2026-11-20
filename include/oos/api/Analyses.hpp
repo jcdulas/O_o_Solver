@@ -145,6 +145,31 @@ struct SupportCheck
     std::vector<base::Diagnostic> ignored;
 };
 
+// What the formulation that reads its geometry from the mesh (MixedHybridFormulation) made of every edge of the
+// surface of the shells and of the skin of the solids (docs/mixed-hybrid-formulation-spec.md section 10.5), one row
+// per edge and column by column, for a program that shows the model: the IDs of its two grid points (the lower
+// first); the surface ("Shells", "SolidSkin"); its state ("Smooth", "Sharp", "Raw"); where the state comes from
+// ("Declared", "RawElement", "Angle", "Junction", "Outline"); and, in degrees, the angle measured between the normals
+// of its elements at its grid points, the angle left between the normals of the surface read on both sides, and how
+// far the surface read turns from the plane of the corners of an element (the last two on the shells only).
+struct SurfaceEdgeTable
+{
+    std::vector<std::int32_t> grid1;
+    std::vector<std::int32_t> grid2;
+    std::vector<std::string> surface;
+    std::vector<std::string> state;
+    std::vector<std::string> origin;
+    std::vector<double> angle;
+    std::vector<double> kink;
+    std::vector<double> rounding;
+};
+
+// The edges read of a model: empty when no card of the model is in a formulation that reads its geometry from the
+// mesh. The model of the formulation is built as an analysis builds it; the problems that would stop the analysis
+// (checkSupport lists them: a model without geometry declarations...) do not stop the table, which then shows what
+// the fold angle of the model alone decides.
+[[nodiscard]] SurfaceEdgeTable surfaceEdges(const input::ModelSnapshot& snapshot);
+
 // The formulations of one element card, the default first (elements/core/ElementFormulation.hpp).
 struct ElementFormulations
 {

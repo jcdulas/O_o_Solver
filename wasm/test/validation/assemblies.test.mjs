@@ -13,7 +13,8 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { oor, solver, real, withModel, CRITERIA, test } from "./support.mjs";
+import { oor, solver, real, withModel, CRITERIA, prepared, surfaceRecords, test, unprepared, withSurface }
+  from "./support.mjs";
 
 const MIXED_NAME = "MixedHybridFormulation";
 // The relative difference below which two results are one (round-off), section 13.6.
@@ -95,9 +96,13 @@ class Assembly {
     this.points = new Map(); // grid point ID (of the base variant) → position (base variant)
     this.frames = new Map(); // displacement frame ID → { kind, origin, axis, inPlane } (base variant)
     this.displacementFrame = new Map(); // grid point ID → displacement frame ID
+    // The declarations of the geometry, in the IDs of the base variant: raw and sharp edges and line ends as pairs
+    // of grid points (a line end: the line of the edge of the two ends at the second one; a sharp edge may name, as
+    // a third item, the one shell that ends there at a junction), raw elements.
     this.rawEdges = [];
     this.rawElements = [];
     this.sharpEdges = [];
+    this.lineEnds = [];
     this.keys = {}; // named grid points and values the checks read
     this.mass = 0; // the mass computed by hand, summed by the generator
     this.size = 1; // a length of the model, for the scales of the moments
@@ -181,20 +186,23 @@ class Assembly {
     }
   }
 
+  // The model file. Its model section holds the declarations of the geometry in the IDs of the variant, as a
+  // preprocessor writes them (the ClassicFormulation does not read them).
   text() {
     const lines = this.records.map((record) => record.flatMap((field) => this.fieldText(field)).join(";")
       .replace(/;+$/, ""));
+    const edge = ([a, b, shell]) => [this.variant.gridId(a), this.variant.gridId(b),
+      ...(shell === undefined ? [] : [this.variant.elementId(shell)])];
+    lines.push(...surfaceRecords({ rawEdges: this.rawEdges.map(edge), sharpEdges: this.sharpEdges.map(edge),
+      rawElements: this.rawElements.map((id) => this.variant.elementId(id)), lineEnds: this.lineEnds.map(edge) }));
     const ordered = this.variant.shuffleSeed ? shuffled(lines, this.variant.shuffleSeed) : lines;
-    return ["[executive]", ...this.executive, "[case]", ...this.caseLines, "[model]", ...ordered, ""].join("\n");
+    return ["[executive]", ...this.executive, "[case]", ...this.caseLines, "[model]", ...prepared(ordered), ""]
+      .join("\n");
   }
 
-  // The options of modelFromReader: the formulation and its geometry declarations in the IDs of the variant.
+  // The options of modelFromReader: the formulation.
   options(formulation = MIXED_NAME, extra = {}) {
-    if (formulation !== MIXED_NAME) return { ...extra };
-    const edge = ([a, b]) => [this.variant.gridId(a), this.variant.gridId(b)];
-    return { elementFormulation: MIXED_NAME, formulationGeometry: { rawEdges: this.rawEdges.map(edge),
-      rawElements: this.rawElements.map((id) => this.variant.elementId(id)), sharpEdges: this.sharpEdges.map(edge) },
-    ...extra };
+    return formulation === MIXED_NAME ? { elementFormulation: MIXED_NAME, ...extra } : { ...extra };
   }
 
   elementCount() { return Object.values(this.counts).reduce((a, b) => a + b, 0); }
@@ -999,6 +1007,12 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
       }
     model.mass += ALUMINIUM.density * BRACKET.flangeThickness * 3 * a * BRACKET.flange;
   }
+  // The cover stops before the end of the flange: the outline of the shells turns a re-entrant corner where the
+  // edge of the cover meets the flange. The mesh alone does not say so beside triangles (the outline would be read
+  // as one curve through the corner, and rounded): the lines of the two edges of the outline end there.
+  const coverEnd = coverCells * r;
+  if (has("cover") && has("flange") && coverEnd < nx)
+    model.lineEnds.push([B(coverEnd, ny - 1, nz), B(coverEnd, ny, nz)], [B(coverEnd + 1, ny, nz), B(coverEnd, ny, nz)]);
 
   // The bar along the edge y = 0, z = c.
   if (has("bar")) {
@@ -1133,7 +1147,8 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
 // ---------------------------------------------------------------------------------------------------------------------
 // Assembly C: a wing box. A closed section (two skins, two spar webs) of three bays, tapered and twisted (every
 // quadrilateral warped), the upper skin cambered; ribs closing the section at the end of each bay (three shells on
-// each of their edges); the four corner lines and the outlines of the ribs declared raw edges; a Bar2 stringer under
+// each of their edges); the four corner lines declared sharp, and the outlines of the ribs sharp for the ribs (the
+// skins and the webs go on across a rib, and its outline follows the camber of the skin); a Bar2 stringer under
 // the upper skin and Rod2 caps on the upper corners; a flap behind the rear spar, a separate plate hung on two rigid
 // elements and a bushing.
 
@@ -1143,7 +1158,7 @@ const WING = { span: 1.5, chord: 0.5, height: 0.12, camber: 0.02, taper: 0.3, tw
   cap: { area: 1.0e-4, i: 8.0e-10, j: 2.0e-10 } };
 
 // `caps`: "bar" (Bar2 on the upper corners) or "rod" (Rod2: no bending stiffness); `declared`: whether the folds are
-// declared raw edges.
+// declared.
 function wingAssembly({ variant = {}, refine = 1, analysis = "statics", modes = 4, without = [],
   declared = true, caps = "bar", joints = "mixed" } = {}) {
   const model = new Assembly(variant);
@@ -1193,20 +1208,26 @@ function wingAssembly({ variant = {}, refine = 1, analysis = "statics", modes = 
       quad(42, [W(s, nc, k), W(s + 1, nc, k), W(s + 1, nc, k + 1), W(s, nc, k + 1)]); // rear web
     }
   }
+  // The ribs. The outline of a rib is a junction (three shells on an edge, two at the tip): the rib ends there, a
+  // sharp edge for that shell alone, while the skins and the webs go on across it. The edge keeps its mesh line,
+  // which follows the camber of the upper skin (a raw edge would be straight: a roof at each rib).
+  const ribOutline = [];
   for (let s = 1; s <= ns; ++s) {
     if (!isRib(s)) continue;
     for (let k = 0; k < nw; ++k)
-      for (let i = 0; i < nc; ++i) quad(43, [W(s, i, k), W(s, i + 1, k), W(s, i + 1, k + 1), W(s, i, k + 1)]);
+      for (let i = 0; i < nc; ++i) {
+        const rib = quad(43, [W(s, i, k), W(s, i + 1, k), W(s, i + 1, k + 1), W(s, i, k + 1)]);
+        if (k === 0) ribOutline.push([W(s, i, 0), W(s, i + 1, 0), rib]);
+        if (k === nw - 1) ribOutline.push([W(s, i, nw), W(s, i + 1, nw), rib]);
+        if (i === 0) ribOutline.push([W(s, 0, k), W(s, 0, k + 1), rib]);
+        if (i === nc - 1) ribOutline.push([W(s, nc, k), W(s, nc, k + 1), rib]);
+      }
   }
-  // The folds: the four corner lines, and the outline of each rib (three shells on an edge, two at the tip).
+  // The folds: the four corner lines, sharp (each keeps its own line along the span), and the outlines of the ribs.
   if (declared) {
     for (let s = 0; s < ns; ++s)
-      for (const [i, k] of [[0, 0], [nc, 0], [nc, nw], [0, nw]]) model.rawEdges.push([W(s, i, k), W(s + 1, i, k)]);
-    for (let s = 1; s <= ns; ++s) {
-      if (!isRib(s)) continue;
-      for (let i = 0; i < nc; ++i) for (const k of [0, nw]) model.rawEdges.push([W(s, i, k), W(s, i + 1, k)]);
-      for (let k = 0; k < nw; ++k) for (const i of [0, nc]) model.rawEdges.push([W(s, i, k), W(s, i, k + 1)]);
-    }
+      for (const [i, k] of [[0, 0], [nc, 0], [nc, nw], [0, nw]]) model.sharpEdges.push([W(s, i, k), W(s + 1, i, k)]);
+    model.sharpEdges.push(...ribOutline);
   }
 
   // The stringer under the middle of the upper skin and the caps on its two corners.
@@ -1828,14 +1849,16 @@ for (const [name, spec] of Object.entries(ASSEMBLIES))
 // 7. Robustness of the input: the solver gives a sound result or refuses with a clear diagnostic. It never throws an
 // opaque exception, never hangs, never gives a value that is not a number.
 
-const MIXED_SMOOTH = { elementFormulation: MIXED_NAME, formulationGeometry: {} };
+// The mixed formulation, chosen by the program: the declarations of the geometry are in the model files.
+const MIXED = { elementFormulation: MIXED_NAME };
 const robustness = [];
 
-// A deck of statics with one subcase: constraint set 1, load set 2, every nodal output and the stresses.
+// A deck of statics with one subcase: constraint set 1, load set 2, every nodal output and the stresses. The model is
+// prepared: with nothing to declare of its geometry unless its cards do (`prepared`).
 function staticDeck(cards) {
   return ["[executive]", "SolutionSequence;101", "[case]", "DisplacementOutput;All", "SinglePointConstrForceOutput;All",
     "AppliedLoadOutput;All", "StressOutput;All", "SubcaseStart;1", "SinglePointConstrSelection;1",
-    "StaticLoadSelection;2", "[model]", ...cards, ""].join("\n");
+    "StaticLoadSelection;2", "[model]", ...prepared(cards), ""].join("\n");
 }
 
 // The positions of the grid points of a deck (in the basic system: no position frame in these decks).
@@ -1865,7 +1888,7 @@ function plainResultant(text, table) {
 // the resultant of its loads about the origin, which the support forces of a sound result balance (1e-6: these
 // models are ill-conditioned on purpose). `lenient`: an unsound result is returned (outcome "solved, unsound")
 // for the case to record, instead of failing the case here.
-function probe(name, text, options = MIXED_SMOOTH, { analysis = "statics", stated = null, tolerance = 1e-6,
+function probe(name, text, options = MIXED, { analysis = "statics", stated = null, tolerance = 1e-6,
   lenient = false } = {}) {
   const entry = { name, outcome: "", detail: "", warnings: [], run: null, residual: null };
   robustness.push(entry);
@@ -1948,14 +1971,14 @@ test("7. very thin and very thick shells are solved soundly", () => {
   // plate in bending goes as 1 / t³: twice the thickness, an eighth of the deflection.
   const [thin, thicker] = [1.0e-5, 2.0e-5].map((thickness) => {
     const plate = plateDeck({ thickness });
-    const entry = probe(`thin plate, t / L = ${thickness}`, plate.text, MIXED_SMOOTH, { stated: plate.stated });
+    const entry = probe(`thin plate, t / L = ${thickness}`, plate.text, MIXED, { stated: plate.stated });
     assert.equal(entry.outcome, "solved", entry.detail);
     return translationOf(entry.run, plate.tip)[2];
   });
   expectWithin("7 thin plate: deflection ratio of t and 2 t against 8", "plate 2 x 2",
     Math.abs(thin / thicker / 8 - 1), 1e-4);
   const thick = plateDeck({ thickness: 1.0 });
-  assert.equal(probe("thick plate, t / L = 1", thick.text, MIXED_SMOOTH, { stated: thick.stated }).outcome, "solved");
+  assert.equal(probe("thick plate, t / L = 1", thick.text, MIXED, { stated: thick.stated }).outcome, "solved");
 });
 
 test("7. elements of aspect ratio up to 1:100 give the deflection of the beam theory", () => {
@@ -1969,8 +1992,8 @@ test("7. elements of aspect ratio up to 1:100 give the deflection of the beam th
       const text = plate.text.replace("[model]\n", `[model]\nPointForceLoad;2;${plate.id(1, 0)};;1.;0.;0.;0.5\n`);
       const beam = length ** 3 / (3 * young * (width * thickness ** 3) / 12);
       const classic = probe(`aspect ratio 1:${aspect} (classic formulation)`, text, {});
-      const entry = probe(`aspect ratio 1:${aspect}`, text, MIXED_SMOOTH);
-      if (entry.outcome !== "solved") dump(`aspect ratio 1 to ${aspect}`, text, MIXED_SMOOTH, entry.detail);
+      const entry = probe(`aspect ratio 1:${aspect}`, text, MIXED);
+      if (entry.outcome !== "solved") dump(`aspect ratio 1 to ${aspect}`, text, MIXED, entry.detail);
       if (classic.outcome === "solved")
         check(`7 aspect ratio 1:${aspect}: solved by the mixed formulation as by the classic one`,
           entry.outcome === "solved" ? 0 : 1, 0, entry.detail.slice(0, 300));
@@ -1983,14 +2006,14 @@ test("7. elements of aspect ratio up to 1:100 give the deflection of the beam th
 
 test("7. strongly warped and nearly degenerate elements are solved soundly or refused clearly", () => {
   const warped = plateDeck({ z: (x, y) => 0.5 * x * y });
-  probe("strongly warped quadrilaterals (a corner lifted by half the side)", warped.text, MIXED_SMOOTH,
+  probe("strongly warped quadrilaterals (a corner lifted by half the side)", warped.text, MIXED,
     { stated: warped.stated });
   const quad = (corners, name) => {
     const lines = corners.map(([x, y, z = 0], k) => `Node;${k + 1};;${real(x)};${real(y)};${real(z)}`);
     lines.push("ShellQuad4;1;1;1;2;3;4", "ShellProp;1;1;0.01;1;;1", "IsoMat;1;7.e10;;0.3;2700.",
       "SinglePointConstrList;1;123456;1;4", "PointForceLoad;2;2;;1.;0.;0.;1.");
     const at = corners[1].length === 3 ? corners[1] : [...corners[1], 0];
-    return probe(name, staticDeck(lines), MIXED_SMOOTH, { stated: [0, 0, 1, ...cross(at, [0, 0, 1])] });
+    return probe(name, staticDeck(lines), MIXED, { stated: [0, 0, 1, ...cross(at, [0, 0, 1])] });
   };
   quad([[0, 0], [1, 0], [1, 1.0e-6], [0, 1]], "quadrilateral with an edge 1e-6 of the others");
   quad([[0, 0], [1, 0], [2, Math.tan(Math.PI / 180)], [1, 1]], "quadrilateral with a corner of 179 degrees");
@@ -2001,7 +2024,7 @@ test("7. strongly warped and nearly degenerate elements are solved soundly or re
     const lines = corners.map(([x, y, z], k) => `Node;${k + 1};;${real(x)};${real(y)};${real(z)}`);
     lines.push(`${card};1;1;${corners.map((_, k) => k + 1).join(";")}`, "SolidProp;1;1", "IsoMat;1;7.e10;;0.3;2700.",
       "SinglePointConstrList;1;123;1;2;3", `PointForceLoad;2;${corners.length};;1.;0.;0.;1.`);
-    return probe(name, staticDeck(lines), MIXED_SMOOTH);
+    return probe(name, staticDeck(lines), MIXED);
   };
   solid("SolidTetra", [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.3, 0.3, 1.0e-6]], "tetrahedron nearly flat (height 1e-6)");
   const cube = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]];
@@ -2031,15 +2054,16 @@ test("7. three and four shells on one edge, a declared fold and an undeclared on
     return { text: staticDeck(lines), stated: [...force, ...cross(at, force)], tip: edge(0, 2),
       rawEdges: [[spine(0), spine(1)], [spine(1), spine(2)]] };
   };
-  const declared = (model) => ({ elementFormulation: MIXED_NAME, formulationGeometry: { rawEdges: model.rawEdges } });
+  // The model file with its fold declared raw.
+  const declared = (model) => withSurface(model.text, { rawEdges: model.rawEdges });
   const classicTip = (model) => translationOf(withModel(model.text, {}, (m) => solver.run(m, "statics")), model.tip);
   for (const [name, directions] of [["three shells on an edge (a T)", [[1, 0], [-1, 0], [0, 1]]],
     ["four shells on an edge (a cross)", [[1, 0], [-1, 0], [0, 1], [0, -1]]],
     ["two shells at a right angle", [[1, 0], [0, 1]]]]) {
     const model = junction(directions);
     const results = {};
-    for (const [label, options] of [["declared raw", declared(model)], ["not declared", MIXED_SMOOTH]]) {
-      const entry = probe(`${name}, ${label}`, model.text, options, { stated: model.stated });
+    for (const [label, text] of [["declared raw", declared(model)], ["not declared", model.text]]) {
+      const entry = probe(`${name}, ${label}`, text, MIXED, { stated: model.stated });
       if (entry.outcome === "solved") results[label] = translationOf(entry.run, model.tip);
     }
     // The declared junction against the classic formulation (coarse mesh: 20 %), and the effect of not declaring it.
@@ -2055,7 +2079,7 @@ test("7. three and four shells on one edge, a declared fold and an undeclared on
 
 test("7. grid points without elements, elements without property, loads and supports off the structure", () => {
   const plate = plateDeck();
-  probe("an unconnected grid point", plate.text.replace("[model]\n", "[model]\nNode;900;;5.;5.;5.\n"), MIXED_SMOOTH,
+  probe("an unconnected grid point", plate.text.replace("[model]\n", "[model]\nNode;900;;5.;5.;5.\n"), MIXED,
     { stated: plate.stated });
   const noProperty = probe("a shell whose property is missing",
     plateDeck({ property: "ShellProp;7;1;0.01;1;;1" }).text);
@@ -2066,21 +2090,25 @@ test("7. grid points without elements, elements without property, loads and supp
   // A force on a grid point no element uses, held by a support there: the support takes it.
   const off = plate.text.replace("[model]\n",
     "[model]\nNode;900;;5.;5.;5.\nSinglePointConstrList;1;123456;900\nPointForceLoad;2;900;;1.;3.;4.;5.\n");
-  probe("a load and a support on a grid point no element uses", off, MIXED_SMOOTH,
+  probe("a load and a support on a grid point no element uses", off, MIXED,
     { stated: plate.stated.map((value, c) => value + [3, 4, 5, ...cross([5, 5, 5], [3, 4, 5])][c]) });
   probe("a load on a grid point no element uses, without support",
     plate.text.replace("[model]\n", "[model]\nNode;900;;5.;5.;5.\nPointForceLoad;2;900;;1.;3.;4.;5.\n"));
   // Declarations of the geometry that name what the model does not have are refused (specification, section 4.4):
-  // two grid points that are not the ends of an edge, a grid point or an element that does not exist.
-  const declaring = (formulationGeometry) => ({ elementFormulation: MIXED_NAME, formulationGeometry });
+  // two grid points that are not the ends of an edge, a grid point or an element that does not exist. A model file
+  // that no preprocessor prepared (no declaration at all) is refused too.
+  const declaring = (geometry) => withSurface(plate.text, geometry);
   const cases = [["a raw edge between two grid points that no edge joins", declaring({ rawEdges: [[1, 9]] })],
     ["a raw edge with a grid point that does not exist", declaring({ rawEdges: [[1, 99]] })],
-    ["a sharp edge that is no edge of a solid", declaring({ sharpEdges: [[1, 2]] })],
+    ["a sharp edge between two grid points that no edge joins", declaring({ sharpEdges: [[1, 9]] })],
+    ["a smooth edge for an element that is no shell of it", declaring({ smoothEdges: [[1, 2, 77]] })],
+    ["a line end on two grid points that no edge joins", declaring({ lineEnds: [[1, 9]] })],
+    ["an edge declared both smooth and sharp", declaring({ smoothEdges: [[1, 2]], sharpEdges: [[1, 2]] })],
     ["a raw element that does not exist", declaring({ rawElements: [77] })],
-    ["no declaration at all", { elementFormulation: MIXED_NAME }]];
+    ["no declaration at all", unprepared(plate.text)]];
   checking("plate 2 x 2", (check) => {
-    for (const [name, options] of cases) {
-      const entry = probe(`geometry declarations: ${name}`, plate.text, options);
+    for (const [name, text] of cases) {
+      const entry = probe(`geometry declarations: ${name}`, text, MIXED);
       check(`7 geometry declarations: ${name}: refused`, entry.outcome === "refused" ? 0 : 1, 0, entry.outcome);
     }
   });
@@ -2125,7 +2153,7 @@ test("7. a model of line elements only and a model of solids only are solved sou
     "Bar2;1;1;1;2;0.;;1.;0.", "Bar2;2;1;2;3;0.;;1.;0.", "Bar2;3;1;3;4;0.;;1.;0.", "Rod2;4;2;1;3",
     "BarProp;1;1;1.e-4;1.e-9;2.e-9;1.5e-9", "RodProp;2;1;5.e-5;1.e-10", "IsoMat;1;7.e10;;0.3;2700.",
     "SinglePointConstrList;1;123456;1;4", "PointForceLoad;2;2;;1.;100.;50.;0.", "PointMomentLoad;2;3;;1.;0.;5.;2."]);
-  const lines = probe("line elements only", frame, { elementFormulation: MIXED_NAME },
+  const lines = probe("line elements only", frame, MIXED,
     { stated: [100, 50, 0, ...add(cross([0, 0, 1], [100, 50, 0]), [0, 5, 2])] });
   assert.equal(lines.outcome, "solved", lines.detail);
   const block = bracketAssembly({ midSide: "none", without: ["cover", "flange", "plate", "glue", "bar", "moments"] });
@@ -2141,38 +2169,50 @@ test("7. a model of line elements only and a model of solids only are solved sou
 test("7. reduced: the support forces of a curved clamped edge balance the load in moment", () => {
   // A strip of 2 × 2 ShellQuad4 whose clamped edge x = 0 is an arc (a cylinder along x), a force at the far corner.
   const plate = plateDeck({ ly: 0.5, z: (x, y) => 0.5 * (y - 0.25) ** 2 });
-  const entry = probe("reduced: curved clamped edge", plate.text, MIXED_SMOOTH,
+  const entry = probe("reduced: curved clamped edge", plate.text, MIXED,
     { stated: plate.stated, tolerance: SAME, lenient: true });
   expectWithin("7 reduced: support forces of a curved clamped edge against the load", "strip 2 x 2", entry.residual,
     SAME);
 });
 
 test("7. reduced: a flat plate with a re-entrant corner beside triangles keeps its area", () => {
-  // An L of two ShellTria3 and two ShellQuad4 in a plane, under a unit pressure: the load is the area, 3.
-  const text = staticDeck(["Node;2;;1.;0.;0.", "Node;3;;2.;0.;0.", "Node;6;;1.;1.;0.", "Node;7;;2.;1.;0.",
-    "Node;8;;3.;1.;0.", "Node;10;;1.;2.;0.", "Node;11;;2.;2.;0.", "Node;12;;3.;2.;0.", "ShellTria3;1;1;2;3;7",
-    "ShellTria3;2;1;2;7;6", "ShellQuad4;3;1;6;7;11;10", "ShellQuad4;4;1;7;8;12;11", "ShellProp;1;1;0.01;1;;1",
-    "IsoMat;1;7.e10;;0.3;2700.", "SinglePointConstrList;1;123456;2;3", "ShellPressureLoad;2;1.;1;2;3;4"]);
+  // An L of two ShellTria3 and two ShellQuad4 in a plane, under a unit pressure: the load is the area, 3. The mesh
+  // alone does not say that the outline turns a corner at grid point 7, where a triangle and two quadrilaterals meet.
+  // The model file says it, as a preprocessor that knows the outline writes it (spec section 4.4): the lines of the
+  // outline edges 3-7 and 8-7 end there, which makes no edge raw; or the two edges are raw. The plate then carries
+  // its area whatever the corner its triangles start from.
+  const cards = (first, second) => staticDeck(["Node;2;;1.;0.;0.", "Node;3;;2.;0.;0.", "Node;6;;1.;1.;0.",
+    "Node;7;;2.;1.;0.", "Node;8;;3.;1.;0.", "Node;10;;1.;2.;0.", "Node;11;;2.;2.;0.", "Node;12;;3.;2.;0.",
+    `ShellTria3;1;1;${first}`, `ShellTria3;2;1;${second}`, "ShellQuad4;3;1;6;7;11;10", "ShellQuad4;4;1;7;8;12;11",
+    "ShellProp;1;1;0.01;1;;1", "IsoMat;1;7.e10;;0.3;2700.", "SinglePointConstrList;1;123456;2;3",
+    "ShellPressureLoad;2;1.;1;2;3;4"]);
+  const starts = [["first", cards("2;3;7", "2;7;6")], ["second", cards("3;7;2", "7;6;2")],
+    ["third", cards("7;2;3", "6;2;7")]];
+  const declarations = [["its outline declared ended at the corner", { lineEnds: [[3, 7], [8, 7]] }],
+    ["the edges of the corner declared raw", { rawEdges: [[3, 7], [7, 8]] }]];
   checking("flat L of 4 shells", (check) => {
-    // The same triangles started from their second corner: the same model.
-    const turnedText = text.replace("ShellTria3;1;1;2;3;7", "ShellTria3;1;1;3;7;2")
-      .replace("ShellTria3;2;1;2;7;6", "ShellTria3;2;1;7;6;2");
-    for (const [label, geometry, deck] of [["no declaration", {}, text],
-      ["the corner declared raw", { rawEdges: [[3, 7], [7, 8]] }, text],
-      ["no declaration, the triangles started from another corner", {}, turnedText]]) {
-      const options = { elementFormulation: MIXED_NAME, formulationGeometry: geometry };
-      const entry = probe(`reduced: flat L with triangles, ${label}`, deck, options, { lenient: true });
-      assert.ok(entry.run, entry.detail);
-      const notNumbers = [...entry.run.nodalTables, ...entry.run.elementTables]
-        .reduce((count, table) => count + table.values.filter((value) => Number.isNaN(value)).length, 0);
-      if (notNumbers) dump(`flat L with triangles ${label}`, deck, options, entry.detail);
-      check(`7 reduced: flat L with triangles, ${label}: values that are not numbers`, notNumbers, 0, entry.detail);
-      const carried = -plainResultant(text, nodalTable(entry.run, "singlePointConstrForces", 1))[2];
-      const said = entry.run.diagnostics.some((d) => /geometry-(kink|rounding)/.test(d.code));
-      if (label === "no declaration" && Math.abs(carried / 3 - 1) > SAME) dump("flat L with triangles", text, options);
-      check(`7 reduced: pressure carried by a flat L with triangles against its area, ${label}` +
-        (said ? "" : " (no diagnostic says the corner is rounded)"), Math.abs(carried / 3 - 1), SAME,
-      `carried ${carried}`);
+    for (const [declared, geometry] of declarations)
+      for (const [start, plain] of starts) {
+        const label = `flat L with triangles started from their ${start} corner, ${declared}`;
+        const text = withSurface(plain, geometry);
+        const entry = probe(`reduced: ${label}`, text, MIXED);
+        assert.ok(entry.run, entry.detail);
+        const carried = -plainResultant(text, nodalTable(entry.run, "singlePointConstrForces", 1))[2];
+        if (Math.abs(carried / 3 - 1) > SAME) dump(label, text, MIXED, entry.detail);
+        check(`7 reduced: pressure carried by a ${label}, against its area`, Math.abs(carried / 3 - 1), SAME,
+          `carried ${carried}`);
+        const warnings = entry.run.diagnostics.filter((d) => d.severity === "warning");
+        check(`7 reduced: ${label}: warnings`, warnings.length, 0, warnings.map((d) => d.text).join(" | "));
+      }
+    // A model file that declares nothing at the corner: the outline is read as a line that goes on through it. The
+    // solver says so: it refuses the model (a triangle left without an angle) or warns that the corner is rounded.
+    for (const [start, plain] of starts) {
+      const entry = probe(`reduced: flat L with triangles started from their ${start} corner, nothing declared`,
+        plain, MIXED, { lenient: true });
+      const said = entry.outcome === "refused" ||
+        (entry.run?.diagnostics ?? []).some((d) => /geometry-(kink|rounding)/.test(d.code));
+      check(`7 reduced: flat L with triangles started from their ${start} corner, nothing declared: refused, or ` +
+        "warned that the corner is rounded", said ? 0 : 1, 0, entry.outcome);
     }
   });
 });
@@ -2192,15 +2232,15 @@ test("7. reduced: a couple at a grid point of a Rod2 on a shell edge bends the s
   };
   const deflection = (line, options) =>
     translationOf(withModel(strip(line), options, (m) => solver.run(m, "statics")), 5)[2];
-  const alone = deflection("", MIXED_SMOOTH);
+  const alone = deflection("", MIXED);
   checking("strip 4 x 1", (check) => {
     check("7 reduced: couple at a shell grid point, mixed against classic", Math.abs(alone / deflection("", {}) - 1),
       YARDSTICK);
     check("7 reduced: couple at a grid point of a Bar2 on a shell edge, mixed against classic",
-      Math.abs(deflection("Bar2", MIXED_SMOOTH) / deflection("Bar2", {}) - 1), YARDSTICK);
-    const rod = deflection("Rod2", MIXED_SMOOTH);
+      Math.abs(deflection("Bar2", MIXED) / deflection("Bar2", {}) - 1), YARDSTICK);
+    const rod = deflection("Rod2", MIXED);
     if (Math.abs(rod / deflection("Rod2", {}) - 1) > YARDSTICK)
-      dump("rod on a shell edge", strip("Rod2"), MIXED_SMOOTH);
+      dump("rod on a shell edge", strip("Rod2"), MIXED);
     check("7 reduced: couple at a grid point of a Rod2 on a shell edge, mixed against classic",
       Math.abs(rod / deflection("Rod2", {}) - 1), YARDSTICK, `deflection ${rod}, classic ${deflection("Rod2", {})}`);
   });
@@ -2236,8 +2276,8 @@ test("7. reduced: stiff springs on the rotations of shell grid points are solved
   const plates = sprungPlates({ stiffness: 1.0e6 });
   const classic = probe("reduced: stiff rotational springs (classic formulation)", plates.text, {},
     { stated: plates.stated });
-  const mixed = probe("reduced: stiff rotational springs", plates.text, MIXED_SMOOTH, { stated: plates.stated });
-  if (mixed.outcome !== "solved") dump("stiff rotational springs", plates.text, MIXED_SMOOTH, mixed.detail);
+  const mixed = probe("reduced: stiff rotational springs", plates.text, MIXED, { stated: plates.stated });
+  if (mixed.outcome !== "solved") dump("stiff rotational springs", plates.text, MIXED, mixed.detail);
   checking("two plates 3 x 3", (check) => {
     check("7 reduced: stiff rotational springs solved by the classic formulation",
       classic.outcome === "solved" ? 0 : 1, 0);
@@ -2282,7 +2322,7 @@ const numbersOf = (run) => [...run.nodalTables.flatMap((t) => [...t.values]),
 
 test("8. statics, modes and buckling one after another on one model leave no state behind", () => {
   const text = threeAnalysesDeck();
-  const sequence = (order) => withModel(text, MIXED_SMOOTH, (model) => order.map((analysis) => {
+  const sequence = (order) => withModel(text, MIXED, (model) => order.map((analysis) => {
     const run = solver.run(model, analysis);
     assert.equal(errorsOf(run).length, 0, `${analysis}: ${JSON.stringify(errorsOf(run))}`);
     return [analysis, numbersOf(run)];
@@ -2302,7 +2342,7 @@ test("8. statics, modes and buckling one after another on one model leave no sta
 
 test("8. building, running and deleting a model many times does not grow the memory", () => {
   const text = threeAnalysesDeck();
-  const once = () => withModel(text, MIXED_SMOOTH, (model) => solver.run(model, "statics").nodalTables.length);
+  const once = () => withModel(text, MIXED, (model) => solver.run(model, "statics").nodalTables.length);
   for (let k = 0; k < 5; ++k) once();
   const megabytes = () => { const m = process.memoryUsage(); return (m.rss + m.external) / 1048576; };
   const before = megabytes();

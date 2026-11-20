@@ -8,7 +8,7 @@
 // Run: node --test wasm/test/validation/lines.test.mjs
 
 import assert from "node:assert/strict";
-import { CLASSIC, CRITERIA, MIXED, nodal, real, runModel, test } from "./support.mjs";
+import { CLASSIC, CRITERIA, MIXED, nodal, prepared, real, runModel, surfaceRecords, test } from "./support.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Helpers
@@ -44,10 +44,10 @@ function measurements() {
   };
 }
 
-// The text of a model file.
+// The text of a model file, with the declarations of its geometry (`prepared`).
 function deck(solution, caseLines, modelLines) {
-  return ["[executive]", `SolutionSequence;${solution}`, "[case]", ...caseLines, "[model]", ...modelLines, ""]
-    .join("\n");
+  return ["[executive]", `SolutionSequence;${solution}`, "[case]", ...caseLines, "[model]",
+    ...prepared(modelLines), ""].join("\n");
 }
 
 const STATIC_CASE = ["SubcaseStart;1", "SinglePointConstrSelection;1", "StaticLoadSelection;2",
@@ -1010,8 +1010,9 @@ test("a Bar2 from a grid point of a SolidHexa to a pinned support: the end on th
     for (const u of [0, 1])
       sharpEdges.push([corner(0, t, u), corner(1, t, u)], [corner(t, 0, u), corner(t, 1, u)],
         [corner(t, u, 0), corner(t, u, 1)]);
-  const run = runModel(deck(101, STATIC_CASE.filter((line) => line !== "StressOutput;All"), lines),
-    { elementFormulation: "MixedHybridFormulation", formulationGeometry: { sharpEdges } });
+  // The twelve edges of the cube are declared sharp in the model file.
+  lines.push(...surfaceRecords({ sharpEdges }));
+  const run = runModel(deck(101, STATIC_CASE.filter((line) => line !== "StressOutput;All"), lines), MIXED);
   const check = measurements();
   const middle = nodal(run, "displacements", 11);
   check.ratio("deflection in plane 1", middle[1], (fy * length ** 3) / (48 * E * SECTION.i1), CRITERIA.displacement);

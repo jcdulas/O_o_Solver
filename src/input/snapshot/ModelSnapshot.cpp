@@ -79,6 +79,10 @@ ModelSnapshot::ModelSnapshot(Parts parts)
       m_laminateSummary(std::move(parts.laminateSummary)),
       m_sections(std::move(parts.sections)),
       m_shellNormals(std::move(parts.shellNormals)),
+      m_barStations(std::move(parts.barStations)),
+      m_surfaceEdges(std::move(parts.surfaceEdges)),
+      m_surfaceFacets(std::move(parts.surfaceFacets)),
+      m_surfaceLines(std::move(parts.surfaceLines)),
       m_fastenerPiercings(std::move(parts.fastenerPiercings)),
       m_supports(std::move(parts.supports)),
       m_connectionNodes(std::move(parts.connectionNodes)),
@@ -169,6 +173,14 @@ bool ModelSnapshot::hasTable(TableRole role) const noexcept
         return m_sections.has_value();
     case TableRole::ShellNormals:
         return m_shellNormals.has_value();
+    case TableRole::BarStations:
+        return m_barStations.has_value();
+    case TableRole::SurfaceEdges:
+        return m_surfaceEdges.has_value();
+    case TableRole::SurfaceFacets:
+        return m_surfaceFacets.has_value();
+    case TableRole::SurfaceLines:
+        return m_surfaceLines.has_value();
     case TableRole::FastenerPiercings:
         return m_fastenerPiercings.has_value();
     case TableRole::Supports:
@@ -408,6 +420,14 @@ const base::ContractReader* ModelSnapshot::findTable(std::string_view name) cons
         return &m_sections->reader();
     case TableRole::ShellNormals:
         return &*m_shellNormals;
+    case TableRole::BarStations:
+        return &*m_barStations;
+    case TableRole::SurfaceEdges:
+        return &*m_surfaceEdges;
+    case TableRole::SurfaceFacets:
+        return &*m_surfaceFacets;
+    case TableRole::SurfaceLines:
+        return &*m_surfaceLines;
     case TableRole::FastenerPiercings:
         return &m_fastenerPiercings->reader();
     case TableRole::Supports:

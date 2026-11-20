@@ -239,6 +239,31 @@ void MixedHybridModel::boundaryTraces(std::span<const std::int32_t> gridRows,
         }
         traces.push_back(std::move(trace));
     }
+    // The interiors of the shells whose corners are all given: their displacement unknowns as the projection of the
+    // motion of the points of the element (ShellPart::interiorMoments).
+    for (const MixedShell& shell : m_shells)
+    {
+        std::vector<std::int32_t> rows(shell.gridRows.begin(), shell.gridRows.begin() + shell.cornerCount);
+        if (!std::all_of(rows.begin(), rows.end(), isGiven))
+            continue;
+        const ShellPart::InteriorMoments moments = m_shellPart->interiorMoments(shell.partIndex);
+        if (moments.unknowns.empty())
+            continue;
+        BoundaryTrace trace;
+        trace.gridRows = std::move(rows);
+        for (const SpaceVector& point : moments.points)
+            trace.points.push_back(base::Vec3{point[0], point[1], point[2]});
+        for (std::size_t i = 0; i < moments.unknowns.size(); ++i)
+        {
+            BoundaryUnknown unknown{entityDofOf(moments.unknowns[i]), false, {}, {}};
+            unknown.weights.assign(moments.points.size(), base::Vec3{});
+            for (std::size_t q = 0; q < moments.points.size(); ++q)
+                unknown.weights[q][i % 3] = moments.weights[i][q];
+            appendPartTerms(moments.terms[i], 1.0, unknown.terms);
+            trace.unknowns.push_back(std::move(unknown));
+        }
+        traces.push_back(std::move(trace));
+    }
 }
 
 void MixedHybridModel::solidBoundaryTraces(std::span<const std::int32_t> gridRows,

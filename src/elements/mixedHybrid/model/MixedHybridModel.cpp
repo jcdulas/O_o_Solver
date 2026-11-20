@@ -22,12 +22,6 @@ namespace oos::elements::mixedHybrid
 namespace
 {
 
-// The cards whose geometry the formulation reads from the mesh: the shells (their surface) and the solids (their
-// skin). The line elements alone are straight and need no declaration.
-constexpr std::array<std::string_view, 10> CARDS_READ_FROM_THE_MESH = {
-    "ShellQuad4", "ShellTria3", "ShellQuad4Drilling", "ShellTria3Drilling", "ShellQuad8",
-    "ShellTria6", "SolidTetra", "SolidPyramid",       "SolidPenta",         "SolidHexa"};
-
 // The DOFs of an edge of lines alone: the moments of the displacement trace, 3 (k − 1), and the twist, k (the line
 // kernel's edge layout without the k shear slots a shell edge has).
 constexpr int ALONE_EDGE_DOFS = 3 * (static_cast<int>(MIXED_HYBRID_DEGREE) - 1) + static_cast<int>(MIXED_HYBRID_DEGREE);
@@ -183,8 +177,9 @@ const MixedHybridModel& MixedHybridModel::of(const SnapshotIndex& index)
     return index.computedOnce<MixedHybridModel>([&] { return MixedHybridModel(index); });
 }
 
-MixedHybridModel::MixedHybridModel(const SnapshotIndex& index) : m_declarations(index.snapshot().formulationGeometry())
+MixedHybridModel::MixedHybridModel(const SnapshotIndex& index)
 {
+    readDeclarations(index);
     readLines(index);
     readShells(index);
     readSolids(index);
@@ -193,6 +188,7 @@ MixedHybridModel::MixedHybridModel(const SnapshotIndex& index) : m_declarations(
     buildShellPart(index);
     buildAloneEdges(index);
     buildSolidPart(index);
+    reportUnknownDeclarations();
     holdUnstiffenedShellDofs();
     findUnstiffenedLineRotations();
     buildEntities(index);
@@ -405,50 +401,27 @@ void MixedHybridModel::describeSurroundings(std::span<const std::int32_t> gridRo
             mix(static_cast<double>(edge[1]));
         }
     };
+    const auto mixSides = [&](const std::vector<input::EdgeSide>& sides)
+    {
+        mix(static_cast<double>(sides.size()));
+        for (const input::EdgeSide& side : sides)
+        {
+            mix(static_cast<double>(side.grids[0]));
+            mix(static_cast<double>(side.grids[1]));
+            mix(static_cast<double>(side.elementId));
+        }
+    };
     mixEdges(m_declarations->rawEdges);
     mix(static_cast<double>(m_declarations->rawElements.size()));
     for (const std::int32_t elementId : m_declarations->rawElements)
         mix(static_cast<double>(elementId));
-    mixEdges(m_declarations->sharpEdges);
-}
-
-void MixedHybridModel::checkDeclarations(const SnapshotIndex& index)
-{
-    const input::ModelSnapshot& snapshot = index.snapshot();
-    if (const std::optional<input::FormulationGeometry>& geometry = snapshot.formulationGeometry())
-    {
-        // The sharp edges are edges of the skin of solids: without a solid, none can be one (with solids,
-        // buildSolidPart checks each).
-        if (m_solids.empty() && !geometry->sharpEdges.empty())
-        {
-            base::Diagnostic diagnostic;
-            diagnostic.code = "geometry-declaration-unknown";
-            diagnostic.message = base::concatenate(
-                {"expected the sharp edges of the geometry declarations to be edges of the solids of ",
-                 MIXED_HYBRID_FORMULATION, ", found ", std::to_string(geometry->sharpEdges.size()),
-                 " sharp edges in a model without solids (the folds of shells are raw edges); correct the "
-                 "declaration"});
-            m_problems.push_back(std::move(diagnostic));
-        }
-        return;
-    }
-    for (const std::string_view card : CARDS_READ_FROM_THE_MESH)
-    {
-        const input::ElementBatch* batch = snapshot.findElementBatch(card);
-        if (batch == nullptr || batch->rowCount() == 0)
-            continue;
-        base::Diagnostic diagnostic;
-        diagnostic.code = "geometry-declarations-missing";
-        diagnostic.card = std::string(card);
-        diagnostic.message = base::concatenate(
-            {"expected the geometry declarations of a model whose shells or solids are in ", MIXED_HYBRID_FORMULATION,
-             " (its raw edges, raw elements and sharp edges: where the surface is not smooth), found none and ",
-             std::to_string(batch->rowCount()), " ", card,
-             " elements; give them with the formulationGeometry option (an empty declaration says that every edge "
-             "is smooth)"});
-        m_problems.push_back(std::move(diagnostic));
-        return;
-    }
+    mixSides(m_declarations->smoothEdges);
+    mixSides(m_declarations->sharpEdges);
+    mix(static_cast<double>(m_declarations->lineContinuations.size()));
+    for (const input::LineContinuation& line : m_declarations->lineContinuations)
+        for (const std::int32_t grid : line)
+            mix(static_cast<double>(grid));
+    mixEdges(m_declarations->lineEnds);
 }
 
 void MixedHybridModel::addElementProblem(std::string_view card, std::int64_t batchRow, base::Diagnostic problem)

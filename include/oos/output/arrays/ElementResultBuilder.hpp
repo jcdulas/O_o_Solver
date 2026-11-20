@@ -111,7 +111,13 @@ struct RecoveryWindow
 // The element type of a table is ElementFamily::resultElementType(). The elements of a subcase loaded by line loads
 // (BeamDistributedLoad on a Bar2 or Beam2) are recovered by recoverUnderLineLoads(), in the station layout, which can
 // show the forces between the ends (a Bar2 under BeamDistributedLoad: its own element type); when that layout is the
-// element's ordinary one (Beam2), its rows join the ordinary table in the element order.
+// element's ordinary one (Beam2), its rows join the ordinary table in the element order. The elements a card gives
+// output stations to (ElementFamily::stationRows: a Bar2 with a Bar2Stations) are written in that layout in every
+// subcase, with or without loads (recoverStationRows).
+//
+// An element kind asked with its corner rows (a selection that is not centre only) is recovered with
+// RecoveryOutput::hasCorners, which the families that write their corners on request read (the ShellQuad4): a
+// request for the centre rows computes no corner.
 //
 // The selection (from the Case Control requests and SETs: OutputPlan) limits each kind to its elements and,
 // for the shells, to their centre rows (an element whose rows hold a centre row, grid point 0, and corner rows keeps

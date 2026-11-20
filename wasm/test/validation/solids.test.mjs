@@ -7,7 +7,8 @@
 // Run: node --test wasm/test/validation/solids.test.mjs
 
 import assert from "node:assert/strict";
-import { CRITERIA, real, runModel, nodal, assertRatio, test } from "./support.mjs";
+import { CRITERIA, MIXED, real, runModel, nodal, assertRatio, prepared, surfaceRecords, test }
+  from "./support.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Meshes of solids. A block is a lattice of nx × ny × nz cells mapped by `map(u, v, w)` from the unit cube; each cell
@@ -63,11 +64,14 @@ function scatter(i, j, k, c) {
 }
 
 // A mesh of solids. `surfaces` are predicates (x, y, z) → boolean of the smooth parts of its skin: an element edge
-// whose two grid points lie on two of them is declared sharp. `quadratic` gives every edge its mid-side node, at the
+// whose two grid points lie on two of them is declared sharp, on one of them smooth. `straightSkin`: the skin is
+// made of planes meshed irregularly, whose mesh lines are no geometry; every line of the skin is declared ended at
+// every grid point, so that each edge is straight. `quadratic` gives every edge its mid-side node, at the
 // map of the middle of the edge in the lattice (on the exact curve of a curved map); a function (a, b) → boolean of
 // the positions of the two ends chooses the edges that get one. `reversed` numbers the grid points and the elements
 // downwards, `rotated` gives every element from its next corner (the invariance checks).
-function createMesh({ surfaces = [], quadratic = false, tolerance = 1e-7, reversed = false, rotated = false } = {}) {
+function createMesh({ surfaces = [], quadratic = false, tolerance = 1e-7, reversed = false, rotated = false,
+  straightSkin = false } = {}) {
   const mesh = { points: new Map(), elements: [], surfaces };
   const byPosition = new Map();
   const key = (p) => p.map((x) => Math.round(x / tolerance)).join(",");
@@ -151,10 +155,12 @@ function createMesh({ surfaces = [], quadratic = false, tolerance = 1e-7, revers
     return mesh;
   };
 
-  // The Node and element records.
-  mesh.records = () => [
+  // The Node and element records, and those of the declarations `geometry` of the skin (by default those of
+  // `surfaces`), as a preprocessor writes them in the model file.
+  mesh.records = (geometry = mesh.declarations()) => [
     ...[...mesh.points].map(([id, p]) => `Node;${id};;${p.map(real).join(";")}`),
-    ...mesh.elements.map((e) => `${e.card};${e.id};${e.propId};${[...e.corners, ...e.mids].join(";")}`)];
+    ...mesh.elements.map((e) => `${e.card};${e.id};${e.propId};${[...e.corners, ...e.mids].join(";")}`),
+    ...surfaceRecords(geometry)];
   // The cards of the elements.
   mesh.cards = () => [...new Set(mesh.elements.map((e) => e.card))];
   // The grid points that are corners of elements (the others are mid-side nodes).
@@ -176,9 +182,17 @@ function createMesh({ surfaces = [], quadratic = false, tolerance = 1e-7, revers
   // The sharp edges of the skin: those whose two grid points lie on the same two surfaces.
   mesh.sharpEdges = () => mesh.edges((a, b) =>
     surfaces.filter((surface) => surface(...a) && surface(...b)).length >= 2);
-  // The options of modelFromReader of the mixed hybrid formulation with these declarations.
-  mesh.options = () => ({ elementFormulation: "MixedHybridFormulation",
-    formulationGeometry: { sharpEdges: mesh.sharpEdges() } });
+  // The smooth edges of the skin: those whose two grid points lie on one surface only. On a curved surface meshed
+  // with cells that turn by more than the fold angle of the model they would be read sharp without the declaration.
+  mesh.smoothEdges = () => mesh.edges((a, b) =>
+    surfaces.filter((surface) => surface(...a) && surface(...b)).length === 1);
+  // The ends of the mesh lines of a skin of planes meshed irregularly: each edge of the skin, at both its grid points.
+  mesh.lineEnds = () => mesh.edges((a, b) => surfaces.some((surface) => surface(...a) && surface(...b)))
+    .flatMap(([a, b]) => [[a, b], [b, a]]);
+  // The declarations of the skin: a complete declaration of its edges, which leaves nothing to the fold angle of the
+  // model (spec section 4.4).
+  mesh.declarations = () => ({ sharpEdges: mesh.sharpEdges(), smoothEdges: mesh.smoothEdges(),
+    lineEnds: straightSkin ? mesh.lineEnds() : [] });
   return mesh;
 }
 
@@ -259,10 +273,11 @@ function tractionRecords(sid, faces, stress) {
 
 const STEEL = { young: 2.0e11, poisson: 0.3, density: 7800.0, expansion: 1.2e-5 };
 
-// A deck: the solution number, the case records and the model records.
+// A deck: the solution number, the case records and the model records, with the declarations of their geometry
+// (`prepared`).
 function deck(solution, caseRecords, modelRecords) {
-  return ["[executive]", `SolutionSequence;${solution}`, "[case]", ...caseRecords, "[model]", ...modelRecords, ""]
-    .join("\n");
+  return ["[executive]", `SolutionSequence;${solution}`, "[case]", ...caseRecords, "[model]",
+    ...prepared(modelRecords), ""].join("\n");
 }
 
 // The case records of a static analysis of load sets `loads` (one subcase each) on the constraint set 1.
@@ -378,7 +393,7 @@ function stressErrors(run, mesh, exact, { subcase = 1, centres = false } = {}) {
 // The run of the mixed hybrid formulation on `mesh` with the model records `records`; a warning fails the case
 // unless its code is in `allowed`.
 function runMixed(mesh, caseRecords, records, { solution = 101, analysis = "statics", allowed = [] } = {}) {
-  const run = runModel(deck(solution, caseRecords, [...mesh.records(), ...records]), mesh.options(), analysis);
+  const run = runModel(deck(solution, caseRecords, [...mesh.records(), ...records]), MIXED, analysis);
   const warnings = run.diagnostics.filter((d) => d.severity === "warning" && !allowed.includes(d.code));
   assert.equal(warnings.length, 0, `warnings: ${JSON.stringify(warnings.map((d) => d.text))}`);
   return run;
@@ -519,23 +534,22 @@ for (const meshCase of PATCH_MESHES)
     (t) => { bendingPatch(t, patchMesh(meshCase, GEOMETRIES[1]), { centres: false }); });
 
 // The same with straight edges and the grid points of the skin moved in their planes, three cells along each side.
-// The pentahedra under tetrahedra fail for the cause of the case that follows these (their lateral faces are
-// quadrilaterals beside triangles; exact with every edge of the skin declared sharp): displacements 2.0e-1.
+// The faces of the block are planes meshed irregularly: their mesh lines are no geometry, and the model file declares
+// every line of the skin ended at every grid point, as a preprocessor that knows the planes declares them (spec
+// section 4.4). Without the declaration a mesh line of three grid points whose middle one is off-centre is read as
+// one curve through them: it stays straight but is not run through at a uniform speed, and the linear stress states
+// lose 1e-6 to 4e-6 of exactness with two or three cells along a side.
+const STRAIGHT_SKIN = { mesh: { straightSkin: true } };
 for (const meshCase of [PATCH_MESHES[0], PATCH_MESHES[4], PATCH_MESHES[5], PATCH_MESHES[6]])
   test(`patch: three pure bendings on a block of ${meshCase.name} whose skin is distorted too, straight edges`,
     (t) => {
-      bendingPatch(t, patchMesh({ ...meshCase, n: [3, 3, 3] }, GEOMETRIES[0]), { centres: true });
+      bendingPatch(t, patchMesh({ ...meshCase, n: [3, 3, 3] }, GEOMETRIES[0], STRAIGHT_SKIN), { centres: true });
     });
 
-// The same block of hexahedra with two cells along each side. A limit of the reading of the skin (known-limits.mjs):
-// the skin is read as a smooth surface and a mesh line of two edges between two sharp edges is read as one curve
-// through its three grid points; when the middle grid point is not at the middle, the line stays straight but is not
-// run through at a uniform speed (4e-6 for a criterion of 1e-6). Exact with three cells along each side, with every
-// edge of the skin declared sharp, with mid-side nodes, and on tetrahedra. (The corner pressures of a
-// FacePressureLoad were interpolated in the parameters of the face, which this case found: they are now interpolated
-// by position.)
+// The same block of hexahedra with two cells along each side. (The corner pressures of a FacePressureLoad were
+// interpolated in the parameters of the face, which this case found: they are now interpolated by position.)
 test("patch: three pure bendings on a block of 2 x 2 x 2 SolidHexa whose skin is distorted too, straight edges",
-  (t) => { bendingPatch(t, patchMesh(PATCH_MESHES[0], GEOMETRIES[0]), { centres: true }); });
+  (t) => { bendingPatch(t, patchMesh(PATCH_MESHES[0], GEOMETRIES[0], STRAIGHT_SKIN), { centres: true }); });
 
 // A displacement prescribed on the whole skin (SinglePointConstr values on every grid point of the skin): the linear
 // field of a uniform strain with its six components. Every grid point then follows the field and every stress row is
@@ -1027,7 +1041,7 @@ test("Lamé: a sector of a thick cylinder of SolidHexa in a cylindrical displace
   for (const id of mesh.where((x, y, z) => near(z, 0) || near(z, h))) records.push(`SinglePointConstr;1;${id};3;0.`);
   const bore = skinFaces(mesh).filter((face) => face.x.every((p) => near(Math.hypot(p[0], p[1]), a)));
   for (const face of bore) records.push(facePressure(2, face, pressure));
-  const run = runModel(deck(101, staticCase([2]), records), mesh.options());
+  const run = runModel(deck(101, staticCase([2]), records), MIXED);
   // The hoop direction, the same at every grid point of each plane, is held along the edges and faces of the planes
   // (spec section 5.6: the directions common to the grid points). This case found that only the directions of the
   // basic system were (displacements 8 times the exact ones).
@@ -1143,9 +1157,9 @@ for (const shape of SHAPES)
           for (const face of skinFaces(mesh))
             records.push(card === "FacePressureLoad" ? facePressure(2, face, pressure)
               : pointsPressure(2, face, pressure));
-          const options = { elementFormulation: "MixedHybridFormulation",
-            formulationGeometry: { sharpEdges: mesh.edges() } };
-          const run = runModel(deck(101, staticCase([2]), [...mesh.records(), ...records]), options);
+          // One element: every edge of it is a sharp edge of its skin.
+          const model = [...mesh.records({ sharpEdges: mesh.edges() }), ...records];
+          const run = runModel(deck(101, staticCase([2]), model), MIXED);
           const strain = (-pressure * (1 - 2 * STEEL.poisson)) / STEEL.young;
           const moved = fieldError(run, mesh, (x, y, z) => [strain * x, strain * y, strain * z]) / Math.abs(strain);
           let stressError = 0;
@@ -1309,19 +1323,19 @@ test("loads: supports in a rectangular displacement system turned with a block o
   const mesh = createMesh({}).addBlock({ n: [2, 2, 2], map: (u, v, w) => turn(blockMap(u, v, w)) });
   const local = new Map([...mesh.points].map(([id, p]) => [id, [c * p[0] + s * p[1], -s * p[0] + c * p[1], p[2]]]));
   const onLocal = (predicate) => [...local].filter(([, p]) => predicate(...p)).map(([id]) => id);
-  const records = [...mesh.records().map((record) => (record.startsWith("Node;") ? `${record};1` : record)),
+  // The edges of the block in the turned axes are its sharp edges.
+  const surfaces = boxSurfaces(BLOCK.a, BLOCK.b, BLOCK.c);
+  const sharpEdges = mesh.edges().filter(([p, q]) =>
+    surfaces.filter((surface) => surface(...local.get(p)) && surface(...local.get(q))).length >= 2);
+  const records = [
+    ...mesh.records({ sharpEdges }).map((record) => (record.startsWith("Node;") ? `${record};1` : record)),
     `RectFrame2;1;;0.;0.;0.;0.;0.;1.;${real(c)};${real(s)};0.`, ...isotropic(STEEL)];
   for (const id of onLocal((x) => near(x, 0))) records.push(`SinglePointConstr;1;${id};1;0.`);
   for (const id of onLocal((x) => near(x, BLOCK.a)))
     records.push(`SinglePointConstr;1;${id};1;${real(strain * BLOCK.a)}`);
   records.push(`SinglePointConstr;1;${onLocal((x, y, z) => near(x, 0) && near(y, 0) && near(z, 0))[0]};23;0.`,
     `SinglePointConstr;1;${onLocal((x, y, z) => near(x, 0) && near(y, BLOCK.b) && near(z, 0))[0]};3;0.`);
-  // The edges of the block in the turned axes are its sharp edges.
-  const surfaces = boxSurfaces(BLOCK.a, BLOCK.b, BLOCK.c);
-  const sharpEdges = mesh.edges().filter(([p, q]) =>
-    surfaces.filter((surface) => surface(...local.get(p)) && surface(...local.get(q))).length >= 2);
-  const options = { elementFormulation: "MixedHybridFormulation", formulationGeometry: { sharpEdges } };
-  const run = runModel(deck(101, staticCase([null]), records), options);
+  const run = runModel(deck(101, staticCase([null]), records), MIXED);
   const warnings = run.diagnostics.filter((d) => d.severity === "warning").map((d) => d.code);
   let worst = 0;
   for (const [id, p] of local) {

@@ -317,13 +317,9 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
     for (const std::int32_t grid : m_lineGrids)
         input.lineGrids.insert(static_cast<std::size_t>(grid));
     // The declarations of the program, by the model's grid and shell indices.
-    if (const std::optional<input::FormulationGeometry>& geometry = snapshot.formulationGeometry())
+    if (const std::optional<input::FormulationGeometry>& geometry = m_declarations)
     {
-        const auto gridIndexOfId = [&](std::int32_t id) -> std::int32_t
-        {
-            const std::optional<std::int32_t> row = index.points().findGrid(id);
-            return row ? gridIndexOfRow(*row) : -1;
-        };
+        const auto gridIndexOfId = [&](std::int32_t id) { return this->gridIndexOfId(index, id); };
         // The edges of the shells and of the lines: a raw edge is one of them.
         std::set<EdgeKey> modelEdges;
         const auto gridOfRow = [&](std::int32_t row) { return static_cast<std::size_t>(m_gridIndexOfRow.at(row)); };
@@ -384,6 +380,7 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
             input.rawElements.push_back(found->partIndex);
         }
     }
+    declareShellGeometry(index, input);
 
     m_shellPart = std::make_unique<ShellPart>(std::move(input));
     for (const ShellPartProblem& problem : m_shellPart->problems())
@@ -589,6 +586,12 @@ constexpr double EVERY_EDGE = -1.0;
 // How the declarations are given to the program, as the messages name them.
 constexpr const char* RAW_EDGES_DECLARATION = "formulationGeometry.rawEdges";
 constexpr const char* RAW_ELEMENTS_DECLARATION = "formulationGeometry.rawElements";
+constexpr const char* SHARP_EDGES_DECLARATION = "formulationGeometry.sharpEdges";
+constexpr const char* SMOOTH_EDGES_DECLARATION = "formulationGeometry.smoothEdges";
+constexpr const char* LINE_ENDS_DECLARATION = "formulationGeometry.lineEnds";
+// An edge that the fold angle alone made sharp is named when its angle is under this many times the fold angle: a
+// curved surface meshed coarsely gives such angles as a shallow fold does. Above, it is a fold and is only counted.
+constexpr double FOLD_WARNING_FACTOR = 2.0;
 
 double inDegrees(double radians)
 {
@@ -618,19 +621,53 @@ std::vector<NamedEdge> edgesAbove(const std::vector<EdgeGeometry>& edges, double
     return out;
 }
 
-// The reading goes on smoothly across an edge of one or two shells that is not declared raw. Across a raw edge it
-// does not, and at a junction of three shells or more the shells that do not face each other end there: a kink is
-// expected along both.
+// The names of a state and of its origin in the table of the edges read (FormulationModel::surfaceEdges).
+std::string_view stateName(const EdgeGeometry& edge)
+{
+    return edge.raw ? "Raw" : edge.sharp ? "Sharp" : "Smooth";
+}
+
+std::string_view originName(EdgeStateOrigin origin)
+{
+    switch (origin)
+    {
+    case EdgeStateOrigin::Declared:
+        return "Declared";
+    case EdgeStateOrigin::RawElement:
+        return "RawElement";
+    case EdgeStateOrigin::Angle:
+    case EdgeStateOrigin::Unmeasured:
+        return "Angle";
+    case EdgeStateOrigin::Junction:
+        return "Junction";
+    case EdgeStateOrigin::Outline:
+        break;
+    }
+    return "Outline";
+}
+
+// The reading goes on smoothly across an edge of one or two shells that is neither raw nor sharp. Across a raw or a
+// sharp edge it does not, and at a junction of three shells or more the shells that do not face each other end there:
+// a kink is expected along them.
 bool isReadSmooth(const EdgeGeometry& edge)
 {
-    return !edge.raw && edge.elements <= 2;
+    return !edge.raw && !edge.sharp && edge.elements <= 2;
+}
+
+// The fold angle alone made the edge sharp (no declaration names it).
+bool isSharpByAngle(const EdgeGeometry& edge)
+{
+    return edge.sharp && edge.origin == EdgeStateOrigin::Angle;
 }
 
 // Why a kink or a rounding along an edge that is not read smooth is expected.
 std::string expectedBecause(const EdgeGeometry& edge)
 {
-    return edge.raw ? " (declared raw)"
-                    : base::concatenate({" (a junction of ", std::to_string(edge.elements), " shells)"});
+    if (edge.raw)
+        return " (declared raw)";
+    if (edge.elements > 2)
+        return base::concatenate({" (a junction of ", std::to_string(edge.elements), " shells)"});
+    return isSharpByAngle(edge) ? " (sharp by the fold angle of the model)" : " (declared sharp)";
 }
 
 // The message of a kink: the normals of the shells of an edge differ along it. Where the reading meant the surface
@@ -644,9 +681,9 @@ std::string kinkMessage(const NamedEdge& named, const std::string& edgeName)
     if (!isReadSmooth(named.edge))
         return found + expectedBecause(named.edge);
     return base::concatenate(
-        {found, " and the edge is not declared raw: the formulation takes this kink as a fold of the shells. If the "
-                "shells fold there, declare the edge raw (",
-         RAW_EDGES_DECLARATION,
+        {found, " and the edge is read smooth: the formulation takes this kink as a fold of the shells. If the "
+                "shells fold there, declare the edge sharp (",
+         SHARP_EDGES_DECLARATION, "), or raw when the fold is straight (", RAW_EDGES_DECLARATION,
          "); if the surface is smooth there, the mesh is too coarse or too distorted for its curvature to be read: "
          "refine it, give the shells mid-side nodes, or declare the shells raw (",
          RAW_ELEMENTS_DECLARATION, ": facets that fold along their edges)"});
@@ -662,10 +699,10 @@ std::string roundingMessage(const NamedEdge& named, const std::string& edgeName)
     if (!isReadSmooth(named.edge))
         return found + expectedBecause(named.edge);
     return base::concatenate(
-        {found, ": a fold that the declarations do not name is rounded there, or the mesh is coarse for the "
-                "curvature. If the shells fold, declare raw the edges along the fold (",
-         RAW_EDGES_DECLARATION, ") or the shells (", RAW_ELEMENTS_DECLARATION,
-         "); if the surface is smooth, it is read curved as meant"});
+        {found, ": a fold shallower than the fold angle of the model is rounded there, or the mesh is coarse for "
+                "the curvature. If the shells fold, declare sharp the edges along the fold (",
+         SHARP_EDGES_DECLARATION, "), or raw when the fold is straight (", RAW_EDGES_DECLARATION, ", or the shells: ",
+         RAW_ELEMENTS_DECLARATION, "); if the surface is smooth, it is read curved as meant"});
 }
 
 // The message of a rounding in the surface: an edge of the outline of the shells leaves its chord (the reading takes
@@ -676,11 +713,24 @@ std::string outlineMessage(const NamedEdge& named, const std::string& edgeName)
         {"the outline of the shells along ", edgeName,
          " is read as a curve that leaves the chord of the edge by up to ", std::to_string(named.degrees),
          " degrees in the surface: where the outline turns at a grid point, the reading takes it round the corner "
-         "unless an edge is declared raw there, and the area of the shells changes. If the outline has a corner at "
+         "unless the declarations end it there, and the area of the shells changes. If the outline has a corner at "
          "one of the two grid points, declare raw the outline edges that meet there (",
-         RAW_EDGES_DECLARATION,
+         RAW_EDGES_DECLARATION, "), or the end of their line at the corner (", LINE_ENDS_DECLARATION,
          "); if the outline is a smooth curve, it is read as meant, and a finer mesh along it or mid-side nodes remove "
          "this warning"});
+}
+
+// The message of an edge that the fold angle alone made sharp while its angle is near the fold angle: a shallow fold
+// or a curved surface meshed coarsely, which only the model can tell apart.
+std::string foldByAngleMessage(const NamedEdge& named, const std::string& edgeName)
+{
+    return base::concatenate(
+        {"the normals of the shells along ", edgeName, " differ by ", std::to_string(named.degrees),
+         " degrees at a grid point, more than the fold angle of the model (ShellNormalAngle), and nothing declares "
+         "the edge: it is read sharp, a fold of the shells. If the surface is smooth there, the mesh is coarse for "
+         "its curvature and the surface is computed as facets: declare the edge smooth (",
+         SMOOTH_EDGES_DECLARATION, ") or refine the mesh; if the shells fold there, declare the edge sharp (",
+         SHARP_EDGES_DECLARATION, ") to remove this warning"});
 }
 
 // The name of an edge in the messages, by the IDs of its grid points.
@@ -767,9 +817,9 @@ std::vector<std::pair<std::size_t, std::string>> closedCornerRefusals(const Shel
 
 // The first sentences of the summary of the report: the counts and the largest of each measure, each list holding
 // every edge, the largest measure first.
-std::string summaryMessage(const std::vector<std::int32_t>& gridIds, std::size_t rawCount,
-                           const std::vector<NamedEdge>& byKink, const std::vector<NamedEdge>& byRounding,
-                           const std::vector<NamedEdge>& byOutlineTurn)
+std::string summaryMessage(const std::vector<std::int32_t>& gridIds, std::size_t rawCount, std::size_t sharpCount,
+                           std::size_t sharpByAngleCount, const std::vector<NamedEdge>& byKink,
+                           const std::vector<NamedEdge>& byRounding, const std::vector<NamedEdge>& byOutlineTurn)
 {
     const auto largest = [&](const std::vector<NamedEdge>& sorted)
     {
@@ -778,7 +828,8 @@ std::string summaryMessage(const std::vector<std::int32_t>& gridIds, std::size_t
     };
     std::string message =
         base::concatenate({"the shells of ", MIXED_HYBRID_FORMULATION, " have ", std::to_string(byKink.size()),
-                           " edges, ", std::to_string(rawCount), " declared raw; "});
+                           " edges, ", std::to_string(rawCount), " declared raw, ", std::to_string(sharpCount),
+                           " sharp (", std::to_string(sharpByAngleCount), " by the fold angle of the model alone); "});
     if (byKink.empty() || byKink.front().degrees == 0.0)
         message += "the normals of the shells agree along every edge";
     else
@@ -824,7 +875,9 @@ std::map<EdgeKey, double> MixedHybridModel::edgeRoundings() const
 void MixedHybridModel::reportGeometry()
 {
     // What the reading of the mesh made of the surface of the shells (spec section 10.5):
-    // - the edges declared raw;
+    // - the edges declared raw, and the sharp ones; among these, the edges that the fold angle alone made sharp with
+    //   an angle near it (a shallow fold or a curved surface meshed coarsely, which the model alone can tell apart: a
+    //   warning);
     // - the edges where it left the normals of two shells apart. A kink of a raw edge or of a junction is expected
     //   (information). Elsewhere it is a fold the declarations do not name, or a mesh too coarse or too distorted for
     //   its curvature, and the formulation takes it as a fold: a warning;
@@ -863,6 +916,25 @@ void MixedHybridModel::reportGeometry()
             found->second.message += "; " + message;
     }
 
+    // The table of the edges read, by increasing grid point IDs (the grids of the model are in that order).
+    std::vector<SurfaceEdgeReading> table;
+    for (const EdgeGeometry& edge : edges)
+        table.push_back({m_gridIds[edge.grids.lower], m_gridIds[edge.grids.higher], "Shells", stateName(edge),
+                         originName(edge.origin), inDegrees(edge.angle), inDegrees(edge.kink),
+                         inDegrees(roundingOf(edge))});
+    std::sort(table.begin(), table.end(), [](const SurfaceEdgeReading& a, const SurfaceEdgeReading& b)
+              { return a.grid1 != b.grid1 ? a.grid1 < b.grid1 : a.grid2 < b.grid2; });
+    m_surfaceEdges.insert(m_surfaceEdges.end(), table.begin(), table.end());
+
+    // The edges that the fold angle alone made sharp with an angle near it: a shallow fold or a coarse curved mesh.
+    const double foldDegrees = inDegrees(m_foldAngle);
+    const auto angleOf = [](const EdgeGeometry& edge) { return edge.angle; };
+    const auto nearFoldAngle = [&](const EdgeGeometry& edge)
+    { return isSharpByAngle(edge) && inDegrees(edge.angle) < FOLD_WARNING_FACTOR * foldDegrees; };
+    std::vector<NamedEdge> foldsByAngle = edgesAbove(edges, EVERY_EDGE, angleOf, nearFoldAngle);
+    // the nearest to the fold angle first: the most doubtful
+    std::reverse(foldsByAngle.begin(), foldsByAngle.end());
+
     // The edges to name, the largest angles first: those the reading meant smooth (warnings), then the others.
     const std::vector<NamedEdge> kinks = edgesAbove(edges, GEOMETRY_REPORT_ANGLE, kinkOf, isReadSmooth);
     const std::vector<NamedEdge> expectedKinks = edgesAbove(edges, GEOMETRY_REPORT_ANGLE, kinkOf, expected);
@@ -872,10 +944,14 @@ void MixedHybridModel::reportGeometry()
 
     // The summary: the counts and the largest of each measure.
     const auto rawCount = std::count_if(edges.begin(), edges.end(), [](const EdgeGeometry& edge) { return edge.raw; });
+    const auto sharpCount =
+        std::count_if(edges.begin(), edges.end(), [](const EdgeGeometry& edge) { return edge.sharp; });
+    const auto sharpByAngleCount = std::count_if(edges.begin(), edges.end(), isSharpByAngle);
     base::Diagnostic summary;
     summary.severity = base::Severity::Information;
     summary.code = "geometry-report";
     summary.message = summaryMessage(m_gridIds, static_cast<std::size_t>(rawCount),
+                                     static_cast<std::size_t>(sharpCount), static_cast<std::size_t>(sharpByAngleCount),
                                      edgesAbove(edges, EVERY_EDGE, kinkOf, every),
                                      edgesAbove(edges, EVERY_EDGE, roundingOf, every),
                                      edgesAbove(edges, EVERY_EDGE, outlineTurnOf, every));
@@ -884,8 +960,15 @@ void MixedHybridModel::reportGeometry()
             {"; the warnings name the largest of ", std::to_string(kinks.size()), " kinks and ",
              std::to_string(rounded.size()), " roundings along edges that the reading takes as smooth, and of ",
              std::to_string(outline.size()), " rounded edges of the outline"});
+    if (!foldsByAngle.empty())
+        summary.message += base::concatenate(
+            {"; ", std::to_string(foldsByAngle.size()), " edges are sharp by the fold angle alone with an angle under ",
+             std::to_string(FOLD_WARNING_FACTOR * foldDegrees), " degrees (a shallow fold, or a mesh coarse for its "
+                                                                 "curvature)"});
     m_problems.push_back(std::move(summary));
 
+    nameEdges(foldsByAngle, base::Severity::Warning, "geometry-fold-by-angle", m_gridIds, foldByAngleMessage,
+              m_problems);
     nameEdges(kinks, base::Severity::Warning, "geometry-kink", m_gridIds, kinkMessage, m_problems);
     nameEdges(expectedKinks, base::Severity::Information, "geometry-kink", m_gridIds, kinkMessage, m_problems);
     std::vector<NamedEdge> folds;       // read smooth and rounded as an undeclared fold would be

@@ -6,6 +6,7 @@
 #include <compare>
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <optional>
 #include <set>
 #include <span>
@@ -20,9 +21,16 @@ namespace oos::elements::mixedHybrid
 // line elements, their owners, their common frames, and the curve of each edge read from the mesh (document 25 of the
 // reference, 3.2, and document 26, 3.2).
 //
-// The reading has no angle criterion: only the declarations decide where the surface is not smooth. A raw edge is a
-// straight line along which the surface may fold (the mesh lines that cross it end there); an element whose edges are
-// all raw is a facet; every other edge is smooth: it follows its mesh line and the surface is smooth across it.
+// Each edge of two shells or more has a state (EdgeState):
+// - smooth: the surface keeps one tangent plane across it and the edge follows its mesh line;
+// - sharp: the surface folds along it; the edge follows its own mesh line and may be curved (the rim of a cylinder
+//   closed by a flat end), and the mesh lines that would cross it end there;
+// - raw: the surface folds along it and the edge is straight; an element whose edges are all raw is a facet.
+// The state is declared (smoothSides, sharpSides, rawEdges, rawElements) or, where nothing declares it, decided by
+// one angle (foldAngle): the edge is sharp when the normals of its two elements differ by more than that angle at one
+// of its grids. Without an angle every edge that nothing declares is smooth. The reading holds no other criterion:
+// which mesh line goes on into which is declared too where its own rules are not wanted (declaredLines). Not in the
+// reference, which has the raw edges and elements alone.
 //
 // Invariants: grids, shells and lines are given by index (0-based, into MeshReadingInput::grids). The edges of the
 // shells are numbered in the order they are met (shells in order, edge k of a shell from its grid k to its grid
@@ -94,8 +102,20 @@ struct MeshReadingInput
     std::set<EdgeKey> rawEdges;
     // Shells declared raw: all their edges are raw (a facet).
     std::vector<std::size_t> rawElements;
-    // Edges of the skin of the solids declared sharp: the skin is not smooth across them (SolidSkin.hpp).
-    std::set<EdgeKey> sharpEdges;
+    // Edges declared smooth, and edges declared sharp: for each, the shells whose side of the edge is named
+    // (WHOLE_EDGE: every side). A side matters at an edge of three shells or more: a sharp side is smooth with no
+    // other shell across the edge, a smooth side is smooth with the shell that faces it. Where both name a side, it
+    // is sharp.
+    std::map<EdgeKey, std::set<std::size_t>> smoothSides;
+    std::map<EdgeKey, std::set<std::size_t>> sharpSides;
+    // The angle (radians) between the normals of two shells at a grid of their edge above which an edge that nothing
+    // declares is sharp; zero or negative: every such edge is sharp. Empty: no angle criterion, every such edge is
+    // smooth.
+    std::optional<double> foldAngle;
+    // The mesh lines declared: for edge a → b at grid a (the key {a, b}), the grids c of the edges a − c that it goes
+    // on into; no grid: the line ends at a. A key replaces the rules of the reading for that edge at that grid
+    // (SurfaceReconstruction::candidates); the other end of a continuation is another key.
+    std::map<std::pair<std::size_t, std::size_t>, std::set<std::size_t>> declaredLines;
     // The grids of the boundary of the mesh through which the boundary line goes on, when that is known (the others
     // are corners): set on the skin of the solids, where the sharp edges say it. Empty: the rule of the shells, by
     // the elements at the grid.
@@ -104,10 +124,51 @@ struct MeshReadingInput
     // the common frame of an external edge (Topology::frames). The integrator decides which supports to pass.
     std::set<std::pair<std::size_t, int>> heldTranslations;
 
-    [[nodiscard]] bool isSharp(std::size_t a, std::size_t b) const { return sharpEdges.contains(EdgeKey::of(a, b)); }
+    // In smoothSides and sharpSides: every side of the edge.
+    static constexpr std::size_t WHOLE_EDGE = static_cast<std::size_t>(-1);
 };
 
-// The declared raw edges and the edges of the raw elements.
+// What the surface does at an edge of two shells or more.
+enum class EdgeState
+{
+    Smooth, // one tangent plane across the edge, which follows its mesh line
+    Sharp,  // a fold along the edge, which follows its own mesh line (at a junction: one side at least ends there)
+    Raw,    // a fold along the edge, which is straight
+};
+
+// Where the state of an edge comes from, the strongest reason first.
+enum class EdgeStateOrigin
+{
+    Declared,   // a raw, sharp or smooth declaration of the edge or of one of its sides
+    RawElement, // an edge of a shell declared raw
+    Angle,      // the angle between the normals of its shells against MeshReadingInput::foldAngle
+    Junction,   // an edge of three shells or more where one of them faces no other
+    Unmeasured, // smooth because the reading was given no angle
+    Outline,    // an edge of one shell, or of a line element alone: nothing to decide
+};
+
+// The state of an edge, where it comes from, and the angle measured (edgeAngle; zero where fewer than two shells
+// face each other).
+struct EdgeReading
+{
+    EdgeState state = EdgeState::Smooth;
+    EdgeStateOrigin origin = EdgeStateOrigin::Outline;
+    double angle = 0.0;
+};
+
+// The unit normal of shell `shell` at its grid `grid`: the cross product of its two edges there (the normal of the
+// bilinear surface of a quadrilateral at that corner, which follows a warped element; a triangle has one normal),
+// turned as the grids of the shell turn. `fallback` where the two edges are along one line.
+[[nodiscard]] Vector3 cornerNormal(std::span<const Vector3> grids, const ShellCorners& shell, std::size_t grid,
+                                   const Vector3& fallback);
+
+// The angle (radians, 0 to π) between the surfaces of two shells at grid `grid` of their common edge `grid` − `other`:
+// that of their corner normals there once both shells are turned the same way about the edge, so that the numbering
+// sense of the shells plays no part (two shells that run along the edge in opposite senses turn the same way).
+[[nodiscard]] double cornerAngle(std::span<const Vector3> grids, const ShellCorners& first, const ShellCorners& second,
+                                 std::size_t grid, std::size_t other);
+
+// The declared raw edges and the edges of the raw elements that nothing declares smooth or sharp.
 // Reference: src/model.rs::Model::set_raw, Model::raw_element.
 [[nodiscard]] std::set<EdgeKey> rawEdgeSet(const MeshReadingInput& input);
 
@@ -133,6 +194,12 @@ struct Topology
     std::vector<Vector3> normals;
     // The raw edges (rawEdgeSet of the input).
     std::set<EdgeKey> rawEdges;
+    // The state of each edge (resolved from the declarations and the angle of the input).
+    std::vector<EdgeReading> states;
+    // For each edge, the shell that each of its shells is smooth with across it. A shell without one ends there: at a
+    // sharp edge, or at a junction where no shell faces it. Across a raw edge the two shells keep each other: the
+    // reading asks the raw edges apart (isRaw), as the reference does.
+    std::vector<std::map<std::size_t, std::size_t>> partners;
 
     // The shared edges of the mesh, their common frames and their curves.
     // Reference: src/model.rs::Topology::new.
@@ -143,6 +210,10 @@ struct Topology
     // The index of edge a − b; throws InternalError when the mesh has no such edge.
     [[nodiscard]] std::size_t indexOf(std::size_t a, std::size_t b) const;
     [[nodiscard]] bool isRaw(std::size_t a, std::size_t b) const { return rawEdges.contains(EdgeKey::of(a, b)); }
+    [[nodiscard]] bool isSharp(std::size_t a, std::size_t b) const
+    {
+        return states[indexOf(a, b)].state == EdgeState::Sharp;
+    }
 };
 
 // The element axes (rows x_e, y_e, z_e in basic components) of a quadrilateral, and the direction of its side G1-G2

@@ -1,3 +1,4 @@
+#include "oos/elements/bars_beams/BarStations.hpp"
 #include "oos/elements/bars_beams/BeamResponse.hpp"
 #include "oos/elements/bars_beams/BeamThermal.hpp"
 #include "oos/elements/bars_beams/bar2/Bar2Element.hpp"
@@ -258,56 +259,91 @@ bool Bar2Element::recoverySlopes(const ElementBatchView& view, std::int64_t row,
     return recoverySlopesOfOutputs(view, row, outputs, std::span<RecoverySlopes>(&slopes, 1));
 }
 
-// Two rows per loaded Bar2, at its ends A (position 0) and B (position 1), in the station layout of a Bar2
-// under BeamDistributedLoad; the forces include the loads between the ends.
+namespace
+{
+
+// The row of one Bar2 at `position` (a fraction of its length from end A) in the station layout: its forces there
+// (6 values), or the stresses (strains) of its four recovery points, the axial one, their extremes and the margin (8).
+// The section of a Bar2 is the same along its length.
+void appendStationRow(ElementResultBlock& block, std::int64_t row, std::int32_t elementId, const BeamData& beam,
+                      const BeamResponse& response, double position, ElementOutput output)
+{
+    const BeamForces forces = response.forcesAt(position * beam.geometry.length);
+    const ResultPlace place{0, 1, position};
+    if (output == ElementOutput::Forces)
+    {
+        const std::array<double, 6> values{forces.moment1, forces.moment2, forces.shear1,
+                                           forces.shear2,  forces.axial,   forces.torque};
+        block.append(row, elementId, place, values);
+        return;
+    }
+    const StationStresses stresses = stationStresses(beam.section.stations[position < 1.0 ? 0 : 1], forces);
+    const double tension = tensionMargin(stresses.maximum, beam.material);
+    const double compression = compressionMargin(stresses.minimum, beam.material);
+    double margin = UNDEFINED_MARGIN;
+    if (tension != UNDEFINED_MARGIN && compression != UNDEFINED_MARGIN)
+        margin = std::min(tension, compression);
+    else if (tension != UNDEFINED_MARGIN)
+        margin = tension;
+    else
+        margin = compression;
+    std::array<double, 8> values{stresses.bending[0], stresses.bending[1], stresses.bending[2], stresses.bending[3],
+                                 stresses.axial,      stresses.maximum,    stresses.minimum,    margin};
+    if (output == ElementOutput::Strains)
+        for (std::size_t k = 0; k < 7; ++k)
+            values[k] = uniaxialStrain(values[k], beam.material);
+    block.append(row, elementId, place, values);
+}
+
+} // namespace
+
+// The rows of each loaded Bar2 in the station layout (recoverStationRows): the elements `loads` names.
 void Bar2Element::recoverUnderLineLoads(const ElementBatchView& view, std::span<const ElementLineLoad> loads,
                                            ElementOutput output, const NodalDisplacements& displacements,
                                            ElementResultBlock& block) const
+{
+    std::vector<std::int64_t> rows; // bounded by the loads
+    forEachLoadedElement(loads, [&](std::int64_t row, std::span<const ElementLineLoad>) { rows.push_back(row); });
+    recoverStationRows(view, rows, loads, output, displacements, block);
+}
+
+std::vector<std::int64_t> Bar2Element::stationRows(const ElementBatchView& view) const
+{
+    return BarStations(view).rowsOf(view);
+}
+
+// The rows of each Bar2 of `rows` in the station layout of a Bar2 under BeamDistributedLoad: at its end A (position
+// 0), at the stations its Bar2Stations card gives (their fractions of its length) and at its end B (position 1); the
+// forces include the loads between end A and the station.
+void Bar2Element::recoverStationRows(const ElementBatchView& view, std::span<const std::int64_t> rows,
+                                        std::span<const ElementLineLoad> loads, ElementOutput output,
+                                        const NodalDisplacements& displacements, ElementResultBlock& block) const
 {
     if (outputColumnsUnderLineLoads(output).empty())
         throw std::invalid_argument(
             "Bar2: no output of this kind under line loads; ask outputColumnsUnderLineLoads()");
     block.reset(outputColumnsUnderLineLoads(output));
     const Columns columns(view);
-    forEachLoadedElement(loads,
-                         [&](std::int64_t row, std::span<const ElementLineLoad> elementLoads)
-                         {
-                             const BeamData beam = resolve(view, columns, row).required();
-                             const std::vector<BeamLineLoad> resolved =
-                                 resolveLineLoadsOrThrow(view, elementLoads, beam.geometry);
-                             const BeamResponse response(beam, displacements, resolved,
-                                                         beamFreeStrains(view, row, beam, displacements));
-                             for (std::size_t end = 0; end < 2; ++end)
-                             {
-                                 const double position = static_cast<double>(end);
-                                 const BeamForces forces = response.forcesAt(position * beam.geometry.length);
-                                 const ResultPlace place{0, 1, position};
-                                 if (output == ElementOutput::Forces)
-                                 {
-                                     const std::array<double, 6> values{forces.moment1, forces.moment2, forces.shear1,
-                                                                        forces.shear2,  forces.axial,   forces.torque};
-                                     block.append(row, view.elementId(row), place, values);
-                                     continue;
-                                 }
-                                 const StationStresses stresses = stationStresses(beam.section.stations[end], forces);
-                                 const double tension = tensionMargin(stresses.maximum, beam.material);
-                                 const double compression = compressionMargin(stresses.minimum, beam.material);
-                                 double margin = UNDEFINED_MARGIN;
-                                 if (tension != UNDEFINED_MARGIN && compression != UNDEFINED_MARGIN)
-                                     margin = std::min(tension, compression);
-                                 else if (tension != UNDEFINED_MARGIN)
-                                     margin = tension;
-                                 else
-                                     margin = compression;
-                                 std::array<double, 8> values{
-                                     stresses.bending[0], stresses.bending[1], stresses.bending[2], stresses.bending[3],
-                                     stresses.axial,      stresses.maximum,    stresses.minimum,    margin};
-                                 if (output == ElementOutput::Strains)
-                                     for (std::size_t k = 0; k < 7; ++k)
-                                         values[k] = uniaxialStrain(values[k], beam.material);
-                                 block.append(row, view.elementId(row), place, values);
-                             }
-                         });
+    const BarStations stations(view);
+    std::size_t next = 0; // the first load not yet taken: the loads follow the order of the rows
+    for (const std::int64_t row : rows)
+    {
+        while (next < loads.size() && loads[next].elementRow < row)
+            ++next;
+        std::size_t last = next;
+        while (last < loads.size() && loads[last].elementRow == row)
+            ++last;
+        const std::span<const ElementLineLoad> elementLoads = loads.subspan(next, last - next);
+        next = last;
+        const BeamData beam = resolve(view, columns, row).required();
+        const std::vector<BeamLineLoad> resolved = resolveLineLoadsOrThrow(view, elementLoads, beam.geometry);
+        const BeamResponse response(beam, displacements, resolved, beamFreeStrains(view, row, beam, displacements));
+        const std::int32_t elementId = view.elementId(row);
+        appendStationRow(block, row, elementId, beam, response, 0.0, output);
+        for (const double fraction : stations.fractionsOf(elementId, beam.geometry.length).required())
+            appendStationRow(block, row, elementId, beam, response, fraction, output);
+        appendStationRow(block, row, elementId, beam, response, 1.0, output);
+    }
 }
 
 } // namespace oos::elements

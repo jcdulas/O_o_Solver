@@ -7,7 +7,7 @@
 // the point and the face. With GlueOption 3 or 4 the rotations of the point are tied to that rotation too. In the
 // MixedHybridFormulation, whose elements have unknowns along their edges, the edges between glued grid points are
 // tied along their length the same way (their displacement, and with GlueOption 3 or 4 their rotation about
-// themselves), and so are the edges and the faces of the skin of glued solids.
+// themselves), and so are the interiors of the glued shells and the edges and the faces of the skin of glued solids.
 //
 // What is checked:
 //   1. two plates glued face to face with a gap between their mid-surfaces follow a rigid motion (both formulations);
@@ -25,18 +25,12 @@
 // Run: node --test wasm/test/validation/glue.test.mjs   (Node.js 24; needs ../O_o_Reader/build/wasm/dist)
 
 import assert from "node:assert/strict";
-import { CLASSIC, MIXED, nodal, real, runModel, test } from "./support.mjs";
+import { CLASSIC, MIXED, nodal, prepared, real, runModel, surfaceRecords, test } from "./support.mjs";
 
 const FORMULATIONS = [{ name: "ClassicFormulation", options: CLASSIC }, { name: "MixedHybridFormulation",
   options: MIXED }];
 const ALUMINIUM = { young: 7.0e10, poisson: 0.3, density: 2700 };
 const q = real;
-
-// The options of a formulation for a model with solids whose edges `sharpEdges` (pairs of grid point IDs) are those
-// of their boxes: the MixedHybridFormulation reads the skin of the solids as a smooth surface across the edges
-// that are not declared sharp.
-const withSharpEdges = (name, options, sharpEdges) =>
-  (name === "MixedHybridFormulation" ? { ...options, formulationGeometry: { sharpEdges } } : options);
 
 const add = (a, b) => a.map((value, i) => value + b[i]);
 const scale = (factor, a) => a.map((value) => factor * value);
@@ -47,6 +41,8 @@ const norm = (a) => Math.hypot(...a);
 class Deck {
   constructor() {
     this.cards = [];
+    // The edges of the boxes of solids, which the model file declares sharp (pairs of grid point IDs).
+    this.sharpEdges = [];
     this.positions = new Map();
   }
 
@@ -106,7 +102,8 @@ class Deck {
       for (let k = 0; k <= nz; ++k) for (let j = 0; j <= ny; ++j) ids.push(node(i, j, k));
       return ids;
     };
-    return { node, elements, face, sharp };
+    this.sharpEdges.push(...sharp);
+    return { node, elements, face };
   }
 
   // The body `secondary` (its elements) glued on the body `primary` (its elements, or { property } for the skin of
@@ -123,10 +120,16 @@ class Deck {
     this.isGlued = true;
   }
 
+  // The model records, with the declarations of the geometry as a preprocessor writes them: the edges of the boxes
+  // sharp (the MixedHybridFormulation reads them; the ClassicFormulation does not).
+  model() {
+    return prepared([...this.cards, ...surfaceRecords({ sharpEdges: this.sharpEdges })]);
+  }
+
   // The text of a modal model of `count` modes on the supports of the set 1.
   modes(count) {
     return ["[executive]", "SolutionSequence;103", "[case]", ...(this.isGlued ? ["ContactSelection;1"] : []),
-      "SubcaseStart;1", "SinglePointConstrSelection;1", "EigenMethodSelection;3", "[model]", ...this.cards,
+      "SubcaseStart;1", "SinglePointConstrSelection;1", "EigenMethodSelection;3", "[model]", ...this.model(),
       `LanczosEigenMethod;3;;;${count}`, ""].join("\n");
   }
 
@@ -134,7 +137,7 @@ class Deck {
   statics(hasLoads = true) {
     return ["[executive]", "SolutionSequence;101", "[case]", "DisplacementOutput;All",
       ...(this.isGlued ? ["ContactSelection;1"] : []), "SubcaseStart;1", "SinglePointConstrSelection;1",
-      ...(hasLoads ? ["StaticLoadSelection;2"] : []), "[model]", ...this.cards, ""].join("\n");
+      ...(hasLoads ? ["StaticLoadSelection;2"] : []), "[model]", ...this.model(), ""].join("\n");
   }
 }
 
@@ -326,11 +329,13 @@ test("4. a plate glued by its rotations on the face of a solid has its translati
 // them, glued or not), tighter where the closed form is in the space of the elements. The "Measured" line of a case
 // gives the ratios of the ClassicFormulation, then of the MixedHybridFormulation.
 //
-// The MixedHybridFormulation ties the grid points of the glued sheet and its edges between them, each point to its
-// point of the face, with the rotation of the face read there (on an edge of the face, the rotation of that edge).
-// Tied at their grid points alone, the layers of these cases slipped between them (1.28 for the cantilever of case
-// 2, 1.09 for the splice of case 5); with their edges carried along their chords, as between the grid points of a
-// rigid element, the glued layer stayed straight on a layer that bends (0.72 for case 1, 0.40 for case 3).
+// The MixedHybridFormulation ties the grid points of the glued sheet, its edges between them and the inside of its
+// elements, each point to its point of the face, with the rotation of the face read there (on an edge of the face,
+// the rotation of that edge). Tied at their grid points alone, the layers of these cases slipped between them (1.28
+// for the cantilever of case 2, 1.09 for the splice of case 5); with their edges carried along their chords, as
+// between the grid points of a rigid element, the glued layer stayed straight on a layer that bends (0.72 for case
+// 1, 0.40 for case 3); with the inside of the elements left free, cases 1, 2, 4 and 7 gave 1.0012, 1.0065, 1.0061
+// and 0.9973.
 
 const THEORY = { width: 0.04, thickness: 0.002, length: 0.2, young: ALUMINIUM.young };
 THEORY.shear = THEORY.young / 2; // G with ν = 0
@@ -395,7 +400,7 @@ const THEORY_CASES = [
   {
     // A cantilever of two layers glued over their whole length, both clamped, loaded across at its end:
     //     δ = P·L³/(3·E·I) + P·L/(κ·G·A),   I and A those of the two layers together.
-    // Measured: 1.0125, 1.0012.
+    // Measured: 1.0125, 1.0002.
     name: "1. a cantilever of two glued layers under an end force",
     theory: () => THEORY.length ** 3 / (3 * bendingStiffness(2)) + THEORY.length / shearStiffness(2),
     value: (options) => cantileverDeflection(options, THEORY.thickness, true),
@@ -403,7 +408,7 @@ const THEORY_CASES = [
   },
   {
     // The same cantilever, the lower layer alone clamped: the upper one takes its moment from the glue over its
-    // first cells (5 % allowed for that). Measured: 1.0392, 1.0065.
+    // first cells (5 % allowed for that). Measured: 1.0392, 1.0032.
     name: "2. a cantilever of two glued layers, the upper one held by the glue alone",
     theory: () => THEORY.length ** 3 / (3 * bendingStiffness(2)) + THEORY.length / shearStiffness(2),
     value: (options) => cantileverDeflection(options, THEORY.thickness, false),
@@ -422,7 +427,7 @@ const THEORY_CASES = [
     // The lap splice under a force across its end. The beam of three segments, I₂ = 8·I₁ over the overlap,
     // M = P·(L − x):
     //     δ = P/(3·E)·[(L³ − (L − x1)³)/I₁ + ((L − x1)³ − (L − x2)³)/I₂ + (L − x2)³/I₁]   (plus the shear terms).
-    // Measured: 1.0222, 1.0061 (5 % allowed: the overlap is two cells long).
+    // Measured: 1.0222, 1.0038 (5 % allowed: the overlap is two cells long).
     name: "4. a lap splice of two strips under an end force",
     theory: () => {
       const [x1, x2, length] = [0.08, 0.12, THEORY.length];
@@ -477,7 +482,7 @@ const THEORY_CASES = [
   {
     // The first frequency of a beam of two glued layers on two simple supports:
     //     f = (π/(2·L²))·√(E·I/(ρ·A)) = (π/(2·L²))·(2t)·√(E/(12·ρ)).
-    // Measured: 0.9792, 0.9973.
+    // Measured: 0.9792, 0.9990.
     name: "7. the first frequency of a simply supported beam of two glued layers",
     theory: () => Math.PI / (2 * THEORY.length ** 2) * 2 * THEORY.thickness *
       Math.sqrt(THEORY.young / (12 * ALUMINIUM.density)),
@@ -509,7 +514,7 @@ for (const { name, options } of FORMULATIONS)
   test(`5.8. a plate glued on a solid under a uniform strain has that strain (${name})`, (t) => {
     const deck = new Deck();
     const strain = 1.0e-3;
-    const solid = deck.box({ first: 0, x0: 0, x1: 0.1, width: 0.1, height: 0.05, nx: 1, ny: 1, nz: 1, property: 3 });
+    deck.box({ first: 0, x0: 0, x1: 0.1, width: 0.1, height: 0.05, nx: 1, ny: 1, nz: 1, property: 3 });
     deck.add("SolidProp", 3, 1);
     for (let id = 1; id <= 8; ++id)
       [strain * deck.positions.get(id)[0], 0, 0].forEach((value, c) => deck.add("SinglePointConstr", 1, id, c + 1,
@@ -518,7 +523,7 @@ for (const { name, options } of FORMULATIONS)
       alongY: [0, 0.025, 0], property: 1 });
     shellCards(deck, [1], THEORY.thickness, 0);
     deck.glue({ property: 3 }, plate.elements, 1);
-    const run = runModel(deck.statics(false), withSharpEdges(name, options, solid.sharp));
+    const run = runModel(deck.statics(false), options);
     const worst = Math.max(...plate.nodes.map((id) => {
       const u = nodal(run, "displacements", id).slice(0, 3);
       return norm([u[0] - strain * deck.positions.get(id)[0], u[1], u[2]]);
@@ -552,7 +557,7 @@ for (const [primarySection, gluedSection] of [[[1, 2], [2, 2]], [[2, 2], [3, 3]]
       deck.glue({ property: 3 }, second.elements, 1);
       const end = second.face(4);
       end.forEach((id) => deck.add("PointForceLoad", 2, id, "", q(1), q(0), q(0), q(1 / end.length)));
-      const run = runModel(deck.statics(), withSharpEdges(name, options, [...first.sharp, ...second.sharp]));
+      const run = runModel(deck.statics(), options);
       const theory = length ** 3 / (3 * ALUMINIUM.young * width * height ** 3 / 12) +
         length / ((5 / 6) * (ALUMINIUM.young / 2) * width * height);
       const value = meanOf(run, end, 2);

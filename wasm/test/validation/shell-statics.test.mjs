@@ -13,7 +13,8 @@
 // Run: node --test wasm/test/validation/shell-statics.test.mjs   (Node.js 24; needs ../O_o_Reader/build/wasm/dist)
 
 import assert from "node:assert/strict";
-import { CRITERIA, MIXED, CLASSIC, real, runModel, nodal, test } from "./support.mjs";
+import { CRITERIA, MIXED, CLASSIC, real, runModel, nodal, innerEdges, prepared, surfaceRecords, test }
+  from "./support.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Reporting
@@ -61,12 +62,13 @@ const ELEMENT_OUTPUT = ["ElemForceOutput;All;CornerResults", "StressOutput;All;C
 // The selection of the temperature load set 7.
 const THERMAL_CASE = ["TemperatureSelection;7;TemperatureLoadPart"];
 
-// The text of a static deck of one subcase: `caseRecords` before the subcase, `model` the model cards. `loaded` is
-// false for a case driven by its supports alone (no load set).
+// The text of a static deck of one subcase: `caseRecords` before the subcase, `model` the model cards, with the
+// declarations of their geometry (`prepared`). `loaded` is false for a case driven by its supports alone (no load
+// set).
 function deck({ caseRecords = [], model, outputs = ELEMENT_OUTPUT, loaded = true }) {
   return ["[executive]", "SolutionSequence;101", "[case]", ...caseRecords, "SubcaseStart;1",
     "SinglePointConstrSelection;1", ...(loaded ? ["StaticLoadSelection;2"] : []), "DisplacementOutput;All",
-    "SinglePointConstrForceOutput;All", ...outputs, "[model]", ...model].join("\n") + "\n";
+    "SinglePointConstrForceOutput;All", ...outputs, "[model]", ...prepared(model)].join("\n") + "\n";
 }
 
 // `SinglePointConstrList` records of set 1 holding `components` at the grid points `ids`.
@@ -158,6 +160,14 @@ function mesh({ nu, nv, position, shape = "ShellQuad4", distortion = 0, reversed
     }
   return { lines, node, points, elements, nu, nv, shape, pointOf: new Map(points.map((p) => [p.id, p])),
     elementOf: new Map(elements.map((e) => [e.id, e])) };
+}
+
+// The declaration a preprocessor writes for a surface without fold meshed by `grid`: every edge between two of its
+// elements is smooth, whatever the angle its elements turn by (spec section 4.4). An edge is named by its two corner
+// grid points.
+function smoothSurface(grid) {
+  const corners = grid.shape === "ShellQuad4" || grid.shape === "ShellQuad8" ? 4 : 3;
+  return surfaceRecords({ smoothEdges: innerEdges(grid.elements.map((e) => e.grids.slice(0, corners))) });
 }
 
 // The grid points of `grid` on its boundary.
@@ -575,10 +585,12 @@ const RADIANS = Math.PI / 180;
 // value that climbs slowly with the mesh (0.30089, 0.30113, 0.30151, 0.30186 at 2, 4, 8, 16): the layer of a
 // shear-deformable shell along its free edges and soft supports, of the width of the thickness, is not resolved by
 // these meshes. The reference crate gives the same numbers on the same meshes.
-function scordelisLo({ n, shape = "ShellQuad4", distortion = 0, shear = true }) {
+// The roof is declared smooth, or every element raw with `facets`.
+function scordelisLo({ n, shape = "ShellQuad4", distortion = 0, shear = true, facets = false }) {
   const grid = mesh({ nu: n, nv: n, shape, distortion,
     position: (u, v) => [25 * u, 25 * Math.sin(40 * RADIANS * v), 25 * Math.cos(40 * RADIANS * v)] });
-  const model = [...grid.lines, `ShellProp;1;1;0.25;1${shear ? ";;1" : ""}`, "IsoMat;1;4.32e8;;0.;360.",
+  const surface = facets ? surfaceRecords({ rawElements: grid.elements.map((e) => e.id) }) : smoothSurface(grid);
+  const model = [...grid.lines, ...surface, `ShellProp;1;1;0.25;1${shear ? ";;1" : ""}`, "IsoMat;1;4.32e8;;0.;360.",
     "GravityLoad;2;;1.;0.;0.;-1."];
   for (const p of grid.points) {
     if (p.a === 1) model.push(...hold("23", [p.id]));     // the diaphragm
@@ -632,9 +644,8 @@ test("Scordelis-Lo roof, 8 x 8 ShellTria3 distorted by 0.2 (OPEN: the reading of
 
 test("Scordelis-Lo roof, 8 x 8 ShellTria3 distorted by 0.2, every element declared raw (facets)", (t) => {
   const checks = checksOf(t);
-  const model = scordelisLo({ n: 8, shape: "ShellTria3", distortion: 0.2 });
-  const facets = { ...MIXED, formulationGeometry: { rawElements: model.grid.elements.map((e) => e.id) } };
-  checks.ratio("sag of the free edge", -nodal(runModel(model.text, facets), "displacements", model.freeEdgeMiddle)[2],
+  const model = scordelisLo({ n: 8, shape: "ShellTria3", distortion: 0.2, facets: true });
+  checks.ratio("sag of the free edge", -nodal(runModel(model.text, MIXED), "displacements", model.freeEdgeMiddle)[2],
     ROOF_SAG, CRITERIA.displacement);
   checks.done();
 });
@@ -649,7 +660,8 @@ test("Scordelis-Lo roof, 8 x 8 ShellTria3 distorted by 0.2, every element declar
 function pinchedCylinder({ n, shape = "ShellQuad4", distortion = 0, shear = false }) {
   const grid = mesh({ nu: n, nv: n, shape, distortion,
     position: (u, v) => [300 * u, 300 * Math.sin(90 * RADIANS * v), 300 * Math.cos(90 * RADIANS * v)] });
-  const model = [...grid.lines, `ShellProp;1;1;3.;1${shear ? ";;1" : ""}`, "IsoMat;1;3.e6;;0.3;0."];
+  const model = [...grid.lines, ...smoothSurface(grid), `ShellProp;1;1;3.;1${shear ? ";;1" : ""}`,
+    "IsoMat;1;3.e6;;0.3;0."];
   for (const p of grid.points) {
     if (p.a === 1) model.push(...hold("23", [p.id]));     // the diaphragm
     if (p.a === 0) model.push(...hold("156", [p.id]));    // the middle section
@@ -698,7 +710,7 @@ function pinchedHemisphere({ n, shape = "ShellQuad4", distortion = 0, rotate = u
     return [10 * Math.cos(latitude) * Math.cos(longitude), 10 * Math.cos(latitude) * Math.sin(longitude),
       10 * Math.sin(latitude)];
   } });
-  const model = [...grid.lines, "ShellProp;1;1;0.04;1;;1", "IsoMat;1;6.825e7;;0.3;0."];
+  const model = [...grid.lines, ...smoothSurface(grid), "ShellProp;1;1;0.04;1;;1", "IsoMat;1;6.825e7;;0.3;0."];
   for (const p of grid.points) {
     if (p.a === 0) model.push(...hold("246", [p.id]));    // the plane Y = 0
     if (p.a === 1) model.push(...hold("156", [p.id]));    // the plane X = 0
@@ -750,7 +762,7 @@ for (const distortion of [0, 0.2])
 // warped quadrilaterals, whose mesh lines change direction from one block to the next.
 function fullHemisphere({ n, shape = "ShellQuad4" }) {
   const grid = sphereOctant({ n, radius: 10, shape });
-  const model = [...grid.lines, "ShellProp;1;1;0.04;1;;1", "IsoMat;1;6.825e7;;0.3;0."];
+  const model = [...grid.lines, ...smoothSurface(grid), "ShellProp;1;1;0.04;1;;1", "IsoMat;1;6.825e7;;0.3;0."];
   for (const p of grid.points) {
     if (p.on[0]) model.push(...hold("156", [p.id]));
     if (p.on[1]) model.push(...hold("246", [p.id]));
@@ -790,7 +802,8 @@ function twistedBeam({ shape = "ShellQuad4", thickness, inPlane, distortion = 0 
     const [across, angle] = [1.1 * (v - 0.5), 90 * RADIANS * u];
     return [12 * u, across * Math.cos(angle), across * Math.sin(angle)];
   } });
-  const model = [...grid.lines, `ShellProp;1;1;${real(thickness)};1;;1`, "IsoMat;1;29.e6;;0.22;0."];
+  const model = [...grid.lines, ...smoothSurface(grid), `ShellProp;1;1;${real(thickness)};1;;1`,
+    "IsoMat;1;29.e6;;0.22;0."];
   for (const p of grid.points) if (p.a === 0) model.push(...hold("123456", [p.id]));
   // The tip section lies along Z: a force in its plane is along Z.
   for (let j = 0; j <= ns; ++j)
@@ -827,9 +840,10 @@ for (const { thickness, inPlane, expected } of TWISTED_BEAM)
 // read from the support forces of the tip. Beam theory of thin-walled sections, nu = 0 where the walls bend.
 
 const BEAM_YOUNG = 7.0e10;
-const beamCards = (beam, thickness, poisson) => [...beam.lines, `ShellProp;1;1;${real(thickness)};1;;1`,
+// The cards of a folded beam clamped at its root, its folds declared raw unless `declared` is false.
+const beamCards = (beam, thickness, poisson, declared = true) => [...beam.lines,
+  ...(declared ? surfaceRecords({ rawEdges: beam.rawEdges }) : []), `ShellProp;1;1;${real(thickness)};1;;1`,
   `IsoMat;1;${real(BEAM_YOUNG)};;${real(poisson)};0.`, ...hold("123456", beam.root.map((p) => p.id))];
-const folded = (beam) => ({ ...MIXED, formulationGeometry: { rawEdges: beam.rawEdges } });
 
 // A square box of side a (middle lines of its walls) and thickness t.
 const BOX = { side: 1.0, thickness: 0.02 };
@@ -848,7 +862,7 @@ test("box beam in pure bending, its folds raw: the exact state", (t) => {
     const beam = foldedBeam({ section: BOX_SECTION, closed: true, per, nx: 4, length });
     const model = beamCards(beam, BOX.thickness, 0);
     for (const { id, p } of beam.tip) model.push(enforce(id, 1, theta * p[2]), enforce(id, 5, theta));
-    const run = runModel(deck({ model, loaded: false }), folded(beam));
+    const run = runModel(deck({ model, loaded: false }), MIXED);
     checks.small(`displacements, ${per} element(s) per wall`, worstDisplacement(run, beam.points,
       (p) => [(theta * p[2] * p[0]) / length, 0, (-theta * p[0] ** 2) / (2 * length)], (theta * length) / 2),
     CRITERIA.exact);
@@ -869,7 +883,7 @@ test("box beam in torsion, its folds raw: Bredt's stiffness", (t) => {
     const beam = foldedBeam({ section: BOX_SECTION, closed: true, per, nx, length });
     const model = beamCards(beam, thickness, poisson);
     for (const { id, p } of beam.tip) model.push(enforce(id, 2, -phi * p[2]), enforce(id, 3, phi * p[1]));
-    const torque = reactionsOf(runModel(deck({ model, loaded: false }), folded(beam)), beam.tip)[3];
+    const torque = reactionsOf(runModel(deck({ model, loaded: false }), MIXED), beam.tip)[3];
     const expected = (stiffness * phi) / length;
     if (per === 2) checks.ratio("torque, 2 elements per wall", torque, expected, CRITERIA.displacement);
     else checks.info("torque, 1 element per wall", `ratio ${(torque / expected).toFixed(6)}`);
@@ -886,27 +900,29 @@ test("box beam under a transverse tip force, its folds raw: bending and shear of
   const beam = foldedBeam({ section: BOX_SECTION, closed: true, per: 2, nx: 10, length });
   const model = beamCards(beam, BOX.thickness, 0);
   for (const { id } of beam.tip) model.push(enforce(id, 3, delta));
-  const force = reactionsOf(runModel(deck({ model, loaded: false }), folded(beam)), beam.tip)[2];
+  const force = reactionsOf(runModel(deck({ model, loaded: false }), MIXED), beam.tip)[2];
   const flexibility = length ** 3 / (3 * BEAM_YOUNG * BOX_INERTIA) +
     length / ((BEAM_YOUNG / 2) * ((5 * BOX.thickness * BOX.side) / 3));
   checks.ratio("force of the tip", force, delta / flexibility, CRITERIA.displacement);
   checks.done();
 });
 
-test("box beam in torsion, its folds not declared: the reading rounds them (recorded)", (t) => {
-  // Section 4.4: a fold that is not declared is rounded. The reference measures -0.12, 0.984 and 0.995 of Bredt's
-  // twist with 1, 2 and 4 elements per wall under a shear flow; here the torque of an enforced rotation.
+test("box beam in torsion, its folds not declared: the fold angle of the model reads them sharp (recorded)", (t) => {
+  // Section 4.4: a fold that the model file does not declare is read by the fold angle of the model
+  // (ShellNormalAngle): the walls meet at 90 degrees, so that each corner line is a sharp edge, which keeps its own
+  // line. The torque of an enforced rotation is recorded against Bredt's stiffness, with two elements per wall.
   const checks = checksOf(t);
   const [length, phi, poisson, a, thickness] = [4.0, 1.0e-3, 0.3, BOX.side, BOX.thickness];
   const stiffness = (BEAM_YOUNG / (2 * (1 + poisson))) * (a ** 3 * thickness + (4 * a * thickness ** 3) / 3);
   const beam = foldedBeam({ section: BOX_SECTION, closed: true, per: 2, nx: 8, length });
-  const model = beamCards(beam, thickness, poisson);
+  const model = beamCards(beam, thickness, poisson, false);
   for (const { id, p } of beam.tip) model.push(enforce(id, 2, -phi * p[2]), enforce(id, 3, phi * p[1]));
   const run = runModel(deck({ model, loaded: false }), MIXED);
   checks.info("torque", `ratio ${((reactionsOf(run, beam.tip)[3] * length) / (stiffness * phi)).toFixed(6)}`);
-  // The geometry report names the folds: rounded (one element per wall) or kept as kinks that are not declared.
-  const named = run.diagnostics.filter((d) => d.code === "geometry-rounding" || d.code === "geometry-kink");
-  assert.ok(named.length > 0, "the geometry report names the folds that are not declared");
+  // The geometry report counts the folds that the angle alone made sharp: the edges of the four corner lines.
+  const counted = run.diagnostics.map((d) => /\((\d+) by the fold angle of the model alone\)/.exec(d.text))
+    .find((match) => match);
+  assert.equal(Number(counted?.[1]), beam.rawEdges.length, "the geometry report counts the folds read by the angle");
   checks.done();
 });
 
@@ -925,7 +941,7 @@ test("angle section in pure bending about a skew axis, its fold raw: the exact s
     for (const { id, p } of beam.tip)
       model.push(enforce(id, 1, length * (cy * p[1] + cz * p[2])), enforce(id, 5, cz * length),
         enforce(id, 6, -cy * length));
-    const run = runModel(deck({ model, loaded: false }), folded(beam));
+    const run = runModel(deck({ model, loaded: false }), MIXED);
     checks.small(`displacements, ${per} element(s) per leg`, worstDisplacement(run, beam.points,
       (p) => [p[0] * (cy * p[1] + cz * p[2]), (-cy * p[0] ** 2) / 2, (-cz * p[0] ** 2) / 2],
       (Math.abs(cy) * length ** 2) / 2), CRITERIA.exact);
@@ -973,7 +989,7 @@ test("angle section under a transverse tip force, its fold raw: unsymmetric bend
   const beam = foldedBeam({ section: ANGLE_SECTION, closed: false, per: 2, nx: 10, length });
   const model = beamCards(beam, ANGLE.thickness, 0);
   for (const { id } of beam.tip) model.push(enforce(id, 3, delta));
-  const run = runModel(deck({ model, loaded: false }), folded(beam));
+  const run = runModel(deck({ model, loaded: false }), MIXED);
   const bending = length ** 3 / (3 * BEAM_YOUNG * section.determinant);
   const alongZ = bending * section.iyy + length * section.shearZZ;
   const alongY = -bending * section.iyz + length * section.shearYZ;
@@ -1515,7 +1531,7 @@ function cylinderRing({ n, shape, distortion = 0 }) {
   const R = VESSEL.radius;
   const grid = mesh({ nu: n, nv: n, shape, distortion,
     position: (u, v) => [u, R * Math.sin(90 * RADIANS * v), R * Math.cos(90 * RADIANS * v)] });
-  const model = [...grid.lines, ...vesselCards(grid.elements.length)];
+  const model = [...grid.lines, ...smoothSurface(grid), ...vesselCards(grid.elements.length)];
   for (const p of grid.points) {
     if (p.a === 0 || p.a === 1) model.push(...hold("156", [p.id]));   // the planes across the axis
     if (p.b === 0) model.push(...hold("246", [p.id]));                // the plane Y = 0
@@ -1550,7 +1566,9 @@ function checkCylinder(checks, measures, name, criteria = true) {
 }
 const cylinderRadial = (u, p) => (u[1] * p[1] + u[2] * p[2]) / VESSEL.radius;
 
-// Four elements over 90 degrees on the exact surface: the patches of the formulation are the cylinder itself.
+// Four elements over 90 degrees on the exact surface: the patches of the formulation are the cylinder itself. Each
+// element turns by 22.5 degrees, more than the fold angle of the model: the surface is declared smooth in the model
+// file, as a preprocessor declares it (without the declaration the cylinder is read as four facets, 2 % off).
 for (const shape of ["ShellQuad4", "ShellTria3"])
   test(`cylinder under internal pressure, 4 x 4 ${shape} over 90 degrees`, (t) => {
     const checks = checksOf(t);
@@ -1598,7 +1616,7 @@ test("cylinder under internal pressure, 8 x 8 ShellTria3 distorted by 0.2 over 9
 // p R^2 (1 - nu) / (2 E t). Three blocks of warped quadrilaterals whose lines are arcs of great circles.
 function sphereUnderPressure({ n, shape }) {
   const grid = sphereOctant({ n, radius: VESSEL.radius, shape });
-  const model = [...grid.lines, ...vesselCards(grid.elements.length)];
+  const model = [...grid.lines, ...smoothSurface(grid), ...vesselCards(grid.elements.length)];
   for (const p of grid.points) {
     if (p.on[0]) model.push(...hold("156", [p.id]));
     if (p.on[1]) model.push(...hold("246", [p.id]));
@@ -1834,12 +1852,12 @@ for (const raw of [false, true])
     const [thickness, theta] = [0.01, 1.0e-3];
     const grid = stripMesh({ distortion: 0.3 });
     const model = [...grid.lines, `ShellProp;1;1;${real(thickness)};1;;1`, `IsoMat;1;${real(STRIP.young)};;0.;0.`];
+    if (raw) model.push(...surfaceRecords({ rawElements: grid.elements.map((e) => e.id) }));
     for (const p of grid.points) {
       if (p.a === 0) model.push(...hold("123456", [p.id]));
       if (p.a === 1) model.push(enforce(p.id, 5, -theta));
     }
-    const options = raw ? { ...MIXED, formulationGeometry: { rawElements: grid.elements.map((e) => e.id) } } : MIXED;
-    const run = runModel(deck({ model, loaded: false }), options);
+    const run = runModel(deck({ model, loaded: false }), MIXED);
     checks.small("deflection", worstDisplacement(run, grid.points,
       (p) => [0, 0, (theta * p[0] ** 2) / (2 * STRIP.length)], (theta * STRIP.length) / 2), CRITERIA.exact);
     const moment = (STRIP.young * thickness ** 3 * theta) / (12 * STRIP.length);
@@ -1860,7 +1878,8 @@ function renumbered(text, gridOf, elementOf) {
     else if (card[0] === "ShellQuad4" || card[0] === "ShellTria3") {
       card[1] = String(elementOf(Number(card[1])));
       for (let k = 3; k < (card[0] === "ShellQuad4" ? 7 : 6); ++k) grid(k);
-    } else if (card[0] === "SinglePointConstrList") grid(3);
+    } else if (card[0] === "SurfaceEdge") { grid(2); grid(3); }
+    else if (card[0] === "SinglePointConstrList") grid(3);
     else if (card[0] === "PointForceLoad") grid(2);
     return card.join(";");
   }).join("\n");
@@ -1888,6 +1907,8 @@ for (const shape of ["ShellQuad4", "ShellTria3"])
       const checks = checksOf(t);
       const build = (settings) => (surface === "plate" ? invariancePlate(shape, settings)
         : pinchedHemisphere({ n: 4, shape, distortion: 0.2, ...settings }));
+      // The hemisphere has four elements over 90 degrees, distorted: some of its edges turn by more than the fold
+      // angle of the model. Its model file declares the surface smooth, each edge by its grid points.
       const base = build({});
       const ids = base.grid.points.map((p) => p.id);
       const first = runModel(base.text, MIXED);

@@ -5,7 +5,7 @@
 //                                    .build() -> Model
 //   elementFormulations()            -> [{ card, formulations }], the card its neutral type ("ShellQuad4"), the default
 //                                       formulation of each card first
-//   Model                            .tableNames() .checkSupport(analysis)
+//   Model                            .tableNames() .checkSupport(analysis) .surfaceEdges()
 //   runAnalysis(model, analysis, settings) -> { nodalTables, elementTables, gridPointForces, eigenvalues, diagnostics,
 //                                               condensation }
 //   condensationCache(memoryBytes)   -> CondensationCache .statistics(), for settings.condensation.cache
@@ -227,16 +227,27 @@ void setModelFormulation(api::ModelInput& input, const std::string& formulation)
     guarded([&] { input.setModelFormulation(formulation); });
 }
 
-// setFormulationGeometry(rawEdges, rawElements, sharpEdges): flat arrays of grid point IDs (two per edge) and of
-// element IDs.
-void setFormulationGeometry(api::ModelInput& input, const val& rawEdges, const val& rawElements, const val& sharpEdges)
+// setFormulationGeometry(lists): an object of flat arrays of IDs, the members of
+// api::ModelInput::FormulationGeometryLists by name (a missing member is an empty list).
+void setFormulationGeometry(api::ModelInput& input, const val& lists)
 {
+    const auto idsOf = [&](const char* name)
+    {
+        const val member = lists[name];
+        return member.isUndefined() ? std::vector<std::int32_t>{}
+                                    : emscripten::convertJSArrayToNumberVector<std::int32_t>(member);
+    };
     guarded(
         [&]
         {
-            input.setFormulationGeometry(emscripten::convertJSArrayToNumberVector<std::int32_t>(rawEdges),
-                                         emscripten::convertJSArrayToNumberVector<std::int32_t>(rawElements),
-                                         emscripten::convertJSArrayToNumberVector<std::int32_t>(sharpEdges));
+            api::ModelInput::FormulationGeometryLists geometry;
+            geometry.smoothEdges = idsOf("smoothEdges");
+            geometry.sharpEdges = idsOf("sharpEdges");
+            geometry.rawEdges = idsOf("rawEdges");
+            geometry.rawElements = idsOf("rawElements");
+            geometry.lineContinuations = idsOf("lineContinuations");
+            geometry.lineEnds = idsOf("lineEnds");
+            input.setFormulationGeometry(geometry);
         });
 }
 
@@ -313,6 +324,27 @@ val checkSupport(Model& model, const std::string& analysis)
             result.set("refusals", diagnosticArray(check.refusals));
             result.set("ignored", diagnosticArray(check.ignored));
             result.set("isComplete", check.refusals.empty());
+            return result;
+        });
+}
+
+// surfaceEdges(): { grid1, grid2, surface, state, origin, angle, kink, rounding }, one entry per edge of the surfaces
+// that the formulation read from the mesh (api::SurfaceEdgeTable); every array is empty for a model that reads none.
+val surfaceEdges(Model& model)
+{
+    return guarded(
+        [&]
+        {
+            const api::SurfaceEdgeTable table = api::surfaceEdges(*model.snapshot);
+            val result = val::object();
+            result.set("grid1", typedArray("Int32Array", table.grid1.data(), table.grid1.size()));
+            result.set("grid2", typedArray("Int32Array", table.grid2.data(), table.grid2.size()));
+            result.set("surface", textArray(table.surface));
+            result.set("state", textArray(table.state));
+            result.set("origin", textArray(table.origin));
+            result.set("angle", typedArray("Float64Array", table.angle.data(), table.angle.size()));
+            result.set("kink", typedArray("Float64Array", table.kink.data(), table.kink.size()));
+            result.set("rounding", typedArray("Float64Array", table.rounding.data(), table.rounding.size()));
             return result;
         });
 }
@@ -813,7 +845,8 @@ EMSCRIPTEN_BINDINGS(oos_solver)
     class_<Model>("Model")
         .smart_ptr<std::shared_ptr<Model>>("ModelPointer")
         .function("tableNames", &modelTableNames)
-        .function("checkSupport", &checkSupport);
+        .function("checkSupport", &checkSupport)
+        .function("surfaceEdges", &surfaceEdges);
 
     function("runAnalysis", &runAnalysis);
     function("runSuperelements", &runSuperelements);

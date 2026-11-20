@@ -58,6 +58,10 @@ ShellPart::ShellPart(ShellPartInput input) : m_input(std::move(input))
         m_reading.shells.push_back(shell.corners);
     m_reading.rawEdges = m_input.rawEdges;
     m_reading.rawElements = m_input.rawElements;
+    m_reading.smoothSides = m_input.smoothSides;
+    m_reading.sharpSides = m_input.sharpSides;
+    m_reading.foldAngle = m_input.foldAngle;
+    m_reading.declaredLines = m_input.declaredLines;
     m_reading.heldTranslations = m_input.heldTranslations;
     m_topology = Topology::fromMesh(m_reading);
     applyMidsideGrids();
@@ -152,6 +156,31 @@ bool ShellPart::checkInput()
             addProblem(ShellPartProblem::Subject::Model, 0, "a raw edge is not between grids of the shells");
             readable = false;
         }
+    for (const auto* sides : {&m_input.smoothSides, &m_input.sharpSides})
+        for (const auto& [edge, shells] : *sides)
+        {
+            bool isKnown = edge.higher < ng;
+            for (const std::size_t shell : shells)
+                isKnown = isKnown && (shell == MeshReadingInput::WHOLE_EDGE || shell < m_input.shells.size());
+            if (!isKnown)
+            {
+                addProblem(ShellPartProblem::Subject::Model, 0,
+                           "an edge declared smooth or sharp is not between grids of the shells, or names a side "
+                           "that is not a shell");
+                readable = false;
+            }
+        }
+    for (const auto& [edge, next] : m_input.declaredLines)
+    {
+        bool isKnown = edge.first < ng && edge.second < ng;
+        for (const std::size_t grid : next)
+            isKnown = isKnown && grid < ng;
+        if (!isKnown)
+        {
+            addProblem(ShellPartProblem::Subject::Model, 0, "a declared mesh line is not between grids of the shells");
+            readable = false;
+        }
+    }
     for (const auto& [grid, component] : m_input.heldTranslations)
         if (grid >= ng || component < 0 || component > 2)
         {

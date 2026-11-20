@@ -53,7 +53,10 @@ Where to start reading: `arrays/OutputPlan` (what a subcase asks for), then `arr
   facet. The rows are computed range by range on the thread pool (about four ranges per thread, at least
   `MIN_RANGE_ELEMENTS` elements each); each element's rows depend on its own data only, so the bits do not depend on
   the thread count. The elements under BeamDistributedLoad are recovered under their loads, in the station layout
-  (`Bar2LoadStations`).
+  (`Bar2LoadStations`), and so are, in every subcase, those a card gives output stations to
+  (`ElementFamily::stationRows`: a Bar2 with a Bar2Stations). The corner rows of the families that write them on
+  request only (the ShellQuad4) are asked when the plan keeps them (`RecoveryOutput::hasCorners`), so that a
+  request for the centre rows computes no corner.
 - `ElementResultBuilder::buildCases`: the tables of a block of cases. For the families that complete their rows
   (`vectorisedRecoveryMinCases`, `vectorisedLayerRecoveryMinCases`), the Linear columns are made from the recovery
   slopes of each element, computed once for the block: rest + Σ S·u, summed for every case at once with each case's

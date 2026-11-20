@@ -1,7 +1,8 @@
 // The reading of the surface of the shells of the mixed hybrid formulation (docs/mixed-hybrid-formulation-spec.md,
-// sections 4.4 and 10.5) and what its report says: a corner of the outline that no raw edge declares is rounded, with a
-// warning that names its edges, and refused where the rounding leaves an element no angle; the kinks and roundings
-// along edges that are not declared raw are warnings; nothing depends on the corner an element starts from.
+// sections 4.4 and 10.5) and what its report says: the fold angle of the model makes a fold sharp where nothing
+// declares it; a corner of the outline that no declaration keeps is rounded, with a warning that names its edges, and
+// refused where the rounding leaves an element no angle; the kinks and roundings along edges read smooth are warnings;
+// nothing depends on the corner an element starts from.
 
 import assert from "node:assert/strict";
 import { test } from "../helpers/register.mjs";
@@ -112,25 +113,169 @@ function angleSection(shape) {
   return lines.join("\n") + "\n";
 }
 
-test("the geometry report of MixedHybridFormulation warns of the rounding and of the kink of a fold that is not declared raw", () => {
+test("the geometry report of MixedHybridFormulation says what a fold is read as: sharp by the fold angle or as declared, rounded or kinked when declared smooth", () => {
   const named = (run) => run.diagnostics.filter((d) => d.code === "geometry-kink" || d.code === "geometry-rounding");
-  // Not declared: the reading rounds the fold of the ShellQuad4, 45 degrees from the plane of each leg along it.
-  const rounded = named(solve(angleSection("ShellQuad4"), {}));
+  // Not declared: the fold angle of the model makes the fold sharp, and its kink is expected.
+  for (const shape of ["ShellQuad4", "ShellQuad8"]) {
+    const byAngle = named(solve(angleSection(shape), {}));
+    assert.deepEqual(byAngle.map((d) => [d.code, d.severity]), [["geometry-kink", "information"]], shape);
+    assert.match(byAngle[0].text, /differ by up to (89\.9|90\.0)\d* degrees \(sharp by the fold angle of the model\)$/);
+  }
+  // Declared sharp or raw: the same kink, with the declaration named.
+  for (const [geometry, reason] of [[{ sharpEdges: [[1, 2]] }, "declared sharp"], [{ rawEdges: [[1, 2]] }, "declared raw"]]) {
+    const declared = named(solve(angleSection("ShellQuad4"), geometry));
+    assert.deepEqual(declared.map((d) => [d.code, d.severity]), [["geometry-kink", "information"]]);
+    assert.match(declared[0].text, new RegExp(`differ by up to (89\\.9|90\\.0)\\d* degrees \\(${reason}\\)$`));
+  }
+  // Declared smooth: the reading rounds the fold of the ShellQuad4, 45 degrees from the plane of each leg along it.
+  const rounded = named(solve(angleSection("ShellQuad4"), { smoothEdges: [[1, 2]] }));
   assert.ok(rounded.length >= 1, JSON.stringify(rounded));
   for (const d of rounded) assert.deepEqual([d.code, d.severity], ["geometry-rounding", "warning"], d.text);
-  assert.match(rounded[0].text, /the surface read along the edge between grid points 1 and 2 turns by up to 4[0-9]\.\d+ degrees from the plane of the corners of its shells: a fold that the declarations do not name is rounded there/);
-  assert.match(rounded[0].text, /declare raw the edges along the fold \(formulationGeometry\.rawEdges\) or the shells \(formulationGeometry\.rawElements\)/);
-  // Declared raw: the kink of the fold is expected.
-  const declared = named(solve(angleSection("ShellQuad4"), { rawEdges: [[1, 2]] }));
-  assert.deepEqual(declared.map((d) => [d.code, d.severity]), [["geometry-kink", "information"]]);
-  assert.match(declared[0].text, /differ by up to (89\.9|90\.0)\d* degrees \(declared raw\)$/);
-  // Mid-side grid points make every edge of the ShellQuad8 straight: the legs are flat and the fold is a kink, which
-  // the formulation takes as a fold although nothing declares it.
-  const kinked = named(solve(angleSection("ShellQuad8"), {}));
+  assert.match(rounded[0].text, /the surface read along the edge between grid points 1 and 2 turns by up to 4[0-9]\.\d+ degrees from the plane of the corners of its shells: a fold shallower than the fold angle of the model is rounded there/);
+  assert.match(rounded[0].text, /declare sharp the edges along the fold \(formulationGeometry\.sharpEdges\), or raw when the fold is straight \(formulationGeometry\.rawEdges, or the shells: formulationGeometry\.rawElements\)/);
+  // Mid-side grid points make every edge of the ShellQuad8 straight: declared smooth, the legs stay flat and the fold
+  // is a kink, which the formulation takes as a fold whatever the declaration says.
+  const kinked = named(solve(angleSection("ShellQuad8"), { smoothEdges: [[1, 2]] }));
   assert.deepEqual(kinked.map((d) => [d.code, d.severity]), [["geometry-kink", "warning"]], JSON.stringify(kinked));
-  assert.match(kinked[0].text, /the normals of the 2 shells along the edge between grid points 1 and 2 differ by up to (89\.9|90\.0)\d* degrees and the edge is not declared raw/);
-  assert.match(kinked[0].text, /declare the edge raw \(formulationGeometry\.rawEdges\)/);
+  assert.match(kinked[0].text, /the normals of the 2 shells along the edge between grid points 1 and 2 differ by up to (89\.9|90\.0)\d* degrees and the edge is read smooth/);
+  assert.match(kinked[0].text, /declare the edge sharp \(formulationGeometry\.sharpEdges\), or raw when the fold is straight \(formulationGeometry\.rawEdges\)/);
   assert.match(kinked[0].text, /give the shells mid-side nodes, or declare the shells raw \(formulationGeometry\.rawElements/);
+});
+
+test("the SurfaceEdge, SurfaceFacet and SurfaceLine cards of a deck declare the geometry of MixedHybridFormulation, and the program wins where both name an edge", () => {
+  const named = (run) => run.diagnostics.filter((d) => d.code === "geometry-kink" || d.code === "geometry-rounding");
+  const refusal = (text, geometry) => withModel(text, geometry, (model) => {
+    try { solver.run(model, "statics"); } catch (error) { return error.message; }
+    return "";
+  });
+  const angle = angleSection("ShellQuad4");
+  // no declaration at all: refused, and the message names the cards and the parameter
+  const missing = refusal(angle, undefined);
+  assert.match(missing, /geometry-declarations-missing/);
+  assert.match(missing, /SurfaceEdge, SurfaceFacet and SurfaceLine cards of the deck/);
+  assert.match(missing, /the model parameter GeometryDeclarations with the value Given/);
+  // the parameter alone is the empty declaration: the fold angle decides
+  const prepared = named(solve(angle + "Parameter;GeometryDeclarations;Given\n", undefined));
+  assert.match(prepared[0].text, /\(sharp by the fold angle of the model\)$/);
+  // the cards: raw, smooth (the fold is rounded), sharp for one side
+  assert.match(named(solve(angle + "SurfaceEdge;1;1;2;Raw\n", undefined))[0].text, /\(declared raw\)$/);
+  assert.match(named(solve(angle + "SurfaceEdge;1;2;1;Sharp;2\n", undefined))[0].text, /\(declared sharp\)$/);
+  const smooth = named(solve(angle + "SurfaceEdge;1;1;2;Smooth\n", undefined));
+  assert.deepEqual([smooth[0].code, smooth[0].severity], ["geometry-rounding", "warning"]);
+  // a facet: the four edges of the first shell are raw
+  assert.match(solve(angle + "SurfaceFacet;1\n", undefined).diagnostics.find((d) => d.code === "geometry-report").text,
+    /4 declared raw/);
+  // the program wins on the edge it names: sharp, not the smooth of the deck, and no conflict
+  const won = named(solve(angle + "SurfaceEdge;1;1;2;Smooth\n", { sharpEdges: [[1, 2]] }));
+  assert.deepEqual(won.map((d) => [d.code, d.severity]), [["geometry-kink", "information"]]);
+  assert.match(won[0].text, /\(declared sharp\)$/);
+  // two cards of the deck that give one edge two states are refused, and so is a card that names no edge
+  assert.match(refusal(angle + "SurfaceEdge;1;1;2;Smooth\nSurfaceEdge;2;2;1;Sharp\n", undefined),
+    /geometry-declaration-conflict/);
+  assert.match(refusal(angle + "SurfaceEdge;1;1;3;Sharp\n", undefined), /geometry-declaration-unknown/);
+  assert.match(refusal(angle + "SurfaceLine;1;1;3\n", undefined), /geometry-declaration-unknown/);
+  // the lines of the corner of the outline ended by two cards: the plate carries its area
+  const ended = solve(cornerPlate() + "SurfaceLine;1;3;7\nSurfaceLine;2;8;7\n", undefined);
+  assert.ok(Math.abs(carried(ended) - 3) < 1e-9, `carried ${carried(ended)}, area 3`);
+  assert.deepEqual(ended.diagnostics.filter((d) => d.severity !== "information"), []);
+  // a continuation in the deck: the outline goes on round the corner, as the reading takes it without a declaration
+  const continued = refusal(cornerPlate() + "SurfaceLine;1;3;7;8\n", undefined);
+  assert.match(continued, /degenerate-geometry/);
+});
+
+test("the table of the edges read by MixedHybridFormulation gives the state of every edge, where it comes from and its angles", () => {
+  const edgesOf = (text, geometry, options) => {
+    const file = `/work/mixed-geometry-edges-${++deckCount}.oos`;
+    oor.writeFile(file, text);
+    const deck = oor.readModel(file);
+    try {
+      const model = solver.modelFromReader(oor, deck, options ?? { elementFormulation: MIXED, formulationGeometry: geometry });
+      try { return model.surfaceEdges(); } finally { model.delete(); }
+    } finally { deck.delete(); }
+  };
+  const rowOf = (edges, a, b) => {
+    for (let row = 0; row < edges.grid1.length; ++row)
+      if (edges.grid1[row] === a && edges.grid2[row] === b)
+        return { surface: edges.surface[row], state: edges.state[row], origin: edges.origin[row],
+          angle: edges.angle[row], kink: edges.kink[row], rounding: edges.rounding[row] };
+    return null;
+  };
+  const text = angleSection("ShellQuad4");
+  // the fold 1-2 between the two legs, and the outline
+  const byAngle = edgesOf(text, {});
+  assert.equal(byAngle.grid1.length, 7, "seven edges");
+  const fold = rowOf(byAngle, 1, 2);
+  assert.deepEqual([fold.surface, fold.state, fold.origin], ["Shells", "Sharp", "Angle"]);
+  assert.ok(Math.abs(fold.angle - 90) < 1e-6 && Math.abs(fold.kink - 90) < 1e-4 && fold.rounding < 1e-6, JSON.stringify(fold));
+  const outline = rowOf(byAngle, 2, 3);
+  assert.deepEqual([outline.state, outline.origin, outline.angle, outline.kink], ["Smooth", "Outline", 0, 0]);
+  // declared: raw, sharp, and smooth, which rounds the fold by 45 degrees
+  assert.deepEqual([rowOf(edgesOf(text, { rawEdges: [[1, 2]] }), 1, 2)].map((r) => [r.state, r.origin]), [["Raw", "Declared"]]);
+  assert.deepEqual([rowOf(edgesOf(text, { sharpEdges: [[1, 2]] }), 1, 2)].map((r) => [r.state, r.origin]), [["Sharp", "Declared"]]);
+  const smooth = rowOf(edgesOf(text, { smoothEdges: [[1, 2]] }), 1, 2);
+  assert.deepEqual([smooth.state, smooth.origin], ["Smooth", "Declared"]);
+  assert.ok(Math.abs(smooth.angle - 90) < 1e-6 && smooth.rounding > 40 && smooth.rounding < 50, JSON.stringify(smooth));
+  // a raw element: its edges that nothing else declares
+  const facet = edgesOf(text, { rawElements: [1] });
+  assert.deepEqual([rowOf(facet, 1, 2)].map((r) => [r.state, r.origin]), [["Raw", "RawElement"]]);
+  // without any declaration the model is refused by the analyses, and the table still shows what the angle decides
+  assert.deepEqual([rowOf(edgesOf(text, undefined), 1, 2)].map((r) => [r.state, r.origin]), [["Sharp", "Angle"]]);
+  // another formulation reads no surface from the mesh
+  const classic = edgesOf(text, undefined, {});
+  assert.deepEqual([classic.grid1.length, classic.state.length, classic.angle.length], [0, 0, 0]);
+});
+
+// A strip of `cells` ShellQuad4 round a quarter of a cylinder of radius 1 along x, clamped along one generator and
+// pushed along the other; `angle`: the model's ShellNormalAngle, when it is given.
+function quarterCylinder(cells, angle) {
+  const lines = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
+    "StaticLoadSelection;2", "DisplacementOutput;All", "[model]"];
+  if (angle !== undefined) lines.push(`Parameter;ShellNormalAngle;${real(angle)}`);
+  const node = (i, j) => 1 + 2 * j + i;
+  for (let j = 0; j <= cells; ++j) {
+    const theta = (0.5 * Math.PI * j) / cells;
+    for (const i of [0, 1]) lines.push(`Node;${node(i, j)};;${real(0.5 * i)};${Math.sin(theta)};${Math.cos(theta)}`);
+  }
+  for (let j = 0; j < cells; ++j)
+    lines.push(`ShellQuad4;${j + 1};1;${node(0, j)};${node(1, j)};${node(1, j + 1)};${node(0, j + 1)}`);
+  lines.push("ShellProp;1;1;0.01;1;;1", "IsoMat;1;7.e10;;0.3;2700.", `SinglePointConstrList;1;123456;${node(0, 0)};${node(1, 0)}`,
+    `PointForceLoad;2;${node(0, cells)};;1.;0.;0.;-1.`);
+  return { text: lines.join("\n") + "\n", generators: Array.from({ length: cells - 1 }, (_, k) => [node(0, k + 1), node(1, k + 1)]) };
+}
+
+test("a curved mesh of MixedHybridFormulation coarser than the fold angle is read as facets, with a warning for each of its edges, unless declared smooth or given a larger angle", () => {
+  const byAngle = (run) => run.diagnostics.filter((d) => d.code === "geometry-fold-by-angle");
+  const tip = (run, model) => {
+    const displacements = table(run, "displacements");
+    const row = Array.from(displacements.ids).indexOf(1 + 2 * model.cells);
+    return displacements.values[6 * row + 2];
+  };
+  // three cells of 30 degrees: above the default angle of 20 degrees
+  const coarse = { ...quarterCylinder(3), cells: 3 };
+  const faceted = solve(coarse.text, {});
+  const warnings = byAngle(faceted);
+  assert.deepEqual(warnings.map((d) => d.severity), ["warning", "warning"], JSON.stringify(faceted.diagnostics));
+  assert.match(warnings[0].text, /differ by 30\.0\d* degrees at a grid point, more than the fold angle of the model \(ShellNormalAngle\)/);
+  assert.match(warnings[0].text, /declare the edge smooth \(formulationGeometry\.smoothEdges\) or refine the mesh/);
+  assert.match(faceted.diagnostics.find((d) => d.code === "geometry-report").text,
+    /2 sharp \(2 by the fold angle of the model alone\).*2 edges are sharp by the fold angle alone with an angle under 40\.0\d* degrees/);
+  // declared smooth, or under a larger angle: the same round surface, and no warning
+  const declared = solve(coarse.text, { smoothEdges: coarse.generators });
+  const wider = solve(quarterCylinder(3, 45).text, {});
+  for (const run of [declared, wider]) {
+    assert.deepEqual(byAngle(run), []);
+    assert.deepEqual(run.diagnostics.filter((d) => d.severity !== "information"), []);
+  }
+  assert.ok(Math.abs(tip(wider, coarse) / tip(declared, coarse) - 1) < 1e-12, "the angle or the declaration: one reading");
+  assert.ok(Math.abs(tip(faceted, coarse) / tip(declared, coarse) - 1) > 1e-3, "facets are another structure");
+  // declared sharp: the facets are what the model means, and nothing is warned
+  const sharp = solve(coarse.text, { sharpEdges: coarse.generators });
+  assert.deepEqual(byAngle(sharp), []);
+  assert.ok(Math.abs(tip(sharp, coarse) / tip(faceted, coarse) - 1) < 1e-12, "declared sharp: the facets of the angle");
+  // six cells of 15 degrees: under the angle, round without a declaration
+  const fine = solve(quarterCylinder(6).text, {});
+  assert.deepEqual(fine.diagnostics.filter((d) => d.severity !== "information"), []);
+  assert.match(fine.diagnostics.find((d) => d.code === "geometry-report").text, /0 sharp/);
 });
 
 // A flat plate whose outline turns into the plate at grid point 7 (cells dx × dy), under a unit pressure, clamped at
@@ -184,6 +329,22 @@ test("a corner of the outline of MixedHybridFormulation declared raw is kept: th
     reference ??= run;
     for (const kind of ["displacements", "singlePointConstrForces"]) {
       const difference = relativeDifference(table(reference, kind), table(run, kind));
+      assert.ok(difference < INVARIANCE, `${kind} from ${first} / ${second}: ${difference}`);
+    }
+  }
+});
+
+test("a corner of the outline of MixedHybridFormulation whose line is declared ended is kept, from every starting corner", () => {
+  // The line of the outline edge 3-7 ends at grid point 7, and so does that of the edge 8-7: no edge is raw, and the
+  // plate carries its area as with the two edges declared raw.
+  const raw = solve(cornerPlate(), { rawEdges: CORNER_EDGES });
+  for (const [first, second] of TRIANGLE_STARTS) {
+    const run = solve(cornerPlate({ first, second }), { lineEnds: [[3, 7], [8, 7]] });
+    assert.ok(Math.abs(carried(run) - 3) < 1e-9, `carried ${carried(run)}, area 3`);
+    assert.deepEqual(run.diagnostics.filter((d) => d.severity !== "information"), []);
+    assert.match(run.diagnostics.find((d) => d.code === "geometry-report").text, /0 declared raw/);
+    for (const kind of ["displacements", "singlePointConstrForces"]) {
+      const difference = relativeDifference(table(raw, kind), table(run, kind));
       assert.ok(difference < INVARIANCE, `${kind} from ${first} / ${second}: ${difference}`);
     }
   }

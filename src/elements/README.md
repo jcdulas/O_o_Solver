@@ -8,6 +8,9 @@ It may use `base`, `linalg`, `input`.
 
 Folders: `core/`, `springs/`, `masses/`, `rods/`, `bars_beams/`, `fasteners/`, `shells/`, `solids/`.
 
+The strain energy of an element (ESE) and its grid point forces come from its stiffness matrix, for every family
+with the Stiffness facet (`output/arrays/StiffnessRecovery`): no family writes them itself.
+
 ## How a batch is processed
 
 The snapshot holds one `input::ElementBatch` per neutral card type (`ShellQuad4`), with its neutral field names
@@ -122,6 +125,10 @@ register it in `ElementRegistry::standard()` after the card's default.
   the map from grid DOFs to end DOFs), `BeamSection` (stations), `BeamFlexibility` (stiffness and fixed-end loads by
   the flexibility method, with shear flexibility and taper), `PinRelease` (condensation of the pin flags), `BeamMass`,
   `BeamLineLoad` (BeamDistributedLoad), `BeamResponse` (end forces, stress resultants along the element, stresses at C, D, E, F).
+  `BarStations` reads the output stations the `Bar2Stations` cards give to bars (the snapshot's `barStations` table):
+  a `Bar2` with a card is written in the station layout in every subcase (`ElementFamily::stationRows`,
+  `recoverStationRows`: its end A, its stations as fractions of its length, its end B, in the table of the bars under
+  distributed loads), a station beyond its end is refused and a card that names no `Bar2` is a warning.
   `bars_beams/beam2/` reads a BeamProp with its stations and recovers at them.
 - `shells/ShellSection`, `ShellMaterial`, `Laminate`: the sections of every shell (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D;
   CompProp and CompPropGlobal as their equivalent ShellProp), in the material frame, turned into the element frame by each element;
@@ -198,7 +205,11 @@ register it in `ElementRegistry::standard()` after the card's default.
   `EdgeShearShellFamily.ipp`, `EdgeShearShellRecovery.ipp`, `EdgeShearShellDerivatives.ipp`, instantiated in
   `ShellQuad4Element.cpp` and `ShellTria3Element.cpp`) gives both their facets: the sections, the material axis
   (THETA from G1→G2, MCID projected), ZOFFS through `ShellNodeFrames`, the rows of `ShellRecovery` at the centre in
-  the reference frame (x along G1→G2; no corner output), the plies of a laminate. Its header lists the choices of
+  the reference frame (x along G1→G2), the rows of the four corners of a `ShellQuad4` after them when the output
+  is asked with its corners (`RecoveryOutput::hasCorners`, the `CornerResults` describer of a request:
+  `ShellQuad4::cornerRecovery`, the values of the 2 × 2 integration points with the enhanced strains read at the
+  corners on the bilinear surface through them; the recovery by blocks of cases takes their slopes too), the plies
+  of a laminate. Its header lists the choices of
   this project (an MCID angle measured and applied in the element frame, the offset in the thermal loads, the
   thickness of a section without MID1 kept, the coupling and the thermal strains in the recovery, the differential
   stiffness, the rotation about the normal).
@@ -373,17 +384,17 @@ A designed FastenerProp or WeldProp D does not move the footprint either, which 
 |---|---|---|
 | `SpringDofProperty`–`SpringScalarProperty` | stiffness, recovery (force, stress), derivatives | |
 | `SpringScalarInline` | stiffness, recovery (force), derivatives | |
-| `Bushing` | stiffness, recovery (forces) | stresses and strains (`RCV`), `BushProp` mass, curvilinear `CID`/`OCID` |
-| `Rod2`, `Rod2InlineSection`, `Tube2` | stiffness, mass (lumped, coupled), differential stiffness (axial force), thermal loads, recovery (forces, stresses, strains, margins) | strain energy, tapered `Tube2` |
+| `Bushing` | stiffness, mass (`BushProp` M), recovery (forces; stresses and strains by the coefficients of `RCV`), derivatives | curvilinear `CID`/`OCID` |
+| `Rod2`, `Rod2InlineSection`, `Tube2` | stiffness, mass (lumped, coupled), differential stiffness (axial force), thermal loads, recovery (forces, stresses, strains, margins) | tapered `Tube2` |
 | `PointMassMatrix`, `PointMassInertia` | mass, derivatives | curvilinear `CID` |
 | `MassDofProperty`–`MassScalarInline` | mass, derivatives | |
-| `ShellQuad4` | the element of docs/shell-quad4-formulation.md: stiffness (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D: MID1-MID4, MID2 = −1, 12I/T³, TS/T; CompProp, CompPropGlobal as their equivalent section; ZOFFS, T1-T4, THETA/MCID; the normals of the grid points shared within ShellNormalAngle, a drilling term scaled by ShellDrillingStiffness), mass (lumped on the translations, or coupled with the rotary inertia; NonStructMass), loads (FacePressureLoad and ShellPressureLoad with corner values and direction; thermal: the mean temperature change and the PlateTemperatureLoad gradient), recovery (the centre only, in the user frame: stresses, strains, curvatures, forces; plies and failure indices), differential stiffness (its recovered membrane resultants), derivatives (complex step) | strain energy, corner output |
-| `ShellTria3` | the element of docs/shell-tria3-formulation.md, as `ShellQuad4` | as `ShellQuad4` |
-| `ShellQuad8`, `ShellTria6` | the elements of docs/shell-quad8-tria6-formulation.md, as `ShellQuad4` (flat or curved, every edge node), recovery at the centre and corners | as `ShellQuad4`; an element turning by more than 45° |
-| `ShellQuad4Drilling`, `ShellTria3Drilling` | a membrane with a drilling DOF (`ShellQuad4DrillingMembrane`, `ShellTria3DrillingMembrane`) with the bending of `ShellQuad4DrillingBending` and of the edge-shear triangle (the ShellQuad4Drilling recovered at the centre and corners); a warped ShellQuad4Drilling formed flat in its mean plane and joined to its grid points by rigid offsets along the normal (`ShellQuad4DrillingWarpOffsets`, Taylor 1988), in every facet but the mass (on the grid points) | strain energy; coupling |
+| `ShellQuad4` | the element of docs/shell-quad4-formulation.md: stiffness (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D: MID1-MID4, MID2 = −1, 12I/T³, TS/T; CompProp, CompPropGlobal as their equivalent section; ZOFFS, T1-T4, THETA/MCID; the normals of the grid points shared within ShellNormalAngle, a drilling term scaled by ShellDrillingStiffness), mass (lumped on the translations, or coupled with the rotary inertia; NonStructMass), loads (FacePressureLoad and ShellPressureLoad with corner values and direction; thermal: the mean temperature change and the PlateTemperatureLoad gradient), recovery (in the user frame: stresses, strains, curvatures, forces at the centre, and at the four grid points with the `CornerResults` describer of the request, from the values of the 2 × 2 points; plies and failure indices at the centre), differential stiffness (its recovered membrane resultants), derivatives (complex step) | the moment of a corner along a direction of constant curvature is that of the centre (section 12 of the document); the derivatives of the corner rows |
+| `ShellTria3` | the element of docs/shell-tria3-formulation.md, as `ShellQuad4`; recovery at the centre only (its strains are constant over the element) | |
+| `ShellQuad8`, `ShellTria6` | the elements of docs/shell-quad8-tria6-formulation.md, as `ShellQuad4` (flat or curved, every edge node), recovery at the centre and corners | an element turning by more than 45° |
+| `ShellQuad4Drilling`, `ShellTria3Drilling` | a membrane with a drilling DOF (`ShellQuad4DrillingMembrane`, `ShellTria3DrillingMembrane`) with the bending of `ShellQuad4DrillingBending` and of the edge-shear triangle (the ShellQuad4Drilling recovered at the centre and corners); a warped ShellQuad4Drilling formed flat in its mean plane and joined to its grid points by rigid offsets along the normal (`ShellQuad4DrillingWarpOffsets`, Taylor 1988), in every facet but the mass (on the grid points) | membrane-bending coupling |
 | `ShearPanel4` | stiffness (ShearPanelProp, IsoMat, F1, SensitivityPerturbation), mass, recovery (stresses, strains, forces) | warped panels |
-| `Bar2` | stiffness (BarProp, IsoMat: A, I1, I2, I12, J, K1, K2; X1-X3 or G0, OFFT, WA, WB, PA, PB), mass (lumped, coupled, NonStructMass), loads (BeamDistributedLoad, every type and scale), recovery (forces at A and B; stresses and strains at C-F, axial, extremes, margins; the station layout under BeamDistributedLoad) | BarShapeProp, differential stiffness, thermal loads, strain energy, Bar2Stations stations |
-| `Beam2` | as `Bar2` with BeamProp stations (taper, intermediate stations, SO), recovery at the stations, the torsional inertia ρ·(I1 + I2) in the mass; a BeamProp's CW is not used without SA, SB | BeamShapeProp, BeamLumpedAreaProp, warping (SA, SB), StressSign, S2, NSI, M1-M2, N1-N2 offsets, as `Bar2` |
+| `Bar2` | stiffness (BarProp, IsoMat: A, I1, I2, I12, J, K1, K2; X1-X3 or G0, OFFT, WA, WB, PA, PB), mass (lumped, coupled, NonStructMass), loads (BeamDistributedLoad, every type and scale), differential stiffness (the axial force), thermal loads, recovery (forces at A and B; stresses and strains at C-F, axial, extremes, margins; the station layout, at the ends and at the stations of a `Bar2Stations` card, for a bar with that card or under BeamDistributedLoad); `BarShapeProp` from the sections table | materials other than IsoMat; a differential stiffness with offsets under the default `OffsetDefinition` |
+| `Beam2` | as `Bar2` with BeamProp stations (taper, intermediate stations, SO), recovery at the stations, the torsional inertia ρ·(I1 + I2) in the mass; a BeamProp's CW is not used without SA, SB | `BeamLumpedAreaProp`, warping (SA, SB: the warping DOFs), the shear relief of taper S1, S2, NSI; as `Bar2` (no `Bar2Stations`: its stations are those of its property) |
 | `SolidHexa` | stiffness (8 nodes: the default incompatible modes, or ISOP = FULL; 20 nodes: 3 × 3 × 3, or 2 × 2 × 2 with ISOP = REDUCED), mass (lumped HRZ, coupled), loads (FacePressureLoad on a face, corner pressures; thermal loads of the grid point temperatures, IsoMat A, AnisoMat3D A1-A6), recovery (centre and corners: stresses with the thermal stress subtracted, total strains, principal, von Mises, pressure, in CORDM); SolidProp, IsoMat, AnisoMat3D | partial mid-side nodes, CORDM −1/−2, other IN/ISOP, STRESS = GAUSS |
 | `SolidPenta` | as `SolidHexa` (the isoparametric wedge, 6 and 15 nodes; the 15-node not validated) | as `SolidHexa` |
 | `SolidTetra` | as `SolidHexa` (4 nodes constant strain, 10 nodes five points); with 4 nodes also IN = TWO, ISOP = FULL or REDUCED and STRESS = GAUSS (its one Gauss point the centroid) | as `SolidHexa`, but STRESS = GAUSS with 4 nodes |

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <string_view>
 
 namespace oos::elements::mixedHybrid
@@ -223,6 +224,84 @@ void MixedHybridModel::readSolids(const SnapshotIndex& index)
     }
 }
 
+namespace
+{
+
+// The edges of the skin that the report names at most, and the factor of the fold angle under which an edge that the
+// angle alone made sharp is named (as for the shells: MixedHybridModelShells.cpp).
+constexpr std::size_t SKIN_REPORT_EDGES = 10;
+constexpr double SKIN_FOLD_WARNING_FACTOR = 2.0;
+
+double degreesOf(double radians)
+{
+    return radians * 180.0 / std::numbers::pi;
+}
+
+} // namespace
+
+void MixedHybridModel::reportSkinGeometry()
+{
+    // The skin is read as the surface of the shells is (spec section 4.4): its edges go to the table of the edges
+    // read, and the edges that the fold angle alone made sharp with an angle near it are named, the nearest first. A
+    // curved skin meshed coarsely gives such angles as a shallow fold does, and only the model can tell them apart.
+    struct NearFold
+    {
+        double degrees = 0.0;
+        EdgeKey edge;
+    };
+    std::vector<NearFold> nearFolds;
+    std::size_t sharpCount = 0;
+    std::size_t sharpByAngleCount = 0;
+    const double foldDegrees = degreesOf(m_foldAngle);
+    const std::map<EdgeKey, EdgeReading>& states = m_solidPart->skinEdgeStates();
+    for (const auto& [edge, reading] : states)
+    {
+        const bool isSharp = reading.state == EdgeState::Sharp;
+        const bool isByAngle = reading.origin == EdgeStateOrigin::Angle;
+        m_surfaceEdges.push_back({m_gridIds[edge.lower], m_gridIds[edge.higher], "SolidSkin",
+                                  isSharp ? "Sharp" : "Smooth", isByAngle ? "Angle" : "Declared",
+                                  degreesOf(reading.angle), 0.0, 0.0});
+        sharpCount += isSharp ? 1 : 0;
+        sharpByAngleCount += isSharp && isByAngle ? 1 : 0;
+        if (isSharp && isByAngle && degreesOf(reading.angle) < SKIN_FOLD_WARNING_FACTOR * foldDegrees)
+            nearFolds.push_back({degreesOf(reading.angle), edge});
+    }
+    base::Diagnostic summary;
+    summary.severity = base::Severity::Information;
+    summary.code = "geometry-report";
+    summary.message = base::concatenate(
+        {"the skin of the solids of ", MIXED_HYBRID_FORMULATION, " has ", std::to_string(states.size()),
+         " edges between two faces, ", std::to_string(sharpCount), " sharp (", std::to_string(sharpByAngleCount),
+         " by the fold angle of the model alone)"});
+    if (!nearFolds.empty())
+        summary.message += base::concatenate(
+            {"; ", std::to_string(nearFolds.size()), " edges are sharp by the fold angle alone with an angle under ",
+             std::to_string(SKIN_FOLD_WARNING_FACTOR * foldDegrees), " degrees (a shallow fold, or a mesh coarse for "
+                                                                      "its curvature)"});
+    m_problems.push_back(std::move(summary));
+    std::sort(nearFolds.begin(), nearFolds.end(), [](const NearFold& a, const NearFold& b)
+              { return a.degrees != b.degrees ? a.degrees < b.degrees : a.edge < b.edge; });
+    for (std::size_t i = 0; i < nearFolds.size() && i < SKIN_REPORT_EDGES; ++i)
+    {
+        const EdgeKey& edge = nearFolds[i].edge;
+        base::Diagnostic diagnostic;
+        diagnostic.severity = base::Severity::Warning;
+        diagnostic.code = "geometry-fold-by-angle";
+        diagnostic.card = "Node";
+        diagnostic.id = m_gridIds[edge.lower];
+        diagnostic.message = base::concatenate(
+            {"the normals of the faces of the skin of the solids along the edge between grid points ",
+             std::to_string(m_gridIds[edge.lower]), " and ", std::to_string(m_gridIds[edge.higher]), " differ by ",
+             std::to_string(nearFolds[i].degrees),
+             " degrees at a grid point, more than the fold angle of the model (ShellNormalAngle), and nothing "
+             "declares the edge: it is read sharp, a fold of the skin. If the skin is smooth there, the mesh is "
+             "coarse for its curvature and the skin is computed as facets: declare the edge smooth "
+             "(formulationGeometry.smoothEdges) or refine the mesh; if the skin folds there, declare the edge sharp "
+             "(formulationGeometry.sharpEdges) to remove this warning"});
+        m_problems.push_back(std::move(diagnostic));
+    }
+}
+
 void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
 {
     if (m_solids.empty())
@@ -258,47 +337,10 @@ void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
                                                        : NO_MID_SIDE_GRID);
         input.solids.push_back(solid.part);
     }
-    // The declared sharp edges of the skin, by the model's grid indices.
-    if (const std::optional<input::FormulationGeometry>& geometry = snapshot.formulationGeometry())
-        for (const input::GridEdge& edge : geometry->sharpEdges)
-        {
-            const std::optional<std::int32_t> a = index.points().findGrid(edge[0]);
-            const std::optional<std::int32_t> b = index.points().findGrid(edge[1]);
-            const std::int32_t ia = a ? gridIndexOfRow(*a) : -1;
-            const std::int32_t ib = b ? gridIndexOfRow(*b) : -1;
-            if (ia < 0 || ib < 0)
-            {
-                base::Diagnostic diagnostic;
-                diagnostic.code = "geometry-declaration-unknown";
-                diagnostic.message = base::concatenate(
-                    {"expected the sharp edges of the geometry declarations between grid points of the elements of ",
-                     MIXED_HYBRID_FORMULATION, ", found the edge between grid points ", std::to_string(edge[0]),
-                     " and ", std::to_string(edge[1]), "; correct the declaration"});
-                m_problems.push_back(std::move(diagnostic));
-                continue;
-            }
-            input.sharpEdges.insert(EdgeKey::of(static_cast<std::size_t>(ia), static_cast<std::size_t>(ib)));
-        }
-
-    const std::set<EdgeKey> declaredSharp = input.sharpEdges;
+    declareSkinGeometry(index, input);
     m_solidPart = std::make_unique<SolidPart>(std::move(input));
-    // A sharp edge is an edge of the solids.
-    std::set<EdgeKey> solidEdges;
-    for (const SolidPartEdge& edge : m_solidPart->edges())
-        solidEdges.insert(edge.grids);
-    for (const EdgeKey& edge : declaredSharp)
-    {
-        if (solidEdges.count(edge) != 0)
-            continue;
-        base::Diagnostic diagnostic;
-        diagnostic.code = "geometry-declaration-unknown";
-        diagnostic.message = base::concatenate(
-            {"expected the sharp edges of the geometry declarations to be edges of the solids of ",
-             MIXED_HYBRID_FORMULATION, " (two grid points that one of them joins along an edge), found grid points ",
-             std::to_string(m_gridIds[edge.lower]), " and ", std::to_string(m_gridIds[edge.higher]),
-             ", which no edge of a solid joins; correct the declaration"});
-        m_problems.push_back(std::move(diagnostic));
-    }
+    markSkinDeclarationsUsed(index);
+    reportSkinGeometry();
     for (const SolidPartProblem& problem : m_solidPart->problems())
     {
         const MixedSolid& solid = m_solids[problem.solid];
@@ -321,8 +363,8 @@ void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
                 if (message.find("folds") != std::string::npos)
                     message +=
                         "; the skin of the solids is read as a smooth surface across every edge that the "
-                        "geometry declarations do not declare sharp: declare the edges where their surface "
-                        "folds (sharpEdges)";
+                        "geometry declarations and the fold angle of the model leave smooth: declare sharp the "
+                        "edges where their surface folds (sharpEdges)";
                 addElementProblem(
                     m_solids[s].card, m_solids[s].batchRow,
                     solidProblem(m_solids[s].card, m_solids[s].elementId, "invalid-geometry", "", std::move(message)));

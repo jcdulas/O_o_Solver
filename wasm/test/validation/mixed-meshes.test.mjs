@@ -8,7 +8,8 @@
 // Run: node --test wasm/test/validation/mixed-meshes.test.mjs
 
 import assert from "node:assert/strict";
-import { CRITERIA, real, runModel, nodal, assertRatio, test } from "./support.mjs";
+import { CRITERIA, MIXED, real, runModel, nodal, assertRatio, prepared, surfaceRecords, test }
+  from "./support.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Meshes of solids. A block is a lattice of nx × ny × nz cells mapped by `map(u, v, w)` from the unit cube; each cell
@@ -151,10 +152,11 @@ function createMesh({ surfaces = [], quadratic = false, tolerance = 1e-7, revers
     return mesh;
   };
 
-  // The Node and element records.
+  // The Node and element records, and the sharp edges of the skin as a preprocessor declares them in the model file.
   mesh.records = () => [
     ...[...mesh.points].map(([id, p]) => `Node;${id};;${p.map(real).join(";")}`),
-    ...mesh.elements.map((e) => `${e.card};${e.id};${e.propId};${[...e.corners, ...e.mids].join(";")}`)];
+    ...mesh.elements.map((e) => `${e.card};${e.id};${e.propId};${[...e.corners, ...e.mids].join(";")}`),
+    ...surfaceRecords({ sharpEdges: mesh.sharpEdges() })];
   // The cards of the elements.
   mesh.cards = () => [...new Set(mesh.elements.map((e) => e.card))];
   // The grid points that are corners of elements (the others are mid-side nodes).
@@ -176,9 +178,6 @@ function createMesh({ surfaces = [], quadratic = false, tolerance = 1e-7, revers
   // The sharp edges of the skin: those whose two grid points lie on the same two surfaces.
   mesh.sharpEdges = () => mesh.edges((a, b) =>
     surfaces.filter((surface) => surface(...a) && surface(...b)).length >= 2);
-  // The options of modelFromReader of the mixed hybrid formulation with these declarations.
-  mesh.options = () => ({ elementFormulation: "MixedHybridFormulation",
-    formulationGeometry: { sharpEdges: mesh.sharpEdges() } });
   return mesh;
 }
 
@@ -240,8 +239,8 @@ function facePressure(sid, face, p, direction = null) {
 
 // A deck: the solution number, the case records and the model records.
 function deck(solution, caseRecords, modelRecords) {
-  return ["[executive]", `SolutionSequence;${solution}`, "[case]", ...caseRecords, "[model]", ...modelRecords, ""]
-    .join("\n");
+  return ["[executive]", `SolutionSequence;${solution}`, "[case]", ...caseRecords, "[model]",
+    ...prepared(modelRecords), ""].join("\n");
 }
 
 // The rows of an element table as objects of its columns, with their element and grid point (0 for the centre).
@@ -295,7 +294,7 @@ function stressErrors(run, mesh, exact, { subcase = 1, centres = false } = {}) {
 // The run of the mixed hybrid formulation on `mesh` with the model records `records`; a warning fails the case
 // unless its code is in `allowed`.
 function runMixed(mesh, caseRecords, records, { solution = 101, analysis = "statics", allowed = [] } = {}) {
-  const run = runModel(deck(solution, caseRecords, [...mesh.records(), ...records]), mesh.options(), analysis);
+  const run = runModel(deck(solution, caseRecords, [...mesh.records(), ...records]), MIXED, analysis);
   const warnings = run.diagnostics.filter((d) => d.severity === "warning" && !allowed.includes(d.code));
   assert.equal(warnings.length, 0, `warnings: ${JSON.stringify(warnings.map((d) => d.text))}`);
   return run;
@@ -570,9 +569,13 @@ test("sandwich: a cantilever of SolidHexa with ShellQuad4 on its two faces bends
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
-// A fin: a shell standing on the top face of the core, along the line y = b / 2, of height H (tie 1 along its foot,
-// tie 4 for its rotation about its foot).
+// A fin: a shell standing on the top face of the core, along the line y = b / 2, of height H. Its foot is tied to
+// the top face over its thickness t (spec section 3.4): its displacement to the mean of the face across the foot, its
+// rotation about the foot to the slope of the face across it.
 const FIN = { height: 1.0, rows: 2 };
+// The stresses of a fin and of its core in the bending of both are those of the field within this fraction of the
+// largest stress of the state (the foot of the fin stands on the mean of the face under it: 6e-5 measured).
+const FOOT_STRESS_BOUND = 1.0e-4;
 // The grid points and ShellQuad4 of the fin on `mesh` (the core in n cells); their normal is −y.
 function finRecords(mesh, n, thicknessOffset = 0) {
   const at = (i, k) => mesh.point([(CORE.a * i) / n[0], CORE.b / 2, CORE.c + (FIN.height * k) / FIN.rows]);
@@ -588,6 +591,11 @@ function finRecords(mesh, n, thicknessOffset = 0) {
 // The core and its fin stretched and bent by their ends: the fin takes E' ε in its plane (in the bending its strain
 // −κ z' grows with its height); the ends carry E ε b c + E' ε t H and
 // −κ (E b c³ / 12 + E' t ((c / 2 + H)³ − (c / 2)³) / 3).
+// The stretch is a uniform strain, which the ties pass exactly. In the bending the top face of the core curves across
+// the foot of the fin (the anticlastic curvature ν κ): its mean over the thickness t of the fin is ν κ t² / 24 below
+// its value on the line of the foot, and the fin stands on that mean. The displacements are then those of the field
+// to that distance (2.5e-6 of the scale here), and the stresses near the foot to the strain it makes over the first
+// cells (1.2e-5 in the solids, 6e-5 in the fin, of the largest stress of the state).
 for (const shape of ["SolidHexa", "SolidTetra", "SolidPyramid"])
   test(`fin: a ShellQuad4 fin standing on a block of ${shape}, stretched and bent by their ends`, (t) => {
     const n = [2, 2, 2];
@@ -627,11 +635,18 @@ for (const shape of ["SolidHexa", "SolidTetra", "SolidPyramid"])
       lines.push(`${name}: displacement ${moved.toExponential(1)}, solid stress ` +
         `${(solidError / (CORE.young * scale)).toExponential(1)}, shell stress ` +
         `${(shellError / (SKIN.young * scale)).toExponential(1)}, end ratio ${endRatio.toFixed(9)}`);
-      checks.push([moved, `${name}: displacements`], [solidError / (CORE.young * scale), `${name}: solids`],
-        [shellError / (SKIN.young * scale), `${name}: shells`], [Math.abs(endRatio - 1), `${name}: ends`]);
+      // The distance of the mean of the top face over the foot from its value on the line, of the scale; and the
+      // bound of the stresses it leaves near the foot.
+      const footShift = k === 0 ? 0 : (CORE.poisson * CURVATURE * SKIN.thickness ** 2) / 24 / (scale * CORE.a);
+      const [moveBound, stressBound] = k === 0 ? [CRITERIA.exact, CRITERIA.exact]
+        : [CRITERIA.exact + footShift, FOOT_STRESS_BOUND];
+      checks.push([moved, `${name}: displacements`, moveBound],
+        [solidError / (CORE.young * scale), `${name}: solids`, stressBound],
+        [shellError / (SKIN.young * scale), `${name}: shells`, stressBound],
+        [Math.abs(endRatio - 1), `${name}: ends`, CRITERIA.exact]);
     });
     for (const line of lines) t.diagnostic(line);
-    for (const [error, what] of checks) assertSmall(error, 1, CRITERIA.exact, what);
+    for (const [error, what, bound] of checks) assertSmall(error, 1, bound, what);
   });
 
 for (const shape of ["SolidHexa", "SolidTetra", "SolidPenta"])
@@ -778,8 +793,7 @@ function standingBar() {
   const foot = at(1, 1);
   const head = mesh.point([size / 2, size / 2, 1.0]);
   records.push(`Bar2;3001;3;${foot};${head};1.;;0.;0.`);
-  const options = { elementFormulation: "MixedHybridFormulation", formulationGeometry: {} };
-  return { mesh, records, foot, head, options, edge: mesh.where((x, y, z) => near(z, 0) &&
+  return { mesh, records, foot, head, options: MIXED, edge: mesh.where((x, y, z) => near(z, 0) &&
     (near(x, 0) || near(x, size) || near(y, 0) || near(y, size))) };
 }
 test("lines: a Bar2 standing on a stiff plate of ShellQuad4 is clamped in it", (t) => {
@@ -805,8 +819,10 @@ test("lines: a free plate of ShellQuad4 with a Bar2 standing on it has six rigid
 
 // ---------------------------------------------------------------------------------------------------------------------
 // A plate continued by solids: a strip of thickness h, of solids over its first half (two cells through its
-// thickness) and of ShellQuad4 over its second half, the shells joined to the solids along the middle line of their
-// end face (tie 1 for the displacement of that edge, tie 4 for the rotation about it). With ν = 0 the strip is a beam.
+// thickness, or more) and of ShellQuad4 over its second half, the shells joined to the solids along the middle line
+// of their end face: the displacement of that edge and the rotation about it are read on the end face of the solids
+// over the thickness of the shells (spec section 3.4, ties 1 and 4), so that the force and the moment of the shells
+// enter the solids as tractions over the section. With ν = 0 the strip is a beam.
 const STRIP = { solids: 2.0, shells: 2.0, width: 0.5, thickness: 0.2, young: 7.0e10 };
 function transitionStrip({ through = 2, along = 4, shellCells = 4 } = {}) {
   const { solids, shells, width, thickness, young } = STRIP;
@@ -834,16 +850,17 @@ test("transition: a free strip of SolidHexa continued by ShellQuad4 has six rigi
 // m = L − x that of a unit force at the tip:
 // w = ∫ M m dx / (E I) + ∫ V dx / (κ G A)
 //   = p b (L2 (L1³ / 3 + 3 L1² L2 / 4 + L1 L2² / 2) + L2⁴ / 8) / (E I) + p b L2 (L1 + L2 / 2) / (κ G A).
-// LIMIT OF THE FORMULATION, not in the list of spec section 3.6 (kept failing): the moment of the shells enters the
-// solids by the rotation of the line of their end face across the joint (spec section 3.4, tie 4; document 28 of the
-// reference, section 6: "the solid is not told the thickness of the shell"): a couple on a line of the face, not a
-// moment on the whole section. The joint is a hinge whose stiffness depends on the mesh and softens without bound as
-// the solids are refined: the tip deflection is 1.26 times the beam's with 4 × 1 × 2 solids (this case), 1.41 with
-// 8 × 1 × 2, 2.08 with 8 × 1 × 4, 2.66 with 16 × 1 × 4, 3.82 with 16 × 1 × 6.
-test("transition: a cantilever strip of SolidHexa continued by ShellQuad4 bends as the beam", (t) => {
+// With the rotation of the reference (the mean rotation of the solids on the line of the edge: a couple on a line
+// of the face, "the solid is not told the thickness of the shell", document 28 of the reference, section 6) the joint
+// was a hinge that softened without bound as the solids were refined: 1.26 times the beam's deflection with
+// 4 × 1 × 2 solids, 1.41 with 8 × 1 × 2, 2.08 with 8 × 1 × 4, 2.66 with 16 × 1 × 4, 3.82 with 16 × 1 × 6.
+const TRANSITION_MESHES = [[4, 2], [8, 2], [8, 4], [12, 6]]; // the solids along the strip and through its thickness
+for (const [along, through] of TRANSITION_MESHES)
+test(`transition: a cantilever strip of ${along} x 1 x ${through} SolidHexa continued by ShellQuad4 bends as the ` +
+  "beam", (t) => {
   const { solids: l1, shells: l2, width, thickness, young } = STRIP;
   const pressure = 1.0e4;
-  const { mesh, records, shellIds, tip } = transitionStrip();
+  const { mesh, records, shellIds, tip } = transitionStrip({ along, through });
   for (const id of mesh.where((x) => near(x, 0))) records.push(`SinglePointConstr;1;${id};123;0.`);
   for (const id of shellIds) records.push(`FacePressureLoad;2;${id};${real(pressure)}`);
   const run = runMixed(mesh, caseOf([[1, 2]]), records);
@@ -857,13 +874,15 @@ test("transition: a cantilever strip of SolidHexa continued by ShellQuad4 bends 
   for (const ratio of ratios) assertRatio(ratio, 1, CRITERIA.displacement, "tip deflection");
 });
 
-// The same strip pulled along x by its tip: the force of the shells enters the solids along the middle line of their
-// end face. Far from the joint the solids are in the uniform stress F / (b h); the tip moves by F L / (E A) and by
-// what the joint gives. The same limit (kept failing): a force along a line; the stiffness is 0.932 of the bar's
-// with 4 × 1 × 2 solids, 0.916 with 8 × 1 × 2, 0.913 with 8 × 1 × 4, 0.898 with 16 × 1 × 4, 0.896 with 16 × 1 × 6.
-test("transition: a strip of SolidHexa continued by ShellQuad4 pulled by its tip stretches as the bar", (t) => {
+// The same strip pulled along x by its tip: the solids are in the uniform stress F / (b h) and the tip moves by
+// F L / (E A). With the displacement of the reference (the trace of the solids on the line of the edge: a force
+// along a line) the stiffness was 0.932 of the bar's with 4 × 1 × 2 solids, 0.916 with 8 × 1 × 2, 0.913 with
+// 8 × 1 × 4, 0.898 with 16 × 1 × 4, 0.896 with 16 × 1 × 6.
+for (const [along, through] of TRANSITION_MESHES)
+test(`transition: a strip of ${along} x 1 x ${through} SolidHexa continued by ShellQuad4 pulled by its tip ` +
+  "stretches as the bar", (t) => {
   const { solids: l1, shells: l2, width, thickness, young } = STRIP;
-  const { mesh, records, tip } = transitionStrip();
+  const { mesh, records, tip } = transitionStrip({ along, through });
   for (const id of mesh.where((x) => near(x, 0))) records.push(`SinglePointConstr;1;${id};1;0.`);
   records.push(`SinglePointConstr;1;${mesh.at(0, 0, 0)};23;0.`, `SinglePointConstr;1;${mesh.at(0, width, 0)};3;0.`);
   for (const id of tip) records.push(`SinglePointConstr;1;${id};1;1.e-3`);

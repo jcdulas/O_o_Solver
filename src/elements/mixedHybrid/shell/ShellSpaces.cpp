@@ -101,12 +101,13 @@ Matrix gramMatrix(const std::vector<Field>& generators)
 
 // The basis dual to `boundaryCount` boundary functionals, completed by a basis of their common null space (the
 // interior functions). The generators may be dependent: the work is done in an orthonormal basis of their span,
-//   Q = V_kept Λ_kept^(−1/2)  (the eigenpairs of the Gram matrix above SPAN_EIGENVALUE_RATIO of the largest),
+//   Q = V_kept Λ_kept^(−1/2)  (the eigenpairs of the Gram matrix `gram` above SPAN_EIGENVALUE_RATIO of the largest),
 // where the functionals are the matrix A Q. The boundary functions are the columns of Q (A Q)⁺ (orthogonal to the
-// null space), the interior functions Q times the eigenvectors of (A Q)ᵀ(A Q) of zero eigenvalue.
+// null space in the inner product of `gram`), the interior functions Q times the eigenvectors of (A Q)ᵀ(A Q) of zero
+// eigenvalue.
 // Reference: tdnns/space.rs::dual_basis
 std::vector<Field> dualBasis(const std::vector<Field>& generators, std::size_t boundaryCount,
-                             const BoundaryFunctionals& functionals)
+                             const BoundaryFunctionals& functionals, const Matrix& gram)
 {
     const std::size_t n = generators.size();
     Matrix a(boundaryCount, n);
@@ -116,7 +117,7 @@ std::vector<Field> dualBasis(const std::vector<Field>& generators, std::size_t b
         for (std::size_t i = 0; i < boundaryCount; ++i)
             a(i, j) = v[i];
     }
-    const SymmetricEigen eigen = jacobiEigen(gramMatrix(generators));
+    const SymmetricEigen eigen = jacobiEigen(gram);
     const double top = largestValue(eigen.values);
     std::vector<std::size_t> keep;
     for (std::size_t i = 0; i < n; ++i)
@@ -280,8 +281,14 @@ SpaceBasis h1Space(std::size_t cornerCount, std::size_t degree)
         }
         return out;
     };
+    // The functions of the corners and of the edges are those orthogonal to the interior functions on the element
+    // itself: its own reference shape, whose L2 product the maps that turn the shape onto itself keep. They are then
+    // the same functions whatever the corner the element starts from, and so is the share of a distributed load
+    // between the grid points, the edges and the interior. (The reference takes the product of the square for the
+    // triangle too: the functions of its corners depend on the first one. The space, and the solution, are the same.)
     SpaceBasis basis;
-    basis.functions = dualBasis(generators, boundaryCount, functionals);
+    basis.functions = dualBasis(generators, boundaryCount, functionals,
+                                gramOnRule(generators, referenceSurfaceRule(nv, shellspaces::BUILD_POINTS)));
     for (std::size_t v = 0; v < nv; ++v)
         basis.kinds.push_back(FunctionKind::vertex(v));
     for (std::size_t e = 0; e < nv; ++e)
@@ -330,7 +337,7 @@ SpaceBasis hcurlSpace(std::size_t cornerCount, std::size_t degree)
         return out;
     };
     SpaceBasis basis;
-    basis.functions = dualBasis(generators, boundaryCount, functionals);
+    basis.functions = dualBasis(generators, boundaryCount, functionals, gramMatrix(generators));
     for (std::size_t e = 0; e < nv; ++e)
         for (std::size_t l = 0; l <= p; ++l)
             basis.kinds.push_back(FunctionKind::edge(e, l));

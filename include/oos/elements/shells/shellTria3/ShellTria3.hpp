@@ -73,6 +73,9 @@ struct ShellTria3
     static constexpr std::size_t DOFS = 18;
     static constexpr std::string_view CARD = "ShellTria3";
     using Geometry = ShellTria3Geometry;
+    // The element is recovered at its centre only: its membrane strains and curvatures are those of a three-node
+    // element, constant over it, and a request for the corner rows gets the centre rows (ShellQuad4.hpp).
+    static constexpr bool HAS_CORNER_RECOVERY = false;
 
     [[nodiscard]] static ShellTria3GeometryResult buildGeometry(const std::array<base::Vec3, NODES>& positions)
     {

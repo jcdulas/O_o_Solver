@@ -19,6 +19,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <variant>
@@ -371,6 +372,22 @@ TiedModel blockWithFin()
     return model;
 }
 
+// The same block with the fin upright: its normal lies in the top face of the block, which holds its fibre.
+TiedModel blockWithUprightFin()
+{
+    TiedModel model;
+    model.mesh = sp::latticeMesh({2, 2, 1}, boxPoint, 4);
+    sp::addHexahedra(model.mesh);
+    std::vector<std::size_t> top;
+    for (std::size_t i = 0; i <= 2; ++i)
+        top.push_back(addGrid(model, {0.5 * static_cast<double>(i), 0.4, 1.1}));
+    for (std::size_t i = 0; i < 2; ++i)
+        model.shells.push_back(
+            mh::ShellCorners::quadrilateral(gridOf(model, i, 1, 1), gridOf(model, i + 1, 1, 1), top[i + 1], top[i]));
+    build(model);
+    return model;
+}
+
 // 2 × 1 × 1 straight hexahedra and two bars alone along their top edge y = 0, numbered 7 and 8 by the integrator.
 TiedModel blockWithLines()
 {
@@ -627,6 +644,64 @@ CHECK_CASE("solidtie: a shell fin standing on a block follows it and turns with 
                 "a rotation tie writes a rotation unknown of an edge");
         }
     expectConsistent(runner, model, ties);
+}
+
+CHECK_CASE("solidtie: an upright shell fin is tied to the face under it over its thickness")
+{
+    // The fibre of the fin at its foot lies in the top face of the block: the ties read the face over the thickness of
+    // the fin (spec section 3.4). The functions of the two edges under the fin are written from the displacement
+    // moments of the edges of the fin and from the unknowns of the faces on both sides, and so are the rotations
+    // about them. The ties of the displacement hold any affine field; those of the rotation hold a rigid motion and
+    // read, in a uniform strain, the rotation of the fibre: with the foot along x and the fibre along y, the slope
+    // ∂u_z/∂y of the top face across the foot, where the field of the shells has the mean rotation of the strain.
+    const TiedModel model = blockWithUprightFin();
+    const mh::SolidPart& part = *model.solidPart;
+    const std::vector<mh::SolidTie> ties = part.ties();
+    runner.expect(countOf(ties, TieKind::SolidEntity) == 2 * 9, "the functions of the two edges are tied");
+    runner.expect(countOf(ties, TieKind::ShellUnknown) == 2 * 4, "the rotations about the two edges are tied");
+    // the faces of the skin of the block by entity, to tell an unknown of a face from one of an edge
+    std::set<std::size_t> faceEntities;
+    for (std::size_t f = 0; f < part.faces().size(); ++f)
+        if (const std::optional<std::size_t> entity = part.faceEntity(f))
+            faceEntities.insert(*entity);
+    std::vector<mh::SolidTie> displacementTies;
+    std::vector<mh::SolidTie> rotationTies;
+    for (const mh::SolidTie& tie : ties)
+    {
+        std::size_t onFaces = 0;
+        std::size_t onShells = 0;
+        for (const mh::TieTerm& term : tie.terms)
+        {
+            onFaces += term.unknown.kind == TieKind::SolidEntity && faceEntities.contains(term.unknown.index) ? 1 : 0;
+            onShells += term.unknown.kind == TieKind::ShellUnknown ? 1 : 0;
+        }
+        runner.expect(onFaces > 0, "a tie of the fin reads the faces beside its foot");
+        if (tie.dependent.kind == TieKind::SolidEntity)
+            runner.expect(onShells == 3, "a function of an edge under the fin is written from the three moments of "
+                                         "the edge of the fin along its component: " +
+                                             std::to_string(onShells));
+        (tie.dependent.kind == TieKind::SolidEntity ? displacementTies : rotationTies).push_back(tie);
+    }
+    expectConsistent(runner, model, displacementTies);
+    // The edges of the foot are 0.5 long along x (boxPoint): the rotation unknown 0 of an edge is its length times
+    // the rotation about x, the others vanish for a uniform rotation.
+    constexpr double EDGE_LENGTH = 0.5;
+    for (const AffineField& field : testFields())
+    {
+        const AffineValues values(model, field);
+        double worst = 0.0;
+        for (const mh::SolidTie& tie : rotationTies)
+        {
+            double sum = 0.0;
+            for (const mh::TieTerm& term : tie.terms)
+                sum += term.coefficient * values(term.unknown);
+            const mh::ShellPartUnknown u = model.shellPart->describe(tie.dependent.index);
+            const bool isFirst = u.component == model.shellPart->edgeRotationDof(0);
+            worst = std::max(worst, std::fabs(sum - (isFirst ? EDGE_LENGTH * field.a[2][1] : 0.0)));
+        }
+        runner.expect(worst < TIE_TOLERANCE,
+                      "the rotation about the foot is the slope of the top face across it: " + hp::sci(worst));
+    }
 }
 
 CHECK_CASE("solidtie: lines alone along an edge of a block follow it and turn with it")

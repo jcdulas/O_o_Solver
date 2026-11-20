@@ -52,7 +52,7 @@ struct GluedPairReport
     // over their extent, the edges tied by their rotation too, and the edges and faces left to their own unknowns
     // (a point of theirs is off the primary faces).
     std::int64_t tiedEdgeCount = 0;
-    std::int64_t tiedFaceCount = 0; // the faces of solids tied over their extent
+    std::int64_t tiedFaceCount = 0; // the faces of solids and the interiors of shells tied over their extent
     std::int64_t rotationTiedEdgeCount = 0;
     std::int64_t freeBoundaryCount = 0;
 };
@@ -111,7 +111,8 @@ struct GluedPairReport
 //   The rotations of the secondary grid point are not tied there (the elements of such a formulation do not read
 //   the rotations of the grid points).
 // - The edges and faces of such a formulation. Its elements have unknowns along their edges and over their faces,
-//   which the grid points do not hold: an edge of shells, or an edge or a face of the skin of solids, whose grid
+//   which the grid points do not hold: an edge or the interior of a shell, or an edge or a face of the skin of
+//   solids, whose grid
 //   points are grid points of the glued surface that lie on a face (tied, or left to a support or to another
 //   relation that holds their translations) is tied over its extent. Each of its unknowns is a function of the
 //   motion of its points (FormulationModel::boundaryTraces: points of the edge or face, the weights of each

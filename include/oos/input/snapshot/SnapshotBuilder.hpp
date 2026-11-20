@@ -66,7 +66,7 @@ public:
     void setModelFormulation(std::string_view formulation);
     // The geometry declarations of the formulation (ModelSnapshot::formulationGeometry), kept sorted, without
     // repetition, each edge with its lower grid point first. Throws std::invalid_argument for an edge of one grid
-    // point.
+    // point or a mesh line that names a grid point twice.
     void setFormulationGeometry(FormulationGeometry geometry);
     // The card tables, each by the neutral card name ("ShellQuad4", "ShellProp"). Throws std::invalid_argument when the
     // card type was already given, ContractError as setTable(). An element batch is keyed by ELEMENT_ID_COLUMN, a

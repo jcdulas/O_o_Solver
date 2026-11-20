@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -415,6 +416,14 @@ struct KindPlan
     elements::ElementOutput output;
     const ElementKindSelection* selection;
     TableShaping shaping;
+    // The corner rows of the families that write them on request (elements::RecoveryOutput::hasCorners): asked
+    // unless the selection keeps the centre rows only.
+    bool hasCorners = false;
+
+    [[nodiscard]] elements::RecoveryOutput recoveryOutput() const noexcept
+    {
+        return elements::RecoveryOutput::of(output).withCorners(hasCorners);
+    }
 };
 
 std::optional<KindPlan> planOf(const assembly::AssemblyBatch& batch, const KindOfTable& kind,
@@ -430,7 +439,23 @@ std::optional<KindPlan> planOf(const assembly::AssemblyBatch& batch, const KindO
         return std::nullopt;
     return KindPlan{*output, &kindSelection,
                     TableShaping{kindSelection.isCentreOnly && isCentreOrCornerElement(batch.view.card()),
-                                 chosen.isMaximumShear && kind.output == elements::ElementOutput::Stresses}};
+                                 chosen.isMaximumShear && kind.output == elements::ElementOutput::Stresses},
+                    !kindSelection.isCentreOnly};
+}
+
+// The family's rows of an element or a layer output (elements::RecoveryOutput): recover() or recoverLayers(), and
+// recoverOutputs() for an element output with the corner rows, which that call alone reads.
+void recoverOutput(const elements::ElementFamily& family, const elements::ElementBatchView& view,
+                   elements::ElementRange range, const elements::RecoveryOutput& output,
+                   const elements::NodalDisplacements& displacements, elements::ElementResultBlock& block)
+{
+    if (output.isLayer)
+        family.recoverLayers(view, range, output.layerOutput, displacements, block);
+    else if (output.hasCorners)
+        family.recoverOutputs(view, range, std::span<const elements::RecoveryOutput>(&output, 1), displacements,
+                              std::span<elements::ElementResultBlock>(&block, 1));
+    else
+        family.recover(view, range, output.output, displacements, block);
 }
 
 // Runs task(0) ... task(count − 1) on the pool, or on the caller.
@@ -476,48 +501,74 @@ void appendKindTables(const elements::ElementFamily& family, const char* kindNam
         appendTable(kindName, loadedType, subcase, {loaded}, false, budget, tables, plan.shaping);
 }
 
-// The rows of the elements under line loads of one kind of one batch for one case (recoverKind's rule): `loadedRows`
-// the batch rows of every element the loads name (sorted, once each), `loaded` the rows of those the selection takes,
-// recovered under their loads when the family gives such rows; false when it gives none.
+// The rows of a batch a build writes in the station layout whatever their loads (ElementFamily::stationRows: the
+// bars a card gives output stations to), within the rows the build recovers; increasing.
+std::vector<std::int64_t> stationRowsOf(const assembly::AssemblyBatch& batch, const BatchRows& rows)
+{
+    std::vector<std::int64_t> stationRows = batch.family->stationRows(batch.view);
+    if (rows.isWhole || stationRows.empty())
+        return stationRows;
+    const auto isOutside = [&](std::int64_t row)
+    {
+        return std::none_of(rows.ranges.begin(), rows.ranges.end(), [&](const elements::ElementRange& range)
+                            { return row >= range.first && row < range.last; });
+    };
+    stationRows.erase(std::remove_if(stationRows.begin(), stationRows.end(), isOutside), stationRows.end());
+    return stationRows;
+}
+
+// The rows of the elements in the station layout of one kind of one batch for one case (recoverKind's rule):
+// `loadedRows` the batch rows of every element the loads name and of `stationRows` (sorted, once each), `loaded` the
+// rows of those the selection takes, recovered under their loads when the family gives such rows; false when it
+// gives none.
 bool recoverLoadedRows(const assembly::AssemblyBatch& batch, const KindPlan& plan,
                        const elements::NodalDisplacements& displacements,
-                       std::span<const elements::ElementLineLoad> allLoads, std::vector<std::int64_t>& loadedRows,
-                       ChargedBlock& loaded, base::MemoryBudget& budget)
+                       std::span<const elements::ElementLineLoad> allLoads, std::span<const std::int64_t> stationRows,
+                       std::vector<std::int64_t>& loadedRows, ChargedBlock& loaded, base::MemoryBudget& budget)
 {
     const elements::ElementFamily& family = *batch.family;
-    loadedRows.clear();
+    std::vector<std::int64_t> underLoads; // bounded by the loads of the subcase on the batch
     for (const elements::ElementLineLoad& load : allLoads)
-        if (loadedRows.empty() || loadedRows.back() != load.elementRow)
-            loadedRows.push_back(load.elementRow);
+        if (underLoads.empty() || underLoads.back() != load.elementRow)
+            underLoads.push_back(load.elementRow);
+    loadedRows.clear();
+    std::set_union(underLoads.begin(), underLoads.end(), stationRows.begin(), stationRows.end(),
+                   std::back_inserter(loadedRows));
     std::vector<elements::ElementLineLoad> selectedLoads; // bounded by the loads of the subcase on the batch
     for (const elements::ElementLineLoad& load : allLoads)
         if (plan.selection->takes(batch.view.elementId(load.elementRow)))
             selectedLoads.push_back(load);
-    if (selectedLoads.empty() || family.outputColumnsUnderLineLoads(plan.output).empty())
+    std::vector<std::int64_t> selectedRows; // bounded by the rows in the station layout
+    for (const std::int64_t row : loadedRows)
+        if (plan.selection->takes(batch.view.elementId(row)))
+            selectedRows.push_back(row);
+    if (selectedRows.empty() || family.outputColumnsUnderLineLoads(plan.output).empty())
         return false;
-    family.recoverUnderLineLoads(batch.view, selectedLoads, plan.output, displacements, loaded.block);
+    family.recoverStationRows(batch.view, selectedRows, selectedLoads, plan.output, displacements, loaded.block);
     loaded.charge = budget.reserve(bytesOf(loaded.block), "element result blocks");
     return true;
 }
 
 // The tables of one kind of one batch for one case, from the family's recovery of each element (the reference path):
-// the elements under line loads (`allLoads`) recovered in their own layout.
+// the elements under line loads (`allLoads`) and those with output stations (`stationRows`) recovered in their own
+// layout.
 void recoverKind(const assembly::AssemblyBatch& batch, const char* kindName, const KindPlan& plan, std::int32_t subcase,
                  const elements::NodalDisplacements& displacements, std::span<const elements::ElementLineLoad> allLoads,
-                 std::int64_t rangeLength, base::MemoryBudget& budget, std::vector<ElementResultTable>& tables,
-                 base::ThreadPool* pool, const BatchRows& rows = {})
+                 std::span<const std::int64_t> stationRows, std::int64_t rangeLength, base::MemoryBudget& budget,
+                 std::vector<ElementResultTable>& tables, base::ThreadPool* pool, const BatchRows& rows = {})
 {
     const elements::ElementFamily& family = *batch.family;
-    std::vector<std::int64_t> loadedRows; // bounded by the loads of the subcase on the batch
+    std::vector<std::int64_t> loadedRows; // bounded by the loads of the subcase on the batch and its station rows
     ChargedBlock loaded;
-    const bool hasLoadedRows = recoverLoadedRows(batch, plan, displacements, allLoads, loadedRows, loaded, budget);
+    const bool hasLoadedRows =
+        recoverLoadedRows(batch, plan, displacements, allLoads, stationRows, loadedRows, loaded, budget);
     const std::vector<elements::ElementRange> ranges =
         selectedRanges(batch.view, *plan.selection, loadedRows, rangeLength, std::nullopt, rows);
     std::vector<ChargedBlock> plain(ranges.size()); // bounded by the ranges of the batch
     runTasks(pool, ranges.size(),
              [&](std::size_t r)
              {
-                 family.recover(batch.view, ranges[r], plan.output, displacements, plain[r].block);
+                 recoverOutput(family, batch.view, ranges[r], plan.recoveryOutput(), displacements, plain[r].block);
                  plain[r].charge = budget.reserve(bytesOf(plain[r].block), "element result blocks");
              });
     std::vector<const elements::ElementResultBlock*> plainBlocks;
@@ -592,7 +643,7 @@ KindTablesOfCase recoverKindsTogether(const assembly::AssemblyBatch& batch, cons
     for (std::size_t k = 0; k < KINDS.size(); ++k)
         if (const std::optional<KindPlan> plan = planOf(batch, KINDS[k], chosen); plan && isIncluded[k])
             asked.push_back(
-                {k, KINDS[k].kind, elements::RecoveryOutput::of(plan->output), plan->selection, plan->shaping, plan});
+                {k, KINDS[k].kind, plan->recoveryOutput(), plan->selection, plan->shaping, plan});
     for (std::size_t k = 0; k < LAYER_KINDS.size(); ++k)
     {
         const KindOfLayerTable& kind = LAYER_KINDS[k];
@@ -704,16 +755,6 @@ std::vector<std::string> columnsOf(const elements::ElementFamily& family, const 
 std::vector<elements::ColumnForm> formsOf(const elements::ElementFamily& family, const elements::RecoveryOutput& output)
 {
     return output.isLayer ? family.layerOutputColumnForms(output.layerOutput) : family.outputColumnForms(output.output);
-}
-
-void recoverOutput(const elements::ElementFamily& family, const elements::ElementBatchView& view,
-                   elements::ElementRange range, const elements::RecoveryOutput& output,
-                   const elements::NodalDisplacements& displacements, elements::ElementResultBlock& block)
-{
-    if (output.isLayer)
-        family.recoverLayers(view, range, output.layerOutput, displacements, block);
-    else
-        family.recover(view, range, output.output, displacements, block);
 }
 
 // The slopes of the rows of the element of batch row `row` (RecoverySlopes) of a family that gives none of its own: the
@@ -1197,19 +1238,21 @@ std::vector<VectorisedTables> vectoriseKinds(
     return result;
 }
 
-// The tables of one kind of one case whose elements of the batch carry line loads (`allLoads`), from its vectorised
-// table (`vectorised`, its rows' batch rows `elementRows`; no table when the kind had no row): the rows of the loaded
-// elements replaced by their recovery under the loads, recoverKind's tables (its plain rows the vectorised ones).
+// The tables of one kind of one case whose elements of the batch carry line loads (`allLoads`) or have output
+// stations (`stationRows`), from its vectorised table (`vectorised`, its rows' batch rows `elementRows`; no table when
+// the kind had no row): the rows of those elements replaced by their recovery in the station layout, recoverKind's
+// tables (its plain rows the vectorised ones).
 void applyLineLoads(const assembly::AssemblyBatch& batch, const char* kindName, const KindPlan& plan,
                     std::int32_t subcase, const elements::NodalDisplacements& displacements,
-                    std::span<const elements::ElementLineLoad> allLoads, const ElementResultTable* vectorised,
-                    std::span<const std::int64_t> elementRows, base::MemoryBudget& budget,
-                    std::vector<ElementResultTable>& tables)
+                    std::span<const elements::ElementLineLoad> allLoads, std::span<const std::int64_t> stationRows,
+                    const ElementResultTable* vectorised, std::span<const std::int64_t> elementRows,
+                    base::MemoryBudget& budget, std::vector<ElementResultTable>& tables)
 {
     const elements::ElementFamily& family = *batch.family;
-    std::vector<std::int64_t> loadedRows; // bounded by the loads of the subcase on the batch
+    std::vector<std::int64_t> loadedRows; // bounded by the loads of the subcase on the batch and its station rows
     ChargedBlock loaded;
-    const bool hasLoadedRows = recoverLoadedRows(batch, plan, displacements, allLoads, loadedRows, loaded, budget);
+    const bool hasLoadedRows =
+        recoverLoadedRows(batch, plan, displacements, allLoads, stationRows, loadedRows, loaded, budget);
     ChargedBlock plain;
     plain.block.reset(family.outputColumns(plan.output));
     if (vectorised != nullptr)
@@ -1297,7 +1340,8 @@ void ElementResultBuilder::build(std::int32_t subcase, std::span<const double> d
         const std::span<const elements::ElementLineLoad> allLoads =
             lineLoads.empty() ? std::span<const elements::ElementLineLoad>{} : std::span(lineLoads[b]);
         const std::int64_t rangeLength = rangeLengthOf(batch.view.rowCount(), pool);
-        if (allLoads.empty())
+        const std::vector<std::int64_t> stationRows = stationRowsOf(batch, {});
+        if (allLoads.empty() && stationRows.empty())
         {
             std::array<bool, ALL_KINDS> isIncluded{};
             isIncluded.fill(true);
@@ -1309,8 +1353,8 @@ void ElementResultBuilder::build(std::int32_t subcase, std::span<const double> d
         }
         for (const KindOfTable& kind : KINDS)
             if (const std::optional<KindPlan> plan = planOf(batch, kind, chosen))
-                recoverKind(batch, kind.kind, *plan, subcase, displacements, allLoads, rangeLength, budget, tables,
-                            pool);
+                recoverKind(batch, kind.kind, *plan, subcase, displacements, allLoads, stationRows, rangeLength, budget,
+                            tables, pool);
         for (const KindOfLayerTable& kind : LAYER_KINDS)
             recoverLayerKind(batch, kind, chosen, subcase, displacements, rangeLength, budget, tables, pool);
     }
@@ -1453,6 +1497,8 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
         if (cancellation != nullptr)
             cancellation->throwIfCancelled();
         const std::int64_t rangeLength = rangeLengthOf(batch.view.rowCount(), pool);
+        // The elements written in the station layout in every case (the bars with output stations).
+        const std::vector<std::int64_t> stationRows = stationRowsOf(batch, rows);
         // The kinds the family completes and the cases reach the minimum of: vectorised together (their slopes made
         // once per element for all of them), the element kinds first, then the layer kinds.
         std::array<std::optional<KindPlan>, KINDS.size()> plans;
@@ -1468,9 +1514,10 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
             if (minimum > 0 && vectorisable >= minimum)
             {
                 vectorisedIndex[k] = vectorised.size();
-                const elements::RecoveryOutput output = elements::RecoveryOutput::of(plans[k]->output);
+                const elements::RecoveryOutput output = plans[k]->recoveryOutput();
                 const elements::RecoveryOutput source =
-                    elements::RecoveryOutput::of(family.vectorisedSource(plans[k]->output));
+                    elements::RecoveryOutput::of(family.vectorisedSource(plans[k]->output))
+                        .withCorners(plans[k]->hasCorners);
                 vectorised.push_back({KINDS[k].kind, output, source, plans[k]->selection, plans[k]->shaping});
             }
         }
@@ -1508,7 +1555,7 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
         std::vector<std::optional<KindTablesOfCase>> togetherTables(subcases.size()); // per case
         for (std::size_t c = 0; c < subcases.size(); ++c)
         {
-            if (hasTogether && lineLoadsOf(c, b).empty())
+            if (hasTogether && lineLoadsOf(c, b).empty() && stationRows.empty())
                 togetherTables[c] = recoverKindsTogether(batch, chosen, isTogether, subcases[c], cases[c], rangeLength,
                                                          budget, pool, rows);
             for (std::size_t k = 0; k < KINDS.size(); ++k)
@@ -1523,16 +1570,16 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
                 }
                 if (!vectorisedIndex[k])
                 {
-                    recoverKind(batch, KINDS[k].kind, *plans[k], subcases[c], cases[c], caseLoads, rangeLength, budget,
-                                tables[c], pool, rows);
+                    recoverKind(batch, KINDS[k].kind, *plans[k], subcases[c], cases[c], caseLoads, stationRows,
+                                rangeLength, budget, tables[c], pool, rows);
                     continue;
                 }
                 VectorisedTables& kindTables = made[*vectorisedIndex[k]];
                 ElementResultTable* table = kindTables.tables.empty() ? nullptr : &kindTables.tables[c];
-                if (!caseLoads.empty())
+                if (!caseLoads.empty() || !stationRows.empty())
                 {
-                    applyLineLoads(batch, KINDS[k].kind, *plans[k], subcases[c], cases[c], caseLoads, table,
-                                   kindTables.elementRows, budget, tables[c]);
+                    applyLineLoads(batch, KINDS[k].kind, *plans[k], subcases[c], cases[c], caseLoads, stationRows,
+                                   table, kindTables.elementRows, budget, tables[c]);
                     continue;
                 }
                 if (table != nullptr)

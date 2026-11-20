@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -133,9 +134,16 @@ struct ShellPartInput
     std::vector<ShellPartShell> shells;
     // The line elements that lie on an edge of the shells (a line whose edge has no shell is reported).
     std::vector<ShellPartLine> lines;
-    // The declarations of the geometry (MeshReadingInput): raw edges (grid indices), raw elements (shell indices).
+    // The declarations of the geometry (MeshReadingInput): raw edges (grid indices), raw elements (shell indices), the
+    // sides of edges declared smooth and sharp (shell indices, MeshReadingInput::WHOLE_EDGE for the whole edge), the
+    // fold angle (radians) that decides the edges nothing declares (empty: they are smooth), and the mesh lines
+    // declared.
     std::set<EdgeKey> rawEdges;
     std::vector<std::size_t> rawElements;
+    std::map<EdgeKey, std::set<std::size_t>> smoothSides;
+    std::map<EdgeKey, std::set<std::size_t>> sharpSides;
+    std::optional<double> foldAngle;
+    std::map<std::pair<std::size_t, std::size_t>, std::set<std::size_t>> declaredLines;
     // The translations (grid index, basic component 0 to 2) held at grids: they orient the common frame of an external
     // edge in the reading of the mesh (MeshReadingInput::heldTranslations). The integrator passes those held in every
     // subcase.
@@ -358,6 +366,17 @@ struct ShellEdgeRotationFrame
 {
     SpaceVector tangent{};
     double measure = 0.0;
+};
+
+// The fibre of a shell at a point of one of its edges: the point of the surface of the grid points, the unit normal
+// there, the thickness of the section and the distance from the surface of the grid points to its middle, along the
+// normal. The section lies between `offset` − `thickness` / 2 and `offset` + `thickness` / 2 along the normal.
+struct ShellEdgeFibre
+{
+    SpaceVector point{};
+    SpaceVector normal{};
+    double thickness = 0.0;
+    double offset = 0.0;
 };
 
 // The kinematics of a line on edge `localEdge` of a shell element at the element's own parameter `tau` of the edge
@@ -624,12 +643,28 @@ public:
     struct EdgeMoments
     {
         std::vector<SpaceVector> points;
+        std::vector<double> parameters; // s of each point
         std::vector<std::size_t> displacementUnknowns; // (l, c) at 3 l + c
         std::vector<std::vector<double>> displacementWeights;
         std::vector<std::size_t> rotationUnknowns;
         std::vector<std::vector<SpaceVector>> rotationWeights;
     };
     [[nodiscard]] EdgeMoments edgeMoments(std::size_t edge) const;
+    // The interior displacement unknowns of shell `shell` as the projection of a displacement field known at the
+    // points of the rule of the element (a glued contact gives them the motion of the face under the element). The
+    // displacement is u = P / W with P = Σ_i N_i x_i; the interior coefficients of P are
+    // G⁻¹ ∫ N_interior (W u − Σ_boundary N_i x_i) on the reference measure (InteriorProjection, the projection that
+    // gives the element its map), so the unknown of the interior function a along the basic axis c is
+    //   unknowns[3 a + c] = Σ_q weights[3 a + c][q]·u_c(points[q]) + Σ terms[3 a + c],
+    // the terms on the corner and edge unknowns of the shell (what they carry, taken out).
+    struct InteriorMoments
+    {
+        std::vector<SpaceVector> points;
+        std::vector<std::size_t> unknowns;
+        std::vector<std::vector<double>> weights;
+        std::vector<std::vector<ShellPartTerm>> terms;
+    };
+    [[nodiscard]] InteriorMoments interiorMoments(std::size_t shell) const;
     // The reference point of shell `shell` at the parameter s ∈ [0, 1] of its edge `localEdge` (from its corner
     // localEdge to its corner localEdge + 1), s from the lower grid of the edge: the parameter of the shell is τ = s
     // where the shell runs the edge from its lower grid, 1 − s otherwise.
@@ -640,6 +675,10 @@ public:
     // edge in the reference domain, s_k its edge sign.
     // Reference: the geometry of the edges of shells in tdnns/solid.rs::Solids::ties
     [[nodiscard]] ShellEdgeRotationFrame edgeRotationFrame(std::size_t shell, std::size_t localEdge, double s) const;
+    // The fibre of shell `shell` at the parameter s of its edge `localEdge` from the lower grid of the edge
+    // (ShellEdgeFibre): the thickness between those of the two corners of the edge (the tie of the rotation of an
+    // edge with the solids under it reads them over that fibre, SolidPart::ties; not in the reference).
+    [[nodiscard]] ShellEdgeFibre edgeFibre(std::size_t shell, std::size_t localEdge, double s) const;
 
     // ---- the geometry report
 

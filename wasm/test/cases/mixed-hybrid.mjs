@@ -86,7 +86,15 @@ test("the geometry declarations are checked when they are given", () => {
   const deck = readDeck(plate(), "mixed-geometry");
   try {
     assert.throws(() => solver.modelFromReader(oor, deck, { formulationGeometry: { rawEdges: [[1, 2, 3]] } }),
-      /each edge is \[g1, g2\]/);
+      /formulationGeometry\.rawEdges: each item is \[g1, g2\]/);
+    assert.throws(() => solver.modelFromReader(oor, deck, { formulationGeometry: { sharpEdges: [[1]] } }),
+      /formulationGeometry\.sharpEdges: each item is \[g1, g2\] or \[g1, g2, element\]/);
+    assert.throws(() => solver.modelFromReader(oor, deck, { formulationGeometry: { lineContinuations: [[1, 2]] } }),
+      /formulationGeometry\.lineContinuations: each item is \[g1, g, g2\]/);
+    assert.throws(() => solver.modelFromReader(oor, deck, { formulationGeometry: { lineContinuations: [[1, 2, 1]] } }),
+      /three different grid points/);
+    assert.throws(() => solver.modelFromReader(oor, deck, { formulationGeometry: { lineEnds: [[2, 2]] } }),
+      /two different grid points/);
     assert.throws(() => solver.modelFromReader(oor, deck, { formulationGeometry: { rawEdges: [[4, 4]] } }),
       /two different grid points/);
     const model = solver.modelFromReader(oor, deck,
@@ -786,6 +794,42 @@ for (const shape of ["SolidHexa", "SolidPenta", "SolidTetra", "SolidPyramid"])
         `stresses at grid point ${row.id}`);
   });
 
+for (const shape of ["SolidHexa", "SolidTetra"])
+  test(`the edges of a block of ${shape} in MixedHybridFormulation are sharp by the fold angle of the model as when they are declared`, () => {
+    const delta = 1.0e-3;
+    const model = solidBlock({ shape, nx: 2, records: (node, nx) => {
+      const records = [`SinglePointConstrList;1;23;${node(0, 0, 0)}`, `SinglePointConstrList;1;3;${node(0, 1, 0)}`,
+        `SinglePointConstrList;1;2;${node(0, 0, 1)}`];
+      for (let k = 0; k <= 1; ++k)
+        for (let j = 0; j <= 1; ++j)
+          records.push(`SinglePointConstrList;1;1;${node(0, j, k)}`, `SinglePointConstr;1;${node(nx, j, k)};1;${real(delta)}`);
+      return records;
+    } });
+    const undeclared = { ...model, options: { elementFormulation: "MixedHybridFormulation", formulationGeometry: {} } };
+    const declared = runSolids(model, `mixed-solid-declared-${shape}`);
+    const byAngle = runSolids(undeclared, `mixed-solid-angle-${shape}`);
+    for (const { id } of model.points)
+      assertClose(nodal(byAngle, "displacements", id), nodal(declared, "displacements", id), 1e-12, `grid ${id}`, delta);
+    assert.deepEqual(byAngle.diagnostics.filter((d) => d.severity !== "information"), []);
+    assert.match(byAngle.diagnostics.find((d) => d.code === "geometry-report").text,
+      /the skin of the solids of MixedHybridFormulation has \d+ edges between two faces, 16 sharp \(16 by the fold angle of the model alone\)$/);
+    // The table of the edges read: the sixteen edges of the block are sharp, by the angle or by the declaration.
+    const key = (a, b) => `${Math.min(a, b)}-${Math.max(a, b)}`;
+    const sharp = new Set(model.options.formulationGeometry.sharpEdges.map(([a, b]) => key(a, b)));
+    for (const [candidate, origin] of [[undeclared, "Angle"], [model, "Declared"]])
+      withModel(candidate.text, `mixed-solid-edges-${shape}-${origin}`, candidate.options, (built) => {
+        const edges = built.surfaceEdges();
+        assert.ok(edges.grid1.length > 0 && edges.surface.every((surface) => surface === "SolidSkin"));
+        for (let row = 0; row < edges.grid1.length; ++row) {
+          const isBlockEdge = sharp.has(key(edges.grid1[row], edges.grid2[row]));
+          assert.ok(edges.grid1[row] < edges.grid2[row]);
+          assert.equal(edges.state[row], isBlockEdge ? "Sharp" : "Smooth", `edge ${edges.grid1[row]}-${edges.grid2[row]}`);
+          assert.equal(edges.origin[row], isBlockEdge ? origin : "Angle");
+          assert.ok(Math.abs(edges.angle[row] - (isBlockEdge ? 90 : 0)) < 1e-5, `angle ${edges.angle[row]}`);
+        }
+      });
+  });
+
 // The pure bending of a block: u = −κ x y', v = κ (x² + ν (y'² − z'²)) / 2, w = κ ν y' z' (y', z' from the centre of
 // the section), and the supports that impose it: u on both ends, and v, w at two grid points of the end x = 0.
 const BENT_BLOCK = { kappa: 1.0e-3, poisson: 0.3 };
@@ -855,7 +899,7 @@ test("the weight of a strip of ShellQuad4 in MixedHybridFormulation is its mass 
   }
 });
 
-test("the geometry report of MixedHybridFormulation names the fold of an angle section, rounded unless declared raw", () => {
+test("the geometry report of MixedHybridFormulation names the fold of an angle section: sharp by the fold angle, raw or rounded as declared", () => {
   // Two legs of nx ShellQuad4 at 90 degrees along the x axis: the leg z = 0 and the leg y = 0, clamped at x = 0.
   const nx = 2;
   const lines = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
@@ -890,8 +934,19 @@ test("the geometry report of MixedHybridFormulation names the fold of an angle s
   assert.equal(kinks.length, nx, JSON.stringify(kinks));
   for (const kink of kinks) assert.match(kink.text, /differ by up to (89\.9|90\.0)\d* degrees \(declared raw\)/);
   assert.equal(declared.filter((d) => d.code === "geometry-rounding").length, 0, "no rounding of the legs");
-  // Not declared: the reading rounds the fold, about 45 degrees from the plane of each leg along it.
-  const rounded = diagnostics({}).filter((d) => d.code === "geometry-rounding");
+  // Not declared: the fold angle of the model makes the fold sharp, and the legs stay flat.
+  const byAngle = diagnostics({});
+  assert.match(byAngle.find((d) => d.code === "geometry-report").text,
+    /0 declared raw, 2 sharp \(2 by the fold angle of the model alone\)/);
+  const sharpKinks = byAngle.filter((d) => d.code === "geometry-kink");
+  assert.equal(sharpKinks.length, nx, JSON.stringify(sharpKinks));
+  for (const kink of sharpKinks)
+    assert.match(kink.text, /differ by up to (89\.9|90\.0)\d* degrees \(sharp by the fold angle of the model\)/);
+  assert.equal(byAngle.filter((d) => d.code === "geometry-rounding").length, 0, "no rounding of the legs");
+  // a fold of 90 degrees is far above the angle: nothing asks whether it is a coarse curve
+  assert.equal(byAngle.filter((d) => d.code === "geometry-fold-by-angle").length, 0);
+  // Declared smooth: the reading rounds the fold, about 45 degrees from the plane of each leg along it.
+  const rounded = diagnostics({ smoothEdges: rawEdges }).filter((d) => d.code === "geometry-rounding");
   assert.ok(rounded.length >= nx, JSON.stringify(rounded));
   assert.match(rounded[0].text, /turns by up to (4[0-9]|5[0-9])\.\d+ degrees/);
 });
@@ -2120,11 +2175,31 @@ test("the support forces of a curved clamped edge of ShellQuad4 in MixedHybridFo
 test("a declared edge of MixedHybridFormulation that is no edge of the model is refused", () => {
   const run = (geometry, name) => withModel(plate(), name,
     { elementFormulation: "MixedHybridFormulation", formulationGeometry: geometry }, (model) => solver.run(model, "statics"));
-  // Grid points 1 and 3 of the plate are joined by no shell; a sharp edge is an edge of solids.
+  // Grid points 1 and 3 of the plate are joined by no shell, and element 99 is no shell of the edge 1-2.
   assert.throws(() => run({ rawEdges: [[1, 3]] }, "mixed-raw-unknown"), /geometry-declaration-unknown/);
-  assert.throws(() => run({ sharpEdges: [[1, 2]] }, "mixed-sharp-unknown"), /geometry-declaration-unknown/);
-  const accepted = run({ rawEdges: [[1, 2]] }, "mixed-raw-known");
-  assert.ok(!accepted.diagnostics.some((d) => d.severity === "error"), JSON.stringify(accepted.diagnostics));
+  assert.throws(() => run({ sharpEdges: [[1, 3]] }, "mixed-sharp-unknown"), /geometry-declaration-unknown/);
+  assert.throws(() => run({ smoothEdges: [[1, 3]] }, "mixed-smooth-unknown"), /geometry-declaration-unknown/);
+  assert.throws(() => run({ sharpEdges: [[1, 2, 99]] }, "mixed-side-unknown"),
+    /geometry-declaration-unknown.*found element 99 for the edge between grid points 1 and 2/s);
+  assert.throws(() => run({ lineEnds: [[1, 3]] }, "mixed-end-unknown"), /geometry-declaration-unknown/);
+  assert.throws(() => run({ lineContinuations: [[1, 2, 4]] }, "mixed-line-unknown"), /geometry-declaration-unknown/);
+  for (const [geometry, name] of [[{ rawEdges: [[1, 2]] }, "mixed-raw-known"],
+    [{ sharpEdges: [[1, 2]] }, "mixed-sharp-known"], [{ smoothEdges: [[1, 2, 1]] }, "mixed-side-known"],
+    [{ lineEnds: [[1, 2]] }, "mixed-end-known"]]) {
+    const accepted = run(geometry, name);
+    assert.ok(!accepted.diagnostics.some((d) => d.severity === "error"), JSON.stringify(accepted.diagnostics));
+  }
+});
+
+test("geometry declarations of MixedHybridFormulation that give one edge two states are refused", () => {
+  const run = (geometry, name) => withModel(plate(), name,
+    { elementFormulation: "MixedHybridFormulation", formulationGeometry: geometry }, (model) => solver.run(model, "statics"));
+  assert.throws(() => run({ smoothEdges: [[1, 2]], sharpEdges: [[2, 1]] }, "mixed-conflict-states"),
+    /geometry-declaration-conflict.*declared both smooth and sharp/s);
+  assert.throws(() => run({ rawEdges: [[1, 2]], sharpEdges: [[1, 2]] }, "mixed-conflict-raw"),
+    /geometry-declaration-conflict.*declared raw and also smooth or sharp/s);
+  assert.throws(() => run({ lineEnds: [[1, 2]], lineContinuations: [[1, 2, 3]] }, "mixed-conflict-line"),
+    /geometry-declaration-conflict.*declared both ended and continued at grid point 2/s);
 });
 
 test("checkSupport lists what MixedHybridFormulation refuses of a model before it is run", () => {
@@ -2133,7 +2208,9 @@ test("checkSupport lists what MixedHybridFormulation refuses of a model before i
     { elementFormulation: "MixedHybridFormulation", formulationGeometry: geometry },
     (model) => model.checkSupport("statics").refusals.map((refusal) => refusal.code));
   assert.ok(codes({ rawEdges: [[1, 3]] }, "mixed-check-raw").includes("geometry-declaration-unknown"));
-  assert.ok(codes({ sharpEdges: [[1, 2]] }, "mixed-check-sharp").includes("geometry-declaration-unknown"));
+  assert.ok(codes({ sharpEdges: [[1, 3]] }, "mixed-check-sharp").includes("geometry-declaration-unknown"));
+  assert.ok(codes({ smoothEdges: [[1, 2]], sharpEdges: [[1, 2]] }, "mixed-check-conflict")
+    .includes("geometry-declaration-conflict"));
   assert.deepEqual(codes({ rawEdges: [[1, 2]] }, "mixed-check-known"), []);
 });
 

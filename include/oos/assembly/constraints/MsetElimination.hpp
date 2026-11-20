@@ -14,7 +14,8 @@ namespace oos::assembly
 //     Knn = K̄nn + K̄nm·Gm + Gmᵀ·K̄mn + Gmᵀ·K̄mm·Gm,
 // computed on the node-block structure: for each m DOF d with its Gm row (c_j on n DOFs j),
 //     K(i, j) += K(i, d)·c_j and K(j, i) += K(i, d)·c_j for every n DOF i coupled to d,
-//     K(j, k) += c_j·K(d, e)·c_k for every m DOF e coupled to d (e = d included) and every term c_k of e's row,
+//     K(j, k) += c_j·K(d, e)·c_k for every m DOF e coupled to d (e = d included) and every term c_k of e's row
+//     (summed over e first, for each d: the rows of an element formulation have hundreds of terms),
 // the reads from Kgg and the sums into a copy of it. The rows and columns of the m DOFs keep their Kgg values: the
 // DofSelection of the f set removes them.
 //

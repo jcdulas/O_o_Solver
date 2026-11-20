@@ -255,6 +255,27 @@ TableContract contractOf(TableRole role)
         // cardTable(deck, "ShellNormal"): one row per card, the grid point, the coordinate system of the vector
         // (null or 0: the basic system) and the vector; a zero vector gives the grid point no shared normal.
         return tableOf(role, {required("nodeId", INT32), optional("frameId", INT32), required("vector", VECTOR)});
+    case TableRole::BarStations:
+        // cardTable(deck, "Bar2Stations"): one row per card, the Bar2 it gives stations to (id), the scale of its
+        // stations ("FractionalLength": fractions of the length of the bar; "ActualLength": distances from end A),
+        // and the stations: those listed (stationCount 0), or stationCount stations from station1, stationSpacing
+        // apart.
+        return tableOf(role, {required("id", INT32), required("stationScale", UTF8),
+                              required("listedStations", REAL_LIST), required("stationCount", INT32),
+                              required("station1", FLOAT64), required("stationSpacing", FLOAT64)});
+    case TableRole::SurfaceEdges:
+        // cardTable(deck, "SurfaceEdge"): one row per card, its ID, the two grid points of the edge, its state
+        // ("Smooth", "Sharp" or "Raw") and the shell element whose side of the edge is meant (0: every side).
+        return tableOf(role, {required("id", INT32), required("node1Id", INT32), required("node2Id", INT32),
+                              required("state", UTF8), required("elementId", INT32)});
+    case TableRole::SurfaceFacets:
+        // cardTable(deck, "SurfaceFacet"): one row per card, the shell element whose edges are all raw.
+        return tableOf(role, {required("elementId", INT32)});
+    case TableRole::SurfaceLines:
+        // cardTable(deck, "SurfaceLine"): one row per card, its ID, the far grid point of an edge, the grid point
+        // its mesh line goes through, and the far grid point of the edge it goes on into (0: the line ends there).
+        return tableOf(role, {required("id", INT32), required("node1Id", INT32), required("throughNodeId", INT32),
+                              required("node2Id", INT32)});
     case TableRole::FastenerPiercings:
         // O_o_Reader fastenerPiercings (contract 60): where each Fastener and Weld pierces the shells, one row per
         // fastener and side ("A", "B"; a point-to-patch Weld has side A only, a Weld ALIGN no row: its ends are GA

@@ -34,7 +34,10 @@ have their full names in `paramsTable`, such as `WeightToMass` and `ShellQuad4Fo
   `ContactTable`
   (glued contact: the node pairs, read as the two surfaces near each other, the glue parameters, the pairs a BCONTACT
   selects), `CoordinateSystemTable`; the normals the ShellNormal cards give at grid points (`shellNormals`, read
-  through its contract by the ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6).
+  through its contract by the ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6); the output stations the
+  Bar2Stations cards give to bars (`barStations`, read through its contract by the Bar2); the geometry declarations
+  of the deck (`surfaceEdges`, `surfaceFacets` and `surfaceLines`, the SurfaceEdge, SurfaceFacet and SurfaceLine
+  cards, which the model of the mixed hybrid formulation adds to those of the program).
 - `snapshot/`: `ModelSnapshot` (immutable, borrowed), `SnapshotBuilder` (takes the tables over, checks their contracts,
   builds), `SnapshotDiff` (what changed between two snapshots: versions, component and load group stamps),
   `SupportCatalog` (the cards and field values the solver supports, and the `SupportReport` of a snapshot),
@@ -44,7 +47,8 @@ have their full names in `paramsTable`, such as `WeightToMass` and `ShellQuad4Fo
   (the element formulations the program that built the snapshot chose, by card: `elements::ElementRegistry::forModel`
   reads them before the model's formulation parameter), the formulation of the whole model
   (`ModelSnapshot::modelFormulation`, before the model's `ElementFormulation` parameter) and `FormulationGeometry` (the
-  geometry declarations of the mixed hybrid formulation: raw edges, raw elements, sharp edges).
+  geometry declarations of the mixed hybrid formulation that the program gives: smooth, sharp and raw edges, raw
+  elements, mesh lines continued or ended).
 - `requests/`: `OutputRequests` (the case section output requests and sets of each subcase, from
   `outputRequestsTable` and `caseSetsTable`).
 

@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <set>
 #include <span>
 #include <vector>
@@ -15,10 +16,15 @@ namespace oos::elements::mixedHybrid
 
 // The reading of the skin of the solids (document 28 of the reference, 3.1; document 35, 3.4, rule 4). The faces that
 // one solid element only has are the triangles and quadrilaterals of a surface, read as the surface of the shells is
-// (Topology): every edge follows its mesh line, the faces are rational patches fitted on the normals. Across an edge
-// declared sharp the skin is not smooth: each smooth part is read on its own, the sharp edge being a boundary line of
-// the parts it separates, and its conic is the mean of their readings. The boundary of a smooth part goes on through
-// a grid that has two sharp edges and turns a corner where more meet (MeshReadingInput::throughGrids).
+// (Topology): every edge follows its mesh line, the faces are rational patches fitted on the normals. Across a sharp
+// edge the skin is not smooth: each smooth part is read on its own, the sharp edge being a boundary line of the parts
+// it separates, and its conic is the mean of their readings. The boundary of a smooth part goes on through a grid
+// that has two sharp edges and turns a corner where more meet (MeshReadingInput::throughGrids).
+//
+// An edge of two faces is sharp when it is declared so, or, where nothing declares it, when the normals of its two
+// faces differ at one of its grids by more than the fold angle (SkinDeclarations, the criterion of the shells:
+// MeshTopology.hpp). The fold angle and the smooth edges are not in the reference, which has the declared sharp edges
+// alone.
 //
 // What follows the reading (where a shell lies on the skin, the projection of the curves on the functions of the
 // edges and faces of the solids) belongs to the solids.
@@ -65,10 +71,31 @@ struct SkinReading
     std::vector<std::size_t> modelGrid;
     Topology topology;
     std::map<EdgeKey, SkinConic> conics;
+    // The state of each edge of two faces by the grids of the model: smooth or sharp, where it comes from, and the
+    // angle measured between the normals of its faces.
+    std::map<EdgeKey, EdgeReading> states;
 };
 
-// Reads the skin made of `faces` (skinFaces), with the sharp edges `sharpEdges` (by the grids of the model).
+// What decides where the skin is smooth, by the grids of the model (as MeshReadingInput does for the shells).
+struct SkinDeclarations
+{
+    // Edges declared sharp, and edges declared smooth (an edge in both is sharp).
+    std::set<EdgeKey> sharpEdges;
+    std::set<EdgeKey> smoothEdges;
+    // The angle (radians) between the normals of two faces at a grid of their edge above which an edge that nothing
+    // declares is sharp; zero or negative: every such edge is sharp. Empty: every such edge is smooth.
+    std::optional<double> foldAngle;
+    // The mesh lines declared (MeshReadingInput::declaredLines): each is given to the smooth parts that have the
+    // edge and, for a continuation, the edge it goes on into.
+    std::map<std::pair<std::size_t, std::size_t>, std::set<std::size_t>> declaredLines;
+};
+
+// Reads the skin made of `faces` (skinFaces) with the declarations of the model.
 // Reference: src/analysis.rs::solid_skin (its reading: the smooth parts, their topology, the conics of the edges).
+[[nodiscard]] SkinReading readSolidSkin(std::span<const Vector3> grids, std::span<const SkinFace> faces,
+                                        const SkinDeclarations& declarations);
+
+// The same with the sharp edges `sharpEdges` alone: no fold angle, every other edge smooth (the reference's reading).
 [[nodiscard]] SkinReading readSolidSkin(std::span<const Vector3> grids, std::span<const SkinFace> faces,
                                         const std::set<EdgeKey>& sharpEdges);
 

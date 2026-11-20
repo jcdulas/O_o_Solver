@@ -16,8 +16,9 @@
 // Facets: stiffness, mass (lumped and coupled, BarProp NSM and the NSM cards), loads (BeamDistributedLoad, all load and
 // scale types), recovery (forces: bending moments at A and B in planes 1 and 2, shears, axial force, torque; stresses:
 // bending at C, D, E, F of each end, axial, maximum and minimum, margins of safety in tension and compression). Under
-// BeamDistributedLoad the Bar2 is written with the layout of its stations (the ends A and B: bending moments,
-// shears, axial, torque per station; sxc-sxf, axial, smax, smin, ms): recoverUnderLineLoads gives that layout. Thermal
+// BeamDistributedLoad, or with a Bar2Stations card, the Bar2 is written with the layout of its stations (the end A,
+// the stations of its card, the end B: bending moments, shears, axial, torque per station; sxc-sxf, axial, smax, smin,
+// ms): recoverStationRows gives that layout (BarStations.hpp: the stations of the cards). Thermal
 // loads (BeamThermal: the mean temperature of LineElemTemperatureLoad or of GA and GB, the free axial expansion held,
 // and the free bending of the temperature gradients of LineElemTemperatureLoad across the section; the recovery
 // subtracts them); strains as the stresses over E; the strain energy from the stiffness
@@ -112,6 +113,12 @@ public:
     void recoverUnderLineLoads(const ElementBatchView& view, std::span<const ElementLineLoad> loads,
                                ElementOutput output, const NodalDisplacements& displacements,
                                ElementResultBlock& block) const override;
+    // The bars a Bar2Stations card gives output stations to (bars_beams/BarStations): written in the station layout
+    // in every subcase, at their end A, at their stations and at their end B.
+    [[nodiscard]] std::vector<std::int64_t> stationRows(const ElementBatchView& view) const override;
+    void recoverStationRows(const ElementBatchView& view, std::span<const std::int64_t> rows,
+                            std::span<const ElementLineLoad> loads, ElementOutput output,
+                            const NodalDisplacements& displacements, ElementResultBlock& block) const override;
 
     bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
                                   ElementMatrixBlock& block) const override;

@@ -458,6 +458,31 @@ void addFormulationRefusals(const input::ModelSnapshot& snapshot, const elements
 
 } // namespace
 
+SurfaceEdgeTable surfaceEdges(const input::ModelSnapshot& snapshot)
+{
+    SurfaceEdgeTable table;
+    const elements::ElementRegistry registry = elements::ElementRegistry::forModel(snapshot);
+    if (!registry.isMixedHybrid())
+        return table;
+    base::MemoryBudget budget(budgetBytes(AnalysisSettings{}));
+    const elements::SnapshotIndex index(snapshot, budget);
+    const elements::FormulationModel* formulation = elements::formulationModelOf(index, registry);
+    if (formulation == nullptr)
+        return table;
+    for (const elements::SurfaceEdgeReading& edge : formulation->surfaceEdges())
+    {
+        table.grid1.push_back(edge.grid1);
+        table.grid2.push_back(edge.grid2);
+        table.surface.emplace_back(edge.surface);
+        table.state.emplace_back(edge.state);
+        table.origin.emplace_back(edge.origin);
+        table.angle.push_back(edge.angle);
+        table.kink.push_back(edge.kink);
+        table.rounding.push_back(edge.rounding);
+    }
+    return table;
+}
+
 SupportCheck checkSupport(const input::ModelSnapshot& snapshot, Analysis analysis)
 {
     const elements::ElementRegistry registry = elements::ElementRegistry::forModel(snapshot);

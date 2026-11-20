@@ -24,6 +24,83 @@ std::size_t findPart(std::vector<std::size_t>& part, std::size_t i)
     return i;
 }
 
+// The angle (radians) by which the normals of two faces may pass the fold angle and the edge still be smooth (the
+// round-off of an angle computed from the coordinates, as for the shells).
+constexpr double FOLD_ANGLE_ROUND_OFF = 1e-9;
+
+ShellCorners cornersOf(const SkinFace& face)
+{
+    ShellCorners corners;
+    corners.count = face.count;
+    for (std::size_t k = 0; k < face.count; ++k)
+        corners.grids[k] = face.grids[k];
+    return corners;
+}
+
+// The state of the edge that two faces of the skin share: declared, else by the fold angle, else smooth.
+EdgeReading readSkinEdge(std::span<const Vector3> grids, const SkinFace& first, const SkinFace& second,
+                         const EdgeKey& edge, const SkinDeclarations& declarations)
+{
+    const ShellCorners a = cornersOf(first);
+    const ShellCorners b = cornersOf(second);
+    EdgeReading reading;
+    reading.angle = std::fmax(cornerAngle(grids, a, b, edge.lower, edge.higher),
+                              cornerAngle(grids, a, b, edge.higher, edge.lower));
+    const bool isDeclaredSharp = declarations.sharpEdges.contains(edge);
+    if (isDeclaredSharp || declarations.smoothEdges.contains(edge))
+    {
+        reading.state = isDeclaredSharp ? EdgeState::Sharp : EdgeState::Smooth;
+        reading.origin = EdgeStateOrigin::Declared;
+        return reading;
+    }
+    if (!declarations.foldAngle)
+    {
+        reading.origin = EdgeStateOrigin::Unmeasured;
+        return reading;
+    }
+    const double limit = *declarations.foldAngle;
+    const bool isSmooth = limit > 0.0 && reading.angle <= limit + FOLD_ANGLE_ROUND_OFF;
+    reading.state = isSmooth ? EdgeState::Smooth : EdgeState::Sharp;
+    reading.origin = EdgeStateOrigin::Angle;
+    return reading;
+}
+
+// The declared lines of the model given to the smooth parts: `index` gives the grid of the skin mesh of each grid of
+// the model in each part. A line goes to the parts that have its two grids; a continuation that names no grid of a
+// part says nothing of that part.
+std::map<std::pair<std::size_t, std::size_t>, std::set<std::size_t>> linesOfParts(
+    const SkinDeclarations& declarations, const std::map<std::pair<std::size_t, std::size_t>, std::size_t>& index)
+{
+    std::map<std::size_t, std::vector<std::size_t>> partsOf;
+    for (const auto& [gridAndPart, skinGrid] : index)
+        partsOf[gridAndPart.first].push_back(gridAndPart.second);
+    const auto skinGrid = [&](std::size_t grid, std::size_t part) -> std::optional<std::size_t>
+    {
+        const auto found = index.find({grid, part});
+        return found == index.end() ? std::optional<std::size_t>{} : found->second;
+    };
+    std::map<std::pair<std::size_t, std::size_t>, std::set<std::size_t>> out;
+    for (const auto& [edge, next] : declarations.declaredLines)
+    {
+        const auto parts = partsOf.find(edge.first);
+        if (parts == partsOf.end())
+            continue;
+        for (const std::size_t part : parts->second)
+        {
+            const std::optional<std::size_t> to = skinGrid(edge.second, part);
+            if (!to)
+                continue;
+            std::set<std::size_t> mapped;
+            for (const std::size_t c : next)
+                if (const std::optional<std::size_t> g = skinGrid(c, part))
+                    mapped.insert(*g);
+            if (next.empty() || !mapped.empty())
+                out[{*skinGrid(edge.first, part), *to}] = std::move(mapped);
+        }
+    }
+    return out;
+}
+
 // The sum of the readings of the conic of one edge of the skin.
 struct ConicSum
 {
@@ -83,6 +160,14 @@ std::vector<SkinFace> skinFaces(std::span<const Vector3> grids, std::span<const 
 SkinReading readSolidSkin(std::span<const Vector3> grids, std::span<const SkinFace> faces,
                           const std::set<EdgeKey>& sharpEdges)
 {
+    SkinDeclarations declarations;
+    declarations.sharpEdges = sharpEdges;
+    return readSolidSkin(grids, faces, declarations);
+}
+
+SkinReading readSolidSkin(std::span<const Vector3> grids, std::span<const SkinFace> faces,
+                          const SkinDeclarations& declarations)
+{
     SkinReading reading;
     if (faces.empty())
         return reading;
@@ -100,7 +185,9 @@ SkinReading readSolidSkin(std::span<const Vector3> grids, std::span<const SkinFa
     std::map<std::size_t, std::size_t> sharpAt;
     for (const auto& [edge, list] : sides)
     {
-        if (list.size() == 2 && !sharpEdges.contains(edge))
+        if (list.size() == 2)
+            reading.states[edge] = readSkinEdge(grids, faces[list[0]], faces[list[1]], edge, declarations);
+        if (list.size() == 2 && reading.states[edge].state == EdgeState::Smooth)
         {
             const std::size_t p = findPart(part, list[0]);
             const std::size_t q = findPart(part, list[1]);
@@ -140,6 +227,7 @@ SkinReading readSolidSkin(std::span<const Vector3> grids, std::span<const SkinFa
             through.insert(i);
     }
     reading.mesh.throughGrids = std::move(through);
+    reading.mesh.declaredLines = linesOfParts(declarations, index);
     reading.topology = Topology::fromMesh(reading.mesh);
     // the conic of each edge: the mean of its readings (two on a sharp edge)
     std::map<EdgeKey, ConicSum> sums;

@@ -86,12 +86,25 @@ public:
     // know.
     void setModelFormulation(const std::string& formulation);
 
-    // The geometry declarations of the mixed hybrid formulation (section 4.4 of the specification): raw edges and
-    // sharp edges as pairs of grid point IDs (2 values per edge), raw elements by element ID. Mandatory for a model
-    // with shells or solids in that formulation; empty lists say that every edge is smooth. Throws
-    // std::invalid_argument for an odd count of edge values or an edge of one grid point.
-    void setFormulationGeometry(const std::vector<std::int32_t>& rawEdges, const std::vector<std::int32_t>& rawElements,
-                                const std::vector<std::int32_t>& sharpEdges);
+    // The geometry declarations of the mixed hybrid formulation (section 4.4 of the specification), as flat lists of
+    // IDs. Mandatory for a model with shells or solids in that formulation; empty lists say that the model's
+    // ShellNormalAngle decides every edge. Throws std::invalid_argument for a list whose length is not a multiple of
+    // its group, an edge of one grid point or a mesh line that names a grid point twice.
+    struct FormulationGeometryLists
+    {
+        // Three values per edge: its two grid point IDs, then the shell element whose side is meant (0: every side).
+        std::vector<std::int32_t> smoothEdges;
+        std::vector<std::int32_t> sharpEdges;
+        // Two grid point IDs per edge.
+        std::vector<std::int32_t> rawEdges;
+        std::vector<std::int32_t> rawElements;
+        // Three grid point IDs per continuation: the far end of one edge, the grid point the line goes through, the
+        // far end of the edge it goes on into.
+        std::vector<std::int32_t> lineContinuations;
+        // Two grid point IDs per end: the far end of the edge, then the grid point its line ends at.
+        std::vector<std::int32_t> lineEnds;
+    };
+    void setFormulationGeometry(const FormulationGeometryLists& lists);
 
     // Checks every table and makes the snapshot; the object is empty afterwards. Throws ContractError naming the
     // table, column, expected type and actual type when a table is not what the solver reads. Messages use the model's

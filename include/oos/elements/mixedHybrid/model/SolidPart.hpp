@@ -30,6 +30,8 @@ namespace oos::elements::mixedHybrid
 {
 
 struct EdgeProjection;
+// The faces of the skin of the solids, read at points (SolidPartTies.cpp).
+class SkinFaces;
 
 // The solids of a model of the mixed hybrid formulation (document 35 of the reference, sections 3.4 and 3.5; document
 // 34, section 8.2; docs/mixed-hybrid-formulation-spec.md sections 3.3, 5.6, 5.7 and 10.3): their edges and faces,
@@ -59,14 +61,18 @@ struct EdgeProjection;
 // shells (SolidPartInput::shells) and the edges of lines alone (SolidPartInput::aloneEdges):
 //   1. an edge of the solids that is an edge of shells (or the diagonal of a quadrilateral shell that covers two
 //      triangles of the solids) follows the shell: its functions are the L2 projection of the trace of the shell less
-//      the linear part of its two grids;
+//      the linear part of its two grids; where none of the shells of the edge lies on a face of the solids and the
+//      skin holds their fibre, the trace of the shell is that of the mean of the skin over its thickness instead
+//      (the force of the shell spread over its thickness; not in the reference);
 //   2. a face of the solids that a shell covers (a triangle on a triangle, a quadrilateral on a quadrilateral, half of
 //      a quadrilateral on a triangle) follows the shell: its functions are the same projection of the displacement of
 //      the shell less what its grids and edges carry;
 //   3. the displacement functions of the lines alone on an edge of the solids follow those of the solid edge;
-//   4. the rotation unknowns about an edge of shells or of lines alone that the solids have, where no shell of the
-//      edge lies on a face of the solids (a fin standing on a block, a beam along its edge), follow the rotation of
-//      the solids about the edge, half the curl of their displacement, the mean over the solids of the edge.
+//   4. the rotation unknowns about an edge of shells or of lines alone that the solids have, where a shell of the
+//      edge does not lie on a face of the solids (a fin standing on a block, a beam along its edge), follow the
+//      rotation of the solids about the edge: the slope of the displacement of their skin across the fibre of that
+//      shell, over its thickness (not in the reference), or, for the lines alone and where the skin does not hold the
+//      fibre, half the curl of their displacement, the mean over the solids of the edge.
 // An edge or a face tied to a shell or a line has `follows` set (SolidPartEdge::tie, SolidPartFace::tie): its
 // geometry is that of the shell it follows (straight under lines alone), and the supports do not hold it (it is held
 // through what it is tied to). ties() gives the rows; the integrator maps them onto its unknowns.
@@ -121,8 +127,12 @@ struct SolidPartInput
     std::vector<SolidPoint> gridPositions;
     std::vector<std::int32_t> gridIds;
     std::vector<SolidPartElement> solids;
-    // The declared sharp edges of the skin (pairs of grid indices).
+    // The declarations of the skin (SkinDeclarations), by grid indices: the edges declared sharp and those declared
+    // smooth, the fold angle (radians) that decides the others (empty: they are smooth), and the mesh lines declared.
     std::set<EdgeKey> sharpEdges;
+    std::set<EdgeKey> smoothEdges;
+    std::optional<double> foldAngle;
+    std::map<std::pair<std::size_t, std::size_t>, std::set<std::size_t>> declaredLines;
     // The degrees and the interior fields (defaults: trace 4, face 4, stress 4, three interior fields).
     SolidOptions options;
     // The bytes of kernels the part keeps once built (kernelOf), 0 for none: a hexahedron of degree 4 takes about
@@ -399,6 +409,8 @@ public:
     [[nodiscard]] std::span<const SolidPartEdge> edges() const { return m_edges; }
     [[nodiscard]] std::span<const SolidPartFace> faces() const { return m_faces; }
     [[nodiscard]] std::optional<std::size_t> edgeIndex(const EdgeKey& key) const;
+    // The state the reading of the skin gave each edge of two faces of the skin (SkinReading::states).
+    [[nodiscard]] const std::map<EdgeKey, EdgeReading>& skinEdgeStates() const { return m_skinStates; }
     // The face that has the grids `grids` (any three of its grids, or all of them).
     [[nodiscard]] std::optional<std::size_t> faceIndex(std::span<const std::size_t> grids) const;
     // The edges and faces of a usable solid, in the order of shapeEdges and shapeFaces.
@@ -561,6 +573,8 @@ public:
     // key (tie 2), the rotations about the edges by key (tie 4). A dependent that `isHeld` says is held (a support) is
     // left out, and the first row of a dependent wins. Nothing without shells and edges of lines alone. Tie 4 builds
     // the kernels of the solids around its edges (kernelOf); a solid whose kernel is refused is left out of the mean.
+    // The ties of a shell that stands on the solids read their skin over its thickness: they build the kernels of the
+    // solids whose faces hold its fibre.
     // Reference: src/tdnns/solid.rs::Solids::ties
     [[nodiscard]] std::vector<SolidTie> ties(const std::function<bool(const TieUnknown&)>& isHeld = {}) const;
 
@@ -590,10 +604,15 @@ private:
     void followTies(const EdgeProjection& projection);
     void buildEntities();
     // The rows of the ties of one edge (ties 1 and 3), one face (tie 2) and the rotation about one edge (tie 4).
-    void addEdgeTies(std::size_t edge, const EdgeProjection& projection, std::vector<PendingTie>& out) const;
+    void addEdgeTies(std::size_t edge, const EdgeProjection& projection, SkinFaces& skin,
+                     std::vector<PendingTie>& out) const;
+    // Tie 1 of an edge whose shells stand on the solids, over their thickness; false where it does not apply.
+    [[nodiscard]] bool addFibreEdgeTies(std::size_t edge, SkinFaces& skin, std::vector<PendingTie>& out) const;
+    // Whether a shell of edge `edge` lies on a face of the solids.
+    [[nodiscard]] bool liesOnFace(std::size_t shell, const SolidPartEdge& edge) const;
     void addAloneEdgeTies(std::size_t edge, std::vector<PendingTie>& out) const;
     void addFaceTies(std::size_t face, std::vector<PendingTie>& out) const;
-    void addRotationTies(std::size_t edge, std::vector<PendingTie>& out) const;
+    void addRotationTies(std::size_t edge, SkinFaces& skin, std::vector<PendingTie>& out) const;
     // The rows of the shell displacement at points of shell `shell` (all its functions, or those of its corners
     // `lowerCorner`, `higherCorner` and of its edge `localEdge` only when `onEdge`), and the points of its surface.
     [[nodiscard]] std::vector<std::array<TieRow, 3>> shellRows(std::size_t shell,
@@ -635,6 +654,7 @@ private:
     std::vector<SolidPartEdge> m_edges;
     std::vector<SolidPartFace> m_faces;
     std::map<EdgeKey, std::size_t> m_edgeIndex;
+    std::map<EdgeKey, EdgeReading> m_skinStates; // readSkin
     std::map<std::vector<std::size_t>, std::size_t> m_faceIndex; // by sorted grids
     std::map<std::array<std::size_t, 3>, std::size_t> m_faceByThree;
     std::vector<std::vector<std::size_t>> m_solidEdges;

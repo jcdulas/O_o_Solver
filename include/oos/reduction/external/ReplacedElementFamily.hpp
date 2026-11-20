@@ -78,6 +78,12 @@ public:
     void recoverUnderLineLoads(const elements::ElementBatchView& view, std::span<const elements::ElementLineLoad> loads,
                                elements::ElementOutput output, const elements::NodalDisplacements& displacements,
                                elements::ElementResultBlock& block) const override;
+    // The station rows of the inner family that are not replaced.
+    [[nodiscard]] std::vector<std::int64_t> stationRows(const elements::ElementBatchView& view) const override;
+    void recoverStationRows(const elements::ElementBatchView& view, std::span<const std::int64_t> rows,
+                            std::span<const elements::ElementLineLoad> loads, elements::ElementOutput output,
+                            const elements::NodalDisplacements& displacements,
+                            elements::ElementResultBlock& block) const override;
     [[nodiscard]] std::string resultElementType(bool underLineLoads) const override
     {
         return m_inner->resultElementType(underLineLoads);

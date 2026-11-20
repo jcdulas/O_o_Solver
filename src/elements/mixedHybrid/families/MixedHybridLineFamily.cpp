@@ -1,6 +1,7 @@
 #include "oos/elements/mixedHybrid/families/MixedHybridLineFamily.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/elements/bars_beams/BarStations.hpp"
 #include "oos/elements/bars_beams/BeamLineLoad.hpp"
 #include "oos/elements/bars_beams/BeamResponse.hpp"
 #include "oos/elements/bars_beams/BeamThermal.hpp"
@@ -504,6 +505,8 @@ void MixedHybridLineFamily::check(const ElementBatchView& view, base::Diagnostic
     }
     for (base::Diagnostic& problem : MixedHybridModel::of(view.index()).elementProblems(view.card()))
         sink.report(std::move(problem));
+    // The output stations of the bars (Bar2Stations) are those of the card's other formulation.
+    reportBarStationsNotUsed(view, MIXED_HYBRID_FORMULATION, sink);
 }
 
 void MixedHybridLineFamily::computeStiffness(const ElementBatchView& view, ElementRange range,

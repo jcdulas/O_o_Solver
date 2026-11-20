@@ -191,3 +191,177 @@ CHECK_CASE("shellQuad4: the centre recovery gives the forces and moments of a co
                       1.0e-10, "top fibre stress");
     runner.expectNear(valueOf(oos::elements::centre_row::MEMBRANE_FORCE), 0.0, 1.0e-12, "membrane force");
 }
+
+namespace
+{
+
+using CornerOperators = std::array<oos::elements::CentreRecoveryOperator<double, DOFS>, ShellQuad4::NODES>;
+
+constexpr std::array<double, 2> FIBRES{-0.5 * THICKNESS, 0.5 * THICKNESS};
+constexpr std::array<std::array<double, 2>, 4> CORNER_FIBRES{FIBRES, FIBRES, FIBRES, FIBRES};
+
+// The value of one row of a recovery operator at the local displacements q.
+template <typename Operator>
+double valueOf(const Operator& recovery, std::size_t row, const std::array<double, DOFS>& q)
+{
+    double value = recovery(row, DOFS);
+    for (std::size_t j = 0; j < DOFS; ++j)
+        value += recovery(row, j) * q[j];
+    return value;
+}
+
+} // namespace
+
+CHECK_CASE("shellQuad4: the corner recovery gives the values of the centre in a constant state")
+{
+    // The flat distorted quadrilateral of the document under a uniform stretch e along x and a constant curvature k
+    // (u = e x + z θ_y, θ_y = k x): the strains of the integration points are those of the state and the enhanced
+    // strains vanish (Σ j G = 0), so every corner has the forces, moments, stresses and strains of the centre.
+    constexpr double STRETCH = 2.0e-3;
+    constexpr double CURVATURE = 0.01;
+    const ShellQuad4::Geometry geometry = quadrilateral(0.0);
+    const PlateConstitutive<double> section = isotropicSection(true);
+    std::array<double, DOFS> q{};
+    for (std::size_t a = 0; a < 4; ++a)
+    {
+        const double x = geometry.position[a][0];
+        q[6 * a + 0] = STRETCH * x;
+        q[6 * a + 4] = CURVATURE * x;
+        q[6 * a + 2] = -0.5 * CURVATURE * x * x;
+    }
+    const auto centre = ShellQuad4::recovery(geometry, section, UNIFORM, FIBRES, PlateThermalStrain{});
+    const CornerOperators corners =
+        ShellQuad4::cornerRecovery(geometry, section, UNIFORM, CORNER_FIBRES, PlateThermalStrain{});
+    const double plane = YOUNG / (1.0 - POISSON * POISSON);
+    runner.expectNear(valueOf(centre, oos::elements::centre_row::MEMBRANE_FORCE, q) / (plane * THICKNESS * STRETCH),
+                      1.0, 1.0e-10, "N_x of the centre");
+    for (std::size_t corner = 0; corner < 4; ++corner)
+        for (std::size_t row = 0; row < oos::elements::CENTRE_RECOVERY_ROWS; ++row)
+        {
+            // the transverse shear of w = −k x²/2 on a distorted element is not that of the state
+            if (row == oos::elements::centre_row::SHEAR_FORCE || row == oos::elements::centre_row::SHEAR_FORCE + 1)
+                continue;
+            const double expected = valueOf(centre, row, q);
+            const double scale = row < oos::elements::centre_row::MEMBRANE_STRAIN ? plane * THICKNESS * STRETCH : 1.0;
+            runner.expect(std::fabs(valueOf(corners[corner], row, q) - expected) < 1.0e-10 * scale,
+                          "corner " + std::to_string(corner + 1) + ", row " + std::to_string(row) + " is " +
+                              std::to_string(valueOf(corners[corner], row, q)) + ", the centre has " +
+                              std::to_string(expected));
+        }
+}
+
+CHECK_CASE("shellQuad4: the corner recovery gives the fibre forces of a rectangle bent in its plane")
+{
+    // A rectangle 2 × 1 in pure in-plane bending, σ_x = E k y: u = k x y, v = −k x²/2 − ν k y²/2. The enhanced
+    // membrane strains give ε_y = −ν k y and remove the shear of the bilinear displacements, so the forces of the
+    // integration points are N_x = E t k y, and those of the corners E t k (± ½) with no N_y nor N_xy; the centre
+    // has none.
+    constexpr double CURVATURE = 0.01;
+    const std::array<oos::base::Vec3, 4> positions{oos::base::Vec3{0.0, 0.0, 0.0}, oos::base::Vec3{2.0, 0.0, 0.0},
+                                                   oos::base::Vec3{2.0, 1.0, 0.0}, oos::base::Vec3{0.0, 1.0, 0.0}};
+    const ShellQuad4::Geometry geometry = ShellQuad4::buildGeometry(positions).geometry;
+    const PlateConstitutive<double> section = isotropicSection(true);
+    std::array<double, DOFS> q{};
+    for (std::size_t a = 0; a < 4; ++a)
+    {
+        const double x = geometry.position[a][0];
+        const double y = geometry.position[a][1];
+        q[6 * a + 0] = CURVATURE * x * y;
+        q[6 * a + 1] = -0.5 * CURVATURE * (x * x + POISSON * y * y);
+    }
+    const CornerOperators corners =
+        ShellQuad4::cornerRecovery(geometry, section, UNIFORM, CORNER_FIBRES, PlateThermalStrain{});
+    const double scale = YOUNG * THICKNESS * CURVATURE;
+    for (std::size_t corner = 0; corner < 4; ++corner)
+    {
+        const double y = geometry.position[corner][1];
+        const std::string name = "corner " + std::to_string(corner + 1);
+        runner.expectNear(valueOf(corners[corner], oos::elements::centre_row::MEMBRANE_FORCE, q) / scale, y, 1.0e-10,
+                          name + ": N_x / (E t k)");
+        runner.expectNear(valueOf(corners[corner], oos::elements::centre_row::MEMBRANE_FORCE + 1, q) / scale, 0.0,
+                          1.0e-10, name + ": N_y / (E t k)");
+        runner.expectNear(valueOf(corners[corner], oos::elements::centre_row::MEMBRANE_FORCE + 2, q) / scale, 0.0,
+                          1.0e-10, name + ": N_xy / (E t k)");
+        // the stresses of both fibres are N_x / t
+        runner.expectNear(valueOf(corners[corner], oos::elements::centre_row::STRESS_FIBER1, q) /
+                              (YOUNG * CURVATURE),
+                          y, 1.0e-10, name + ": stress of the fibre Z1 / (E k)");
+    }
+}
+
+CHECK_CASE("shellQuad4: the corner recovery gives the transverse shear force of the centre under a uniform shear")
+{
+    // A rectangle sheared by w = g x without rotation: the tied shears are uniform, their part odd across the element
+    // is zero, and the force conjugate to them at each integration point is that of the centre.
+    constexpr double SHEAR = 1.0e-3;
+    const std::array<oos::base::Vec3, 4> positions{oos::base::Vec3{0.0, 0.0, 0.0}, oos::base::Vec3{2.0, 0.0, 0.0},
+                                                   oos::base::Vec3{2.0, 1.0, 0.0}, oos::base::Vec3{0.0, 1.0, 0.0}};
+    const ShellQuad4::Geometry geometry = ShellQuad4::buildGeometry(positions).geometry;
+    const PlateConstitutive<double> section = isotropicSection(true);
+    std::array<double, DOFS> q{};
+    for (std::size_t a = 0; a < 4; ++a)
+        q[6 * a + 2] = SHEAR * geometry.position[a][0];
+    const auto centre = ShellQuad4::recovery(geometry, section, UNIFORM, FIBRES, PlateThermalStrain{});
+    const CornerOperators corners =
+        ShellQuad4::cornerRecovery(geometry, section, UNIFORM, CORNER_FIBRES, PlateThermalStrain{});
+    const double expected = valueOf(centre, oos::elements::centre_row::SHEAR_FORCE, q);
+    runner.expect(std::fabs(expected) > 0.0, "the centre has a shear force");
+    for (std::size_t corner = 0; corner < 4; ++corner)
+    {
+        runner.expectNear(valueOf(corners[corner], oos::elements::centre_row::SHEAR_FORCE, q) / expected, 1.0, 1.0e-10,
+                          "corner " + std::to_string(corner + 1) + ": Q_x against the centre's");
+        runner.expect(std::fabs(valueOf(corners[corner], oos::elements::centre_row::SHEAR_FORCE + 1, q)) <
+                          1.0e-10 * std::fabs(expected),
+                      "corner " + std::to_string(corner + 1) + " has no Q_y");
+    }
+}
+
+CHECK_CASE("shellQuad4: the corner recovery gives nothing in a rigid motion nor in a free thermal expansion")
+{
+    // A warped element in each of its six rigid motions has no strain at its corners, and under the uniform free
+    // strain ε_x = ε_y = e with the homothety u = e x no force, moment nor stress (the centre recovery's check).
+    constexpr double EXPANSION = 1.0e-3;
+    const PlateConstitutive<double> section = isotropicSection(true);
+    const ShellQuad4::Geometry geometry = quadrilateral(0.1);
+    const CornerOperators atRest =
+        ShellQuad4::cornerRecovery(geometry, section, UNIFORM, CORNER_FIBRES, PlateThermalStrain{});
+    for (std::size_t mode = 0; mode < 6; ++mode)
+    {
+        std::array<double, 3> shift{};
+        std::array<double, 3> turn{};
+        (mode < 3 ? shift : turn)[mode % 3] = 1.0;
+        const std::array<double, DOFS> q = rigidMotion<ShellQuad4::NODES>(geometry.position, shift, turn);
+        for (std::size_t corner = 0; corner < 4; ++corner)
+            for (std::size_t row = 0; row < oos::elements::CENTRE_RECOVERY_ROWS; ++row)
+            {
+                const double scale = row < oos::elements::centre_row::MEMBRANE_STRAIN ? YOUNG * THICKNESS : 1.0;
+                runner.expect(std::fabs(valueOf(atRest[corner], row, q)) < 1.0e-10 * scale,
+                              "rigid motion " + std::to_string(mode + 1) + ", corner " + std::to_string(corner + 1) +
+                                  ", row " + std::to_string(row) + " is " +
+                                  std::to_string(valueOf(atRest[corner], row, q)));
+            }
+    }
+    PlateThermalStrain thermal;
+    thermal.membrane = {EXPANSION, EXPANSION, 0.0};
+    thermal.isZero = false;
+    for (const double warp : {0.0, 0.1})
+    {
+        const ShellQuad4::Geometry expanded = quadrilateral(warp);
+        std::array<double, DOFS> q{};
+        for (std::size_t a = 0; a < 4; ++a)
+            for (std::size_t k = 0; k < 3; ++k)
+                q[6 * a + k] = EXPANSION * expanded.position[a][k];
+        const CornerOperators corners =
+            ShellQuad4::cornerRecovery(expanded, section, UNIFORM, CORNER_FIBRES, thermal);
+        const double scale = YOUNG * THICKNESS * EXPANSION;
+        for (std::size_t corner = 0; corner < 4; ++corner)
+            for (std::size_t row = 0; row < oos::elements::centre_row::MEMBRANE_STRAIN; ++row)
+            {
+                const double rowScale = row >= oos::elements::centre_row::STRESS_FIBER1 ? YOUNG * EXPANSION : scale;
+                runner.expect(std::fabs(valueOf(corners[corner], row, q)) < 1.0e-10 * rowScale,
+                              "warp " + std::to_string(warp) + ", corner " + std::to_string(corner + 1) +
+                                  ", force or stress row " + std::to_string(row) + " is " +
+                                  std::to_string(valueOf(corners[corner], row, q)));
+            }
+    }
+}

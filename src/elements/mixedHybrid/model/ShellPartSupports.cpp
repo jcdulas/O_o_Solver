@@ -813,6 +813,7 @@ ShellPart::EdgeMoments ShellPart::edgeMoments(std::size_t edge) const
         const double s = sk > 0.0 ? re.edgeParameters[gi] : 1.0 - re.edgeParameters[gi];
         const double we = def.edgeWeights[kk][gi];
         out.points.push_back(g.x);
+        out.parameters.push_back(s);
         for (std::size_t l = 0; l + 1 < k; ++l)
             out.displacementWeights[l][gi] = re.edgeWeights[gi] * legendreValue(l, 2.0 * s - 1.0) * we;
         // X_s = s_k X_τ: the tangent of the map in the canonical direction of the edge
@@ -821,6 +822,62 @@ ShellPart::EdgeMoments ShellPart::edgeMoments(std::size_t edge) const
             out.rotationWeights[l][gi] = scl3(
                 xs, static_cast<double>(2 * l + 1) * re.edgeWeights[gi] * legendreValue(l, 2.0 * s - 1.0) * we * we);
     }
+    return out;
+}
+
+ShellPart::InteriorMoments ShellPart::interiorMoments(std::size_t shell) const
+{
+    InteriorMoments out;
+    const ShellElementData el = element(shell);
+    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const InteriorProjection& projection = projectionOf(el.cornerCount);
+    const std::size_t n1 = re.h1Count;
+    const std::size_t interiorCount = projection.interior.size();
+    const std::size_t pointCount = re.points.size();
+    if (interiorCount == 0)
+        return out;
+    // a(i, q) = Σ_j G⁻¹(i, j) w_q N_j(q): the coefficient of the interior function i from the value at point q
+    Matrix a(interiorCount, pointCount);
+    std::vector<double> mapWeights(pointCount, 1.0);
+    for (std::size_t q = 0; q < pointCount; ++q)
+    {
+        // the point of the surface X = Σ_i N_i x_i / W and the denominator W of the map there
+        mapWeights[q] = el.weight.evaluate(re.points[q][0], re.points[q][1]);
+        SpaceVector point{};
+        for (std::size_t i = 0; i < n1; ++i)
+            point = add3(point, scl3(el.mapCoefficients[i], re.h1[q * n1 + i][0]));
+        out.points.push_back(scl3(point, 1.0 / mapWeights[q]));
+        for (std::size_t j = 0; j < interiorCount; ++j)
+        {
+            const double f = re.weights[q] * re.h1[q * n1 + projection.interior[j]][0];
+            for (std::size_t i = 0; i < interiorCount; ++i)
+                a(i, q) += projection.gramInverse(i, j) * f;
+        }
+    }
+    for (std::size_t i = 0; i < interiorCount; ++i)
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            // the unknown of the model is its sign times the coefficient of the element (ShellElementData::local)
+            const std::size_t local = 3 * projection.interior[i] + c;
+            const double sign = el.signs[local];
+            out.unknowns.push_back(el.dofs[local]);
+            std::vector<double> weights(pointCount);
+            for (std::size_t q = 0; q < pointCount; ++q)
+                weights[q] = sign * a(i, q) * mapWeights[q];
+            out.weights.push_back(std::move(weights));
+            // − Σ_q a(i, q) N_b(q) on each corner and edge function b
+            std::map<std::size_t, double> row;
+            for (std::size_t b = 0; b < n1; ++b)
+            {
+                if (re.h1Kinds[b].isInterior())
+                    continue;
+                double carried = 0.0;
+                for (std::size_t q = 0; q < pointCount; ++q)
+                    carried += a(i, q) * re.h1[q * n1 + b][0];
+                row[el.dofs[3 * b + c]] -= sign * carried * el.signs[3 * b + c];
+            }
+            out.terms.push_back(keptTerms(row, 0.0));
+        }
     return out;
 }
 
@@ -843,6 +900,27 @@ ShellEdgeRotationFrame ShellPart::edgeRotationFrame(std::size_t shell, std::size
     const SpaceVector xs = scl3(add3(scl3(g.a[0], direction[0]), scl3(g.a[1], direction[1])), el.edgeSigns[localEdge]);
     const double w = el.weight.evaluate(x[0], x[1]);
     return {unit3(xs), w * w * norm3(xs)};
+}
+
+ShellEdgeFibre ShellPart::edgeFibre(std::size_t shell, std::size_t localEdge, double s) const
+{
+    const ShellElementData& el = m_shells[shell];
+    const ShellPartShell& input = m_input.shells[shell];
+    const ReferencePoint x = edgeReferencePoint(shell, localEdge, s);
+    const PointGeometry g = geometryAt(referenceElement(el.cornerCount), el.definition(), x[0], x[1]);
+    ShellEdgeFibre fibre;
+    fibre.point = g.x;
+    fibre.normal = g.nu;
+    fibre.offset = el.offset;
+    fibre.thickness = input.section.referenceThickness;
+    if (input.gridThicknesses)
+    {
+        // linear between the two corners of the edge, tau the parameter of the shell along it
+        const double tau = el.edgeSigns[localEdge] > 0.0 ? s : 1.0 - s;
+        const std::size_t next = (localEdge + 1) % el.cornerCount;
+        fibre.thickness = (1.0 - tau) * (*input.gridThicknesses)[localEdge] + tau * (*input.gridThicknesses)[next];
+    }
+    return fibre;
 }
 
 } // namespace oos::elements::mixedHybrid

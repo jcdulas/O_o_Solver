@@ -118,30 +118,36 @@ void ModelInput::setModelFormulation(const std::string& formulation)
 namespace
 {
 
-// The edges of a flat list of grid point IDs, two per edge.
-std::vector<input::GridEdge> edgesOf(const std::vector<std::int32_t>& values, const char* what)
+// The groups of `size` IDs of a flat list, each made into an Item by `make`.
+template <typename Item, typename Make>
+std::vector<Item> groupsOf(const std::vector<std::int32_t>& values, std::size_t size, const char* what, Make make)
 {
-    if (values.size() % 2 != 0)
-        throw std::invalid_argument(
-            std::string("setFormulationGeometry: expected two grid point IDs per edge in the ") + what + ", found " +
-            std::to_string(values.size()) + " values");
-    std::vector<input::GridEdge> edges;
-    edges.reserve(values.size() / 2);
-    for (std::size_t i = 0; i < values.size(); i += 2)
-        edges.push_back({values[i], values[i + 1]});
-    return edges;
+    if (values.size() % size != 0)
+        throw std::invalid_argument(std::string("setFormulationGeometry: expected ") + std::to_string(size) +
+                                    " IDs for each of the " + what + ", found " + std::to_string(values.size()) +
+                                    " values");
+    std::vector<Item> items;
+    items.reserve(values.size() / size);
+    for (std::size_t i = 0; i < values.size(); i += size)
+        items.push_back(make(&values[i]));
+    return items;
 }
 
 } // namespace
 
-void ModelInput::setFormulationGeometry(const std::vector<std::int32_t>& rawEdges,
-                                        const std::vector<std::int32_t>& rawElements,
-                                        const std::vector<std::int32_t>& sharpEdges)
+void ModelInput::setFormulationGeometry(const FormulationGeometryLists& lists)
 {
+    const auto side = [](const std::int32_t* v) { return input::EdgeSide{{v[0], v[1]}, v[2]}; };
+    const auto edge = [](const std::int32_t* v) { return input::GridEdge{v[0], v[1]}; };
+    const auto line = [](const std::int32_t* v) { return input::LineContinuation{v[0], v[1], v[2]}; };
     input::FormulationGeometry geometry;
-    geometry.rawEdges = edgesOf(rawEdges, "raw edges");
-    geometry.rawElements = rawElements;
-    geometry.sharpEdges = edgesOf(sharpEdges, "sharp edges");
+    geometry.smoothEdges = groupsOf<input::EdgeSide>(lists.smoothEdges, 3, "smooth edges", side);
+    geometry.sharpEdges = groupsOf<input::EdgeSide>(lists.sharpEdges, 3, "sharp edges", side);
+    geometry.rawEdges = groupsOf<input::GridEdge>(lists.rawEdges, 2, "raw edges", edge);
+    geometry.rawElements = lists.rawElements;
+    geometry.lineContinuations =
+        groupsOf<input::LineContinuation>(lists.lineContinuations, 3, "line continuations", line);
+    geometry.lineEnds = groupsOf<input::LineEnd>(lists.lineEnds, 2, "line ends", edge);
     m_builder.setFormulationGeometry(std::move(geometry));
 }
 

@@ -58,10 +58,38 @@ struct DerivedSupport
 //
 // Thread-safety: immutable once built; concurrent calls are safe. Ownership: built once per snapshot index
 // (SnapshotIndex::computedOnce), it lives as long as the index.
+
+// What the formulation read at one edge of a surface it reads from the mesh (the surface of its shells, the skin of
+// its solids; docs/mixed-hybrid-formulation-spec.md section 10.5), for a program that shows the model.
+struct SurfaceEdgeReading
+{
+    // The IDs of the two grid points of the edge, the lower first.
+    std::int32_t grid1 = 0;
+    std::int32_t grid2 = 0;
+    // "Shells" or "SolidSkin".
+    std::string_view surface;
+    // "Smooth", "Sharp" or "Raw"; at a junction of three shells or more, "Sharp" when one side at least ends there.
+    std::string_view state;
+    // Where the state comes from: "Declared", "RawElement", "Angle" (the fold angle of the model), "Junction" (a
+    // shell of a junction that no other faces) or "Outline" (an edge of one element: nothing to decide).
+    std::string_view origin;
+    // Degrees. The angle measured between the normals of the elements at the grid points of the edge (the larger of
+    // the two), which the fold angle is compared with; the angle left between the normals of the surface read on
+    // both sides, along the edge; and how far the surface read turns from the plane of the corners of an element
+    // along the edge. The last two are measured on the shells only.
+    double angle = 0.0;
+    double kink = 0.0;
+    double rounding = 0.0;
+};
+
 class FormulationModel
 {
 public:
     virtual ~FormulationModel() = default;
+
+    // Every edge of the surfaces the formulation read, the shells first, each surface by increasing grid point IDs.
+    // None by default.
+    [[nodiscard]] virtual std::vector<SurfaceEdgeReading> surfaceEdges() const { return {}; }
 
     // The entities of an analysis of the given kind (section 5.2).
     [[nodiscard]] virtual const EntityLayout& layout(EntityLayout::Kind kind) const = 0;

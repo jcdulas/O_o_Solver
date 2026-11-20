@@ -147,7 +147,7 @@ void normaliseEdges(std::vector<GridEdge>& edges, std::string_view what)
     {
         if (edge[0] == edge[1])
             throw std::invalid_argument(base::concatenate(
-                {"SnapshotBuilder: expected two different grid points for each of the ", what,
+                {"geometry declarations: expected two different grid points for each of the ", what,
                  ", found the grid point ", std::to_string(edge[0]), " twice; give the two ends of the edge"}));
         if (edge[0] > edge[1])
             std::swap(edge[0], edge[1]);
@@ -156,15 +156,63 @@ void normaliseEdges(std::vector<GridEdge>& edges, std::string_view what)
     edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
 }
 
+// The same for the sides of edges: the lower grid point first, sorted, each side once.
+void normaliseSides(std::vector<EdgeSide>& sides, std::string_view what)
+{
+    for (EdgeSide& side : sides)
+    {
+        if (side.grids[0] == side.grids[1])
+            throw std::invalid_argument(base::concatenate(
+                {"geometry declarations: expected two different grid points for each of the ", what,
+                 ", found the grid point ", std::to_string(side.grids[0]), " twice; give the two ends of the edge"}));
+        if (side.grids[0] > side.grids[1])
+            std::swap(side.grids[0], side.grids[1]);
+    }
+    std::sort(sides.begin(), sides.end());
+    sides.erase(std::unique(sides.begin(), sides.end()), sides.end());
+}
+
+// The declared mesh lines: three different grid points for a continuation, kept with the lower end first (a
+// continuation holds both ways), two for an end; sorted, each once.
+void normaliseLines(std::vector<LineContinuation>& continuations, std::vector<LineEnd>& ends)
+{
+    for (LineContinuation& line : continuations)
+    {
+        if (line[0] == line[1] || line[1] == line[2] || line[0] == line[2])
+            throw std::invalid_argument(base::concatenate(
+                {"geometry declarations: expected three different grid points for each line continuation, found ",
+                 std::to_string(line[0]), ", ", std::to_string(line[1]), " and ", std::to_string(line[2]),
+                 "; give the grid point the line goes through between the far ends of its two edges"}));
+        if (line[0] > line[2])
+            std::swap(line[0], line[2]);
+    }
+    for (const LineEnd& line : ends)
+        if (line[0] == line[1])
+            throw std::invalid_argument(base::concatenate(
+                {"geometry declarations: expected two different grid points for each line end, found the grid point ",
+                 std::to_string(line[0]), " twice; give the far end of the edge, then the grid point the line ends "
+                                          "at"}));
+    std::sort(continuations.begin(), continuations.end());
+    continuations.erase(std::unique(continuations.begin(), continuations.end()), continuations.end());
+    std::sort(ends.begin(), ends.end());
+    ends.erase(std::unique(ends.begin(), ends.end()), ends.end());
+}
+
 } // namespace
+
+void FormulationGeometry::normalise()
+{
+    normaliseSides(smoothEdges, "smooth edges");
+    normaliseSides(sharpEdges, "sharp edges");
+    normaliseEdges(rawEdges, "raw edges");
+    std::sort(rawElements.begin(), rawElements.end());
+    rawElements.erase(std::unique(rawElements.begin(), rawElements.end()), rawElements.end());
+    normaliseLines(lineContinuations, lineEnds);
+}
 
 void SnapshotBuilder::setFormulationGeometry(FormulationGeometry geometry)
 {
-    normaliseEdges(geometry.rawEdges, "raw edges");
-    normaliseEdges(geometry.sharpEdges, "sharp edges");
-    std::sort(geometry.rawElements.begin(), geometry.rawElements.end());
-    geometry.rawElements.erase(std::unique(geometry.rawElements.begin(), geometry.rawElements.end()),
-                               geometry.rawElements.end());
+    geometry.normalise();
     m_formulationGeometry = std::move(geometry);
 }
 
@@ -366,6 +414,14 @@ ModelSnapshot SnapshotBuilder::takeAll()
         parts.sections.emplace(std::move(*sections));
     if (auto normals = take(TableRole::ShellNormals))
         parts.shellNormals.emplace(readTable(TableRole::ShellNormals, std::move(*normals)));
+    if (auto stations = take(TableRole::BarStations))
+        parts.barStations.emplace(readTable(TableRole::BarStations, std::move(*stations)));
+    if (auto edges = take(TableRole::SurfaceEdges))
+        parts.surfaceEdges.emplace(readTable(TableRole::SurfaceEdges, std::move(*edges)));
+    if (auto facets = take(TableRole::SurfaceFacets))
+        parts.surfaceFacets.emplace(readTable(TableRole::SurfaceFacets, std::move(*facets)));
+    if (auto lines = take(TableRole::SurfaceLines))
+        parts.surfaceLines.emplace(readTable(TableRole::SurfaceLines, std::move(*lines)));
     if (auto piercings = take(TableRole::FastenerPiercings))
     {
         parts.fastenerPiercings.emplace(std::move(*piercings));

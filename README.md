@@ -89,9 +89,11 @@ are reported before a calculation. Details: [src/elements/README.md](src/element
 `MixedHybridFormulation` is chosen for the whole model, never for one card: every shell, line and solid card takes it
 together, with `Parameter;ElementFormulation;MixedHybridFormulation` or
 `solver.modelFromReader(oor, model, { elementFormulation: "MixedHybridFormulation", formulationGeometry: {...} })`.
-Its shells and solids read their geometry from the mesh: the program declares where the surface is not smooth
-(`formulationGeometry`: raw edges, raw elements and sharp edges of the solids; an empty object says that every edge is
-smooth). It takes every path: full, condensed, streamed, external units, superelements and the design derivatives.
+Its shells and solids read their geometry from the mesh. The model's `ShellNormalAngle` decides where the surface
+folds, and the declarations correct it edge by edge (`formulationGeometry`, or the `SurfaceEdge`, `SurfaceFacet` and
+`SurfaceLine` cards of the deck: smooth, sharp and raw edges, raw elements, mesh lines); a declaration is mandatory,
+and an empty one says that the angle decides every edge. `Model.surfaceEdges()` gives what was read at every edge. It
+takes every path: full, condensed, streamed, external units, superelements and the design derivatives.
 See [docs/mixed-hybrid-formulation-spec.md](docs/mixed-hybrid-formulation-spec.md).
 
 ## Layout

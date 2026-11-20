@@ -40,7 +40,7 @@
 // Run: node --test wasm/test/validation/fasteners.test.mjs   (Node.js 24; needs ../O_o_Reader/build/wasm/dist)
 
 import assert from "node:assert/strict";
-import { CLASSIC, MIXED, nodal, oor, real, runModel, solver, test, withModel } from "./support.mjs";
+import { CLASSIC, MIXED, nodal, oor, prepared, real, runModel, solver, test, withModel } from "./support.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Helpers
@@ -122,21 +122,21 @@ class Deck {
       if (loads) lines.push(`StaticLoadSelection;${loads}`);
       if (temperatures) lines.push(`TemperatureSelection;${temperatures};TemperatureLoadPart`);
     }
-    return [...lines, "[model]", ...this.cards, ""].join("\n");
+    return [...lines, "[model]", ...prepared(this.cards), ""].join("\n");
   }
 
   // The text of a modal model of `count` modes, held by the support set `supports` (0: free).
   modes(count, supports = 0) {
     return ["[executive]", "SolutionSequence;103", "[case]", "SubcaseStart;1",
       ...(supports ? [`SinglePointConstrSelection;${supports}`] : []), "EigenMethodSelection;3", "[model]",
-      ...this.cards, `LanczosEigenMethod;3;;;${count}`, ""].join("\n");
+      ...prepared(this.cards), `LanczosEigenMethod;3;;;${count}`, ""].join("\n");
   }
 
   // The text of a buckling model: the preload of the load set 2 on the support set 1, then `count` factors.
   buckling(count) {
     return ["[executive]", "SolutionSequence;105", "[case]", "DisplacementOutput;All", "SubcaseStart;1",
       "SinglePointConstrSelection;1", "StaticLoadSelection;2", "SubcaseStart;2", "SinglePointConstrSelection;1",
-      "EigenMethodSelection;3", "StaticSubcaseSelection;1", "[model]", ...this.cards,
+      "EigenMethodSelection;3", "StaticSubcaseSelection;1", "[model]", ...prepared(this.cards),
       `LanczosEigenMethod;3;;;${count}`, ""].join("\n");
   }
 }

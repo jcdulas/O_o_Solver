@@ -1,6 +1,7 @@
 #include "oos/elements/bars_beams/bar2/Bar2Element.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/elements/bars_beams/BarStations.hpp"
 
 #include <string>
 
@@ -93,10 +94,28 @@ Resolution<BeamData> Bar2Element::resolve(const ElementBatchView& view, const Co
     return Result::success(beam);
 }
 
+// Every element, then the output stations the Bar2Stations cards give: a station beyond the end of its bar, and
+// the cards that name no bar of the model (a warning: the card is not used).
 void Bar2Element::check(const ElementBatchView& view, base::DiagnosticSink& sink) const
 {
     const Columns columns(view);
-    checkEveryRow(view, sink, [&](std::int64_t row) { return resolve(view, columns, row); });
+    const BarStations stations(view);
+    for (std::int64_t row = 0; row < view.rowCount(); ++row)
+    {
+        Resolution<BeamData> beam = resolve(view, columns, row);
+        if (!beam)
+        {
+            sink.report(std::move(beam.problem));
+            continue;
+        }
+        if (stations.isEmpty())
+            continue;
+        Resolution<std::vector<double>> fractions =
+            stations.fractionsOf(view.elementId(row), beam.value->geometry.length);
+        if (!fractions)
+            sink.report(std::move(fractions.problem));
+    }
+    stations.reportUnusedCards(view, sink);
 }
 
 } // namespace oos::elements

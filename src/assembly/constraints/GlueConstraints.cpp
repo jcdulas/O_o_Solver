@@ -427,7 +427,8 @@ void reportPair(const GluedPairReport& report, const PairTally& tally, base::Ent
                                                     std::to_string(report.rotationTiedEdgeCount),
                                                     " by their rotation too) and ",
                                                     std::to_string(report.tiedFaceCount),
-                                                    " faces of solids over their extent, ",
+                                                    " faces (the faces of solids, the interiors of shells) over "
+                                                    "their extent, ",
                                                     std::to_string(report.freeBoundaryCount),
                                                     " left to their own unknowns (a point of theirs is off the "
                                                     "primary faces)"})

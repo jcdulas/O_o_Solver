@@ -331,8 +331,16 @@ std::vector<EdgeGeometry> geometryReport(const MeshReadingInput& input, const To
                         kink = std::fmax(kink, std::acos(c));
                     }
         }
-        out.push_back({edge, owners.size(), topology.isRaw(edge.lower, edge.higher),
-                       input.isSharp(edge.lower, edge.higher), kink, outlineTurn(input, topology, e), false});
+        EdgeGeometry report;
+        report.grids = edge;
+        report.elements = owners.size();
+        report.raw = topology.states[e].state == EdgeState::Raw;
+        report.sharp = topology.states[e].state == EdgeState::Sharp;
+        report.origin = topology.states[e].origin;
+        report.angle = topology.states[e].angle;
+        report.kink = kink;
+        report.outlineTurn = outlineTurn(input, topology, e);
+        out.push_back(report);
     }
     return out;
 }

@@ -59,7 +59,8 @@ struct UsedElsewhere
 // along the edges and faces as those a support holds are: an edge whose two grid points have a component held or
 // dependent follows them, its entity DOFs made dependent on those grid components by the map that carries the values
 // of a support along the edge (the relations "that follow", after the ties). An edge of shells, or an edge or a
-// face of the skin of solids, between grid points that a glued contact ties is not carried that way: each of these
+// face of the skin of solids, between grid points that a glued contact ties is not carried that way (the interior
+// of a shell between them is no support either): each of these
 // grid points follows its own point of a face, and carried along its chord an edge of shells would stay straight on
 // a face that bends (a cantilever of two glued layers was 1.4 times too stiff, 2.5 times when the two layers bend
 // side by side: wasm/test/validation/glue.test.mjs, section 5). Its unknowns follow the face under it, by the rows
