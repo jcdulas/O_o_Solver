@@ -1,0 +1,90 @@
+name: WebAssembly
+
+# Builds the default WebAssembly package (single-threaded, 64-bit WebAssembly) and archives build/wasm/dist.
+# The test suites are not run here: they need the O_o_Reader package, which this repository does not build.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'cmake/**'
+      - 'wasm/src/**'
+      - 'wasm/js/**'
+      - 'wasm/CMakeLists.txt'
+      - 'wasm/package.json'
+      - 'CMakeLists.txt'
+      - '!**/*.md'
+      - '.github/workflows/webassembly.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'cmake/**'
+      - 'wasm/src/**'
+      - 'wasm/js/**'
+      - 'wasm/CMakeLists.txt'
+      - 'wasm/package.json'
+      - 'CMakeLists.txt'
+      - '!**/*.md'
+      - '.github/workflows/webassembly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webassembly-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The version of the Emscripten SDK the package is built with.
+  EMSCRIPTEN_VERSION: '6.0.13'
+
+jobs:
+  package:
+    name: Build the WebAssembly package
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ninja-build
+      - name: Install the Emscripten SDK
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install "$EMSCRIPTEN_VERSION"
+          "$RUNNER_TEMP/emsdk/emsdk" activate "$EMSCRIPTEN_VERSION"
+      - name: Build the package
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          emcmake cmake -S . -B build/wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOS_BUILD_WASM=ON \
+            -DOOS_WARNINGS_AS_ERRORS=OFF
+          cmake --build build/wasm -j "$(nproc)"
+      - name: Load the module
+        # The module needs 64-bit WebAssembly: the Node.js of the SDK runs it.
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          "${EMSDK_NODE:-node}" --input-type=module -e "
+            import { loadOosSolver } from './build/wasm/dist/index.js';
+            const solver = await loadOosSolver();
+            console.log('module loaded:', solver.constructor.name);"
+      - name: Archive the package
+        id: archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: O_o_Solver-wasm
+          path: build/wasm/dist/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Add download instructions
+        env:
+          ARTIFACT_URL: ${{ steps.archive.outputs.artifact-url }}
+        run: |
+          echo '## WebAssembly package' >> "$GITHUB_STEP_SUMMARY"
+          echo "[Download the package]($ARTIFACT_URL) built from commit \`$GITHUB_SHA\` with Emscripten $EMSCRIPTEN_VERSION." >> "$GITHUB_STEP_SUMMARY"
+          echo 'Extract the archive and import index.js; the module needs a runtime with 64-bit WebAssembly (Node.js 24 or later).' >> "$GITHUB_STEP_SUMMARY"

@@ -130,6 +130,8 @@ The [fast input combination tests](docs/testing.md) enforce a one-second ceiling
 `node wasm/test/run.mjs` for a compact summary and a JSON timing report.
 
 The package is in `build/wasm/dist` (`oos_solver_core.js`, `.wasm`, `index.js`, `index.d.ts`, `package.json`).
+The `WebAssembly` workflow builds it on every push to `main` that changes the sources and archives it as the
+`O_o_Solver-wasm` artifact of its run (kept 90 days; `gh run download --name O_o_Solver-wasm`).
 
 The default WebAssembly build runs on its calling thread. The `wasm-threads` variant enables shared-memory
 workers through the same C++ thread pool. Both variants use the portable reference dense kernels.
