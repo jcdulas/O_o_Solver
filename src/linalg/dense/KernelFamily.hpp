@@ -27,6 +27,10 @@ struct KernelFamily
     void (*subtractPrepackedProduct)(const ProductTileOperands&, std::size_t, const double*, const double*) noexcept;
     // False for the reference family, which needs no packing workspace and runs the unblocked factorisations.
     bool isBlocked;
+    // Whether the factorisation with pivoting is the blocked one (BlockedLdlt), whose operations are not ordered as
+    // those of the reference's unblocked one. False for the reference family and for the WebAssembly family, which
+    // takes the reference's: with it, every result of that family has the bits of the reference family.
+    bool pivotsByBlocks;
 };
 
 // The entry points of `kind`. Taking them executes nothing of the family.

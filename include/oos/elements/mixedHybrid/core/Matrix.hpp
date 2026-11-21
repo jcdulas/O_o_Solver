@@ -83,6 +83,13 @@ private:
 [[nodiscard]] Vector operator*(const Matrix& a, std::span<const double> x);
 // Aᵀ·B, without forming Aᵀ.
 [[nodiscard]] Matrix transposeTimes(const Matrix& a, const Matrix& b);
+// A·B and AᵀB for a B whose columns from `columnCount` on are zero: those columns of the product are zero and are not
+// formed. The other terms are those of the full products, to the bit.
+[[nodiscard]] Matrix timesLeadingColumns(const Matrix& a, const Matrix& b, std::size_t columnCount);
+[[nodiscard]] Matrix transposeTimesLeadingColumns(const Matrix& a, const Matrix& b, std::size_t columnCount);
+// AᵀA, formed on and above its diagonal and copied below it: half the products of transposeTimes(a, a). The terms
+// (i, j) and (j, i) of that product are the same sum of the same products, so the result is the same to the bit.
+[[nodiscard]] Matrix transposeTimesSelf(const Matrix& a);
 // Aᵀ·x.
 [[nodiscard]] Vector transposeTimes(const Matrix& a, std::span<const double> x);
 // A·Bᵀ, without forming Bᵀ.

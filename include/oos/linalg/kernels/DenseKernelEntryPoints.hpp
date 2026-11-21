@@ -18,8 +18,9 @@
 // - reference family: each term is a product rounded, then subtracted (no fused multiply-add; compiled with
 //   -ffp-contract=off): the same bits on every machine;
 // - SIMD families: each term is one fused multiply-subtract, acc = fma(-x, y, acc): AVX2 and AVX-512 give the same
-// bits. Everything else (the products W = L·D, divisions by pivots, the 2 × 2 pivot formula) uses separately rounded
-// operations in every family, so that it has the same bits everywhere.
+// bits. The WebAssembly family has no fused operation: a product rounded, then subtracted, the bits of the reference
+// family. Everything else (the products W = L·D, divisions by pivots, the 2 × 2 pivot formula) uses separately
+// rounded operations in every family, so that it has the same bits everywhere.
 
 namespace oos::linalg
 {
@@ -304,5 +305,26 @@ void solveUnitLowerTransposedBlock(const TriangleSolveOperands& operands) noexce
 void subtractRowProducts(const RowProductOperands& operands) noexcept;
 void solveRowTriangle(const RowTriangleOperands& operands) noexcept;
 } // namespace kernels::avx512
+
+// The WebAssembly family (kernels/wasm128, compiled in the WebAssembly build alone): the entry points of the AVX
+// families.
+namespace kernels::wasm128
+{
+void subtractProductTile(const ProductTileOperands& operands, const PackingWorkspace& workspace) noexcept;
+void packProductColumns(const ProductTileOperands& operands, std::size_t firstTerm, std::size_t termCount,
+                        double* packedW) noexcept;
+void subtractPackedProduct(const ProductTileOperands& operands, std::size_t firstTerm, std::size_t termCount,
+                           const double* packedW, double* packedA) noexcept;
+void packProductRows(const ProductTileOperands& operands, std::size_t firstTerm, std::size_t termCount,
+                     double* packedA) noexcept;
+void subtractPrepackedProduct(const ProductTileOperands& operands, std::size_t termCount, const double* packedA,
+                              const double* packedW) noexcept;
+void subtractColumnProducts(const ColumnProductOperands& operands) noexcept;
+void solvePanel(const PanelSolveOperands& operands) noexcept;
+void solveUnitLowerBlock(const TriangleSolveOperands& operands) noexcept;
+void solveUnitLowerTransposedBlock(const TriangleSolveOperands& operands) noexcept;
+void subtractRowProducts(const RowProductOperands& operands) noexcept;
+void solveRowTriangle(const RowTriangleOperands& operands) noexcept;
+} // namespace kernels::wasm128
 
 } // namespace oos::linalg

@@ -21,6 +21,13 @@ the folders in that order, which is the order in which the pieces depend on one 
 - The reference family sums in a fixed order without fused multiply-add: the same bits everywhere. The SIMD families
   compute every element as the same chain of fused multiply-adds in increasing order, whatever the register blocking:
   AVX2 and AVX-512 give the same bits as each other, and as `std::fma` applied in that order.
+- The WebAssembly build has the reference family and `kernels/wasm128`, the same algorithms on the 128-bit vector
+  instructions of WebAssembly (two doubles per register), chosen there automatically. WebAssembly has no fused
+  multiply-add among them: each term is a product rounded then subtracted, in the same order, so the family gives the
+  bits of the reference family. Its factorisation with pivoting is the reference's unblocked one, for the same reason:
+  the blocked one of the AVX families orders its operations otherwise. The reference family itself is compiled there
+  with those instructions allowed (`-msimd128`), which the compiler uses in its register tiles without changing an
+  operation.
 
 ## Dense kernels
 

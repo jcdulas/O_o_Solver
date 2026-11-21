@@ -86,35 +86,47 @@ void addCongruence(Matrix& target, const Matrix& a, const Matrix33& m, double s)
 
 void addCongruence2(Matrix& target, const Matrix& a, const Matrix22& m, double s)
 {
-    const std::size_t n = a.columns();
-    Matrix ma(2, n);
+    addCongruence2(target, a, m, s, 0, a.columns());
+}
+
+void addCongruence2(Matrix& target, const Matrix& a, const Matrix22& m, double s, std::size_t firstColumn,
+                    std::size_t columnCount)
+{
+    const std::size_t last = firstColumn + columnCount;
+    Matrix ma(2, a.columns());
     for (std::size_t r = 0; r < 2; ++r)
-        for (std::size_t j = 0; j < n; ++j)
+        for (std::size_t j = firstColumn; j < last; ++j)
             ma(r, j) = m[r][0] * a(0, j) + m[r][1] * a(1, j);
-    for (std::size_t i = 0; i < n; ++i)
+    for (std::size_t i = firstColumn; i < last; ++i)
     {
         const double a0 = a(0, i) * s;
         const double a1 = a(1, i) * s;
         if (a0 == 0.0 && a1 == 0.0)
             continue;
         std::span<double> row = target.rowSpan(i);
-        for (std::size_t j = 0; j < n; ++j)
+        for (std::size_t j = firstColumn; j < last; ++j)
             row[j] += a0 * ma(0, j) + a1 * ma(1, j);
     }
 }
 
 void addTransposeProduct(Matrix& target, const Matrix& a, const Matrix& b, double s)
 {
+    addTransposeProduct(target, a, b, s, b.columns());
+}
+
+void addTransposeProduct(Matrix& target, const Matrix& a, const Matrix& b, double s, std::size_t columnCount)
+{
     for (std::size_t r = 0; r < a.rows(); ++r)
     {
+        const std::span<const double> source = b.rowSpan(r);
         for (std::size_t i = 0; i < a.columns(); ++i)
         {
             const double ari = a(r, i) * s;
             if (ari == 0.0)
                 continue;
             std::span<double> row = target.rowSpan(i);
-            for (std::size_t j = 0; j < b.columns(); ++j)
-                row[j] += ari * b(r, j);
+            for (std::size_t j = 0; j < columnCount; ++j)
+                row[j] += ari * source[j];
         }
     }
 }

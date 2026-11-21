@@ -602,7 +602,7 @@ PivotedLdlt DenseKernels::factorWithPivoting(DenseMatrixView a, std::size_t cand
     result.subdiagonal.assign(candidateCount, 0.0);
 
     const KernelFamily& family = kernelFamilyOf(m_kind);
-    if (family.isBlocked)
+    if (family.pivotsByBlocks)
         result.eliminatedCount =
             BlockedLdlt(*this, family).factorWithPivoting(a, candidateCount, result.permutation, result.subdiagonal);
     else
@@ -925,6 +925,8 @@ std::size_t DenseKernels::rowLanes() const noexcept
         return 4;
     case KernelKind::Avx512:
         return 8;
+    case KernelKind::Wasm128:
+        return 2;
     }
     return 1;
 }

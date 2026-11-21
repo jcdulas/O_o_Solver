@@ -87,7 +87,8 @@ Matrix shearOperator(const ShellReferenceElement& re, std::size_t q, const Point
 // The matrix of the membrane functionals on the element's membrane basis (reggeCount × reggeCount).
 Matrix reggeFunctionalMatrix(const ShellReferenceElement& re, const ShellElementDefinition& def,
                              const std::vector<PointGeometry>& geometries,
-                             const std::vector<std::vector<EdgePointGeometry>>& edges)
+                             const std::vector<std::vector<EdgePointGeometry>>& edges,
+                             const ReggeFunctionalTables& tables)
 {
     const std::size_t nr = re.reggeCount;
     Matrix functionals(nr, nr);
@@ -97,7 +98,7 @@ Matrix reggeFunctionalMatrix(const ShellReferenceElement& re, const ShellElement
         if (m < nr - 3 || def.mapReferenceConstants)
         {
             column = reggeFunctionals(
-                re, geometries, [&](std::size_t q) { return re.regge[q * nr + m]; },
+                re, tables, [&](std::size_t q) { return re.regge[q * nr + m]; },
                 [&](std::size_t k, std::size_t gi)
                 {
                     const std::array<double, 3>& r = re.reggeEdge[k][gi * nr + m];
@@ -110,7 +111,7 @@ Matrix reggeFunctionalMatrix(const ShellReferenceElement& re, const ShellElement
         {
             const std::size_t c = m - (nr - 3);
             column = reggeFunctionals(
-                re, geometries, [&](std::size_t q)
+                re, tables, [&](std::size_t q)
                 { return voigtToCovariant(geometries[q].con(), constantStrain(geometries[q].phi, c)); },
                 [&](std::size_t k, std::size_t gi)
                 {
@@ -131,7 +132,8 @@ Matrix reggeFunctionalMatrix(const ShellReferenceElement& re, const ShellElement
 // ε_αβ = ½ (a_α · ∂_β u + a_β · ∂_α u).
 Matrix membraneStrainFunctionals(const ShellReferenceElement& re, const ShellElementDefinition& def,
                                  const std::vector<PointGeometry>& geometries,
-                                 const std::vector<std::vector<EdgePointGeometry>>& edges, std::size_t unknownCount)
+                                 const std::vector<std::vector<EdgePointGeometry>>& edges,
+                                 const ReggeFunctionalTables& tables, std::size_t unknownCount)
 {
     const std::size_t n1 = re.h1Count;
     Matrix out(re.reggeCount, unknownCount);
@@ -140,7 +142,7 @@ Matrix membraneStrainFunctionals(const ShellReferenceElement& re, const ShellEle
         for (std::size_t c = 0; c < 3; ++c)
         {
             const Vector column = reggeFunctionals(
-                re, geometries,
+                re, tables,
                 [&](std::size_t q) -> std::array<double, 3>
                 {
                     const ReferenceJet& h = def.volumeJets[q * n1 + i];
@@ -239,30 +241,81 @@ Matrix momentsLocal(const ShellReferenceElement& re, const ReferenceTensorValues
     return sv;
 }
 
+ReggeFunctionalTables ReggeFunctionalTables::build(const ShellReferenceElement& re,
+                                                   std::span<const PointGeometry> geometries,
+                                                   bool mapReferenceConstants)
+{
+    ReggeFunctionalTables tables;
+    const std::size_t edgePoints = re.edgeParameters.size();
+    tables.edgeLegendre.resize((re.shearDegree + 1) * edgePoints);
+    for (std::size_t l = 0; l <= re.shearDegree; ++l)
+        for (std::size_t gi = 0; gi < edgePoints; ++gi)
+            tables.edgeLegendre[l * edgePoints + gi] = shelldetail::edgeLegendre(l, re.edgeParameters[gi]);
+    const std::size_t nri = re.reggeInteriorMoments.size();
+    tables.weightedTest.resize(re.points.size() * nri);
+    for (std::size_t q = 0; q < re.points.size(); ++q)
+        for (std::size_t m = 0; m < nri; ++m)
+            tables.weightedTest[q * nri + m] = re.weights[q] * re.reggeTest[q * nri + m];
+    for (std::size_t m = 0; m < nri; ++m)
+    {
+        const std::size_t component = re.reggeInteriorMoments[m].component;
+        if (tables.componentRuns.empty() || tables.componentRuns.back().component != component)
+            tables.componentRuns.push_back({m, m, component});
+        tables.componentRuns.back().last = m + 1;
+    }
+    if (mapReferenceConstants)
+        return tables;
+    tables.toVoigt.reserve(geometries.size());
+    tables.toConstantFrame.reserve(geometries.size());
+    tables.weightedArea.reserve(geometries.size());
+    for (std::size_t q = 0; q < geometries.size(); ++q)
+    {
+        tables.toVoigt.push_back(covariantToVoigt(geometries[q].cov()));
+        tables.toConstantFrame.push_back(strainTransformation(geometries[q].phi));
+        tables.weightedArea.push_back(re.weights[q] * geometries[q].j);
+    }
+    return tables;
+}
+
 Vector reggeFunctionals(const ShellReferenceElement& re, std::span<const PointGeometry> geometries,
+                        const CovariantStrainAtPoint& volume, const TangentialStrainAtEdge& edge,
+                        bool mapReferenceConstants)
+{
+    return reggeFunctionals(re, ReggeFunctionalTables::build(re, geometries, mapReferenceConstants), volume, edge,
+                            mapReferenceConstants);
+}
+
+Vector reggeFunctionals(const ShellReferenceElement& re, const ReggeFunctionalTables& tables,
                         const CovariantStrainAtPoint& volume, const TangentialStrainAtEdge& edge,
                         bool mapReferenceConstants)
 {
     const std::size_t nv = re.cornerCount;
     const std::size_t p = re.shearDegree;
     const std::size_t nri = re.reggeInteriorMoments.size();
+    const std::size_t edgePoints = re.edgeParameters.size();
     Vector out(re.reggeCount, 0.0);
     std::size_t row = 0;
+    // the tangential moments of each edge: Σ_g w_g ε_tt(g) P_l(g), the strain read once for the p + 1 moments
     for (std::size_t k = 0; k < nv; ++k)
     {
-        for (std::size_t l = 0; l <= p; ++l)
+        for (std::size_t gi = 0; gi < edgePoints; ++gi)
         {
-            double sum = 0.0;
-            for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
-                sum += re.edgeWeights[gi] * edge(k, gi) * shelldetail::edgeLegendre(l, re.edgeParameters[gi]);
-            out[row++] = sum;
+            const double weighted = re.edgeWeights[gi] * edge(k, gi);
+            for (std::size_t l = 0; l <= p; ++l)
+                out[row + l] += weighted * tables.edgeLegendre[l * edgePoints + gi];
         }
+        row += p + 1;
     }
     for (std::size_t q = 0; q < re.points.size(); ++q)
     {
         const std::array<double, 3> e = volume(q);
-        for (std::size_t m = 0; m < nri; ++m)
-            out[row + m] += re.weights[q] * re.reggeTest[q * nri + m] * e[re.reggeInteriorMoments[m].component];
+        const double* weightedTest = tables.weightedTest.data() + q * nri;
+        for (const ReggeFunctionalTables::ComponentRun& run : tables.componentRuns)
+        {
+            const double strain = e[run.component];
+            for (std::size_t m = run.first; m < run.last; ++m)
+                out[row + m] += weightedTest[m] * strain;
+        }
         if (mapReferenceConstants)
         {
             for (std::size_t c = 0; c < 3; ++c)
@@ -271,12 +324,12 @@ Vector reggeFunctionals(const ShellReferenceElement& re, std::span<const PointGe
         else
         {
             // the work of the three constant membrane forces of the frame of the constant states
-            const Voigt3 v = times33(covariantToVoigt(geometries[q].cov()), e);
-            const Matrix33 t = strainTransformation(geometries[q].phi);
+            const Voigt3 v = times33(tables.toVoigt[q], e);
+            const Matrix33& t = tables.toConstantFrame[q];
             for (std::size_t c = 0; c < 3; ++c)
             {
                 const double vf = t[c][0] * v[0] + t[c][1] * v[1] + t[c][2] * v[2];
-                out[row + nri + c] += re.weights[q] * geometries[q].j * vf;
+                out[row + nri + c] += tables.weightedArea[q] * vf;
             }
         }
     }
@@ -286,6 +339,15 @@ Vector reggeFunctionals(const ShellReferenceElement& re, std::span<const PointGe
 std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellReferenceElement& re,
                                                                   const ShellElementDefinition& def, bool withMass)
 {
+    return buildShellElement(re, def, ShellMatrixRequest{true, withMass});
+}
+
+std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellReferenceElement& re,
+                                                                  const ShellElementDefinition& def,
+                                                                  const ShellMatrixRequest& request)
+{
+    const bool withStiffness = request.stiffness;
+    const bool withMass = request.mass;
     const std::size_t n1 = re.h1Count;
     const std::size_t nc = re.hcurlCount;
     const std::size_t ns = re.momentCount;
@@ -308,18 +370,28 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
     const std::vector<std::vector<EdgePointGeometry>> edges = shelldetail::edgeGeometries(re, def);
 
     // ---- the Regge interpolation: the functionals of the element's membrane basis and of e(u)
-    std::optional<Matrix> reggeInverse = equilibratedInverse(reggeFunctionalMatrix(re, def, geometries, edges));
+    const ReggeFunctionalTables functionalTables =
+        ReggeFunctionalTables::build(re, geometries, def.mapReferenceConstants);
+    std::optional<Matrix> reggeInverse =
+        equilibratedInverse(reggeFunctionalMatrix(re, def, geometries, edges, functionalTables));
     if (!reggeInverse)
         return std::string("membrane functionals not unisolvent on the element");
-    const Matrix interpolation = *reggeInverse * membraneStrainFunctionals(re, def, geometries, edges, nx);
+    // The membrane strain is that of the displacement: the columns of the interpolation after those of the
+    // displacement unknowns are zero, and the products with it are formed on the others only. The curvature has none
+    // on the edge rotations, the shear strain on the shear unknowns alone.
+    const std::size_t displacementColumns = 3 * n1;
+    const std::size_t fieldColumns = 3 * n1 + nc;
+    const Matrix interpolation = timesLeadingColumns(
+        *reggeInverse, membraneStrainFunctionals(re, def, geometries, edges, functionalTables, nx),
+        displacementColumns);
 
     // A membrane-only section on the surface of the grid points has no moments and no transverse shear (spec section
     // 4.1): K = K_membrane, the pairing and the compliance of the moments zero.
     const bool moments = sectionCarriesMoments(def.section->section().parts, def.offset);
 
-    // ---- the point loop: membrane, shear, moments, mass
-    Matrix kr(nr, nr);
-    Matrix ks(nx, nx);
+    // ---- the point loop: membrane, shear, moments, mass (the membrane and shear stiffness for the stiffness only)
+    Matrix kr = withStiffness ? Matrix(nr, nr) : Matrix();
+    Matrix ks = withStiffness ? Matrix(nx, nx) : Matrix();
     Matrix msig(ns, ns);
     Matrix gmat(ns, nx);
     Matrix cr(ns, nr);
@@ -341,24 +413,26 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
             reggeLocal(re, [&](std::size_t m) { return re.regge[q * nr + m]; }, g, def.mapReferenceConstants);
         const Matrix sv =
             momentsLocal(re, [&](std::size_t jj) { return re.moments[q * ns + jj]; }, g, def.mapReferenceConstants);
-        shelldetail::addCongruence(kr, rv, laws.abar, wj);
+        if (withStiffness)
+            shelldetail::addCongruence(kr, rv, laws.abar, wj);
         if (moments)
         {
             shelldetail::addCongruence(msig, sv, laws.dinv, wj);
             if (coupled)
                 shelldetail::addTransposeProduct33(cr, sv, laws.dinvBt, rv, wj);
             // the interior part of b_T: ∫ m : κ dA, κ in local Voigt components
-            shelldetail::addTransposeProduct(gmat, sv, curvatureOperator(re, def, q, g, nx), wj);
-            if (!def.kirchhoff)
-                shelldetail::addCongruence2(ks, shearOperator(re, q, g, nx), laws.h, wj);
+            shelldetail::addTransposeProduct(gmat, sv, curvatureOperator(re, def, q, g, nx), wj, fieldColumns);
+            if (withStiffness && !def.kirchhoff)
+                shelldetail::addCongruence2(ks, shearOperator(re, q, g, nx), laws.h, wj, displacementColumns, nc);
         }
         if (mass)
         {
+            // u has columns on the displacement unknowns, β on those and on the shear unknowns
             const auto [uu, bb] = pointKinematics(re, def, q, g, nx);
-            shelldetail::addTransposeProduct(*mass, uu, uu, sp.mass[0] * wj);
-            shelldetail::addTransposeProduct(*mass, uu, bb, sp.mass[1] * wj);
-            shelldetail::addTransposeProduct(*mass, bb, uu, sp.mass[1] * wj);
-            shelldetail::addTransposeProduct(*mass, bb, bb, sp.mass[2] * wj);
+            shelldetail::addTransposeProduct(*mass, uu, uu, sp.mass[0] * wj, displacementColumns);
+            shelldetail::addTransposeProduct(*mass, uu, bb, sp.mass[1] * wj, fieldColumns);
+            shelldetail::addTransposeProduct(*mass, bb, uu, sp.mass[1] * wj, displacementColumns);
+            shelldetail::addTransposeProduct(*mass, bb, bb, sp.mass[2] * wj, fieldColumns);
         }
     }
 
@@ -368,9 +442,13 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
         out.unknownCount = nx;
         out.pairing = Matrix(ns, nx);
         out.complianceInverse = Matrix(ns, ns);
-        Matrix stiffness = transposeTimes(interpolation, kr * interpolation);
-        shelldetail::symmetrise(stiffness);
-        out.stiffness = std::move(stiffness);
+        if (withStiffness)
+        {
+            Matrix stiffness = transposeTimesLeadingColumns(
+                interpolation, timesLeadingColumns(kr, interpolation, displacementColumns), displacementColumns);
+            shelldetail::symmetrise(stiffness);
+            out.stiffness = std::move(stiffness);
+        }
         out.mass = std::move(mass);
         out.reggeInterpolation = interpolation;
         out.reggeFunctionalInverse = std::move(*reggeInverse);
@@ -434,12 +512,16 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
     out.unknownCount = nx;
     out.complianceInverse = factor->inverse();
     out.pairing = coupled ? gmat + cr * interpolation : std::move(gmat);
-    const Matrix y = factor->halfSolve(out.pairing);
-    Matrix stiffness = transposeTimes(interpolation, kr * interpolation);
-    stiffness += ks;
-    stiffness += transposeTimes(y, y);
-    shelldetail::symmetrise(stiffness);
-    out.stiffness = std::move(stiffness);
+    if (withStiffness)
+    {
+        const Matrix y = factor->halfSolve(out.pairing);
+        Matrix stiffness = transposeTimesLeadingColumns(
+            interpolation, timesLeadingColumns(kr, interpolation, displacementColumns), displacementColumns);
+        stiffness += ks;
+        stiffness += transposeTimesSelf(y);
+        shelldetail::symmetrise(stiffness);
+        out.stiffness = std::move(stiffness);
+    }
     out.mass = std::move(mass);
     out.reggeInterpolation = interpolation;
     out.reggeFunctionalInverse = std::move(*reggeInverse);

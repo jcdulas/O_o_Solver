@@ -34,11 +34,18 @@ const MixedShell& requiredShell(const MixedHybridModel& model, const ElementBatc
     return *shell;
 }
 
-// The element of a shell with its matrices (its mass with `withMass`).
-ShellElementData shellElementOf(const MixedHybridModel& model, const MixedShell& shell, bool withMass = false)
+// What the facets ask of an element beside the operators of the stress recovery: the stiffness, the mass, or
+// neither (the recovery, the thermal loads and the geometric stiffness).
+constexpr ShellMatrixRequest WITH_STIFFNESS{true, false};
+constexpr ShellMatrixRequest WITH_MASS{false, true};
+constexpr ShellMatrixRequest RECOVERY_OPERATORS{false, false};
+
+// The element of a shell with its matrices (those `request` asks).
+ShellElementData shellElementOf(const MixedHybridModel& model, const MixedShell& shell,
+                                const ShellMatrixRequest& request)
 {
     std::variant<ShellElementData, std::string> element =
-        model.shellPart()->elementWithMatrices(shell.partIndex, withMass);
+        model.shellPart()->elementWithMatrices(shell.partIndex, request);
     // check() builds the matrices of the elements the model keeps; in a larger model it checks the section and the
     // geometry of the others, and their matrices may refuse them here.
     if (const std::string* message = std::get_if<std::string>(&element))
@@ -183,7 +190,7 @@ Matrix addedMassOf(const ShellPart& part, const ShellElementData& element, doubl
 {
     const ShellReferenceElement& re = part.referenceElement(element.cornerCount);
     const ShellElementDefinition definition = element.definition();
-    const std::size_t n = element.matrices.stiffness.rows();
+    const std::size_t n = element.matrices.unknownCount;
     Matrix mass(n, n);
     for (std::size_t q = 0; q < re.points.size(); ++q)
     {
@@ -283,7 +290,7 @@ OutputPlaces outputPlacesOf(const ElementBatchView& view, const MixedHybridModel
                             const NodalDisplacements& displacements)
 {
     const ShellPart& part = *model.shellPart();
-    const ShellElementData element = shellElementOf(model, shell);
+    const ShellElementData element = shellElementOf(model, shell, RECOVERY_OPERATORS);
     const Vector x = localUnknowns(shellMapOf(view, model, shell), displacements);
     const ShellCaseTemperatures temperatures =
         caseTemperaturesOf(view, shell.batchRow, part, shell, element, displacements.temperatures);
@@ -340,7 +347,7 @@ void MixedHybridShellFamily::computeStiffness(const ElementBatchView& view, Elem
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const MixedShell& shell = requiredShell(model, view, row);
-        const ShellElementData element = shellElementOf(model, shell);
+        const ShellElementData element = shellElementOf(model, shell, WITH_STIFFNESS);
         const LocalMap map = shellMapOf(view, model, shell);
         block.append(row, map.dofs, congruent(element.matrices.stiffness, map));
     }
@@ -355,7 +362,7 @@ void MixedHybridShellFamily::computeMass(const ElementBatchView& view, ElementRa
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const MixedShell& shell = requiredShell(model, view, row);
-        const ShellElementData element = shellElementOf(model, shell, true);
+        const ShellElementData element = shellElementOf(model, shell, WITH_MASS);
         if (!element.matrices.mass)
             throw std::logic_error("MixedHybridShellFamily: the ShellPart was built without the masses");
         const double added = options.addedNonStructuralMass.empty()
@@ -438,7 +445,7 @@ void MixedHybridShellFamily::computeThermalLoads(const ElementBatchView& view, E
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const MixedShell& shell = requiredShell(model, view, row);
-        const ShellElementData element = shellElementOf(model, shell);
+        const ShellElementData element = shellElementOf(model, shell, RECOVERY_OPERATORS);
         const ShellCaseTemperatures caseTemperatures =
             caseTemperaturesOf(view, row, part, shell, element, &temperatures);
         if (!caseTemperatures.load)
@@ -463,7 +470,7 @@ void MixedHybridShellFamily::computeDifferentialStiffness(const ElementBatchView
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const MixedShell& shell = requiredShell(model, view, row);
-        const ShellElementData element = shellElementOf(model, shell);
+        const ShellElementData element = shellElementOf(model, shell, RECOVERY_OPERATORS);
         const LocalMap map = shellMapOf(view, model, shell);
         const Vector x = localUnknowns(map, preload);
         const ShellCaseTemperatures temperatures =
@@ -484,7 +491,7 @@ bool MixedHybridShellFamily::differentialStiffnessPreloadGradient(const ElementB
     // φ = T φ_e.
     const MixedHybridModel& model = MixedHybridModel::of(view.index());
     const MixedShell& shell = requiredShell(model, view, row);
-    const ShellElementData element = shellElementOf(model, shell);
+    const ShellElementData element = shellElementOf(model, shell, RECOVERY_OPERATORS);
     const LocalMap map = shellMapOf(view, model, shell);
     const Vector phi = localUnknowns(map, shape);
     block.append(row, map.dofs, onDofs(model.shellPart()->geometricStiffnessGradient(element, phi), map));

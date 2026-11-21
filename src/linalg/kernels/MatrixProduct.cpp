@@ -14,6 +14,8 @@ void multiplyMatrices(KernelKind kind, const MatrixProductOperands& operands) no
     switch (kind)
     {
     case KernelKind::Reference:
+    case KernelKind::Wasm128:
+        // The WebAssembly family has no matrix product of its own: the reference kernel, whose bits are its own.
         kernels::reference::multiplyMatrices(operands);
         return;
 #if defined(OOS_WASM)

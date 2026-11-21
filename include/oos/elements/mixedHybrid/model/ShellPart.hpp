@@ -162,9 +162,15 @@ struct ShellPartInput
     // Build the matrices of every shell and line once in the constructor, to report the elements refused.
     bool checkElements = true;
     // The bytes of shell elements with their matrices that the part keeps once built (elementWithMatrices then copies
-    // them instead of building them again: a shell of degree 4 takes a few milliseconds to build and about 0.5 MB to
-    // keep), 0 for none. The elements built once the budget is spent are built again at each call.
+    // them instead of building them again: a shell of degree 4 takes a few milliseconds to build and about 0.35 MB to
+    // keep), 0 for none.
     std::size_t matrixCacheBytes = 0;
+    // The bytes the part may hold in all once that budget is spent, the elements built from then on kept with the
+    // operators of the stress recovery alone (about 0.2 MB for a shell of degree 4, without its stiffness and its
+    // mass): the recovery, the thermal loads and the geometric stiffness of a model larger than the first budget then
+    // read each element instead of building it again. Not above matrixCacheBytes: no such element is kept, and those
+    // built once the budget is spent are built again at each call.
+    std::size_t recoveryCacheBytes = 0;
 };
 
 // What is attached to a problem: a shell, a line (their index in the input), or the shells as a whole.
@@ -413,6 +419,10 @@ public:
     [[nodiscard]] const ShellReferenceElement& referenceElement(std::size_t cornerCount) const;
     // Shell `shell` with its tables (jets), its matrices empty.
     [[nodiscard]] ShellElementData element(std::size_t shell) const;
+    // Shell `shell` without its tables nor its matrices: what the functions of a reference point read (geometryAt,
+    // h1At, rotationRowsOf take the weight and the map of the element, not the tables of its rule). Forming the tables
+    // of an element costs more than a few such points. Valid while the part lives.
+    [[nodiscard]] const ShellElementData& elementAtPoints(std::size_t shell) const { return m_shells[shell]; }
     // Shell `shell` with its tables and its matrices (the mass with ShellPartInput::withMass), or the reason the
     // formulation refuses it.
     [[nodiscard]] std::variant<ShellElementData, std::string> elementWithMatrices(std::size_t shell) const;
@@ -421,6 +431,11 @@ public:
     // (ShellPartInput::matrixCacheBytes).
     [[nodiscard]] std::variant<ShellElementData, std::string> elementWithMatrices(std::size_t shell,
                                                                                   bool withMass) const;
+    // The same with the stiffness and the mass as `request` asks (the mass with ShellPartInput::withMass only): a use
+    // that reads the operators of the stress recovery alone asks for neither, and takes the element the part kept
+    // without them (ShellPartInput::recoveryCacheBytes) or builds it without them.
+    [[nodiscard]] std::variant<ShellElementData, std::string> elementWithMatrices(
+        std::size_t shell, const ShellMatrixRequest& request) const;
     // Why the formulation refuses shell `shell`: a section without bending stiffness (without membrane stiffness for a
     // membrane-only section) or a thickness that is not positive (a singular section), a normal that turns by 90° or
     // more from that of its corners at a point of the element (an element that turns too much), a map that is not
@@ -599,6 +614,8 @@ public:
     // Reference: tdnns/analysis.rs::Analysis::rigid_modes (the shells)
     void affineField(const std::array<SpaceVector, 3>& gradient, const SpaceVector& translation,
                      std::span<double> entityValues) const;
+    // The local unknowns of the six rigid motions of shell `shell` about the origin (rigidMotionUnknowns).
+    [[nodiscard]] std::array<Vector, 6> rigidMotionsOf(std::size_t shell) const;
     // The displacement of shell `shell` at (ξ, η) as rows on the part unknowns of the displacement functions whose
     // place `keep` accepts (all with an empty function), and the point of the surface there.
     // Reference: tdnns/solid.rs::Context::shell_rows
@@ -706,9 +723,13 @@ private:
     void buildShells();
     // The entities, their unknowns and their positions on the surfaces of the shells.
     void buildEntities(std::span<const ElementSurface> surfaces);
-    // The shell `shell` with its tables, and its matrices when `withMatrices`, or the reason it is refused.
+    // The shell `shell` with its tables, and its matrices when `withMatrices` (those `request` asks), or the reason it
+    // is refused.
     [[nodiscard]] std::variant<ShellElementData, std::string> build(std::size_t shell, bool withMatrices,
-                                                                    bool withMass) const;
+                                                                    const ShellMatrixRequest& request) const;
+    // `data` with the tables of its points (the jets of its displacement functions, elementJets), which the part
+    // does not keep: they are formed from the weight of the element in a few tens of microseconds.
+    [[nodiscard]] ShellElementData withTables(ShellElementData data) const;
     // The edges of the lines.
     void placeLines();
     // The refusals of the shells and lines (ShellPartInput::checkElements).
@@ -720,8 +741,28 @@ private:
                     bool isGeometry = false);
     [[nodiscard]] std::string gridName(std::size_t grid) const;
 
-    // The shells with their matrices kept once built (ShellPartInput::matrixCacheBytes), by shell, and the bytes they
-    // take; guarded by its mutex (the part is shared by the threads of the assembly).
+    // What an affine field reads of the rigid motions of a shell (rigidMotionUnknowns): the coefficient of the
+    // constant 1 on each displacement function, and the edge rotation unknowns [k (p + 1) + l] of a unit rotation
+    // about each axis of the basic system.
+    struct RigidField
+    {
+        std::vector<double> constants;
+        std::array<std::vector<double>, 3> edgeRotations;
+    };
+    // Those of every shell, built once at the first affine field: an analysis asks for the six rigid motions and more
+    // affine fields one after the other, each over every shell, and the rigid motions of a shell take a hundred
+    // times more to form than to read. Built under its flag (the part is shared by the threads).
+    struct RigidFieldCache
+    {
+        std::once_flag built;
+        std::vector<RigidField> shells;
+    };
+    [[nodiscard]] const std::vector<RigidField>& rigidFields() const;
+
+    // The shells with their matrices kept once built, by shell, without the tables of their points (withTables), and
+    // the bytes they take; guarded by its mutex (the part is shared by the threads of the assembly). An element is
+    // kept whole while ShellPartInput::matrixCacheBytes lasts, then without its stiffness and its mass while
+    // ShellPartInput::recoveryCacheBytes lasts.
     struct MatrixCache
     {
         std::mutex mutex;
@@ -732,6 +773,7 @@ private:
 
     ShellPartInput m_input;
     std::unique_ptr<MatrixCache> m_cache = std::make_unique<MatrixCache>();
+    std::unique_ptr<RigidFieldCache> m_rigidFields = std::make_unique<RigidFieldCache>();
     std::size_t m_pointsPerDirection = 0;
     bool m_usable = false;
     std::vector<ShellPartProblem> m_problems;

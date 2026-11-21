@@ -58,6 +58,8 @@ std::string describeInstructions(KernelKind kind)
         return "AVX2 and FMA";
     case KernelKind::Avx512:
         return "AVX-512 F, DQ and VL";
+    case KernelKind::Wasm128:
+        return "the 128-bit vector instructions of WebAssembly";
     }
     return {};
 }
@@ -134,8 +136,11 @@ KernelSelection KernelSelection::select(const base::CpuFeatures& cpu, std::strin
             refuseUnsupported(*kind, source, cpu);
         return {*kind, source, processorName(cpu)};
     }
-    // AVX-512 is not chosen automatically until it is validated on a machine that has it.
-    const KernelKind automatic = cpu.hasAvx2Family() ? KernelKind::Avx2 : KernelKind::Reference;
+    // AVX-512 is not chosen automatically until it is validated on a machine that has it. WebAssembly has its own
+    // family and no other.
+    const KernelKind automatic = cpu.hasWasmSimd128   ? KernelKind::Wasm128
+                                 : cpu.hasAvx2Family() ? KernelKind::Avx2
+                                                       : KernelKind::Reference;
     return {automatic, KernelSelectionSource::Automatic, processorName(cpu)};
 }
 
@@ -180,6 +185,8 @@ bool isKernelSupported(KernelKind kind, const base::CpuFeatures& cpu) noexcept
         return cpu.hasAvx2Family();
     case KernelKind::Avx512:
         return cpu.hasAvx512Family();
+    case KernelKind::Wasm128:
+        return cpu.hasWasmSimd128;
     }
     return false;
 }

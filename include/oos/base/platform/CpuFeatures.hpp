@@ -20,6 +20,9 @@ struct CpuFeatures
     bool hasAvx512f = false;
     bool hasAvx512dq = false;
     bool hasAvx512vl = false;
+    // The process is a WebAssembly module built with the 128-bit vector instructions of WebAssembly (the build is the
+    // whole of it: a module that uses them does not load in a runtime without them).
+    bool hasWasmSimd128 = false;
     // The frequencies the CPU reports in CPUID leaf 0x16 (Intel, Skylake and later); 0 when it does not report them.
     // They are the published base and maximum (single-core turbo) frequencies, not the current one.
     int baseFrequencyInMegahertz = 0;

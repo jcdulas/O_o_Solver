@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 
@@ -12,6 +13,10 @@ namespace oos::elements::mixedHybrid
 // once per shape and degree, by sums, products and derivatives that are exact (no quadrature): their dual bases are
 // then exact to the round-off. DEGREE_BOUND bounds the degree in each variable (below 12): the spaces of degree k = 4
 // and their products stay well within it, and a product beyond it is a bug (InternalError).
+//
+// A polynomial knows the rows and columns that may hold its coefficients (c_ij = 0 for i >= rows or j >= columns), so
+// that its sums run over those alone: a function of the spaces of degree 4 has 25 coefficients of the 144. The terms
+// left out are zeros added to a sum: the values are those of the sums over every coefficient, to the bit.
 //
 // Thread-safety: a plain value type (a fixed array, no allocation); the operations are pure.
 class Polynomial2
@@ -38,7 +43,13 @@ public:
     {
         return m_coefficients[i * DEGREE_BOUND + j];
     }
-    [[nodiscard]] double& coefficient(std::size_t i, std::size_t j) { return m_coefficients[i * DEGREE_BOUND + j]; }
+    // The coefficient of ξ^i η^j, to write it: the polynomial then counts row i and column j among its own.
+    [[nodiscard]] double& coefficient(std::size_t i, std::size_t j)
+    {
+        m_rows = std::max(m_rows, i + 1);
+        m_columns = std::max(m_columns, j + 1);
+        return m_coefficients[i * DEGREE_BOUND + j];
+    }
 
     [[nodiscard]] Polynomial2 scaled(double s) const;
     // ∂p/∂ξ and ∂p/∂η.
@@ -53,10 +64,14 @@ public:
     friend Polynomial2 operator-(const Polynomial2& a, const Polynomial2& b);
     // The exact product; throws InternalError when a degree of the product reaches DEGREE_BOUND.
     friend Polynomial2 operator*(const Polynomial2& a, const Polynomial2& b);
-    friend bool operator==(const Polynomial2&, const Polynomial2&) = default;
+    // The same polynomial: the same coefficients (the rows and columns counted do not enter).
+    friend bool operator==(const Polynomial2& a, const Polynomial2& b) { return a.m_coefficients == b.m_coefficients; }
 
 private:
     std::array<double, DEGREE_BOUND * DEGREE_BOUND> m_coefficients{};
+    // c_ij = 0 for i >= m_rows or j >= m_columns (an upper bound: a coefficient within may be zero too).
+    std::size_t m_rows = 0;
+    std::size_t m_columns = 0;
 };
 
 } // namespace oos::elements::mixedHybrid

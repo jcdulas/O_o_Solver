@@ -207,6 +207,12 @@ std::vector<SpaceVector> mapCoefficients(const ShellReferenceElement& re, const 
 
 std::array<Vector, 6> rigidMotionUnknowns(const ShellReferenceElement& re, const ShellElementDefinition& def)
 {
+    return rigidMotionUnknowns(re, def, InteriorProjection::build(re));
+}
+
+std::array<Vector, 6> rigidMotionUnknowns(const ShellReferenceElement& re, const ShellElementDefinition& def,
+                                          const InteriorProjection& projection)
+{
     const std::size_t n1 = re.h1Count;
     const std::size_t nv = re.cornerCount;
     const std::size_t p = re.shearDegree;
@@ -230,7 +236,6 @@ std::array<Vector, 6> rigidMotionUnknowns(const ShellReferenceElement& re, const
             constant(i, 0) = sum;
         }
     }
-    const InteriorProjection projection = InteriorProjection::build(re);
     if (!projection.interior.empty())
     {
         const auto weightAt = [&](std::size_t q)

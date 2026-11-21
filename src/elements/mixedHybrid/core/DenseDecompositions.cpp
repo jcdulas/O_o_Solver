@@ -204,7 +204,7 @@ Vector EquilibratedCholesky::solve(Vector b) const
 Matrix EquilibratedCholesky::inverse() const
 {
     const Matrix x = halfSolve(Matrix::identity(size()));
-    return transposeTimes(x, x);
+    return transposeTimesSelf(x);
 }
 
 // ---- LU with partial pivoting ---------------------------------------------------------------------------------

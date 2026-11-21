@@ -107,6 +107,11 @@ Matrix& Matrix::operator*=(double factor)
 // (A·B)(i, :) = Σ_k a_ik B(k, :): the rows of B are read contiguously, and each term sums for k increasing.
 Matrix operator*(const Matrix& a, const Matrix& b)
 {
+    return timesLeadingColumns(a, b, b.columns());
+}
+
+Matrix timesLeadingColumns(const Matrix& a, const Matrix& b, std::size_t columnCount)
+{
     Matrix out(a.rows(), b.columns());
     for (std::size_t i = 0; i < a.rows(); ++i)
     {
@@ -117,7 +122,7 @@ Matrix operator*(const Matrix& a, const Matrix& b)
             if (factor == 0.0)
                 continue;
             const std::span<const double> source = b.rowSpan(k);
-            for (std::size_t j = 0; j < b.columns(); ++j)
+            for (std::size_t j = 0; j < columnCount; ++j)
                 target[j] += factor * source[j];
         }
     }
@@ -135,6 +140,11 @@ Vector operator*(const Matrix& a, std::span<const double> x)
 // (AᵀB)(i, :) = Σ_k a_ki B(k, :), summed for k increasing.
 Matrix transposeTimes(const Matrix& a, const Matrix& b)
 {
+    return transposeTimesLeadingColumns(a, b, b.columns());
+}
+
+Matrix transposeTimesLeadingColumns(const Matrix& a, const Matrix& b, std::size_t columnCount)
+{
     Matrix out(a.columns(), b.columns());
     for (std::size_t k = 0; k < a.rows(); ++k)
     {
@@ -145,10 +155,34 @@ Matrix transposeTimes(const Matrix& a, const Matrix& b)
             if (factor == 0.0)
                 continue;
             const std::span<double> target = out.rowSpan(i);
-            for (std::size_t j = 0; j < b.columns(); ++j)
+            for (std::size_t j = 0; j < columnCount; ++j)
                 target[j] += factor * source[j];
         }
     }
+    return out;
+}
+
+// (AᵀA)(i, j) = Σ_k a_ki a_kj for j >= i, summed for k increasing as transposeTimes does; then (j, i) = (i, j).
+Matrix transposeTimesSelf(const Matrix& a)
+{
+    const std::size_t n = a.columns();
+    Matrix out(n, n);
+    for (std::size_t k = 0; k < a.rows(); ++k)
+    {
+        const std::span<const double> source = a.rowSpan(k);
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const double factor = source[i];
+            if (factor == 0.0)
+                continue;
+            const std::span<double> target = out.rowSpan(i);
+            for (std::size_t j = i; j < n; ++j)
+                target[j] += factor * source[j];
+        }
+    }
+    for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t j = 0; j < i; ++j)
+            out(i, j) = out(j, i);
     return out;
 }
 

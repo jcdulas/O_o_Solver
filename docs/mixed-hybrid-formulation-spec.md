@@ -1093,9 +1093,22 @@ computation changing (the default `FieldUse`).
   fine.
 - **Determinism.** No result may depend on thread scheduling. Loops over quadrature points and assembly into an
   element matrix run in a fixed order.
-- **Cost.** The reference measured about 6 ms per solid tetrahedron (stiffness, one thread). The shell element is to
-  be measured in phase 2 against `ClassicFormulation` on the same model. Elements are built in parallel through
-  `base::ThreadPool`, by ranges as every facet is.
+- **Cost.** The reference measured about 6 ms per solid tetrahedron (stiffness, one thread). Elements are built in
+  parallel through `base::ThreadPool`, by ranges as every facet is. Measured in the WebAssembly package on one thread
+  (i5-12400F), a static analysis with the stresses of a quarter cylinder under pressure, supported on its outline:
+  2.1 s for 256 quadrilaterals, 20 s for 2 304 (0.4 s with `ClassicFormulation`), 6.5 s for a plate of 1 024
+  quadrilaterals and 3.0 s for one of 1 152 triangles; a quadrilateral of degree 4 takes about 4 ms to build. On
+  2 304 quadrilaterals the factorisation and the element stiffnesses share most of the time about equally. What keeps
+  the cost there, none of which changes a bit of the results:
+  - an element is built once: the part keeps it whole while 128 MB last, then with the operators of its stress
+    recovery alone (about 0.2 MB a quadrilateral, up to 1 GB), so that the recovery, the thermal loads and the
+    geometric stiffness read it; a use that needs neither the stiffness nor the mass builds it without them;
+  - what an element reads at its points whatever the field is formed once for the element (the membrane functionals,
+    section 3.1), products are formed on the columns that are not zero and on one triangle where they are symmetric;
+  - the functions of a reference point (a corner rotation, the geometry report, an edge support) read the weight and
+    the map of the element, not the tables of its rule; the rigid motions of the shells are kept for the affine
+    fields an analysis asks one after the other;
+  - a polynomial of the reference spaces knows the extent of its coefficients (25 of 144 at degree 4).
 
 ## 7. Loads
 

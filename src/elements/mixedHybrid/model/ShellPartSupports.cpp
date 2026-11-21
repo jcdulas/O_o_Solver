@@ -538,7 +538,7 @@ std::optional<SpaceVector> ShellPart::commonNormalAt(std::size_t grid) const
     SpaceVector sum{};
     for (std::size_t i = 0; i < at.size(); ++i)
     {
-        const ShellElementData el = element(at[i].first);
+        const ShellElementData& el = elementAtPoints(at[i].first);
         const ReferencePoint x = referenceCorner(el.cornerCount, at[i].second);
         SpaceVector nu = geometryAt(referenceElement(el.cornerCount), el.definition(), x[0], x[1]).nu;
         if (i == 0)
@@ -564,7 +564,7 @@ std::array<std::vector<ShellPartTerm>, 3> ShellPart::meanRotationRows(std::size_
     std::array<std::map<std::size_t, double>, 3> rows;
     for (const auto& [ie, corner] : at)
     {
-        const ShellElementData el = element(ie);
+        const ShellElementData& el = elementAtPoints(ie);
         const ReferencePoint x = referenceCorner(el.cornerCount, corner);
         const Matrix r = rotationRowsOf(referenceElement(el.cornerCount), el.definition(), x[0], x[1]);
         for (std::size_t component = 0; component < 3; ++component)
@@ -576,27 +576,63 @@ std::array<std::vector<ShellPartTerm>, 3> ShellPart::meanRotationRows(std::size_
             keptTerms(rows[2], relativeThreshold)};
 }
 
+std::array<Vector, 6> ShellPart::rigidMotionsOf(std::size_t shell) const
+{
+    const ShellElementData el = element(shell);
+    return rigidMotionUnknowns(referenceElement(el.cornerCount), el.definition(), projectionOf(el.cornerCount));
+}
+
+const std::vector<ShellPart::RigidField>& ShellPart::rigidFields() const
+{
+    const auto build = [this]
+    {
+        std::vector<RigidField> fields(m_shells.size());
+        for (std::size_t ie = 0; ie < m_shells.size(); ++ie)
+        {
+            const ShellReferenceElement& re = referenceElement(m_shells[ie].cornerCount);
+            const std::size_t n1 = re.h1Count;
+            const auto firstEdgeRotation = static_cast<std::ptrdiff_t>(3 * n1 + re.hcurlCount);
+            const auto edgeRotations = static_cast<std::ptrdiff_t>(m_shells[ie].cornerCount * (re.shearDegree + 1));
+            const std::array<Vector, 6> rigid = rigidMotionsOf(ie);
+            RigidField& field = fields[ie];
+            field.constants.resize(n1);
+            for (std::size_t i = 0; i < n1; ++i)
+                field.constants[i] = rigid[0][3 * i];
+            for (std::size_t axis = 0; axis < 3; ++axis)
+            {
+                const auto first = rigid[3 + axis].begin() + firstEdgeRotation;
+                field.edgeRotations[axis].assign(first, first + edgeRotations);
+            }
+        }
+        m_rigidFields->shells = std::move(fields);
+    };
+    std::call_once(m_rigidFields->built, build);
+    return m_rigidFields->shells;
+}
+
 void ShellPart::affineField(const std::array<SpaceVector, 3>& gradient, const SpaceVector& translation,
                             std::span<double> entityValues) const
 {
     const std::size_t first = firstEntityUnknown();
+    const std::vector<RigidField>& rigidOfShells = rigidFields();
     // the rotation of the field: the axial vector of the skew part of its gradient, ω = ½ (A32 − A23, A13 − A31,
     // A21 − A12)
     const SpaceVector omega{0.5 * (gradient[2][1] - gradient[1][2]), 0.5 * (gradient[0][2] - gradient[2][0]),
                             0.5 * (gradient[1][0] - gradient[0][1])};
     for (std::size_t ie = 0; ie < m_shells.size(); ++ie)
     {
-        const ShellElementData el = element(ie);
+        // the map coefficients, the unknowns and their signs need no table of the element
+        const ShellElementData& el = m_shells[ie];
         const ShellReferenceElement& re = referenceElement(el.cornerCount);
         const std::size_t n1 = re.h1Count;
         const std::size_t p = re.shearDegree;
-        // the six rigid motions about the origin on the local unknowns: the coefficients c_i of the constant 1, and the
-        // edge rotations of a unit rotation about each axis
-        const std::array<Vector, 6> rigid = rigidMotionUnknowns(re, el.definition());
+        // of the six rigid motions about the origin on the local unknowns: the coefficients c_i of the constant 1, and
+        // the edge rotations of a unit rotation about each axis
+        const RigidField& rigid = rigidOfShells[ie];
         Vector local(shellUnknownCount(re), 0.0);
         for (std::size_t i = 0; i < n1; ++i)
         {
-            const double constant = rigid[0][3 * i];
+            const double constant = rigid.constants[i];
             const SpaceVector& x = el.mapCoefficients[i];
             for (std::size_t c = 0; c < 3; ++c)
                 local[3 * i + c] = translation[c] * constant + dot3(gradient[c], x);
@@ -604,8 +640,10 @@ void ShellPart::affineField(const std::array<SpaceVector, 3>& gradient, const Sp
         for (std::size_t kk = 0; kk < el.cornerCount; ++kk)
             for (std::size_t l = 0; l <= p; ++l)
             {
-                const std::size_t slot = 3 * n1 + re.hcurlCount + kk * (p + 1) + l;
-                local[slot] = omega[0] * rigid[3][slot] + omega[1] * rigid[4][slot] + omega[2] * rigid[5][slot];
+                const std::size_t rotation = kk * (p + 1) + l;
+                local[3 * n1 + re.hcurlCount + rotation] = omega[0] * rigid.edgeRotations[0][rotation] +
+                                                           omega[1] * rigid.edgeRotations[1][rotation] +
+                                                           omega[2] * rigid.edgeRotations[2][rotation];
             }
         for (std::size_t i = 0; i < local.size(); ++i)
             if (el.dofs[i] >= first)
@@ -616,7 +654,7 @@ void ShellPart::affineField(const std::array<SpaceVector, 3>& gradient, const Sp
 ShellDisplacementRows ShellPart::displacementRows(std::size_t shell, double xi, double eta,
                                                   const std::function<bool(const FunctionKind&)>& keep) const
 {
-    const ShellElementData el = element(shell);
+    const ShellElementData& el = elementAtPoints(shell);
     const ShellReferenceElement& re = referenceElement(el.cornerCount);
     const std::vector<ReferenceJet> h = h1At(re, el.definition(), xi, eta);
     std::array<std::map<std::size_t, double>, 3> rows;

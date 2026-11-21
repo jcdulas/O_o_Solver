@@ -88,10 +88,7 @@ Vector unitTranslationOf(const MixedHybridModel& model, const MixedLine& line, c
             x[translation] = 1.0;
         return x;
     }
-    const ShellPart& part = *model.shellPart();
-    const ShellElementData shell = part.element(data.source.element);
-    const ShellReferenceElement& reference = part.referenceElement(shell.cornerCount);
-    const std::array<Vector, 6> rigid = rigidMotionUnknowns(reference, shell.definition());
+    const std::array<Vector, 6> rigid = model.shellPart()->rigidMotionsOf(data.source.element);
     const Vector& translation = rigid[RIGID_X_TRANSLATION];
     std::copy(translation.begin(), translation.end(), x.begin());
     return x;

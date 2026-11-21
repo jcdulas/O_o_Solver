@@ -19,6 +19,16 @@ endif()
 # bits and AVX2 and AVX-512 agree. GCC lowers _mm256_mul_pd and
 # _mm256_sub_pd to generic vector arithmetic, which it would otherwise be free to fuse.
 set(OOS_KERNEL_FLAGS_reference -ffp-contract=off)
+if(EMSCRIPTEN)
+    # In WebAssembly the compiler may use the 128-bit vector instructions in the loops of the reference family (no
+    # intrinsic is written there): its register tiles subtract their terms element by element, in the order of the
+    # scalar loops, so the bits are those of the scalar code. Every runtime that runs 64-bit WebAssembly has these
+    # instructions.
+    list(APPEND OOS_KERNEL_FLAGS_reference -msimd128)
+endif()
+# The WebAssembly family: the vector instructions through their intrinsics, and no contraction (WebAssembly has no
+# fused multiply-add among them; the flag keeps its scalar remainders to the same two roundings).
+set(OOS_KERNEL_FLAGS_wasm128 -msimd128 -ffp-contract=off)
 set(OOS_KERNEL_FLAGS_avx2 -mavx2 -mfma -ffp-contract=off)
 set(OOS_KERNEL_FLAGS_avx512 -mavx512f -mavx512dq -mavx512vl -mavx2 -mfma -ffp-contract=off)
 

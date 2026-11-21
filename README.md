@@ -142,7 +142,8 @@ Raise the version in `wasm/package.json` to keep a new one. Each run also keeps 
 `O_o_Solver-wasm` artifact.
 
 The default WebAssembly build runs on its calling thread. The `wasm-threads` variant enables shared-memory
-workers through the same C++ thread pool. Both variants use the portable reference dense kernels.
+workers through the same C++ thread pool. Both variants factorise with the dense kernels written on the 128-bit vector
+instructions of WebAssembly, which give the bits of the portable reference kernels.
 
 ## Licence
 

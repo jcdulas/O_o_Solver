@@ -48,8 +48,14 @@ struct EdgePointGeometry
 void addCongruence(Matrix& target, const Matrix& a, const Matrix33& m, double s);
 // target += s aᵀ m a, a of 2 rows.
 void addCongruence2(Matrix& target, const Matrix& a, const Matrix22& m, double s);
+// The same for an `a` whose columns outside [firstColumn, firstColumn + columnCount) are zero: only that block of the
+// target is formed (the other terms of the product are zero), with the same bits there.
+void addCongruence2(Matrix& target, const Matrix& a, const Matrix22& m, double s, std::size_t firstColumn,
+                    std::size_t columnCount);
 // target += s aᵀ b.
 void addTransposeProduct(Matrix& target, const Matrix& a, const Matrix& b, double s);
+// The same for a `b` whose columns from `columnCount` on are zero: those columns of the target are left as they are.
+void addTransposeProduct(Matrix& target, const Matrix& a, const Matrix& b, double s, std::size_t columnCount);
 // target += s aᵀ m b, a and b of 3 rows.
 void addTransposeProduct33(Matrix& target, const Matrix& a, const Matrix33& m, const Matrix& b, double s);
 // (A + Aᵀ) / 2 in place.

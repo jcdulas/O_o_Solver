@@ -100,6 +100,8 @@ GreenStrainFunctionals greenStrainFunctionals(const ShellReferenceElement& re, c
         const SurfaceFrame& f = edgePhi[k][gi];
         return add3(scl3(f[0], tv[0]), scl3(f[1], tv[1]));
     };
+    const ReggeFunctionalTables tables =
+        ReggeFunctionalTables::build(re, pre.geometries, def.mapReferenceConstants);
     GreenStrainFunctionals out;
     if (geometric)
     {
@@ -108,7 +110,7 @@ GreenStrainFunctionals greenStrainFunctionals(const ShellReferenceElement& re, c
     else
     {
         out.values = reggeFunctionals(
-            re, pre.geometries,
+            re, tables,
             [&](std::size_t q) -> std::array<double, 3>
             {
                 const SurfaceFrame& f = phi1[q];
@@ -131,7 +133,7 @@ GreenStrainFunctionals greenStrainFunctionals(const ShellReferenceElement& re, c
         for (std::size_t c = 0; c < 3; ++c)
         {
             const Vector column = reggeFunctionals(
-                re, pre.geometries,
+                re, tables,
                 [&](std::size_t q) -> std::array<double, 3>
                 {
                     const ReferenceJet& hj = def.volumeJets[q * n1 + i];

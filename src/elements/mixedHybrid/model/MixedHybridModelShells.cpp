@@ -52,9 +52,14 @@ constexpr double ROTATION_ROW_THRESHOLD = 1.0e-14;
 // this fraction of their largest there (the threshold of the singularity processor of the grid points).
 constexpr double UNSTIFFENED_ROTATION_RATIO = 1.0e-8;
 // The bytes of shell elements with their matrices the ShellPart keeps once built (ShellPartInput::matrixCacheBytes):
-// about 250 shells of degree 4 with their mass, so that the check, the stiffness, the mass, the loads and the recovery
+// about 300 shells of degree 4 with their mass, so that the check, the stiffness, the mass, the loads and the recovery
 // of a model of that size build each element once (a few milliseconds each).
 constexpr std::size_t SHELL_MATRIX_CACHE_BYTES = std::size_t{128} << 20;
+// The bytes the ShellPart may hold in all, the elements beyond the first budget kept with the operators of the stress
+// recovery alone (ShellPartInput::recoveryCacheBytes): about 5 000 shells of degree 4. The recovery of a model of
+// that size reads each element instead of building it a second time, which took as long as the stiffnesses; what is
+// kept, about 0.2 MB a shell, is a fifth of what the factorisation of such a model takes for each of its shells.
+constexpr std::size_t SHELL_RECOVERY_CACHE_BYTES = std::size_t{1} << 30;
 
 // The geometry report (spec section 10.5): the edges along which the normals of two shells differ by more than this
 // angle (degrees) are named, at most GEOMETRY_REPORT_EDGES of each kind (see reportGeometry), the largest angles
@@ -284,6 +289,7 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
     ShellPartInput input;
     input.withMass = true;
     input.matrixCacheBytes = SHELL_MATRIX_CACHE_BYTES;
+    input.recoveryCacheBytes = SHELL_RECOVERY_CACHE_BYTES;
     for (const std::int32_t row : m_gridRows)
     {
         const std::span<const double> xyz = positions[row];
@@ -850,7 +856,7 @@ std::map<EdgeKey, double> MixedHybridModel::edgeRoundings() const
     std::map<EdgeKey, double> roundings;
     for (const MixedShell& shell : m_shells)
     {
-        const ShellElementData element = m_shellPart->element(shell.partIndex);
+        const ShellElementData& element = m_shellPart->elementAtPoints(shell.partIndex);
         const ShellReferenceElement& reference = m_shellPart->referenceElement(shell.cornerCount);
         const ShellElementDefinition definition = element.definition();
         const SpaceVector z = unit3(cross3(element.axes[0], element.axes[1]));
@@ -1317,7 +1323,7 @@ void MixedHybridModel::fillShellComponents(const NodalDisplacements& displacemen
             needed = needed || wanted.count(m_gridIndexOfRow.at(shell.gridRows[k])) != 0;
         if (!needed)
             continue;
-        const ShellElementData element = m_shellPart->element(shell.partIndex);
+        const ShellElementData& element = m_shellPart->elementAtPoints(shell.partIndex);
         const ShellReferenceElement& reference = m_shellPart->referenceElement(shell.cornerCount);
         const std::span<const std::size_t> unknowns = m_shellPart->localUnknowns(shell.partIndex);
         const std::span<const double> signs = m_shellPart->localSigns(shell.partIndex);

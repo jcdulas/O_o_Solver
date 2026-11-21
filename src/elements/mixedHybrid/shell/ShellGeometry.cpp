@@ -29,8 +29,14 @@ Matrix22 PointGeometry::curvature() const
     return k;
 }
 
-PointGeometry geometryFrom(std::span<const SpaceVector> mapCoefficients, const JetOfFunction& jet,
-                           const SurfaceFrame& axes, bool second)
+namespace
+{
+
+// geometryFrom for any way of giving the jet of function i: the tables of an element are read in place, without the
+// call through a std::function that geometryFrom makes for each function at each point.
+template <typename JetAt>
+PointGeometry geometryWith(std::span<const SpaceVector> mapCoefficients, const JetAt& jet, const SurfaceFrame& axes,
+                           bool second)
 {
     PointGeometry g;
     // d2[α][β] = ∂_αβ X
@@ -38,7 +44,7 @@ PointGeometry geometryFrom(std::span<const SpaceVector> mapCoefficients, const J
     for (std::size_t i = 0; i < mapCoefficients.size(); ++i)
     {
         const SpaceVector& xi = mapCoefficients[i];
-        const ReferenceJet t = jet(i);
+        const ReferenceJet& t = jet(i);
         for (std::size_t c = 0; c < 3; ++c)
         {
             g.x[c] += xi[c] * t[0];
@@ -82,6 +88,14 @@ PointGeometry geometryFrom(std::span<const SpaceVector> mapCoefficients, const J
     const SpaceVector f1 = sub3(axes[0], scl3(zn, dot3(g.nu, axes[0]) / (1.0 + dot3(z, g.nu))));
     g.phi = std::atan2(dot3(cross3(g.e[0], f1), g.nu), dot3(g.e[0], f1));
     return g;
+}
+
+} // namespace
+
+PointGeometry geometryFrom(std::span<const SpaceVector> mapCoefficients, const JetOfFunction& jet,
+                           const SurfaceFrame& axes, bool second)
+{
+    return geometryWith(mapCoefficients, jet, axes, second);
 }
 
 ReferenceJet rationalJet(const ReferenceJet& n, const ReferenceJet& w)
@@ -141,18 +155,20 @@ std::vector<ReferenceJet> h1At(const ShellReferenceElement& re, const ShellEleme
 PointGeometry geometryAt(const ShellReferenceElement& re, const ShellElementDefinition& def, double xi, double eta)
 {
     const std::vector<ReferenceJet> jets = h1At(re, def, xi, eta);
-    return geometryFrom(def.mapCoefficients, [&](std::size_t i) { return jets[i]; }, def.axes, true);
+    return geometryWith(
+        def.mapCoefficients, [&](std::size_t i) -> const ReferenceJet& { return jets[i]; }, def.axes, true);
 }
 
 PointGeometry volumeGeometry(const ShellElementDefinition& def, std::size_t h1Count, std::size_t q)
 {
-    return geometryFrom(
-        def.mapCoefficients, [&](std::size_t i) { return def.volumeJets[q * h1Count + i]; }, def.axes, true);
+    return geometryWith(
+        def.mapCoefficients, [&](std::size_t i) -> const ReferenceJet& { return def.volumeJets[q * h1Count + i]; },
+        def.axes, true);
 }
 
 PointGeometry edgeGeometry(const ShellElementDefinition& def, std::size_t h1Count, std::size_t k, std::size_t g)
 {
-    return geometryFrom(
+    return geometryWith(
         def.mapCoefficients,
         [&](std::size_t i)
         {

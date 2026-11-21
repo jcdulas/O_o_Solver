@@ -137,6 +137,11 @@ using SurfaceAt = std::function<SpaceVector(double, double)>;
 // Reference: the element part of tdnns/analysis.rs::Analysis::rigid_modes
 [[nodiscard]] std::array<Vector, 6> rigidMotionUnknowns(const ShellReferenceElement& re,
                                                         const ShellElementDefinition& def);
+// The same with the interior projection of `re` given (InteriorProjection::build), for a caller that has it: it
+// depends on the reference element alone and takes more to build than the rigid motions of one element.
+[[nodiscard]] std::array<Vector, 6> rigidMotionUnknowns(const ShellReferenceElement& re,
+                                                        const ShellElementDefinition& def,
+                                                        const InteriorProjection& projection);
 
 // The elimination of the interior unknowns of one element (static condensation):
 //   K_c = K_oo − K_oi K_ii⁻¹ K_io,  f_c = f_o − K_oi K_ii⁻¹ f_i,  u_i = K_ii⁻¹ (f_i − K_io u_o),

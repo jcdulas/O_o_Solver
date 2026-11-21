@@ -278,3 +278,24 @@ CHECK_CASE("core: matrix products and blocks")
     columns.setRow(0, mh::Vector{7.0, 8.0});
     runner.expect(columns.column(1) == mh::Vector({8.0, 2.0, 3.0}), "set a column and a row");
 }
+
+// The products that leave out what is zero or symmetric give the terms of the full products, to the bit.
+CHECK_CASE("core: products on the leading columns and the symmetric product are the full products")
+{
+    const std::size_t rows = 9;
+    const std::size_t columns = 14;
+    const std::size_t leading = 8;
+    // B with its columns from `leading` on at zero, and some zeros among the others.
+    mh::Matrix b(rows, columns);
+    for (std::size_t i = 0; i < rows; ++i)
+        for (std::size_t j = 0; j < leading; ++j)
+            b(i, j) = (i + 2 * j) % 5 == 0 ? 0.0 : std::sin(0.3 + 1.1 * static_cast<double>(i * columns + j));
+    const mh::Matrix a = generalMatrix(rows);
+    runner.expect(mh::timesLeadingColumns(a, b, leading) == a * b, "A B on the leading columns");
+    runner.expect(mh::transposeTimesLeadingColumns(a, b, leading) == mh::transposeTimes(a, b),
+                  "A^T B on the leading columns");
+    runner.expect(mh::transposeTimesSelf(b) == mh::transposeTimes(b, b), "B^T B formed on one triangle");
+    const mh::Matrix general = generalMatrix(37);
+    runner.expect(mh::transposeTimesSelf(general) == mh::transposeTimes(general, general),
+                  "A^T A formed on one triangle");
+}

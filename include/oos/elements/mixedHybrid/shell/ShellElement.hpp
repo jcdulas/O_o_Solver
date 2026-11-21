@@ -64,6 +64,7 @@ namespace oos::elements::mixedHybrid
 struct ShellElementMatrices
 {
     std::size_t unknownCount = 0;
+    // Empty when the element was built without it (ShellMatrixRequest).
     Matrix stiffness;
     std::optional<Matrix> mass;
     // G + C (momentCount × unknownCount).
@@ -118,6 +119,42 @@ using TangentialStrainAtEdge = std::function<double(std::size_t, std::size_t)>;
                                       const CovariantStrainAtPoint& volume, const TangentialStrainAtEdge& edge,
                                       bool mapReferenceConstants);
 
+// What the membrane functionals read at the points of an element whatever the strain field: formed once for the
+// fields an element applies them to (each function of its membrane basis and the strain of each displacement unknown,
+// about 130 fields on a quadrilateral of degree 4), where reggeFunctionals above forms it for each field.
+struct ReggeFunctionalTables
+{
+    // The interior moments m in [first, last) read the component `component` of the strain.
+    struct ComponentRun
+    {
+        std::size_t first = 0;
+        std::size_t last = 0;
+        std::size_t component = 0;
+    };
+
+    // P_l(2τ − 1) at the points of the edge rule, [l · edgePointCount + g].
+    std::vector<double> edgeLegendre;
+    // w_q times the test polynomial of interior moment m at surface point q, [q · interiorMomentCount + m].
+    std::vector<double> weightedTest;
+    // The interior moments in their order, by runs of one strain component.
+    std::vector<ComponentRun> componentRuns;
+    // At each surface point, for the work of the constant membrane forces (empty with `mapReferenceConstants`): the
+    // covariant strain to local Voigt components (covariantToVoigt of the point), the transformation T(φ) to the
+    // frame of the constant states, and w_q j_q.
+    std::vector<Matrix33> toVoigt;
+    std::vector<Matrix33> toConstantFrame;
+    std::vector<double> weightedArea;
+
+    [[nodiscard]] static ReggeFunctionalTables build(const ShellReferenceElement& re,
+                                                     std::span<const PointGeometry> geometries,
+                                                     bool mapReferenceConstants);
+};
+
+// reggeFunctionals with the tables of the element given: the same values, to the bit.
+[[nodiscard]] Vector reggeFunctionals(const ShellReferenceElement& re, const ReggeFunctionalTables& tables,
+                                      const CovariantStrainAtPoint& volume, const TangentialStrainAtEdge& edge,
+                                      bool mapReferenceConstants);
+
 // A point of the map of a shell whose Jacobian is at most this fraction of the largest makes the map not invertible
 // (buildShellElement refuses the element with SHELL_MAP_NOT_INVERTIBLE).
 inline constexpr double SHELL_JACOBIAN_RATIO = 1e-10;
@@ -133,5 +170,22 @@ inline constexpr const char* SHELL_MAP_NOT_INVERTIBLE =
 [[nodiscard]] std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellReferenceElement& re,
                                                                                 const ShellElementDefinition& def,
                                                                                 bool withMass);
+
+// What is asked of an element beside the operators of the stress recovery (the pairing, the inverse compliance, the
+// membrane interpolation and the inverse of the membrane functionals), which every use reads. The recovery, the
+// thermal loads and the geometric stiffness read those operators alone: built without the stiffness, an element
+// leaves out the membrane and shear stiffness of each point and the products that assemble the stiffness, about a
+// third of its build.
+struct ShellMatrixRequest
+{
+    bool stiffness = true;
+    bool mass = false;
+};
+
+// buildShellElement with the stiffness and the mass as asked. The operators of the recovery, and the stiffness and
+// the mass when they are asked, are those of the build of everything, to the bit.
+[[nodiscard]] std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellReferenceElement& re,
+                                                                                const ShellElementDefinition& def,
+                                                                                const ShellMatrixRequest& request);
 
 } // namespace oos::elements::mixedHybrid

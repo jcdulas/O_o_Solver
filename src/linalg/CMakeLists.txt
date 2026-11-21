@@ -1,10 +1,10 @@
 # Module `linalg`. Sources are found by pattern: a new .cpp needs no edit here.
-# The kernel families (kernels/reference, kernels/avx2, kernels/avx512) are compiled apart, each with its own target
-# flags (cmake/OosKernels.cmake); everything else at the baseline x86-64.
-set(oos_all_kernel_families reference avx2 avx512)
+# The kernel families (kernels/reference, kernels/avx2, kernels/avx512, kernels/wasm128) are compiled apart, each with
+# its own target flags (cmake/OosKernels.cmake); everything else at the baseline x86-64.
+set(oos_all_kernel_families reference avx2 avx512 wasm128)
 if(OOS_IS_WASM)
-    # WebAssembly has no x86 vector units: only the reference family is compiled.
-    set(oos_kernel_families reference)
+    # WebAssembly has no x86 vector units: the reference family and its own vector family.
+    set(oos_kernel_families reference wasm128)
 else()
     set(oos_kernel_families reference avx2 avx512)
 endif()

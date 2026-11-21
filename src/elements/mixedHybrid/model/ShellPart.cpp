@@ -460,9 +460,8 @@ void ShellPart::checkElements()
     }
 }
 
-ShellElementData ShellPart::element(std::size_t shell) const
+ShellElementData ShellPart::withTables(ShellElementData data) const
 {
-    ShellElementData data = m_shells[shell];
     ElementJets jets = elementJets(referenceElement(data.cornerCount), data.weight);
     data.volumeJets = std::move(jets.volume);
     data.edgeJets = std::move(jets.edge);
@@ -470,7 +469,13 @@ ShellElementData ShellPart::element(std::size_t shell) const
     return data;
 }
 
-std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, bool withMatrices, bool withMass) const
+ShellElementData ShellPart::element(std::size_t shell) const
+{
+    return withTables(m_shells[shell]);
+}
+
+std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, bool withMatrices,
+                                                             const ShellMatrixRequest& request) const
 {
     const ShellPartShell& input = m_input.shells[shell];
     const std::size_t nv = input.corners.count;
@@ -516,7 +521,7 @@ std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, 
                 return "degenerate element: " + std::string(SHELL_MAP_NOT_INVERTIBLE);
         return data;
     }
-    std::variant<ShellElementMatrices, std::string> matrices = buildShellElement(re, def, withMass);
+    std::variant<ShellElementMatrices, std::string> matrices = buildShellElement(re, def, request);
     if (const std::string* message = std::get_if<std::string>(&matrices))
         return "degenerate element: " + *message;
     data.matrices = std::get<ShellElementMatrices>(std::move(matrices));
@@ -526,6 +531,30 @@ std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, 
 // About what a shell of degree 4 with its matrices takes in the part (elementRefusal: whether one more fits).
 constexpr std::size_t KEPT_ELEMENT_BYTES = std::size_t{1} << 19;
 
+namespace
+{
+
+std::size_t bytesOf(const Matrix& m)
+{
+    return m.rows() * m.columns() * sizeof(double);
+}
+
+// The bytes of the matrices of an element (the rest of an element the part keeps is small).
+std::size_t bytesOf(const ShellElementMatrices& matrices)
+{
+    return bytesOf(matrices.stiffness) + bytesOf(matrices.pairing) + bytesOf(matrices.complianceInverse) +
+           bytesOf(matrices.reggeInterpolation) + bytesOf(matrices.reggeFunctionalInverse) +
+           (matrices.mass ? bytesOf(*matrices.mass) : 0);
+}
+
+// Whether the matrices hold what `request` asks.
+bool holds(const ShellElementMatrices& matrices, const ShellMatrixRequest& request)
+{
+    return (!request.stiffness || !matrices.stiffness.empty()) && (!request.mass || matrices.mass.has_value());
+}
+
+} // namespace
+
 std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::size_t shell) const
 {
     return elementWithMatrices(shell, true);
@@ -533,25 +562,32 @@ std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::
 
 std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::size_t shell, bool withMass) const
 {
-    const bool mass = withMass && m_input.withMass;
+    return elementWithMatrices(shell, ShellMatrixRequest{true, withMass});
+}
+
+std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::size_t shell,
+                                                                           const ShellMatrixRequest& request) const
+{
+    const ShellMatrixRequest asked{request.stiffness, request.mass && m_input.withMass};
     {
-        const std::lock_guard<std::mutex> lock(m_cache->mutex);
-        if (shell < m_cache->elements.size() && m_cache->elements[shell] &&
-            (!mass || m_cache->elements[shell]->matrices.mass))
-            return *m_cache->elements[shell];
+        std::shared_ptr<const ShellElementData> kept;
+        {
+            const std::lock_guard<std::mutex> lock(m_cache->mutex);
+            if (shell < m_cache->elements.size())
+                kept = m_cache->elements[shell];
+        }
+        if (kept && holds(kept->matrices, asked))
+            return withTables(*kept);
     }
-    std::variant<ShellElementData, std::string> built = build(shell, true, mass);
+    std::variant<ShellElementData, std::string> built = build(shell, true, asked);
     const ShellElementData* data = std::get_if<ShellElementData>(&built);
-    if (data == nullptr || m_input.matrixCacheBytes == 0)
+    const std::size_t wholeBudget = m_input.matrixCacheBytes;
+    const std::size_t budget = std::max(wholeBudget, m_input.recoveryCacheBytes);
+    if (data == nullptr || budget == 0)
         return built;
-    // The bytes of the element: its matrices and its tables (the rest is small).
-    const auto bytesOf = [](const Matrix& m) { return m.rows() * m.columns() * sizeof(double); };
-    const ShellElementMatrices& matrices = data->matrices;
-    std::size_t bytes = bytesOf(matrices.stiffness) + bytesOf(matrices.pairing) + bytesOf(matrices.complianceInverse) +
-                        bytesOf(matrices.reggeInterpolation) + bytesOf(matrices.reggeFunctionalInverse) +
-                        (matrices.mass ? bytesOf(*matrices.mass) : 0) + data->volumeJets.size() * sizeof(ReferenceJet);
-    for (const std::vector<EdgeJet>& jets : data->edgeJets)
-        bytes += jets.size() * sizeof(EdgeJet);
+    // What the part keeps of it: the element without the tables of its points, which take as much as its matrices.
+    ShellElementData element = m_shells[shell];
+    element.matrices = data->matrices;
     const std::lock_guard<std::mutex> lock(m_cache->mutex);
     if (m_cache->elements.size() < m_shells.size())
     {
@@ -559,16 +595,35 @@ std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::
         m_cache->entryBytes.resize(m_shells.size(), 0);
     }
     std::shared_ptr<const ShellElementData>& kept = m_cache->elements[shell];
-    // Another thread kept it meanwhile (with its mass when the mass is asked).
-    if (kept && (!mass || kept->matrices.mass))
+    // Another thread kept it meanwhile with what was asked.
+    if (kept && holds(kept->matrices, asked))
         return built;
-    // An element kept without its mass gives its place to the one with it.
-    const std::size_t total = m_cache->bytes - m_cache->entryBytes[shell] + bytes;
-    if (total <= m_input.matrixCacheBytes)
+    // The stiffness or the mass of the element kept, when this build did not form them (the same matrices).
+    if (kept && element.matrices.stiffness.empty())
+        element.matrices.stiffness = kept->matrices.stiffness;
+    if (kept && !element.matrices.mass)
+        element.matrices.mass = kept->matrices.mass;
+    const std::size_t others = m_cache->bytes - m_cache->entryBytes[shell];
+    const std::size_t wholeBytes = bytesOf(element.matrices);
+    if (others + wholeBytes <= wholeBudget)
     {
-        kept = std::make_shared<const ShellElementData>(*data);
-        m_cache->entryBytes[shell] = bytes;
-        m_cache->bytes = total;
+        // The element whole (one kept without its mass gives its place to the one with it).
+        kept = std::make_shared<const ShellElementData>(std::move(element));
+        m_cache->entryBytes[shell] = wholeBytes;
+        m_cache->bytes = others + wholeBytes;
+        return built;
+    }
+    if (kept)
+        return built; // what is kept of it stays
+    // No room for the whole element: the operators of the recovery alone.
+    element.matrices.stiffness = Matrix();
+    element.matrices.mass.reset();
+    const std::size_t recoveryBytes = bytesOf(element.matrices);
+    if (others + recoveryBytes <= budget)
+    {
+        kept = std::make_shared<const ShellElementData>(std::move(element));
+        m_cache->entryBytes[shell] = recoveryBytes;
+        m_cache->bytes = others + recoveryBytes;
     }
     return built;
 }
@@ -588,7 +643,7 @@ std::optional<std::string> ShellPart::elementRefusal(std::size_t shell) const
     // A part that keeps no element (matrixCacheBytes 0: the checks of the kernels) builds every one.
     const bool withMatrices = m_input.matrixCacheBytes == 0 || isKept || hasRoom;
     std::variant<ShellElementData, std::string> built =
-        withMatrices ? elementWithMatrices(shell, false) : build(shell, false, false);
+        withMatrices ? elementWithMatrices(shell, false) : build(shell, false, ShellMatrixRequest{});
     if (std::string* message = std::get_if<std::string>(&built))
         return std::move(*message);
     return std::nullopt;
@@ -641,32 +696,15 @@ std::vector<EdgeGeometry> ShellPart::geometryReport() const
         return {};
     // the points of the edge rule (the same on the triangle and on the quadrilateral)
     const std::vector<double>& tau = referenceElement(m_input.shells.front().corners.count).edgeParameters;
-    // the isoparametric surface of the elements at the points of their edges; the report asks for the points of one
-    // element after the other, so the tables of the last element are kept
-    struct Cache
-    {
-        std::size_t shell = 0;
-        std::optional<ShellElementData> data;
-    } cache;
+    // the isoparametric surface of the elements at the points of their edges, by the map at the point: the position
+    // and the normal need the weight and the map of the element alone (elementAtPoints), and are those the tables of
+    // the edge rule give at its points (the same polynomials at the same points)
     const EdgeSurfaceEvaluator point = [&](std::size_t shell, std::size_t localEdge, double t)
     {
-        if (!cache.data || cache.shell != shell)
-        {
-            cache.data = element(shell);
-            cache.shell = shell;
-        }
-        const ShellReferenceElement& re = referenceElement(cache.data->cornerCount);
-        const ShellElementDefinition def = cache.data->definition();
-        // the tabulated point of the edge rule (the reference reads them), else the map at the parameter
-        const auto at = std::find(re.edgeParameters.begin(), re.edgeParameters.end(), t);
-        if (at != re.edgeParameters.end())
-        {
-            const auto g = static_cast<std::size_t>(at - re.edgeParameters.begin());
-            const PointGeometry geometry = edgeGeometry(def, re.h1Count, localEdge, g);
-            return EdgeSurfacePoint{geometry.x, geometry.nu};
-        }
+        const ShellElementData& data = elementAtPoints(shell);
+        const ShellReferenceElement& re = referenceElement(data.cornerCount);
         const ReferencePoint uv = referenceEdgePointAndDirection(re.cornerCount, localEdge, t).first;
-        const PointGeometry geometry = geometryAt(re, def, uv[0], uv[1]);
+        const PointGeometry geometry = geometryAt(re, data.definition(), uv[0], uv[1]);
         return EdgeSurfacePoint{geometry.x, geometry.nu};
     };
     std::vector<EdgeGeometry> report = mixedHybrid::geometryReport(m_reading, m_topology, tau, point);

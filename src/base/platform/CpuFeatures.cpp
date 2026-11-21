@@ -100,6 +100,9 @@ std::string readBrand()
 CpuFeatures detectCpuFeatures()
 {
     CpuFeatures features;
+#if defined(OOS_WASM)
+    features.hasWasmSimd128 = true;
+#endif
 #if defined(OOS_HAS_CPUID)
     const unsigned maxLeaf = __get_cpuid_max(0, nullptr);
     if (maxLeaf == 0)

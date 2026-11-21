@@ -1,5 +1,6 @@
 // The algorithms of the SIMD dense kernels, written once for every vector width. This file is not compiled on its
-// own: kernels/avx2/DenseBlockKernels.cpp and kernels/avx512/DenseBlockKernels.cpp include it inside their family
+// own: kernels/avx2/DenseBlockKernels.cpp, kernels/avx512/DenseBlockKernels.cpp and (with a subtractProduct of two
+// roundings, WebAssembly having no fused one) kernels/wasm128/DenseBlockKernels.cpp include it inside their family
 // namespace and an unnamed namespace (so that everything here has internal linkage and nothing compiled with SIMD
 // flags is shared with baseline code), after defining `struct Simd`, the vector operations of the family:
 //

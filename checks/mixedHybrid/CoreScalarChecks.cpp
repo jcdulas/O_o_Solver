@@ -183,6 +183,22 @@ CHECK_CASE("core: Polynomial2 arithmetic, derivatives and jet")
     for (std::size_t k = 0; k < 6; ++k)
         runner.expectNear(jet[k], expected[k], 1e-15, "jet " + std::to_string(k));
     runner.expectNear(p.evaluate(x, y), value, 1e-15, "evaluate");
+    // The jet is formed without the derived polynomials: its values are theirs to the bit, on a polynomial with
+    // every coefficient of its degree and on the zero polynomial.
+    P full;
+    for (std::size_t i = 0; i < 7; ++i)
+        for (std::size_t j = 0; j < 6; ++j)
+            full.coefficient(i, j) = std::sin(1.0 + 3.0 * static_cast<double>(i) + 0.7 * static_cast<double>(j));
+    for (const P& q : {p, full, P::zero(), P::constant(-2.5), P::monomial(0, 5), P::monomial(5, 0)})
+    {
+        const std::array<double, 6> formed = q.jet(x, y);
+        const P dx = q.dXi();
+        const P dy = q.dEta();
+        const double derived[6] = {q.evaluate(x, y),        dx.evaluate(x, y),        dy.evaluate(x, y),
+                                   dx.dXi().evaluate(x, y), dx.dEta().evaluate(x, y), dy.dEta().evaluate(x, y)};
+        for (std::size_t k = 0; k < 6; ++k)
+            runner.expect(formed[k] == derived[k], "jet " + std::to_string(k) + " is the derived polynomial's value");
+    }
     runner.expect(p.dXi().dEta() == p.dEta().dXi(), "mixed derivatives commute");
     runner.expect(p - p == P::zero(), "p - p = 0");
     runner.expect(p.coefficient(3, 1) == 2.0, "coefficient of xi^3 eta");
