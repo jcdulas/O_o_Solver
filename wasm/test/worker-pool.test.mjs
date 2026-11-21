@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { oor, readerDist, dist } from "./helpers/runtime.mjs";
 import { axial } from "./helpers/optimization-models.mjs";
+import { CASE_CEILING_MS } from "./helpers/budget.mjs";
 const { createOptimizationWorkerPool } = await import(pathToFileURL(path.join(dist, "index.js")));
 
 const definition = { version: 1,
@@ -31,26 +32,26 @@ const nativePool = await createOptimizationWorkerPool(config({ mode: "native", d
   responses: [{ id: 1, type: "Displacement", attributeA: 1, targets: [2] }], objective: { responseId: 1, subcase: 1 } } }));
 after(() => { sharedPool.close(); timeoutPool.close(); nativePool.close(); });
 
-test("independent package workers transfer results and gradients", { timeout: 1000 }, async () => {
+test("independent package workers transfer results and gradients", { timeout: CASE_CEILING_MS }, async () => {
   const results = await sharedPool.evaluateMany([[2, 10], [3, 12]], { includeResults: true, gradients: true });
   [0.015, 0.012].forEach((value, i) => near(results[i].values.objective, value));
   assert.ok(results[0].analyses[0].nodalTables[0].values instanceof Float64Array);
   near(results[0].gradients.values[0], -0.0075);
 });
 
-test("queued work and abort leave the study pool usable", { timeout: 1000 }, async () => {
+test("queued work and abort leave the study pool usable", { timeout: CASE_CEILING_MS }, async () => {
   near((await sharedPool.evaluate([1, 10])).values.objective, 0.03);
   const aborted = new AbortController(); aborted.abort();
   await assert.rejects(sharedPool.evaluate([2, 10], { signal: aborted.signal }), { name: "AbortError" });
   near((await sharedPool.evaluate([2, 10])).values.objective, 0.015);
 });
 
-test("a timeout interrupts synchronous work and its replacement worker accepts the next point", { timeout: 1000 }, async () => {
+test("a timeout interrupts synchronous work and its replacement worker accepts the next point", { timeout: CASE_CEILING_MS }, async () => {
   await assert.rejects(timeoutPool.evaluate([0.75, 10], { timeoutMs: 30 }), /timed out/);
   near((await timeoutPool.evaluate([2, 10])).values.objective, 0.015);
 });
 
-test("native optimization problems use the same worker protocol", { timeout: 1000 }, async () => {
+test("native optimization problems use the same worker protocol", { timeout: CASE_CEILING_MS }, async () => {
   const point = await nativePool.evaluate([2], { gradients: true });
   near(point.values.objective, 0.015); near(point.gradients.objective[0], -0.0075);
 });

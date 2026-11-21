@@ -118,6 +118,9 @@ cmake --preset release
 cmake --build build/release -j
 ```
 
+The `Native` workflow makes this build with GCC 12 and runs the native checks of the element kernels
+(`-DOOS_BUILD_NATIVE_CHECKS=ON`, `build/release/checks/oos_native_checks`).
+
 WebAssembly (64-bit WebAssembly, Memory64: Node.js 24 or a browser that supports it; the Emscripten SDK on the PATH):
 
 ```bash
@@ -130,7 +133,8 @@ The [fast input combination tests](docs/testing.md) enforce a one-second ceiling
 `node wasm/test/run.mjs` for a compact summary and a JSON timing report.
 
 The package is in `build/wasm/dist` (`oos_solver_core.js`, `.wasm`, `index.js`, `index.d.ts`, `package.json`).
-The `WebAssembly` workflow builds it on every push to `main` that changes the sources and publishes it as
+The `WebAssembly` workflow builds it on every push to `main` that changes the sources, runs the test suites on it
+(see [continuous integration](docs/testing.md#continuous-integration)) and, when they pass, publishes it as
 `O_o_Solver-wasm.zip` in two [releases](https://github.com/jcdulas/O_o_Solver/releases): `wasm-latest`, a pre-release
 that follows the branch, and one release kept for each version of `wasm/package.json` (`v0.2.0`, ...), made by the
 first build of that version and not changed afterwards; the newest of these is the latest release of the repository.

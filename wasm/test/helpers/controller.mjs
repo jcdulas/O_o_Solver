@@ -1,7 +1,7 @@
 import { Worker } from "node:worker_threads";
+import { CASE_BUDGET_MS } from "./budget.mjs";
 
-// Keep 100 ms for message delivery and test-runner bookkeeping below the user's one-second ceiling.
-export const CASE_BUDGET_MS = 900;
+export { CASE_BUDGET_MS, CASE_CEILING_MS } from "./budget.mjs";
 export class CaseWorker {
   constructor(options = {}) {
     this.worker = new Worker(new URL("./worker.mjs", import.meta.url), { workerData: options });

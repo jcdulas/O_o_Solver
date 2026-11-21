@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { CASE_BUDGET_MS, CASE_CEILING_MS } from "./helpers/budget.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../..");
@@ -10,7 +11,7 @@ const variant = process.env.OOS_SOLVER_DIST
 const directory = path.resolve(process.env.OOS_TEST_RESULTS ?? path.join(root, "build/test-results"));
 mkdirSync(directory, { recursive: true });
 const report = path.join(directory, `${variant}.json`);
-console.log(`Running ${variant} cases with a 900 ms watchdog and a one-second test ceiling...`);
+console.log(`Running ${variant} cases with a ${CASE_BUDGET_MS} ms watchdog and a ${CASE_CEILING_MS} ms test ceiling...`);
 const result = spawnSync(process.execPath, ["--test", `--test-reporter=${pathToFileURL(path.join(here, "helpers/reporter.mjs"))}`,
   `--test-reporter-destination=${report}`, ...process.argv.slice(2), path.join(here, "deadline.test.mjs"),
   path.join(here, "fast.test.mjs")], { stdio: "inherit", cwd: root });

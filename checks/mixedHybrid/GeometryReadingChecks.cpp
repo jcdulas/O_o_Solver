@@ -35,6 +35,20 @@ constexpr double DEGREE = PI / 180.0;
 constexpr std::size_t REPORT_POINTS = 12;
 // The tolerance of the values computed by the reference crate (absolute on quantities of order 1).
 constexpr double REFERENCE_TOLERANCE = 1e-12;
+// The smallest kink the report resolves. A kink is the arc cosine of the dot product of two unit normals: within a few
+// units of round-off of 1 (2.2e-16) that arc cosine is anything from 0 to 4e-8 whatever the normals, and which value
+// it takes depends on the compiler and on the mathematical library of the platform. Below this resolution a kink is
+// compared with the reference's as one smooth edge with another, not digit for digit.
+constexpr double KINK_RESOLUTION = 1e-7;
+
+// Whether the largest kink read is the reference's: to the tolerance of the reference, or both below what the report
+// resolves.
+bool isSameKink(double kink, double reference)
+{
+    if (reference < KINK_RESOLUTION)
+        return kink < KINK_RESOLUTION;
+    return std::abs(kink - reference) < REFERENCE_TOLERANCE;
+}
 
 double distance(const Vector3& a, const Vector3& b)
 {
@@ -252,7 +266,7 @@ void compareWithReference(oos::checks::CheckRunner& runner, const std::string& n
     const double kink = geo::largestKink(mh::geometryReport(mesh.input, mesh.topology, mesh.surfaces, REPORT_POINTS));
     // absolute: the angle of two unit normals 1e-3 apart is the arc cosine of a number 1e-6 from 1, which amplifies
     // the round-off of their dot product by 1e3
-    runner.expect(std::abs(kink - patchKink) < REFERENCE_TOLERANCE, name + ": largest kink " + std::to_string(kink));
+    runner.expect(isSameKink(kink, patchKink), name + ": largest kink " + std::to_string(kink));
 }
 
 } // namespace
@@ -696,7 +710,8 @@ CHECK_CASE("geometry: report against the reference")
     const ReadMesh ellipsoid = read(geo::cellMesh(4, 4, ellipsoidPoint, CellPattern::Quadrilaterals));
     const auto kinkOf = [](const ReadMesh& m)
     { return geo::largestKink(mh::geometryReport(m.input, m.topology, m.surfaces, REPORT_POINTS)); };
-    runner.expect(std::abs(kinkOf(sphereQuads) - 2.58095682795178505e-8) < 1e-12, "sphere, quadrilaterals");
+    // The sphere read by quadrilaterals is smooth: the reference reads 2.58e-8, the round-off of an arc cosine.
+    runner.expect(kinkOf(sphereQuads) < KINK_RESOLUTION, "sphere, quadrilaterals");
     runner.expect(std::abs(kinkOf(sphereTriangles) - 1.70484447075978864e-3) < 1e-11, "sphere, triangles");
     runner.expect(std::abs(kinkOf(ellipsoid) - 2.40966467159763921e-2) < 1e-11, "ellipsoid, quadrilaterals");
 }

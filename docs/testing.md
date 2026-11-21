@@ -29,6 +29,10 @@ and duration, the ten slowest tests, maximum duration, failures and any duration
 a nonzero status for a numerical failure or an exceeded limit. `OOS_TEST_RESULTS` changes the report directory.
 The separate worker-pool tests create their pools during module setup and give each test a 1,000 ms timeout.
 
+These limits are those of a developer's machine. A slower or shared machine sets `OOS_TEST_TIME_FACTOR` (a number of
+at least 1): the watchdog, the ceiling of each test and the limit of the report are multiplied by it, so that a case
+that hangs is still interrupted.
+
 To investigate one input without running the entire matrix:
 
 ```bash
@@ -86,6 +90,24 @@ writes them (`SurfaceEdge`, `SurfaceFacet`, `SurfaceLine` records, or `Parameter
 helpers `surfaceRecords` and `prepared` of `support.mjs`); the program only chooses the formulation.
 `node wasm/test/helpers/untimed.mjs [suite ...] [--match text]` runs the cases of the fast
 suite without its watchdog, for a machine busy with something else.
+
+## Continuous integration
+
+Two workflows run on a push to `main` and on a pull request that change the sources.
+
+`WebAssembly` builds the package, then runs on it:
+
+- the fast suite (`node wasm/test/run.mjs`, then the numerical derivative and worker pool tests), with
+  `OOS_TEST_TIME_FACTOR` at 10 for the shared runners; its timing report is kept as the `O_o_Solver-test-timings`
+  artifact;
+- the validation suite, its files dealt to four runners by their rank in `wasm/test/validation`.
+
+Both load the O_o_Reader package of the `wasm-latest` release of the O_o_Reader repository
+(`.github/scripts/fetch-reader-package.sh`), so a change that needs a change of the reader passes once the reader's
+own change is on its main branch. The releases of the package are published only when both suites pass.
+
+`Native` builds the libraries with GCC 12, the oldest compiler the sources are written for, with the warnings as
+errors, and runs the native checks (`checks/`).
 
 ## Coverage domains
 

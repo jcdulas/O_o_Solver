@@ -1,0 +1,57 @@
+name: Native
+
+# Builds the libraries natively with the oldest compiler the sources are written for (GCC 12), with the warnings of
+# the project as errors, and runs the native checks of the element kernels (checks/), which need no reader.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'cmake/**'
+      - 'checks/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - '!**/*.md'
+      - '.github/workflows/native.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'cmake/**'
+      - 'checks/**'
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - '!**/*.md'
+      - '.github/workflows/native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Build with GCC 12 and run the native checks
+    runs-on: ubuntu-latest
+    # The official image of the compiler: GCC 12 on Debian 12, whose CMake (3.25) is the oldest the presets take.
+    container: gcc:12
+    timeout-minutes: 90
+    steps:
+      - name: Install CMake and Ninja
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends cmake ninja-build
+      - name: Check out sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the libraries and the checks
+        run: |
+          g++ --version
+          cmake --preset release -DOOS_BUILD_NATIVE_CHECKS=ON
+          cmake --build build/release -j "$(nproc)"
+      - name: Run the native checks
+        run: build/release/checks/oos_native_checks
