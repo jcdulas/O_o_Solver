@@ -79,9 +79,10 @@ the folders in that order, which is the order in which the pieces depend on one 
 
 - `ordering/NodePermutation` (an elimination order and its inverse), `ordering/ApproximateMinimumDegree` (Amestoy,
   Davis and Duff 1996, ties by index through an indexed heap, a trailing set kept last),
-  `ordering/GeometricDissection` (coordinate bisection, separator from the edge cut, leaves by the constrained minimum
-  degree, halves in parallel), `ordering/ConstrainedOrdering` (the rule that chooses the method of a unit, the trailing
-  set last), `ordering/QuotientGraph` (one vertex per unit). Internal: `ordering/TrailingSet`.
+  `ordering/GeometricDissection` (coordinate bisection, separator the lightest vertex cover of the edge cut, leaves by
+  the constrained minimum degree, halves in parallel), `ordering/ConstrainedOrdering` (the rule that chooses the
+  method of a unit, the trailing set last), `ordering/QuotientGraph` (one vertex per unit). Internal:
+  `ordering/TrailingSet`.
 - `symbolic/EliminationTree` (Liu, postorder), `symbolic/ColumnCounts` (Gilbert, Ng and Peyton, weighted),
   `symbolic/Supernodes` (fundamental supernodes, the trailing block last), `symbolic/Amalgamation` (relaxed
   supernodes, CHOLMOD's rule in nodes of 6 DOFs), `symbolic/SymbolicFactor` (final order, supernode rows, panel sizes,

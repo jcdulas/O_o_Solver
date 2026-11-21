@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -21,6 +22,212 @@ namespace
 
 // The label of a node that is numbered already: a separator node or a trailing node.
 constexpr std::int64_t NUMBERED = -1;
+
+// The lightest set of nodes that covers every edge of a bipartite graph (the edges a cut of the dissection removes,
+// between the nodes of its two sides, here the left and the right ones): every edge has an end in the set, and no set
+// that does weighs less.
+//
+// It is read on the minimum cut of a network: source -> each left node (capacity: its weight), left node -> right node
+// for each edge (unbounded), each right node -> sink (capacity: its weight). A cut of finite capacity removes no edge
+// of the graph, so it removes, for each of them, the arc from the source to its left end or the arc of its right end
+// to the sink: the nodes of the arcs removed are a cover, of the weight of the cut (the weighted form of König's
+// theorem, by the max-flow min-cut theorem of L. R. Ford and D. R. Fulkerson, "Flows in Networks", Princeton
+// University Press, 1962). The maximum flow is found by blocking flows on the layers of a breadth-first search
+// (E. A. Dinic, "Algorithm for solution of a problem of maximum flow in networks with power estimation", Soviet
+// Mathematics Doklady 11, 1970).
+//
+// Among the lightest covers it gives the one with the most left nodes (the nodes the source reaches at the end are the
+// fewest a minimum cut can leave on its side): the whole left side when both sides weigh the same.
+//
+// Determinism: the searches follow the order of the edges given. Thread-safety: one object per cut. Memory: 32 bytes
+// per edge and 44 per node, budgeted.
+class LightestCover
+{
+public:
+    // leftWeights, rightWeights: the weight (>= 1) of each node; the right nodes joined to left node i are
+    // rights[firstRight[i], firstRight[i + 1]). Throws MemoryBudgetError when the network does not fit.
+    LightestCover(std::span<const std::int64_t> leftWeights, std::span<const std::int64_t> rightWeights,
+                  std::span<const std::int64_t> firstRight, std::span<const std::int32_t> rights,
+                  base::MemoryBudget& budget)
+        : m_leftCount(leftWeights.size()),
+          m_nodeCount(FIRST_LEFT + leftWeights.size() + rightWeights.size()),
+          m_firstArc(budget, m_nodeCount + 1, "dissection: cut"),
+          m_arcs(budget, 2 * (leftWeights.size() + rightWeights.size() + rights.size()), "dissection: cut",
+                 base::FOR_OVERWRITE),
+          m_layer(budget, m_nodeCount, "dissection: cut", base::FOR_OVERWRITE),
+          m_queue(budget, m_nodeCount, "dissection: cut", base::FOR_OVERWRITE),
+          m_nextArc(budget, m_nodeCount, "dissection: cut", base::FOR_OVERWRITE),
+          m_path(budget, m_nodeCount, "dissection: cut", base::FOR_OVERWRITE)
+    {
+        countArcs(rightWeights.size(), firstRight, rights);
+        // More than every arc from the source together: an arc of this capacity is never the one that limits a flow.
+        std::int64_t unbounded = 1;
+        for (const std::int64_t weight : leftWeights)
+            unbounded += weight;
+        for (std::size_t node = 0; node < m_nodeCount; ++node)
+            m_nextArc[node] = m_firstArc[node];
+        for (std::size_t i = 0; i < leftWeights.size(); ++i)
+            addArc(SOURCE, left(i), leftWeights[i]);
+        for (std::size_t j = 0; j < rightWeights.size(); ++j)
+            addArc(right(j), SINK, rightWeights[j]);
+        for (std::size_t i = 0; i < leftWeights.size(); ++i)
+        {
+            for (std::int64_t e = firstRight[i]; e < firstRight[i + 1]; ++e)
+                addArc(left(i), right(static_cast<std::size_t>(rights[static_cast<std::size_t>(e)])), unbounded);
+        }
+        while (buildLayers())
+            pushBlockingFlow();
+    }
+
+    // Whether left node i, or right node j, is in the cover: the left nodes the source does not reach any more (the
+    // minimum cut removes their arc from the source), the right nodes it reaches (their arc to the sink).
+    [[nodiscard]] bool hasLeft(std::size_t i) const noexcept { return m_layer[left(i)] == UNREACHED; }
+    [[nodiscard]] bool hasRight(std::size_t j) const noexcept { return m_layer[right(j)] != UNREACHED; }
+
+private:
+    static constexpr std::size_t SOURCE = 0;
+    static constexpr std::size_t SINK = 1;
+    static constexpr std::size_t FIRST_LEFT = 2;
+    static constexpr std::int32_t UNREACHED = -1;
+
+    // An arc of the network. Each one is stored with its reverse, of capacity 0 at first: what an arc carries is
+    // taken from its capacity and added to its reverse's, so that a later path may send it back.
+    struct Arc
+    {
+        std::int64_t capacity;     // what the arc can still carry
+        std::uint32_t to;          // the node it leads to
+        std::uint32_t reverseRank; // the rank of its reverse among the arcs of `to`
+    };
+
+    [[nodiscard]] std::size_t left(std::size_t i) const noexcept { return FIRST_LEFT + i; }
+    [[nodiscard]] std::size_t right(std::size_t j) const noexcept { return FIRST_LEFT + m_leftCount + j; }
+    [[nodiscard]] std::int64_t reverseOf(std::int64_t arc) const noexcept
+    {
+        const Arc& forward = m_arcs[static_cast<std::size_t>(arc)];
+        return m_firstArc[forward.to] + forward.reverseRank;
+    }
+
+    // The first arc of each node (the arcs are stored node by node): an arc and its reverse for each node of the
+    // graph and each of its edges.
+    void countArcs(std::size_t rightCount, std::span<const std::int64_t> firstRight,
+                   std::span<const std::int32_t> rights)
+    {
+        m_firstArc[SOURCE + 1] = static_cast<std::int64_t>(m_leftCount);
+        m_firstArc[SINK + 1] = static_cast<std::int64_t>(rightCount);
+        for (std::size_t i = 0; i < m_leftCount; ++i)
+            m_firstArc[left(i) + 1] = 1 + firstRight[i + 1] - firstRight[i];
+        for (std::size_t j = 0; j < rightCount; ++j)
+            m_firstArc[right(j) + 1] = 1;
+        for (const std::int32_t j : rights)
+            ++m_firstArc[right(static_cast<std::size_t>(j)) + 1];
+        for (std::size_t node = 0; node < m_nodeCount; ++node)
+            m_firstArc[node + 1] += m_firstArc[node];
+    }
+
+    void addArc(std::size_t from, std::size_t to, std::int64_t capacity)
+    {
+        const std::int64_t forward = m_nextArc[from]++;
+        const std::int64_t backward = m_nextArc[to]++;
+        m_arcs[static_cast<std::size_t>(forward)] = {capacity, static_cast<std::uint32_t>(to),
+                                                     static_cast<std::uint32_t>(backward - m_firstArc[to])};
+        m_arcs[static_cast<std::size_t>(backward)] = {0, static_cast<std::uint32_t>(from),
+                                                      static_cast<std::uint32_t>(forward - m_firstArc[from])};
+    }
+
+    // The layer of each node the source reaches through arcs that can still carry flow (its distance in arcs); false
+    // when it does not reach the sink: the flow is then maximum, and the nodes reached are the source's side of a
+    // minimum cut.
+    bool buildLayers()
+    {
+        for (std::size_t node = 0; node < m_nodeCount; ++node)
+            m_layer[node] = UNREACHED;
+        m_layer[SOURCE] = 0;
+        m_queue[0] = static_cast<std::uint32_t>(SOURCE);
+        std::size_t tail = 1;
+        for (std::size_t head = 0; head < tail; ++head)
+        {
+            const std::size_t node = m_queue[head];
+            for (std::int64_t a = m_firstArc[node]; a < m_firstArc[node + 1]; ++a)
+            {
+                const Arc& arc = m_arcs[static_cast<std::size_t>(a)];
+                if (arc.capacity > 0 && m_layer[arc.to] == UNREACHED)
+                {
+                    m_layer[arc.to] = m_layer[node] + 1;
+                    m_queue[tail++] = arc.to;
+                }
+            }
+        }
+        return m_layer[SINK] != UNREACHED;
+    }
+
+    // Sends flow along the paths that go down the layers until none is left (a blocking flow). Each path is followed
+    // from the source, depth first, on an explicit stack (a path may be as long as the cut has nodes): a node from
+    // which nothing more goes down is taken out of the layers, and the search steps back.
+    void pushBlockingFlow()
+    {
+        for (std::size_t node = 0; node < m_nodeCount; ++node)
+            m_nextArc[node] = m_firstArc[node];
+        std::size_t pathLength = 0;
+        std::size_t node = SOURCE;
+        while (true)
+        {
+            if (node == SINK)
+            {
+                pushAlongPath(pathLength);
+                pathLength = 0;
+                node = SOURCE;
+                continue;
+            }
+            const std::int64_t arc = nextArcDown(node);
+            if (arc < m_firstArc[node + 1])
+            {
+                m_path[pathLength++] = arc;
+                node = m_arcs[static_cast<std::size_t>(arc)].to;
+                continue;
+            }
+            if (pathLength == 0)
+                return;
+            m_layer[node] = UNREACHED;
+            node = m_arcs[static_cast<std::size_t>(reverseOf(m_path[--pathLength]))].to;
+        }
+    }
+
+    // The next arc of `node` that can carry flow to the layer below (the arcs before it cannot any more in these
+    // layers); the end of its arcs when there is none.
+    [[nodiscard]] std::int64_t nextArcDown(std::size_t node) noexcept
+    {
+        std::int64_t& a = m_nextArc[node];
+        for (; a < m_firstArc[node + 1]; ++a)
+        {
+            const Arc& arc = m_arcs[static_cast<std::size_t>(a)];
+            if (arc.capacity > 0 && m_layer[arc.to] == m_layer[node] + 1)
+                break;
+        }
+        return a;
+    }
+
+    // Sends along the path (its first `length` arcs, from the source to the sink) what its narrowest arc can carry.
+    void pushAlongPath(std::size_t length) noexcept
+    {
+        std::int64_t pushed = m_arcs[static_cast<std::size_t>(m_path[0])].capacity;
+        for (std::size_t k = 1; k < length; ++k)
+            pushed = std::min(pushed, m_arcs[static_cast<std::size_t>(m_path[k])].capacity);
+        for (std::size_t k = 0; k < length; ++k)
+        {
+            m_arcs[static_cast<std::size_t>(m_path[k])].capacity -= pushed;
+            m_arcs[static_cast<std::size_t>(reverseOf(m_path[k]))].capacity += pushed;
+        }
+    }
+
+    std::size_t m_leftCount;
+    std::size_t m_nodeCount; // the source, the sink, the left nodes then the right nodes
+    base::BudgetedBuffer<std::int64_t> m_firstArc;
+    base::BudgetedBuffer<Arc> m_arcs;
+    base::BudgetedBuffer<std::int32_t> m_layer;
+    base::BudgetedBuffer<std::uint32_t> m_queue;  // the nodes reached, in the order of the breadth-first search
+    base::BudgetedBuffer<std::int64_t> m_nextArc; // per node: the next arc to fill, then the next arc to try
+    base::BudgetedBuffer<std::int64_t> m_path;    // the arcs of the path followed, from the source
+};
 
 // One run of the dissection. The interior nodes live in `work`; the nodes of a region are work[begin, end) and get the
 // output positions [begin, end). Each region has a label unique among the live regions (computed from its range), so
@@ -147,7 +354,7 @@ private:
     }
 
     // A cut of a region, its work sorted for it: the first position of the second half, the weight of the separator
-    // it makes (the lighter boundary) and of its lighter half.
+    // it makes (separatorOfCut) and of the lighter of the two halves it leaves.
     struct Cut
     {
         std::int32_t middle = 0;
@@ -156,7 +363,7 @@ private:
     };
 
     // Cuts a connected region (DissectionOptions::componentCuts: at the weighted median of its largest extent, or
-    // between its components); the boundary of the lighter side is the separator, numbered last.
+    // between its components); the separator of the cut is numbered last.
     void bisect(std::int32_t begin, std::int32_t end)
     {
         const std::size_t axis = largestExtentAxis(begin, end);
@@ -283,64 +490,154 @@ private:
     // for it; split sets them again).
     Cut evaluate(std::int32_t begin, std::int32_t end, std::int32_t middle)
     {
-        const std::int64_t firstLabel = labelOf(begin, middle);
-        const std::int64_t secondLabel = labelOf(middle, end);
-        for (std::int32_t k = begin; k < end; ++k)
-            label(*work(k)) = k < middle ? firstLabel : secondLabel;
-        std::int64_t boundary[2] = {0, 0};
+        labelSides(begin, end, middle);
+        const base::BudgetedBuffer<std::uint8_t> isSeparator = separatorOfCut(begin, end, middle);
+        std::int64_t separator = 0;
         std::int64_t halves[2] = {0, 0};
         for (std::int32_t k = begin; k < end; ++k)
         {
-            const std::int32_t node = *work(k);
-            const std::size_t side = k < middle ? 0 : 1;
-            halves[side] += weight(node);
-            if (hasNeighbourLabelled(node, side == 0 ? secondLabel : firstLabel))
-                boundary[side] += weight(node);
+            if (isSeparator[static_cast<std::size_t>(k - begin)] != 0)
+                separator += weight(*work(k));
+            else
+                halves[k < middle ? 0 : 1] += weight(*work(k));
         }
-        const std::size_t separatorSide = boundary[0] <= boundary[1] ? 0 : 1;
-        return {middle, boundary[separatorSide],
-                std::min(halves[separatorSide] - boundary[separatorSide], halves[1 - separatorSide])};
+        return {middle, separator, std::min(halves[0], halves[1])};
     }
 
-    // Splits the region at `middle` of its work: the boundary of the lighter side the separator, numbered last; the two
-    // halves ordered (in parallel when large).
-    void split(std::int32_t begin, std::int32_t end, std::int32_t middle)
+    // Labels the two sides of the cut at `middle` of the region's work.
+    void labelSides(std::int32_t begin, std::int32_t end, std::int32_t middle) noexcept
     {
         const std::int64_t firstLabel = labelOf(begin, middle);
         const std::int64_t secondLabel = labelOf(middle, end);
         for (std::int32_t k = begin; k < end; ++k)
             label(*work(k)) = k < middle ? firstLabel : secondLabel;
-        // The two boundaries: nodes of one side with a neighbour on the other.
-        std::int64_t firstBoundaryWeight = 0;
-        std::int64_t secondBoundaryWeight = 0;
-        std::int32_t firstBoundaryCount = 0;
-        std::int32_t secondBoundaryCount = 0;
+    }
+
+    // The edges a cut removes, as LightestCover takes them: the positions in the work of the nodes of each side that
+    // have a neighbour across, and for each of the first side its neighbours across (their ranks in `secondPositions`
+    // are seconds[firstSecond[i], firstSecond[i + 1])).
+    struct CutEdges
+    {
+        base::BudgetedBuffer<std::int32_t> firstPositions;
+        base::BudgetedBuffer<std::int32_t> secondPositions;
+        base::BudgetedBuffer<std::int64_t> firstSecond;
+        base::BudgetedBuffer<std::int32_t> seconds;
+    };
+
+    // A node of the second side of a cut and its rank among those of the cut.
+    struct RankedNode
+    {
+        std::int32_t node;
+        std::int32_t rank;
+    };
+
+    // The edges of the cut at `middle` of the region's work (the labels set for its two sides). isOnCut: one flag per
+    // position of the region, set here for the nodes that have a neighbour across.
+    CutEdges edgesOfCut(std::int32_t begin, std::int32_t end, std::int32_t middle, std::span<std::uint8_t> isOnCut)
+    {
+        const std::int64_t firstLabel = labelOf(begin, middle);
+        const std::int64_t secondLabel = labelOf(middle, end);
+        std::size_t counts[2] = {0, 0};
         for (std::int32_t k = begin; k < end; ++k)
         {
-            const std::int32_t node = *work(k);
-            const std::int64_t other = k < middle ? secondLabel : firstLabel;
-            if (!hasNeighbourLabelled(node, other))
+            const bool isFirst = k < middle;
+            if (!hasNeighbourLabelled(*work(k), isFirst ? secondLabel : firstLabel))
+                continue;
+            isOnCut[static_cast<std::size_t>(k - begin)] = 1;
+            ++counts[isFirst ? 0 : 1];
+        }
+        CutEdges edges{{m_budget, counts[0], "dissection: cut", base::FOR_OVERWRITE},
+                       {m_budget, counts[1], "dissection: cut", base::FOR_OVERWRITE},
+                       {m_budget, counts[0] + 1, "dissection: cut"},
+                       {}};
+        // The nodes of the second side sorted, to find the rank of a neighbour across.
+        base::BudgetedBuffer<RankedNode> ranked(m_budget, counts[1], "dissection: cut", base::FOR_OVERWRITE);
+        std::size_t firstAt = 0;
+        std::size_t secondAt = 0;
+        for (std::int32_t k = begin; k < end; ++k)
+        {
+            if (isOnCut[static_cast<std::size_t>(k - begin)] == 0)
                 continue;
             if (k < middle)
             {
-                firstBoundaryWeight += weight(node);
-                ++firstBoundaryCount;
+                edges.firstPositions[firstAt++] = k;
+                continue;
             }
-            else
+            ranked[secondAt] = {*work(k), static_cast<std::int32_t>(secondAt)};
+            edges.secondPositions[secondAt++] = k;
+        }
+        std::sort(ranked.data(), ranked.data() + ranked.size(),
+                  [](const RankedNode& a, const RankedNode& b) { return a.node < b.node; });
+        const auto isAcross = [&](std::int32_t neighbour) { return label(neighbour) == secondLabel; };
+        for (std::size_t i = 0; i < counts[0]; ++i)
+        {
+            const auto neighbours = m_graph.neighbours(*work(edges.firstPositions[i]));
+            edges.firstSecond[i + 1] =
+                edges.firstSecond[i] + std::count_if(neighbours.begin(), neighbours.end(), isAcross);
+        }
+        const auto edgeCount = static_cast<std::size_t>(edges.firstSecond[counts[0]]);
+        edges.seconds = base::BudgetedBuffer<std::int32_t>(m_budget, edgeCount, "dissection: cut", base::FOR_OVERWRITE);
+        std::size_t at = 0;
+        for (std::size_t i = 0; i < counts[0]; ++i)
+        {
+            for (const std::int32_t neighbour : m_graph.neighbours(*work(edges.firstPositions[i])))
             {
-                secondBoundaryWeight += weight(node);
-                ++secondBoundaryCount;
+                if (!isAcross(neighbour))
+                    continue;
+                const RankedNode* const found =
+                    std::lower_bound(ranked.data(), ranked.data() + ranked.size(), neighbour,
+                                     [](const RankedNode& entry, std::int32_t node) { return entry.node < node; });
+                edges.seconds[at++] = found->rank;
             }
         }
-        const bool isFirstSeparator =
-            firstBoundaryWeight < secondBoundaryWeight ||
-            (firstBoundaryWeight == secondBoundaryWeight && firstBoundaryCount <= secondBoundaryCount);
+        return edges;
+    }
+
+    // The separator of the cut at `middle` of the region's work (the labels set for its two sides): one flag per
+    // position of the region. It is the lightest set of nodes that covers every edge joining the two sides
+    // (LightestCover): a node of every edge the cut removes is taken, so that no edge joins what is left of the sides.
+    //
+    // PERFORMANCE: the nodes of one side that have a neighbour across (its boundary) are a cover too, and the
+    // lightest one where the cut follows a line of the mesh. Elsewhere (a mesh whose grid points are not in rows) the
+    // cut crosses elements: all the nodes of an element are neighbours, so the boundary of a side takes, of each
+    // element crossed, every node it has on that side, where the lightest cover takes the lighter of its two parts,
+    // and follows a line of the mesh that winds along the cut. Measured on the node graph of 2 304 quadrilateral
+    // shells of the mixed hybrid formulation (a grid point, an edge and an interior weigh 3, 17 and 51 DOFs), in
+    // operations of the factorisation (SymbolicFactor::flopCount): 19 G with the grid points in rows, by both rules;
+    // with the grid points moved by 30 % of a cell, 240 G by the boundary of the lighter side and 19.6 G by the
+    // lightest cover. On 65 536 shells of the classic formulation: 73 G in rows, 124 G and 73 G moved.
+    base::BudgetedBuffer<std::uint8_t> separatorOfCut(std::int32_t begin, std::int32_t end, std::int32_t middle)
+    {
+        base::BudgetedBuffer<std::uint8_t> flags(m_budget, static_cast<std::size_t>(end - begin), "dissection: cut");
+        const CutEdges edges = edgesOfCut(begin, end, middle, flags.span());
+        const auto weightsAt = [&](const base::BudgetedBuffer<std::int32_t>& positions)
+        {
+            base::BudgetedBuffer<std::int64_t> weights(m_budget, positions.size(), "dissection: cut",
+                                                       base::FOR_OVERWRITE);
+            for (std::size_t i = 0; i < positions.size(); ++i)
+                weights[i] = weight(*work(positions[i]));
+            return weights;
+        };
+        const base::BudgetedBuffer<std::int64_t> firstWeights = weightsAt(edges.firstPositions);
+        const base::BudgetedBuffer<std::int64_t> secondWeights = weightsAt(edges.secondPositions);
+        const LightestCover cover(firstWeights.span(), secondWeights.span(), edges.firstSecond.span(),
+                                  edges.seconds.span(), m_budget);
+        for (std::size_t i = 0; i < edges.firstPositions.size(); ++i)
+            flags[static_cast<std::size_t>(edges.firstPositions[i] - begin)] = cover.hasLeft(i) ? 1 : 0;
+        for (std::size_t j = 0; j < edges.secondPositions.size(); ++j)
+            flags[static_cast<std::size_t>(edges.secondPositions[j] - begin)] = cover.hasRight(j) ? 1 : 0;
+        return flags;
+    }
+
+    // Splits the region at `middle` of its work: the separator of the cut (separatorOfCut) numbered last; the two
+    // halves ordered (in parallel when large).
+    void split(std::int32_t begin, std::int32_t end, std::int32_t middle)
+    {
+        labelSides(begin, end, middle);
+        const base::BudgetedBuffer<std::uint8_t> isSeparator = separatorOfCut(begin, end, middle);
         // Stable partition into [first side][second side][separator], kept in coordinate order.
         const auto isSeparatorAt = [&](std::int32_t k)
-        {
-            const bool isFirst = k < middle;
-            return isFirst == isFirstSeparator && hasNeighbourLabelled(*work(k), isFirst ? secondLabel : firstLabel);
-        };
+        { return isSeparator[static_cast<std::size_t>(k - begin)] != 0; };
         std::int32_t* const out = m_scratch.data();
         std::int32_t firstCount = 0;
         std::int32_t secondCount = 0;

@@ -48,21 +48,23 @@ struct DissectionOptions
 
 // Nested dissection on node coordinates (the ordering of large units). A region of nodes is cut in two
 // at the weighted median of its coordinates along its largest extent (moved to the nearest change of coordinate, so
-// that a row of a structured mesh is not split); the separator is the boundary of the lighter side (the nodes of one
-// side adjacent to the other: a vertex cover of the edge cut), numbered after both halves, which are ordered the same
-// way recursively. A disconnected region is split into its components, ordered one after the other with no
-// separator. A leaf is ordered by the approximate minimum degree on the leaf plus its neighbours in the separators
-// already numbered (the halo), the halo constrained last, so that the degrees of the leaf nodes count the separator
-// nodes they will fill (A. George, "Nested dissection of a regular finite element mesh", SIAM J. Numer. Anal. 10,
-// 1973; the constrained leaves as in CHOLMOD's partition of T. A. Davis).
+// that a row of a structured mesh is not split); the separator is the lightest set of nodes that has an end of every
+// edge joining the two sides (the minimum weighted vertex cover of the edge cut, found by a maximum flow: where the
+// cut follows a line of the mesh it is the nodes of that line, where it crosses elements a line of the mesh that
+// winds along it), numbered after both halves, which are ordered the same way recursively. A disconnected region is
+// split into its components, ordered one after the other with no separator. A leaf is ordered by the approximate
+// minimum degree on the leaf plus its neighbours in the separators already numbered (the halo), the halo constrained
+// last, so that the degrees of the leaf nodes count the separator nodes they will fill (A. George, "Nested dissection
+// of a regular finite element mesh", SIAM J. Numer. Anal. 10, 1973; the constrained leaves as in CHOLMOD's partition
+// of T. A. Davis).
 //
 // Determinism: sorts and ties by node index; the two halves are independent (no edge joins them), so ordering them in
 // parallel changes nothing: same permutation for any number of threads.
 //
 // The trailing nodes are numbered last in the order given; they are part of the halo of the leaves next to them.
 //
-// Thread-safety: order() is const; it uses the pool given. Memory: a few arrays of the node count and the leaf
-// workspaces, all budgeted.
+// Thread-safety: order() is const; it uses the pool given. Memory: a few arrays of the node count, the leaf
+// workspaces and the flow network of a cut (32 bytes per edge the cut removes), all budgeted.
 class GeometricDissection
 {
 public:
