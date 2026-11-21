@@ -131,8 +131,11 @@ The [fast input combination tests](docs/testing.md) enforce a one-second ceiling
 
 The package is in `build/wasm/dist` (`oos_solver_core.js`, `.wasm`, `index.js`, `index.d.ts`, `package.json`).
 The `WebAssembly` workflow builds it on every push to `main` that changes the sources and publishes it as
-`O_o_Solver-wasm.zip` in the [`wasm-latest` release](https://github.com/jcdulas/O_o_Solver/releases/tag/wasm-latest),
-which follows the branch; each run also keeps it 90 days as its `O_o_Solver-wasm` artifact.
+`O_o_Solver-wasm.zip` in two [releases](https://github.com/jcdulas/O_o_Solver/releases): `wasm-latest`, a pre-release
+that follows the branch, and one release kept for each version of `wasm/package.json` (`v0.2.0`, ...), made by the
+first build of that version and not changed afterwards; the newest of these is the latest release of the repository.
+Raise the version in `wasm/package.json` to keep a new one. Each run also keeps the package 90 days as its
+`O_o_Solver-wasm` artifact.
 
 The default WebAssembly build runs on its calling thread. The `wasm-threads` variant enables shared-memory
 workers through the same C++ thread pool. Both variants use the portable reference dense kernels.

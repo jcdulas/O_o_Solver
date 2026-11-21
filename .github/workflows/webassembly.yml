@@ -1,7 +1,7 @@
 name: WebAssembly
 
 # Builds the default WebAssembly package (single-threaded, 64-bit WebAssembly), archives build/wasm/dist and, on the
-# main branch, publishes it as the release that follows the branch.
+# main branch, publishes it as the release that follows the branch and as the release kept for its version.
 # The test suites are not run here: they need the O_o_Reader package, which this repository does not build.
 
 on:
@@ -91,8 +91,10 @@ jobs:
           echo 'Extract the archive and import index.js; the module needs a runtime with 64-bit WebAssembly (Node.js 24 or later).' >> "$GITHUB_STEP_SUMMARY"
 
   release:
-    name: Publish the package as a release
-    # One release follows the main branch: its tag moves to the commit built and its archive is replaced.
+    name: Publish the package as releases
+    # Two kinds of release. One follows the main branch (wasm-latest, a pre-release): its tag moves to the commit built
+    # and its archive is replaced. One is kept for each version of wasm/package.json (v0.2.0, ...): it is made by the
+    # first build of that version and never changed afterwards, and the newest is the latest release of the repository.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: package
     runs-on: ubuntu-latest
@@ -104,8 +106,8 @@ jobs:
       cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: wasm-latest
-      RELEASE_TITLE: WebAssembly package of the main branch
+      BRANCH_TAG: wasm-latest
+      BRANCH_TITLE: WebAssembly package of the main branch
       ARCHIVE: O_o_Solver-wasm.zip
     steps:
       - name: Fetch the package
@@ -116,24 +118,43 @@ jobs:
       - name: Make the archive and its notes
         run: |
           (cd package && zip --recurse-paths "../$ARCHIVE" .)
+          VERSION="$(jq --raw-output '.version // empty' package/package.json)"
+          test -n "$VERSION"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           {
-            echo "Built from commit $GITHUB_SHA with Emscripten $EMSCRIPTEN_VERSION: the default package, single-threaded."
+            echo "Version $VERSION of the package, built from commit $GITHUB_SHA with Emscripten $EMSCRIPTEN_VERSION:"
+            echo "the default package, single-threaded."
             echo
             echo "Extract $ARCHIVE and import index.js; the module needs a runtime with 64-bit WebAssembly"
-            echo "(Node.js 24 or later, or a browser that supports it). This build is replaced at every change of the"
-            echo "sources on the main branch; the workflow loads the module and does not run the test suites."
+            echo "(Node.js 24 or later, or a browser that supports it). The workflow loads the module and does not"
+            echo "run the test suites."
           } > notes.md
-      - name: Publish the release
+          {
+            echo "The latest build of the main branch, replaced at every change of its sources."
+            echo
+            cat notes.md
+          } > branch-notes.md
+      - name: Publish the build of the main branch
         run: |
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$RELEASE_TAG" \
+          if gh release view "$BRANCH_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$BRANCH_TAG" \
               --raw-field sha="$GITHUB_SHA" --field force=true > /dev/null
-            gh release upload "$RELEASE_TAG" "$ARCHIVE" --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file notes.md --latest \
+            gh release upload "$BRANCH_TAG" "$ARCHIVE" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$BRANCH_TAG" --title "$BRANCH_TITLE" --notes-file branch-notes.md --prerelease \
               --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$RELEASE_TAG" "$ARCHIVE" --target "$GITHUB_SHA" --title "$RELEASE_TITLE" \
-              --notes-file notes.md --latest --repo "$GITHUB_REPOSITORY"
+            gh release create "$BRANCH_TAG" "$ARCHIVE" --target "$GITHUB_SHA" --title "$BRANCH_TITLE" \
+              --notes-file branch-notes.md --prerelease --repo "$GITHUB_REPOSITORY"
           fi
-          echo '## Release' >> "$GITHUB_STEP_SUMMARY"
-          echo "[$ARCHIVE]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$ARCHIVE) is published." >> "$GITHUB_STEP_SUMMARY"
+          echo '## Releases' >> "$GITHUB_STEP_SUMMARY"
+          echo "[$ARCHIVE of the main branch]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$BRANCH_TAG/$ARCHIVE) is published." >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the release of a new version
+        run: |
+          VERSION_TAG="v$VERSION"
+          if gh release view "$VERSION_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Version $VERSION has its release, kept as it is." >> "$GITHUB_STEP_SUMMARY"
+          else
+            gh release create "$VERSION_TAG" "$ARCHIVE" --target "$GITHUB_SHA" --title "Version $VERSION" \
+              --notes-file notes.md --latest --repo "$GITHUB_REPOSITORY"
+            echo "[$ARCHIVE of version $VERSION]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$VERSION_TAG/$ARCHIVE) is published and kept." >> "$GITHUB_STEP_SUMMARY"
+          fi
