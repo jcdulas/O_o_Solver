@@ -60,6 +60,11 @@ constexpr std::size_t SHELL_MATRIX_CACHE_BYTES = std::size_t{128} << 20;
 // that size reads each element instead of building it a second time, which took as long as the stiffnesses; what is
 // kept, about 0.2 MB a shell, is a fifth of what the factorisation of such a model takes for each of its shells.
 constexpr std::size_t SHELL_RECOVERY_CACHE_BYTES = std::size_t{1} << 30;
+// The tolerance of the rule each shell is given from its shape (ShellPartInput::quadratureTolerance,
+// chooseShellPoints): the integrals of the geometric factors of the element change by less than this, relatively,
+// from its rule to the next. Measured on curved, warped and distorted meshes against the rule of 12 points on every
+// element (spec section 6).
+constexpr double SHELL_QUADRATURE_TOLERANCE = 1e-10;
 
 // The geometry report (spec section 10.5): the edges along which the normals of two shells differ by more than this
 // angle (degrees) are named, at most GEOMETRY_REPORT_EDGES of each kind (see reportGeometry), the largest angles
@@ -290,6 +295,7 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
     input.withMass = true;
     input.matrixCacheBytes = SHELL_MATRIX_CACHE_BYTES;
     input.recoveryCacheBytes = SHELL_RECOVERY_CACHE_BYTES;
+    input.quadratureTolerance = SHELL_QUADRATURE_TOLERANCE;
     for (const std::int32_t row : m_gridRows)
     {
         const std::span<const double> xyz = positions[row];
@@ -971,6 +977,15 @@ void MixedHybridModel::reportGeometry()
             {"; ", std::to_string(foldsByAngle.size()), " edges are sharp by the fold angle alone with an angle under ",
              std::to_string(FOLD_WARNING_FACTOR * foldDegrees), " degrees (a shallow fold, or a mesh coarse for its "
                                                                  "curvature)"});
+    // The rules the matrices of the shells are integrated on, chosen from the shape of each
+    // (SHELL_QUADRATURE_TOLERANCE).
+    std::map<std::size_t, std::size_t> shellsByPoints;
+    for (const MixedShell& shell : m_shells)
+        ++shellsByPoints[m_shellPart->pointsPerDirectionOf(shell.partIndex)];
+    std::string rules;
+    for (const auto& [points, count] : shellsByPoints)
+        rules += base::concatenate({rules.empty() ? "" : ", ", std::to_string(count), " on ", std::to_string(points)});
+    summary.message += base::concatenate({"; quadrature points per direction of the shells: ", rules});
     m_problems.push_back(std::move(summary));
 
     nameEdges(foldsByAngle, base::Severity::Warning, "geometry-fold-by-angle", m_gridIds, foldByAngleMessage,

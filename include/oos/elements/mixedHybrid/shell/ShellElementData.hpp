@@ -68,6 +68,9 @@ struct ShellElementData
     std::vector<ReferenceJet> volumeJets;
     std::vector<std::vector<EdgeJet>> edgeJets;
     std::vector<std::vector<double>> edgeWeights;
+    // The points per direction of the rule those tables are on (0: no table). An element is read with the reference
+    // element of that rule, and its matrices are integrated on it.
+    std::size_t pointsPerDirection = 0;
 
     // The view of the element for the kernels (valid while this object lives and is not changed).
     // Reference: tdnns/analysis.rs::ShellElem::def

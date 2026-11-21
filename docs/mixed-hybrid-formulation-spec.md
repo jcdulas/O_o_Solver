@@ -82,9 +82,10 @@ an intermediate developer; the module layering.
 ## 3. The formulation in brief
 
 k is the polynomial degree of the shell displacement, fixed at 4 (the lowest degree that passes the validation of the
-reference; section 15, decision 7), p = k − 1. Each quadrature has 2k + 4 Gauss points per direction in a shell element
-and on its edges, and d + 4 in a solid (d the degree of its stresses). The integrands of an element that is not affine
-are rational: these rules converge on them exponentially.
+reference; section 15, decision 7), p = k − 1. A quadrature has at most 2k + 4 Gauss points per direction in a shell
+element and on its edges (the rule of the reference; the matrices of each shell are integrated on the rule its shape
+needs, section 6), and d + 4 in a solid (d the degree of its stresses). The integrands of an element that is not
+affine are rational: these rules converge on them exponentially.
 
 ### 3.1 Shells
 
@@ -1093,13 +1094,33 @@ computation changing (the default `FieldUse`).
   fine.
 - **Determinism.** No result may depend on thread scheduling. Loops over quadrature points and assembly into an
   element matrix run in a fixed order.
+- **Rule of a shell element.** The matrices of a shell (stiffness, mass, the operators of its recovery, its thermal
+  loads and geometric stiffness) are integrated on a rule chosen from its shape, of 6 to 2k + 4 points per direction
+  (`chooseShellPoints`). The integrands are polynomials times factors of the geometry of the element: its area
+  element, the maps of the membrane strains and of the moments to the local frame, the Christoffel symbols, the
+  normal, the section laws where the thickness varies or the section is offset. On an affine element those factors
+  are constants and a small rule is exact; elsewhere a Gauss rule converges on them by a constant factor at each
+  point, the faster the nearer the element is to an affine one. The choice measures it on the element: the integrals
+  of those factors against polynomials of degree 8 in each coordinate (the highest the element multiplies them by)
+  are formed on the rules of n and of n + 1 points, and the first n for which none changes by more than 1e-10,
+  relative to the integral of the absolute value of its factor, is the rule of the element; an element that does not
+  reach it keeps 2k + 4. Everything else of the shells stays on 2k + 4 points: the map of the surface, the lines on
+  their edges, the supports, the pressure and edge loads, the geometry report. Measured on 34 curved, warped and
+  distorted meshes (cylinders, spheres, hyperbolic paraboloids, twisted strips, of 2 × 2 to 8 × 8 quadrilaterals or
+  triangles, regular or with their grid points moved by 30 % of a cell): the displacements, the stresses and the
+  eigenvalues are those of 2k + 4 points on every element to 3e-11. An affine element takes 6 points, a curved
+  element of a regular mesh 7 to 9, a distorted one 8 to 12. The `geometry-report` gives the number of shells on
+  each rule.
 - **Cost.** The reference measured about 6 ms per solid tetrahedron (stiffness, one thread). Elements are built in
   parallel through `base::ThreadPool`, by ranges as every facet is. Measured in the WebAssembly package on one thread
-  (i5-12400F), a static analysis with the stresses of a quarter cylinder under pressure, supported on its outline:
-  2.1 s for 256 quadrilaterals, 20 s for 2 304 (0.4 s with `ClassicFormulation`), 6.5 s for a plate of 1 024
-  quadrilaterals and 3.0 s for one of 1 152 triangles; a quadrilateral of degree 4 takes about 4 ms to build. On
-  2 304 quadrilaterals the factorisation and the element stiffnesses share most of the time about equally. What keeps
-  the cost there, none of which changes a bit of the results:
+  (i5-12400F), a static analysis with the stresses of a cylindrical panel under pressure, supported on its outline:
+  1.5 s for 256 quadrilaterals, 17.5 s for 2 304 (0.4 s with `ClassicFormulation`), 4.0 s for a plate of 1 024
+  quadrilaterals and 1.9 s for one of 1 152 triangles, and 26.8 s for ten modes of 1 024 quadrilaterals. With 2k + 4
+  points on every element (the rule above not chosen) the same runs take 2.0, 22.3, 6.3, 3.0 and 34.6 s; with the
+  grid points of 1 024 quadrilaterals moved by 10 % of a cell, 8.9 s against 10.3. A quadrilateral of degree 4 takes
+  about 3 ms to build on 2k + 4 points, and the choice of its rule 0.1 to 0.3 ms. On 2 304 quadrilaterals the
+  factorisation takes the largest share of the time. Beside the rule of each element, what keeps the cost there, none
+  of which changes a bit of the results:
   - an element is built once: the part keeps it whole while 128 MB last, then with the operators of its stress
     recovery alone (about 0.2 MB a quadrilateral, up to 1 GB), so that the recovery, the thermal loads and the
     geometric stiffness read it; a use that needs neither the stiffness nor the mass builds it without them;
@@ -1234,7 +1255,8 @@ shows what the fold angle alone decides, which is what a preprocessor shows befo
 **The diagnostics** of a run (`geometry_report` of the reference, extended):
 
 - `geometry-report`: a summary for the shells (the edges, how many raw, how many sharp and how many of these by the
-  fold angle alone, the largest kink, rounding and turn of the outline) and one for the skin of the solids;
+  fold angle alone, the largest kink, rounding and turn of the outline, and the number of shells on each quadrature
+  rule, section 6) and one for the skin of the solids;
 - `geometry-fold-by-angle`: a warning for an edge that the fold angle alone made sharp while its angle is under twice
   the fold angle, which a curved surface meshed coarsely gives as a shallow fold does; the edges above are folds and
   are only counted. The nearest to the fold angle are named first;
@@ -1278,6 +1300,7 @@ shows what the fold angle alone decides, which is what a preprocessor shows befo
 | A mesh transition on a straight outline or junction keeps it straight, and a side with quadrilaterals only is read as between quadrilaterals (section 4.4) | The reference reads three quadrilaterals at a boundary grid point as a re-entrant corner whatever their angles, and a quadrilateral side beside a triangle by the triangle rule. |
 | A shell that continues solids or stands on them is tied to them over its thickness: the displacement of its edge to the mean of the skin over its fibre, the rotation about its edge to the slope of the skin across the fibre (section 3.4) | The reference ties both on the line of the edge: a force and a couple on a line of a continuum, a joint that softens without bound as the solids are refined (1.26 to 3.8 times the deflection of a beam). |
 | The functions of the corners and edges of a shell triangle are orthogonal to its interior functions on the triangle itself (`h1Space`) | The reference takes the product of the reference square for the triangle too: the functions then depend on the corner the element starts from, and with them the share of a distributed load between the grid points in the applied load table (22 % on one grid point of an assembly). The space and the solution are the same. |
+| The matrices of a shell are integrated on a rule chosen from its shape, of 6 to 2k + 4 points per direction (section 6) | The reference has 2k + 4 points on every element, which an affine element needs a quarter of and a curved element of a regular mesh less than half; the results are those of 2k + 4 points to 3e-11 on the meshes measured. |
 
 Implementation notes. The rows of the element tables are those of section 10; the grid point stress table of section
 10.3 has the element type `SolidGridPoints` (one row per grid point, its ID as element and place, the columns of the

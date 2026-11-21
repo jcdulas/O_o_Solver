@@ -250,7 +250,7 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
         const bool bothTurn = !rotationAxesA.empty() && !rotationAxesB.empty();
         const std::size_t ie = m_topology.edgeElements[e].front();
         const ShellElementData el = element(ie);
-        const ShellReferenceElement& re = referenceElement(el.cornerCount);
+        const ShellReferenceElement& re = referenceElement(el);
         const ShellElementDefinition def = el.definition();
         const std::size_t kk = localEdgeOf(ie, e);
         const std::size_t first = m_entities[edgeEntity(e)].firstUnknown;
@@ -540,7 +540,7 @@ std::optional<SpaceVector> ShellPart::commonNormalAt(std::size_t grid) const
     {
         const ShellElementData& el = elementAtPoints(at[i].first);
         const ReferencePoint x = referenceCorner(el.cornerCount, at[i].second);
-        SpaceVector nu = geometryAt(referenceElement(el.cornerCount), el.definition(), x[0], x[1]).nu;
+        SpaceVector nu = geometryAt(referenceElement(el), el.definition(), x[0], x[1]).nu;
         if (i == 0)
             first = nu;
         // the side a shell's normal points to is its numbering's: the normals are compared up to their sign
@@ -566,7 +566,7 @@ std::array<std::vector<ShellPartTerm>, 3> ShellPart::meanRotationRows(std::size_
     {
         const ShellElementData& el = elementAtPoints(ie);
         const ReferencePoint x = referenceCorner(el.cornerCount, corner);
-        const Matrix r = rotationRowsOf(referenceElement(el.cornerCount), el.definition(), x[0], x[1]);
+        const Matrix r = rotationRowsOf(referenceElement(el), el.definition(), x[0], x[1]);
         for (std::size_t component = 0; component < 3; ++component)
             for (std::size_t i = 0; i < r.columns(); ++i)
                 if (r(component, i) != 0.0)
@@ -579,7 +579,7 @@ std::array<std::vector<ShellPartTerm>, 3> ShellPart::meanRotationRows(std::size_
 std::array<Vector, 6> ShellPart::rigidMotionsOf(std::size_t shell) const
 {
     const ShellElementData el = element(shell);
-    return rigidMotionUnknowns(referenceElement(el.cornerCount), el.definition(), projectionOf(el.cornerCount));
+    return rigidMotionUnknowns(referenceElement(el), el.definition(), projectionOf(el.cornerCount));
 }
 
 const std::vector<ShellPart::RigidField>& ShellPart::rigidFields() const
@@ -623,7 +623,7 @@ void ShellPart::affineField(const std::array<SpaceVector, 3>& gradient, const Sp
     {
         // the map coefficients, the unknowns and their signs need no table of the element
         const ShellElementData& el = m_shells[ie];
-        const ShellReferenceElement& re = referenceElement(el.cornerCount);
+        const ShellReferenceElement& re = referenceElement(el);
         const std::size_t n1 = re.h1Count;
         const std::size_t p = re.shearDegree;
         // of the six rigid motions about the origin on the local unknowns: the coefficients c_i of the constant 1, and
@@ -655,7 +655,7 @@ ShellDisplacementRows ShellPart::displacementRows(std::size_t shell, double xi, 
                                                   const std::function<bool(const FunctionKind&)>& keep) const
 {
     const ShellElementData& el = elementAtPoints(shell);
-    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const ShellReferenceElement& re = referenceElement(el);
     const std::vector<ReferenceJet> h = h1At(re, el.definition(), xi, eta);
     std::array<std::map<std::size_t, double>, 3> rows;
     ShellDisplacementRows out;
@@ -681,7 +681,7 @@ std::vector<ShellDisplacementRows> ShellPart::displacementRowsAt(
 {
     // the functions N_i / W at a point need the weight W and the basis only (h1At), not the tables of the element
     const ShellElementData& el = m_shells[shell];
-    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const ShellReferenceElement& re = referenceElement(el);
     const ShellElementDefinition def = el.definition();
     std::vector<ShellDisplacementRows> out;
     out.reserve(points.size());
@@ -711,7 +711,7 @@ std::vector<ShellDisplacementRows> ShellPart::displacementRowsAt(
 ShellPart::PointRows ShellPart::pointRows(std::size_t shell, double xi, double eta) const
 {
     const ShellElementData& el = m_shells[shell];
-    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const ShellReferenceElement& re = referenceElement(el);
     const ShellElementDefinition def = el.definition();
     const std::vector<ReferenceJet> h = h1At(re, def, xi, eta);
     const Matrix rotation = rotationRowsOf(re, def, xi, eta);
@@ -830,7 +830,7 @@ ShellPart::EdgeMoments ShellPart::edgeMoments(std::size_t edge) const
     // the edge as its first shell runs it (the same curve from every shell of the edge)
     const std::size_t ie = m_topology.edgeElements[edge].front();
     const ShellElementData el = element(ie);
-    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const ShellReferenceElement& re = referenceElement(el);
     const ShellElementDefinition def = el.definition();
     const std::size_t kk = localEdgeOf(ie, edge);
     const std::size_t first = m_entities[edgeEntity(edge)].firstUnknown;
@@ -867,7 +867,7 @@ ShellPart::InteriorMoments ShellPart::interiorMoments(std::size_t shell) const
 {
     InteriorMoments out;
     const ShellElementData el = element(shell);
-    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const ShellReferenceElement& re = referenceElement(el);
     const InteriorProjection& projection = projectionOf(el.cornerCount);
     const std::size_t n1 = re.h1Count;
     const std::size_t interiorCount = projection.interior.size();
@@ -929,7 +929,7 @@ ReferencePoint ShellPart::edgeReferencePoint(std::size_t shell, std::size_t loca
 ShellEdgeRotationFrame ShellPart::edgeRotationFrame(std::size_t shell, std::size_t localEdge, double s) const
 {
     const ShellElementData& el = m_shells[shell];
-    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const ShellReferenceElement& re = referenceElement(el);
     const ReferencePoint x = edgeReferencePoint(shell, localEdge, s);
     const PointGeometry g = geometryAt(re, el.definition(), x[0], x[1]);
     // X_s = s_k X_τ: the tangent of the map along the direction of the edge in the reference domain, turned to the
@@ -945,7 +945,7 @@ ShellEdgeFibre ShellPart::edgeFibre(std::size_t shell, std::size_t localEdge, do
     const ShellElementData& el = m_shells[shell];
     const ShellPartShell& input = m_input.shells[shell];
     const ReferencePoint x = edgeReferencePoint(shell, localEdge, s);
-    const PointGeometry g = geometryAt(referenceElement(el.cornerCount), el.definition(), x[0], x[1]);
+    const PointGeometry g = geometryAt(referenceElement(el), el.definition(), x[0], x[1]);
     ShellEdgeFibre fibre;
     fibre.point = g.x;
     fibre.normal = g.nu;

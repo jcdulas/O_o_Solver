@@ -217,7 +217,7 @@ ShellUnstiffened ShellPart::unstiffenedUnknowns(const std::function<bool(std::si
         const ShellElementData* data = std::get_if<ShellElementData>(&built);
         if (data == nullptr)
             continue; // a refused element: the problems of the part say so
-        const ShellReferenceElement& re = referenceElement(data->cornerCount);
+        const ShellReferenceElement& re = referenceElement(*data);
         accumulate(data->matrices.stiffness, data->dofs, data->signs, 3 * re.h1Count);
     }
     for (std::size_t e = 0; e < linesOfEdge.size(); ++e)

@@ -42,7 +42,7 @@ Vector areaLoadAtPoints(const ShellReferenceElement& re, const ShellElementDefin
 
 Vector ShellPart::areaForceLoad(const ShellElementData& element, const ShellAreaForce& force) const
 {
-    const ShellReferenceElement& re = referenceElement(element.cornerCount);
+    const ShellReferenceElement& re = referenceElement(element);
     const double z0 = element.offset;
     // per unit area of the reference surface of the section, at the offset: μ0 = j(z0) / j
     return areaLoadAtPoints(re, element.definition(),
@@ -56,7 +56,7 @@ Vector ShellPart::areaForceLoad(const ShellElementData& element, const ShellArea
 
 Vector ShellPart::pressureLoad(const ShellElementData& element, const std::array<double, 4>& corners) const
 {
-    const ShellReferenceElement& re = referenceElement(element.cornerCount);
+    const ShellReferenceElement& re = referenceElement(element);
     const double z0 = element.offset;
     return areaLoadAtPoints(re, element.definition(),
                             [&](std::size_t q, const PointGeometry& g)
@@ -69,14 +69,14 @@ Vector ShellPart::pressureLoad(const ShellElementData& element, const std::array
 
 Vector ShellPart::inertiaLoad(const ShellElementData& element, const SpaceVector& acceleration) const
 {
-    return mixedHybrid::inertiaLoad(referenceElement(element.cornerCount), element.definition(), acceleration);
+    return mixedHybrid::inertiaLoad(referenceElement(element), element.definition(), acceleration);
 }
 
 ShellThermalLoad ShellPart::thermalLoad(const ShellElementData& element,
                                         const TemperatureAtPosition& temperatures) const
 {
     // the temperatures at the points of the surface of the grid points
-    return mixedHybrid::thermalLoad(referenceElement(element.cornerCount), element.definition(), element.matrices,
+    return mixedHybrid::thermalLoad(referenceElement(element), element.definition(), element.matrices,
                                     [&](const PointGeometry& g) { return temperatures(g.x); });
 }
 
@@ -89,7 +89,7 @@ std::variant<ShellEdgeLoad, std::string> ShellPart::edgeLoad(std::size_t gridA, 
     const std::size_t e = found->second;
     const std::size_t ie = m_topology.edgeElements[e].front();
     const ShellElementData el = element(ie);
-    const ShellReferenceElement& re = referenceElement(el.cornerCount);
+    const ShellReferenceElement& re = referenceElement(el);
     const ShellElementDefinition def = el.definition();
     const std::size_t n1 = re.h1Count;
     const std::size_t nc = re.hcurlCount;
@@ -147,7 +147,7 @@ std::variant<ShellEdgeLoad, std::string> ShellPart::edgeLoad(std::size_t gridA, 
 ShellRecovery ShellPart::recover(const ShellElementData& element, std::span<const double> x, const Vector* momentTerm,
                                  const TemperatureAtPosition& temperatures, std::span<const double> fibres) const
 {
-    const ShellReferenceElement& re = referenceElement(element.cornerCount);
+    const ShellReferenceElement& re = referenceElement(element);
     const auto pointResults = [&](double xi, double eta, ShellPointState state)
     {
         ShellRecoveryPoint point;
@@ -176,13 +176,13 @@ Matrix ShellPart::geometricStiffness(const ShellElementData& element, std::span<
                                      const Vector* momentTerm, const Vector* membraneTerm,
                                      const PressureAt* followerPressure) const
 {
-    return elementGeometricStiffness(referenceElement(element.cornerCount), element.definition(), element.matrices, x,
+    return elementGeometricStiffness(referenceElement(element), element.definition(), element.matrices, x,
                                      momentTerm, membraneTerm, followerPressure);
 }
 
 Vector ShellPart::geometricStiffnessGradient(const ShellElementData& element, std::span<const double> phi) const
 {
-    const ShellReferenceElement& re = referenceElement(element.cornerCount);
+    const ShellReferenceElement& re = referenceElement(element);
     const ShellElementDefinition def = element.definition();
     return mixedHybrid::geometricStiffnessGradient(re, def, element.matrices, prepareNonlinear(re, def), phi);
 }

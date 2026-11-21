@@ -1,5 +1,6 @@
 #include "ShellElementDetail.hpp"
 
+#include "oos/base/errors/InternalError.hpp"
 #include "oos/elements/mixedHybrid/core/DualScalar.hpp"
 #include "oos/elements/mixedHybrid/core/PolynomialBases.hpp"
 #include "oos/elements/mixedHybrid/geometry/ReferenceShapes.hpp"
@@ -11,6 +12,9 @@ namespace oos::elements::mixedHybrid::shelldetail
 std::vector<std::vector<EdgePointGeometry>> edgeGeometries(const ShellReferenceElement& re,
                                                            const ShellElementDefinition& def)
 {
+    // the tables of the element are on the rule of the reference element (an element has its own rule)
+    OOS_ASSERT(def.edgeJets.size() == re.cornerCount &&
+               def.edgeJets.front().size() == re.edgeParameters.size() * re.h1Count);
     std::vector<std::vector<EdgePointGeometry>> out(re.cornerCount);
     for (std::size_t k = 0; k < re.cornerCount; ++k)
     {
@@ -29,6 +33,7 @@ std::vector<std::vector<EdgePointGeometry>> edgeGeometries(const ShellReferenceE
 
 std::vector<PointGeometry> volumeGeometries(const ShellReferenceElement& re, const ShellElementDefinition& def)
 {
+    OOS_ASSERT(def.volumeJets.size() == re.points.size() * re.h1Count);
     std::vector<PointGeometry> out;
     out.reserve(re.points.size());
     for (std::size_t q = 0; q < re.points.size(); ++q)

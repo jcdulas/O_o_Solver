@@ -155,6 +155,12 @@ struct ShellPartInput
     // rules (0: 2k + 4).
     std::size_t degree = 4;
     std::size_t pointsPerDirection = 0;
+    // The rule of each shell chosen from its shape (chooseShellPoints): the tolerance of the choice, 0 for the rule
+    // above on every shell, and the smallest rule it may take. The rule above is then the largest: the matrices of a
+    // shell are integrated on its own rule, everything else of the part (the map of the surface, the lines, the
+    // supports, the report) on the largest.
+    double quadratureTolerance = 0.0;
+    std::size_t minimumPointsPerDirection = 6;
     // The mass matrices and the loads of the inertia are built (elementWithMatrices, lineData).
     bool withMass = false;
     // The spaces of the publications on elements that are not affine (a check against them); false in the formulation.
@@ -417,7 +423,13 @@ public:
     [[nodiscard]] const Topology& topology() const { return m_topology; }
     // The reference element of the shells of `cornerCount` corners.
     [[nodiscard]] const ShellReferenceElement& referenceElement(std::size_t cornerCount) const;
-    // Shell `shell` with its tables (jets), its matrices empty.
+    // The reference element of the rule the tables of `element` are on (ShellElementData::pointsPerDirection), which
+    // is the one to read those tables and its matrices with; that of the largest rule for an element without tables.
+    [[nodiscard]] const ShellReferenceElement& referenceElement(const ShellElementData& element) const;
+    // The points per direction of the rule the matrices of shell `shell` are integrated on: the largest rule, or the
+    // one chosen from its shape (ShellPartInput::quadratureTolerance).
+    [[nodiscard]] std::size_t pointsPerDirectionOf(std::size_t shell) const { return m_ownPoints[shell]; }
+    // Shell `shell` with its tables (jets) on the largest rule, its matrices empty.
     [[nodiscard]] ShellElementData element(std::size_t shell) const;
     // Shell `shell` without its tables nor its matrices: what the functions of a reference point read (geometryAt,
     // h1At, rotationRowsOf take the weight and the map of the element, not the tables of its rule). Forming the tables
@@ -727,9 +739,12 @@ private:
     // is refused.
     [[nodiscard]] std::variant<ShellElementData, std::string> build(std::size_t shell, bool withMatrices,
                                                                     const ShellMatrixRequest& request) const;
-    // `data` with the tables of its points (the jets of its displacement functions, elementJets), which the part
-    // does not keep: they are formed from the weight of the element in a few tens of microseconds.
-    [[nodiscard]] ShellElementData withTables(ShellElementData data) const;
+    // `data` with the tables of its points (the jets of its displacement functions, elementJets) on the rule of
+    // `points` points per direction, which the part does not keep: they are formed from the weight of the element in
+    // a few tens of microseconds.
+    [[nodiscard]] ShellElementData withTables(ShellElementData data, std::size_t points) const;
+    // The rule of every shell (m_ownPoints), once their maps and sections are known.
+    void chooseRules();
     // The edges of the lines.
     void placeLines();
     // The refusals of the shells and lines (ShellPartInput::checkElements).
@@ -781,6 +796,8 @@ private:
     Topology m_topology;
     // The shells without their tables and matrices.
     std::vector<ShellElementData> m_shells;
+    // The points per direction of the rule of the matrices of each shell.
+    std::vector<std::size_t> m_ownPoints;
     // The interior projections of the triangle and of the quadrilateral (built when a shell needs them).
     std::optional<InteriorProjection> m_triangleProjection;
     std::optional<InteriorProjection> m_quadrilateralProjection;

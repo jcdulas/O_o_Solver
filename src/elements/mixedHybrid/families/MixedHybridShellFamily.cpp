@@ -188,7 +188,7 @@ ShellCaseTemperatures caseTemperaturesOf(const ElementBatchView& view, std::int6
 // mass).
 Matrix addedMassOf(const ShellPart& part, const ShellElementData& element, double massPerArea)
 {
-    const ShellReferenceElement& re = part.referenceElement(element.cornerCount);
+    const ShellReferenceElement& re = part.referenceElement(element);
     const ShellElementDefinition definition = element.definition();
     const std::size_t n = element.matrices.unknownCount;
     Matrix mass(n, n);
@@ -212,7 +212,7 @@ Matrix addedMassOf(const ShellPart& part, const ShellElementData& element, doubl
 double shellVolumeOf(const ShellPart& part, const MixedShell& shell)
 {
     const ShellElementData element = part.element(shell.partIndex);
-    const ShellReferenceElement& re = part.referenceElement(element.cornerCount);
+    const ShellReferenceElement& re = part.referenceElement(element);
     const ShellElementDefinition definition = element.definition();
     double volume = 0.0;
     for (std::size_t q = 0; q < re.points.size(); ++q)

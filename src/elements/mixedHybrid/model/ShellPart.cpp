@@ -4,6 +4,7 @@
 #include "oos/elements/mixedHybrid/geometry/ReferenceShapes.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellGeometry.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellPointLaw.hpp"
+#include "oos/elements/mixedHybrid/shell/ShellQuadratureChoice.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -230,6 +231,24 @@ const ShellReferenceElement& ShellPart::referenceElement(std::size_t cornerCount
     return shellReferenceElement(cornerCount, m_input.degree, m_pointsPerDirection);
 }
 
+const ShellReferenceElement& ShellPart::referenceElement(const ShellElementData& element) const
+{
+    const std::size_t points = element.pointsPerDirection > 0 ? element.pointsPerDirection : m_pointsPerDirection;
+    return shellReferenceElement(element.cornerCount, m_input.degree, points);
+}
+
+void ShellPart::chooseRules()
+{
+    m_ownPoints.assign(m_shells.size(), m_pointsPerDirection);
+    if (!(m_input.quadratureTolerance > 0.0))
+        return;
+    const ShellRuleChoice choice{std::min(m_input.minimumPointsPerDirection, m_pointsPerDirection),
+                                 m_pointsPerDirection, m_input.quadratureTolerance};
+    for (std::size_t ie = 0; ie < m_shells.size(); ++ie)
+        m_ownPoints[ie] =
+            chooseShellPoints(m_shells[ie].cornerCount, m_input.degree, m_shells[ie].definition(), choice);
+}
+
 const InteriorProjection& ShellPart::projectionOf(std::size_t cornerCount) const
 {
     const std::optional<InteriorProjection>& projection =
@@ -403,6 +422,7 @@ void ShellPart::buildShells()
                     edgeBase(el.edges[kk]) + edgeRotationDof(l);
     }
     buildEntities(surfaces);
+    chooseRules();
 }
 
 void ShellPart::buildEntities(std::span<const ElementSurface> surfaces)
@@ -460,9 +480,10 @@ void ShellPart::checkElements()
     }
 }
 
-ShellElementData ShellPart::withTables(ShellElementData data) const
+ShellElementData ShellPart::withTables(ShellElementData data, std::size_t points) const
 {
-    ElementJets jets = elementJets(referenceElement(data.cornerCount), data.weight);
+    data.pointsPerDirection = points;
+    ElementJets jets = elementJets(referenceElement(data), data.weight);
     data.volumeJets = std::move(jets.volume);
     data.edgeJets = std::move(jets.edge);
     data.edgeWeights = std::move(jets.edgeWeight);
@@ -471,7 +492,7 @@ ShellElementData ShellPart::withTables(ShellElementData data) const
 
 ShellElementData ShellPart::element(std::size_t shell) const
 {
-    return withTables(m_shells[shell]);
+    return withTables(m_shells[shell], m_pointsPerDirection);
 }
 
 std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, bool withMatrices,
@@ -496,8 +517,9 @@ std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, 
     for (std::size_t k = 0; k < nv; ++k)
         if (!(thickness[cornerSlot[k]] > 0.0))
             return std::string(SINGULAR_SECTION) + ": its thickness at a corner is not positive";
-    ShellElementData data = element(shell);
-    const ShellReferenceElement& re = referenceElement(nv);
+    // the tables and the matrices of the element on its own rule
+    ShellElementData data = withTables(m_shells[shell], m_ownPoints[shell]);
+    const ShellReferenceElement& re = referenceElement(data);
     const ShellElementDefinition def = data.definition();
     // an element that turns too much: the frame of its constant states is carried from the normal of its corners by
     // the minimal rotation, which needs the normal to stay within 90° of it
@@ -577,7 +599,7 @@ std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::
                 kept = m_cache->elements[shell];
         }
         if (kept && holds(kept->matrices, asked))
-            return withTables(*kept);
+            return withTables(*kept, m_ownPoints[shell]);
     }
     std::variant<ShellElementData, std::string> built = build(shell, true, asked);
     const ShellElementData* data = std::get_if<ShellElementData>(&built);
@@ -702,7 +724,7 @@ std::vector<EdgeGeometry> ShellPart::geometryReport() const
     const EdgeSurfaceEvaluator point = [&](std::size_t shell, std::size_t localEdge, double t)
     {
         const ShellElementData& data = elementAtPoints(shell);
-        const ShellReferenceElement& re = referenceElement(data.cornerCount);
+        const ShellReferenceElement& re = referenceElement(data);
         const ReferencePoint uv = referenceEdgePointAndDirection(re.cornerCount, localEdge, t).first;
         const PointGeometry geometry = geometryAt(re, data.definition(), uv[0], uv[1]);
         return EdgeSurfacePoint{geometry.x, geometry.nu};

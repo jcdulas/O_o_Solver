@@ -146,7 +146,7 @@ std::variant<LineData, std::string> ShellPart::lineData(std::size_t line, const 
     const LineEdge& at = *m_lineEdges[line];
     const ShellPartLine& input = m_input.lines[line];
     const ShellElementData shell = element(at.shell);
-    const ShellReferenceElement& re = referenceElement(shell.cornerCount);
+    const ShellReferenceElement& re = referenceElement(shell);
     const ShellElementDefinition def = shell.definition();
     // the rule of the edges of the shell: ds = w dτ / (dλ/ds) with dλ/ds = 1 / |X_τ|
     std::vector<WeightedLineKinematics> points;
@@ -169,7 +169,7 @@ LineKinematics ShellPart::lineKinematics(std::size_t line, double fraction) cons
         throw base::InternalError("shell part: the line is not on an edge of the shells");
     const LineEdge& at = *m_lineEdges[line];
     const ShellElementData shell = element(at.shell);
-    const ShellReferenceElement& re = referenceElement(shell.cornerCount);
+    const ShellReferenceElement& re = referenceElement(shell);
     const ShellElementDefinition def = shell.definition();
     const std::array<std::size_t, 2>& grids = m_input.lines[line].element.grids;
     const SpaceVector& xa = m_input.grids[grids[0]].position;
