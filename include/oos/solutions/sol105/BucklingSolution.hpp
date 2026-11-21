@@ -41,6 +41,10 @@ struct BucklingOptions
     linalg::KernelKind kernel = linalg::KernelKind::Reference;
     const base::CancellationToken* cancellation = nullptr; // not owned, may be null
     ProgressMonitor* monitor = nullptr;                    // not owned, may be null
+    // Whether a subcase that selects a non-structural mass set (NonStructMassSelection) is refused. The preloads take
+    // the selected set in their inertial loads on the full path; a caller that differentiates the load factors
+    // without the set (the design sensitivities) refuses it.
+    bool refusesSelectedMassSets = false;
     // The memory the result tables of the buckling shapes may take; nothing: half of the budget left at the recovery.
     std::optional<std::uint64_t> outputLimitBytes;
     std::int64_t recoveryRangeElements = output::ElementResultBuilder::RANGE_ELEMENTS;

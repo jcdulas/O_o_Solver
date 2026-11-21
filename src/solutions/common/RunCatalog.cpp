@@ -277,7 +277,9 @@ base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const ele
                 report.refusals.push_back(std::move(diagnostic));
             }
         }
-        if (analysis != AnalysisKind::Statics && table.hasColumn("nonStructMass"))
+        // The static, eigenvalue and buckling analyses add the selected non-structural mass sets to their mass
+        // (NonStructuralMassShares); the trim analysis forms its mass without them.
+        if (analysis == AnalysisKind::StaticAeroelastic && table.hasColumn("nonStructMass"))
         {
             for (std::int64_t row = 0; row < table.rowCount(); ++row)
             {
@@ -289,7 +291,9 @@ base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const ele
                 diagnostic.field = "nonStructMass";
                 diagnostic.id = snapshot.subcases().ids()[static_cast<std::size_t>(row)];
                 diagnostic.message =
-                    "selected non-structural mass sets are currently implemented for static analysis only";
+                    "selected non-structural mass sets are implemented for the static, real eigenvalue and buckling "
+                    "analyses, not for a static aeroelastic analysis (SOL 144); remove NonStructMassSelection, or "
+                    "give the mass in the properties of the elements";
                 report.refusals.push_back(std::move(diagnostic));
             }
         }

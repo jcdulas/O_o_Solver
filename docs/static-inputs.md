@@ -57,15 +57,25 @@ non-structural mass stored in element properties. `Parameter;WeightToMass` scale
 Line elements take a mass per length; shell and shear-panel elements take a mass per area. Subcases selecting
 different sets have separate mass matrices and load bases.
 
+A real eigenvalue analysis (SOL 103) on the full path adds the set its subcase selects to the mass of its
+eigenproblem: subcases that select different sets are solved apart, each with its mass, and the modal effective
+masses and the grid point weight read that mass. In a buckling analysis (SOL 105) the set weighs in the inertial
+loads of the static preload, whose subcase selects it, and so in the load factors.
+
 Unknown selected sets, missing targets, invalid values and incompatible target dimensions stop the run before
 solving. Lumped set cards (`NonStructMassLumped`, `NonStructMassLumped1`) are still refused when selected:
-their distribution is not implemented. Selected sets are also explicitly refused on the condensed static path,
-in modal, buckling and trim analyses, and in optimization, whose added-set mass derivatives are not implemented.
-These restrictions concern selected bulk mass sets; the existing mass fields in element properties remain available.
+their distribution is not implemented. A selected set is refused, naming the subcase, where its mass would be left
+out: on the condensed path of every analysis, in a static aeroelastic analysis (SOL 144), in an analysis with
+superelements, and in the eigenvalue and buckling analyses of a design problem, whose derivatives do not form the
+mass of the set. A static design problem takes it. These restrictions concern selected bulk mass sets; the existing
+mass fields in element properties remain available.
 
 The end-to-end checks in `wasm/test/cases/static-inputs.mjs` compare gravity displacements with the independent
 axial-rod solution, test inherited and overridden selections, unions, property mass and unit scaling, and verify
-that unsupported input stops the calculation.
+that unsupported input stops the calculation. For the eigenvalue analyses they check that a set that doubles or
+triples the mass divides the eigenvalues by two or three (a rod, a shell), that a selected set gives the eigenvalue
+of the same mass written in the property, and that a set that doubles the weight of a column halves its buckling
+load factor.
 
 The [fast combination suite](testing.md) extends these checks across element families, loads, constraints and mass
 options, with a watchdog below one second per test.

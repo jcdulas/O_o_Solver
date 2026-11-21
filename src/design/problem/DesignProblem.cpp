@@ -293,6 +293,10 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         bucklingOptions.cancellation = options.cancellation;
         bucklingOptions.monitor = options.monitor;
         bucklingOptions.structures = options.structures;
+        // The derivatives of the load factors and of the modes form the mass of the elements without a selected
+        // non-structural mass set: such a selection is refused rather than analysed with it and differentiated
+        // without it.
+        bucklingOptions.refusesSelectedMassSets = true;
         condensedOptions(bucklingOptions);
         if (isCondensed && hasBucklingResponses())
         {
@@ -328,6 +332,7 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         modesOptions.cancellation = options.cancellation;
         modesOptions.monitor = options.monitor;
         modesOptions.structures = options.structures;
+        modesOptions.refusesSelectedMassSets = true;
         condensedOptions(modesOptions);
         for (const auto& definition : m_responses.parts().designResp1)
             if (definition.mode)

@@ -89,11 +89,13 @@ struct ModalSubcase
     output::OutputPlan plan;
 };
 
+// One solve per constraint set, method and selected non-structural mass set (another mass, other modes).
 bool isSameSolve(const ModalSubcase& left, const ModalSubcase& right)
 {
     return left.subcase.spc == right.subcase.spc && left.subcase.mpc == right.subcase.mpc &&
            left.subcase.contact == right.subcase.contact && left.method.card == right.method.card &&
-           left.method.setId == right.method.setId;
+           left.method.setId == right.method.setId &&
+           left.subcase.nonStructuralMass == right.subcase.nonStructuralMass;
 }
 
 // The modal effective mass of the modes: with D_a the six
@@ -445,6 +447,11 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
                                        "(eigenvalues at round-off instead of exact zeros)"));
         subcases.push_back(std::move(modal));
     }
+    if (m_options.refusesSelectedMassSets)
+        for (const ModalSubcase& modal : subcases)
+            refuseSelectedMassSets(std::span<const StaticSubcase>(&modal.subcase, 1),
+                                   "the eigenvalue analyses of a design problem, whose derivatives do not take it",
+                                   sink);
     stopOnErrors(sink, "the eigenvalue solution");
 
     // 2. The solves: one per constraint set and method.
@@ -584,6 +591,7 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
             inputs.selection = selection;
             inputs.thresholds = orderingThresholdsOf(m_options.eigenSolver);
             inputs.transform = linalg::SpectralTransform::Vibration;
+            inputs.nonStructuralMass = first.subcase.nonStructuralMass;
             inputs.pool = pool;
             inputs.cancellation = cancellation;
             elementSystem = std::make_unique<ElementEigenSystem>(inputs, budget, sink);
@@ -604,7 +612,10 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
         if (!isFromElements)
         {
             mgg.emplace(system.pattern(), budget, "mass Mgg");
-            const assembly::NonStructuralMassShares shares(model.elementSet());
+            // With the non-structural mass set the subcases of the group select (isSameSolve), if any.
+            const assembly::NonStructuralMassShares shares(model.elementSet(), first.subcase.nonStructuralMass, budget,
+                                                           sink);
+            stopOnErrors(sink, "the selected non-structural mass");
             assembly::MassAssembler(model.elementSet(), dofMap, shares,
                                     assembly::MassAssemblyOptions::fromParams(params, first.subcase.label, sink))
                 .assemble(*mgg, pool, cancellation);

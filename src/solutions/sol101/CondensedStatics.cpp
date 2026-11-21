@@ -600,7 +600,8 @@ CondensedStatics::CondensedStatics(const Inputs& inputs, base::MemoryBudget& bud
     for (const StaticSubcase& subcase : inputs.subcases)
         if (subcase.nonStructuralMass)
             throw base::SolverError(
-                "selected non-structural mass sets require the full static path; disable condensation");
+                "selected non-structural mass sets (NonStructMassSelection) require the full path: the condensed "
+                "units are reduced without them; disable condensation");
     condenseUnits(inputs, budget, sink);
 }
 

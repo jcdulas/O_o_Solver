@@ -158,9 +158,23 @@ test("an invalid selected set is checked even without an inertial load", () => {
   });
 });
 
-test("selected mass supports static optimization while the modal path refuses it", () => {
+// A deck of another solution sequence than the statics of deckOf.
+function withDeck(solution, control, bulk, action) {
+  oor.writeFile("/work/static-inputs-eigen.oos", `[executive]\nSolutionSequence;${solution}\n[case]\n${control}[model]\n${bulk}`);
+  const deck = oor.readModel("/work/static-inputs-eigen.oos", { strict: true });
+  let model;
+  try { model = solver.modelFromReader(oor, deck); return action(model, deck); }
+  finally { model?.delete(); deck.delete(); }
+}
+const eigenvalueOf = (run, subcase) => run.eigenvalues.find(t => t.subcase === subcase).rows[0].eigenvalue;
+const relativelyNear = (actual, expected, what) =>
+  assert.ok(Math.abs(actual / expected - 1) < 1e-10, `${what}: ${actual} differs from ${expected}`);
+
+test("selected mass supports static optimization, and the trim analysis refuses it", () => {
   withModel(CASE + "NonStructMassSelection;20\n", BULK + "NonStructMass;20;RodProp;1;2.\n", model => {
-    assert.ok(model.checkSupport("modes").refusals.some(d => d.field === "nonStructMass"));
+    for (const analysis of ["statics", "modes", "buckling"])
+      assert.ok(!model.checkSupport(analysis).refusals.some(d => d.field === "nonStructMass"), analysis);
+    assert.ok(model.checkSupport("aeroelastic").refusals.some(d => d.field === "nonStructMass"));
     const problem = solver.createOptimization(model, {
       variables: [{ id: 1, initialValue: 2, lower: 1, upper: 3 }],
       relations: [{ id: 1, targetKind: "property", targetCard: "RodProp", targetId: 1, field: "area",
@@ -168,6 +182,96 @@ test("selected mass supports static optimization while the modal path refuses it
       responses: [{ id: 10, type: "Volume" }], objective: { responseId: 10 },
     });
     try { assert.equal(problem.metadata().variables.length, 1); }
+    finally { problem.delete(); }
+  });
+});
+
+// The axial mode of the rod: omega^2 = k / m with m the mass at its free end, in proportion to rho*A + nsm. The
+// structural mass per length is 2 (rho = 1, A = 2): a selected set of 2 per length doubles the mass, one of 4
+// triples it.
+const MODES_CASE = "SinglePointConstrSelection;1\nEigenMethodSelection;5\n";
+const MODES_BULK = BULK + "LanczosEigenMethod;5;;;1\nNonStructMass;20;RodProp;1;2.\nNonStructMass;21;RodProp;1;4.\n";
+
+test("a selected mass set lowers the frequencies of the real eigenvalue analysis by its mass", () => {
+  const control = MODES_CASE + "SubcaseStart;1\nSubcaseStart;2\nNonStructMassSelection;20\n" +
+    "SubcaseStart;3\nNonStructMassSelection;21\nSubcaseStart;4\nNonStructMassSelection;20\n";
+  withDeck(103, control, MODES_BULK, model => {
+    assert.equal(model.checkSupport("modes").isComplete, true);
+    const run = solver.run(model, "modes");
+    const bare = eigenvalueOf(run, 1);
+    assert.ok(bare > 0);
+    relativelyNear(eigenvalueOf(run, 2), bare / 2, "the set of 2 per length");
+    relativelyNear(eigenvalueOf(run, 3), bare / 3, "the set of 4 per length");
+    relativelyNear(eigenvalueOf(run, 4), bare / 2, "the same set in another subcase");
+  });
+});
+
+test("the mass of a selected set is the mass of the property field in the eigenvalue analysis", () => {
+  const selected = withDeck(103, MODES_CASE + "NonStructMassSelection;20\nSubcaseStart;1\n", MODES_BULK,
+    model => eigenvalueOf(solver.run(model, "modes"), 1));
+  const inProperty = withDeck(103, MODES_CASE + "SubcaseStart;1\n",
+    MODES_BULK.replace("RodProp;1;1;2.", "RodProp;1;1;2.;;;2."), model => eigenvalueOf(solver.run(model, "modes"), 1));
+  relativelyNear(selected, inProperty, "selected set against the property mass");
+});
+
+test("a selected mass set per area lowers the frequencies of a shell by its mass", () => {
+  const shell = `Node;1;;0.;0.;0.
+Node;2;;3.;0.;0.
+Node;3;;3.;1.;0.
+Node;4;;0.;1.;0.
+ShellQuad4;1;1;1;2;3;4
+ShellProp;1;1;0.1;1;;1
+IsoMat;1;1000.;;0.3;1.
+SinglePointConstrList;1;123456;1;4
+SinglePointConstrList;1;23456;2;3
+LanczosEigenMethod;5;;;1
+NonStructMass;20;ShellProp;1;0.1
+`;
+  const control = MODES_CASE + "SubcaseStart;1\nSubcaseStart;2\nNonStructMassSelection;20\n";
+  withDeck(103, control, shell, model => {
+    const run = solver.run(model, "modes");
+    relativelyNear(eigenvalueOf(run, 2), eigenvalueOf(run, 1) / 2, "the structural mass per area doubled");
+  });
+});
+
+test("a selected mass set weighs in the preload of a buckling analysis", () => {
+  // A column clamped at its foot under its own weight along its axis: the selected set doubles the weight, so the
+  // load factor of the first buckling mode is half that of the column alone.
+  const column = `Node;1;;0.;0.;0.
+Node;2;;3.;0.;0.
+Bar2;1;1;1;2;0.;;1.;0.
+BarProp;1;1;2.;0.1;0.1;0.05
+IsoMat;1;1000.;;0.3;1.
+SinglePointConstrList;1;123456;1
+GravityLoad;2;;10.;-1.;0.;0.
+LanczosEigenMethod;5;;;1
+NonStructMass;20;BarProp;1;2.
+`;
+  const control = (selection) => `SubcaseStart;1\nSinglePointConstrSelection;1\nStaticLoadSelection;2\n${selection}` +
+    `SubcaseStart;2\nSinglePointConstrSelection;1\nEigenMethodSelection;5\nStaticSubcaseSelection;1\n${selection}`;
+  const factorOf = (selection) => withDeck(105, control(selection), column, model => {
+    assert.equal(model.checkSupport("buckling").isComplete, true);
+    return eigenvalueOf(solver.run(model, "buckling"), 2);
+  });
+  const alone = factorOf("");
+  assert.ok(alone > 0, `load factor ${alone}`);
+  relativelyNear(factorOf("NonStructMassSelection;20\n"), alone / 2, "the weight doubled");
+});
+
+test("an eigenvalue analysis checks its selected mass set, and refuses it where it would be left out", () => {
+  // an unknown set stops the analysis
+  withDeck(103, MODES_CASE + "NonStructMassSelection;99\nSubcaseStart;1\n", MODES_BULK, model => {
+    assert.throws(() => solver.run(model, "modes"), /nsm-unknown-set/);
+  });
+  // the modes of a design problem are differentiated without the set: refused
+  withDeck(103, MODES_CASE + "NonStructMassSelection;20\nSubcaseStart;1\n", MODES_BULK, model => {
+    const problem = solver.createOptimization(model, {
+      variables: [{ id: 1, initialValue: 2, lower: 1, upper: 3 }],
+      relations: [{ id: 1, targetKind: "property", targetCard: "RodProp", targetId: 1, field: "area",
+        terms: [{ variableId: 1, coefficient: 1 }] }],
+      responses: [{ id: 10, type: "Eigenvalue", attributeA: 1 }], objective: { responseId: 10, subcase: 1 },
+    }, { analyses: { modes: [1] } });
+    try { assert.throws(() => problem.evaluate(new Float64Array([2.5])), /NonStructMassSelection/); }
     finally { problem.delete(); }
   });
 });

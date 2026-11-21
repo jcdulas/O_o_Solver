@@ -1,6 +1,7 @@
 #include "oos/solutions/common/ElementEigenSystem.hpp"
 
 #include "oos/assembly/assemble/MassAssembler.hpp"
+#include "oos/solutions/common/RunChecks.hpp"
 #include "oos/solutions/sol101/StreamedFront.hpp"
 
 #include <optional>
@@ -44,7 +45,9 @@ ElementEigenSystem::ElementEigenSystem(const Inputs& inputs, base::MemoryBudget&
     placement.symbolic = &m_ordering->symbolic();
     placement.isOutputNode = m_isOutputNode.span();
     m_elements = std::make_unique<StreamedElements>(placement, budget);
-    m_shares = std::make_unique<assembly::NonStructuralMassShares>(model.elementSet());
+    m_shares = std::make_unique<assembly::NonStructuralMassShares>(model.elementSet(), inputs.nonStructuralMass,
+                                                                   budget, sink);
+    stopOnErrors(sink, "the selected non-structural mass");
     ElementPencil::Inputs pencil;
     pencil.model = &model;
     pencil.elements = m_elements.get();

@@ -47,6 +47,28 @@ StaticSubcase subcaseAtRow(const input::SubcaseTable& table, std::int64_t row, b
 
 } // namespace
 
+void refuseSelectedMassSets(std::span<const StaticSubcase> subcases, std::string_view where,
+                            base::DiagnosticSink& sink)
+{
+    for (const StaticSubcase& subcase : subcases)
+    {
+        if (!subcase.nonStructuralMass)
+            continue;
+        base::Diagnostic diagnostic;
+        diagnostic.severity = base::Severity::Error;
+        diagnostic.code = "unsupported-selection";
+        diagnostic.card = "SubcaseStart";
+        diagnostic.id = subcase.label;
+        diagnostic.field = "nonStructMass";
+        diagnostic.message = base::concatenate(
+            {"the selection of the non-structural mass set ", std::to_string(*subcase.nonStructuralMass),
+             " (NonStructMassSelection) is not implemented for ", std::string(where),
+             ": its mass would be left out; remove the selection, or give the mass in the properties of the "
+             "elements"});
+        sink.report(std::move(diagnostic));
+    }
+}
+
 InitialStrainKey initialStrainKeyOf(const StaticSubcase& subcase)
 {
     InitialStrainKey key;

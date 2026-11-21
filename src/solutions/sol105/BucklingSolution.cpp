@@ -461,6 +461,11 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
                                        "produced by this version)"));
         cases.push_back(std::move(item));
     }
+    if (m_options.refusesSelectedMassSets)
+        for (const DeckSubcase& entry : deck)
+            refuseSelectedMassSets(std::span<const StaticSubcase>(&entry.subcase, 1),
+                                   "the buckling analyses of a design problem, whose derivatives do not take it",
+                                   sink);
     stopOnErrors(sink, "the buckling solution");
 
     // The static subcases: every subcase without METHOD, and the buckling subcases that are their own preload. The
@@ -552,6 +557,7 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
             inputs.selection = selection;
             inputs.thresholds = orderingThresholdsOf(m_options.eigenSolver);
             inputs.transform = linalg::SpectralTransform::Buckling;
+            inputs.nonStructuralMass = subcase.nonStructuralMass;
             inputs.preloadDisplacements = kept->values.span();
             inputs.preloadTemperatures = temperatures ? &temperatures->temperatures() : nullptr;
             inputs.pool = pool;
@@ -639,7 +645,10 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
         {
             linalg::BlockSparseMatrix mgg(system.pattern(), budget, "mass Mgg");
             {
-                const assembly::NonStructuralMassShares shares(model.elementSet());
+                // The mass of the basis of the substructuring, with the set the subcase selects, if any.
+                const assembly::NonStructuralMassShares shares(model.elementSet(), subcase.nonStructuralMass, budget,
+                                                               sink);
+                stopOnErrors(sink, "the selected non-structural mass");
                 assembly::MassAssembler(model.elementSet(), dofMap, shares,
                                         assembly::MassAssemblyOptions::fromParams(model.params(), subcase.label, sink))
                     .assemble(mgg, pool, cancellation);

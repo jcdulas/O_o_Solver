@@ -2,6 +2,7 @@
 
 #include "oos/assembly/assemble/NonStructuralMassShares.hpp"
 #include "oos/base/diagnostics/DiagnosticSink.hpp"
+#include "oos/base/ids/EntityId.hpp"
 #include "oos/base/memory/BudgetedBuffer.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/base/threading/CancellationToken.hpp"
@@ -18,6 +19,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 
 namespace oos::solutions
@@ -44,6 +46,9 @@ public:
         // orderingThresholdsOf).
         linalg::AmalgamationThresholds thresholds;
         linalg::SpectralTransform transform = linalg::SpectralTransform::Vibration;
+        // The non-structural mass set the subcase selects (NonStructMassSelection), added to the mass of the
+        // elements; nothing: no selected set.
+        std::optional<base::EntityId> nonStructuralMass;
         // Buckling: the preload's g-set displacements and temperatures (null: none).
         std::span<const double> preloadDisplacements;
         const elements::ElementTemperatures* preloadTemperatures = nullptr;

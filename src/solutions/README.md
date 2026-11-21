@@ -41,7 +41,8 @@ Folders: `common/`, `sol101/`, `sol103/`, `sol105/`, `sol144/`, `superelements/`
 
 The PARAMs read (through the typed Parameter table, defaults when absent): AutoSingularityConstr, PivotZeroThreshold, PrintSingularities (singularities),
 MaxDiagonalRatio, SingularityBailOut (factorisation), CoupledMass, WeightToMass (mass, for GravityLoad), DofSetPrint (the UserDofSet table). The effective `NonStructMassSelection` of each subcase selects added mass from `nonStructMassTable`
-for full and streamed statics; different selections have separate mass matrices and load bases. See
+for full and streamed statics, for the mass of a real eigenvalue analysis and for the preload of a buckling analysis
+(full path); different selections have separate mass matrices and load bases, and separate eigenvalue solves. See
 [static input checks and added mass](../../docs/static-inputs.md) for supported kinds and explicit restrictions.
 
 ## Pre-flight check and mechanism shapes

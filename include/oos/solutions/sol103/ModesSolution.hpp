@@ -44,6 +44,10 @@ struct ModesOptions
     linalg::KernelKind kernel = linalg::KernelKind::Reference;
     const base::CancellationToken* cancellation = nullptr; // not owned, may be null
     ProgressMonitor* monitor = nullptr;                    // not owned, may be null
+    // Whether a subcase that selects a non-structural mass set (NonStructMassSelection) is refused. The analysis adds
+    // the selected set to its mass on the full path; a caller that differentiates the modes without the set (the
+    // design sensitivities, whose mass derivatives do not form it) refuses it rather than mix two masses.
+    bool refusesSelectedMassSets = false;
     // The memory the result tables may take; nothing: half of the memory budget left when the recovery starts.
     std::optional<std::uint64_t> outputLimitBytes;
     // Fields read by design responses, added to the Case Control outputs.

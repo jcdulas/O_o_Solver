@@ -150,6 +150,8 @@ void PartReduction::selectSubcases(const Inputs& inputs, base::DiagnosticSink& s
                                    " has element deformations (DeformationLoadSelection): deformation loads in a "
                                    "deck with superelements are not supported by this version; "
                                    "remove the DeformationLoadSelection selection"})));
+        // A part is reduced with the mass of its elements alone.
+        refuseSelectedMassSets(std::span<const StaticSubcase>(&*found, 1), "the reduction of a superelement", sink);
         m_subcases.push_back(*found);
     }
 }

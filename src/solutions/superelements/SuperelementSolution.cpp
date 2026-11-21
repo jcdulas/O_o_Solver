@@ -216,6 +216,8 @@ std::vector<SubcaseOfModel> subcasesOf(const input::ModelSnapshot& snapshot, con
     {
         if (std::find(labels.begin(), labels.end(), subcase.label) == labels.end())
             continue;
+        // The parts are reduced and the residual structure assembled with the mass of the elements alone.
+        refuseSelectedMassSets(std::span<const StaticSubcase>(&subcase, 1), "an analysis with superelements", sink);
         SubcaseOfModel entry;
         entry.subcase = subcase;
         entry.plan = output::OutputPlan::forSubcase(snapshot, subcase.tableId, sink);

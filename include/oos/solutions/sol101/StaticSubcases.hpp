@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
+#include <string_view>
 #include <vector>
 
 namespace oos::solutions
@@ -95,5 +97,11 @@ struct InitialStrainKey
 [[nodiscard]] std::vector<StaticSubcase> staticSubcasesOf(const input::ModelSnapshot& snapshot,
                                                           const std::vector<base::EntityId>& asked,
                                                           base::DiagnosticSink& sink);
+
+// An error Diagnostic ("unsupported-selection") for each of `subcases` that selects a non-structural mass set
+// (NonStructMassSelection), for an analysis that forms its mass without the selected sets: `where` names it ("an
+// analysis with superelements"), and ends the sentence "... is not implemented for".
+void refuseSelectedMassSets(std::span<const StaticSubcase> subcases, std::string_view where,
+                            base::DiagnosticSink& sink);
 
 } // namespace oos::solutions
