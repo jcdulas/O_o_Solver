@@ -79,8 +79,6 @@ ShellUnstiffened ShellPart::unstiffenedUnknowns(const std::function<bool(std::si
         anyPartial = anyPartial || partial(shell);
     if (!anyPartial)
         return out;
-    const std::size_t k = degree();
-    const std::size_t p = k - 1;
     std::set<std::size_t> held;
 
     // the lines on each edge
@@ -97,6 +95,7 @@ ShellUnstiffened ShellPart::unstiffenedUnknowns(const std::function<bool(std::si
         if (shells.empty() || !std::all_of(shells.begin(), shells.end(), partial))
             continue;
         candidate[edgeEntity(e)] = true;
+        const std::size_t p = edgeDegree(e) - 1; // the degree of the shear and of the rotation of the edge
         const std::size_t first = m_entities[edgeEntity(e)].firstUnknown;
         const bool sheared = std::any_of(shells.begin(), shells.end(), [&](std::size_t shell)
                                          { return carriesMoments(shell) && !m_shells[shell].kirchhoff; });
@@ -105,9 +104,9 @@ ShellUnstiffened ShellPart::unstiffenedUnknowns(const std::function<bool(std::si
         for (std::size_t l = 0; l <= p; ++l)
         {
             if (!sheared)
-                held.insert(first + edgeShearDof(l));
+                held.insert(first + edgeShearDof(e, l));
             if (!turned && linesOfEdge[e].empty())
-                held.insert(first + edgeRotationDof(l));
+                held.insert(first + edgeRotationDof(e, l));
         }
         // the rotation that only lines turn: held where their diagonal terms on it vanish (a rod without torsion)
         if (turned || linesOfEdge[e].empty())
@@ -125,13 +124,13 @@ ShellUnstiffened ShellPart::unstiffenedUnknowns(const std::function<bool(std::si
                 const double term = std::fabs(data->stiffness(i, i));
                 largest = std::max(largest, term);
                 for (std::size_t l = 0; l <= p; ++l)
-                    if (data->dofs[i] == first + edgeRotationDof(l))
+                    if (data->dofs[i] == first + edgeRotationDof(e, l))
                         diagonal[l] += term;
             }
         }
         for (std::size_t l = 0; l <= p; ++l)
             if (diagonal[l] <= UNSTIFFENED_DIAGONAL_RATIO * largest)
-                held.insert(first + edgeRotationDof(l));
+                held.insert(first + edgeRotationDof(e, l));
     }
     for (std::size_t shell = 0; shell < m_shells.size(); ++shell)
     {
@@ -142,7 +141,7 @@ ShellUnstiffened ShellPart::unstiffenedUnknowns(const std::function<bool(std::si
         if (carriesMoments(shell))
             continue;
         // the interior shear of a shell without moments
-        const ShellReferenceElement& re = referenceElement(m_shells[shell].cornerCount);
+        const ShellReferenceElement& re = referenceElement(m_shells[shell]);
         for (std::size_t i = 0; i < re.hcurlCount; ++i)
         {
             const std::size_t unknown = m_shells[shell].dofs[3 * re.h1Count + i];
@@ -163,13 +162,13 @@ ShellUnstiffened ShellPart::unstiffenedUnknowns(const std::function<bool(std::si
         std::size_t functions = 0;
         if (e.kind == ShellPartEntity::Kind::Edge)
         {
-            functions = k - 1;
+            functions = edgeDegree(e.edge) - 1;
             for (const std::size_t shell : m_topology.edgeElements[e.edge])
                 shellsToBuild.insert(shell);
         }
         else
         {
-            const ShellReferenceElement& re = referenceElement(m_shells[e.shell].cornerCount);
+            const ShellReferenceElement& re = referenceElement(m_shells[e.shell]);
             functions = static_cast<std::size_t>(std::count_if(re.h1Kinds.begin(), re.h1Kinds.end(),
                                                                [](const FunctionKind& f) { return f.isInterior(); }));
             shellsToBuild.insert(e.shell);

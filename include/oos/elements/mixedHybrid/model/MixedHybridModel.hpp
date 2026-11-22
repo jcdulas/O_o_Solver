@@ -40,6 +40,11 @@ inline constexpr std::size_t MIXED_HYBRID_DEFAULT_DEGREE = 4;
 inline constexpr std::size_t MIXED_HYBRID_LOWEST_DEGREE = 2;
 inline constexpr std::size_t MIXED_HYBRID_HIGHEST_DEGREE = 4;
 inline constexpr std::string_view MIXED_HYBRID_DEGREE_PARAMETER = "MixedHybridDegree";
+// The value of that parameter that gives each shell the degree 3 or 4 its shape asks (ShellDegreeChoice.hpp): the
+// lowest on the elements of a regular mesh, higher ones on those a taper, a warp or a curvature takes away from an
+// affine map. The lines alone and the solids then keep the default degree, and so do the shells that share an edge with
+// a solid.
+inline constexpr std::string_view MIXED_HYBRID_AUTOMATIC_DEGREE = "Auto";
 
 // A component released at an end of a line (the pin flags PA, PB of a bar or beam, section 4.2): the line's own
 // unknown there instead of the grid point's, DOF `index` of the entity `entity` (the end of the line), along the unit
@@ -270,11 +275,13 @@ public:
 
     // The degree k of the displacement of this model (MIXED_HYBRID_DEGREE_PARAMETER).
     [[nodiscard]] std::size_t degree() const noexcept { return m_degree; }
+    // Whether each shell takes the degree its shape asks, up to degree() (MIXED_HYBRID_AUTOMATIC_DEGREE).
+    [[nodiscard]] bool choosesShellDegrees() const noexcept { return m_choosesShellDegrees; }
 
 private:
-    // The degree of the model, from its parameter; a value that is not a whole number of
-    // [MIXED_HYBRID_LOWEST_DEGREE, MIXED_HYBRID_HIGHEST_DEGREE] is a problem of the model, which then keeps the
-    // default degree.
+    // The degree of the model, from its parameter; a value that is neither a whole number of
+    // [MIXED_HYBRID_LOWEST_DEGREE, MIXED_HYBRID_HIGHEST_DEGREE] nor MIXED_HYBRID_AUTOMATIC_DEGREE is a problem of the
+    // model, which then keeps the default degree.
     void readDegree(const SnapshotIndex& index);
     // The geometry declarations of the model (section 4.4): those of the program, with those of the deck (the
     // SurfaceEdge, SurfaceFacet and SurfaceLine cards) added where the program does not name the same edge or the
@@ -316,6 +323,8 @@ private:
     void readShells(const SnapshotIndex& index);
     // The ShellPart of the shells (and of the lines on their edges), and its entities.
     void buildShellPart(const SnapshotIndex& index);
+    // The edges of the shells between two grid points of the solids (a superset of those the solids share).
+    [[nodiscard]] std::set<EdgeKey> shellEdgesOnSolids() const;
     // The geometry report of the shells (spec section 10.5), as diagnostics of the model: its summary, and the edges
     // named, warnings where the reading takes as smooth an edge that kinks or an outline that turns.
     void reportGeometry();
@@ -388,6 +397,7 @@ private:
     void addElementProblem(std::string_view card, std::int64_t batchRow, base::Diagnostic problem);
 
     std::size_t m_degree = MIXED_HYBRID_DEFAULT_DEGREE;
+    bool m_choosesShellDegrees = false;
     EntityLayout m_staticLayout{EntityLayout::Kind::Static};
     EntityLayout m_modalLayout{EntityLayout::Kind::Modal};
     std::vector<base::Diagnostic> m_problems;

@@ -118,7 +118,7 @@ CHECK_CASE("shellpart: numbering, entities and signs of a mesh")
         const std::size_t shells = triangles ? 8 : 4;
         runner.expect(part.topology().edges.size() == edges, "edges of the plate");
         runner.expect(part.entities().size() == edges + shells, "entities: the edges then the interiors");
-        runner.expect(part.edgeDofCount() == 17, "17 DOFs per edge at k = 4");
+        runner.expect(part.edgeDofCount(0) == 17, "17 DOFs per edge at k = 4");
         runner.expect(part.unknownCount() == 54 + 17 * edges + interior * shells, "unknowns of the plate");
         // every unknown of an entity is reached, and describe() inverts the numbering
         std::vector<int> reached(part.unknownCount(), 0);
@@ -134,14 +134,14 @@ CHECK_CASE("shellpart: numbering, entities and signs of a mesh")
         }
         runner.expect(allReached, "every entity DOF is a local unknown of a shell and describe() inverts it");
         // the edge shear: +1 from the first shell of the edge, −1 from the second (times (−1)^l on a reversed edge)
-        const mh::ShellReferenceElement& re = part.referenceElement(triangles ? 3 : 4);
+        const mh::ShellReferenceElement& re = part.referenceElement(part.elementAtPoints(0));
         bool joints = true;
         for (std::size_t e = 0; e < part.topology().edges.size(); ++e)
         {
             const std::vector<std::size_t>& owners = part.topology().edgeElements[e];
             if (owners.size() != 2)
                 continue;
-            const std::size_t unknown = part.entities()[e].firstUnknown + part.edgeShearDof(0);
+            const std::size_t unknown = part.entities()[e].firstUnknown + part.edgeShearDof(e, 0);
             double sum = 0.0;
             for (const std::size_t ie : owners)
                 for (std::size_t i = 0; i < re.hcurlCount; ++i)
@@ -427,8 +427,9 @@ CHECK_CASE("shellpart: renumbering the grids leaves the results unchanged")
         for (std::size_t ie = 0; ie < part.input().shells.size(); ++ie)
             for (const double xi : {-0.7, 0.1, 0.9})
                 for (const double eta : {-0.4, 0.6})
-                    points.push_back(
-                        mh::geometryAt(part.referenceElement(4), analysis.shell(ie).definition(), xi, eta).x);
+                    points.push_back(mh::geometryAt(part.referenceElement(analysis.shell(ie)),
+                                                    analysis.shell(ie).definition(), xi, eta)
+                                         .x);
         return Renumbered{u, centreResultants(part, analysis, u), points};
     };
     std::vector<std::size_t> first;
@@ -482,7 +483,7 @@ CHECK_CASE("shellpart: mid-side grids fix the parabola of their edge")
     const mh::ShellPart part(input);
     runner.expect(part.usable() && part.problems().empty(), "the element is read");
     const mh::ShellElementData el = part.element(0);
-    const mh::ShellReferenceElement& re = part.referenceElement(4);
+    const mh::ShellReferenceElement& re = part.referenceElement(el);
     for (std::size_t k = 0; k < 2; ++k)
     {
         const mh::ReferencePoint middle = mh::referenceEdgePointAndDirection(4, k, 0.5).first;
@@ -653,17 +654,17 @@ CHECK_CASE("shellpart: geometry report and supports of a folded plate")
     double rotationValue = 0.0;
     for (const mh::ShellDerivedSupport& d : held.held)
     {
-        if (d.unknown < first || d.unknown >= first + part.edgeDofCount())
+        if (d.unknown < first || d.unknown >= first + part.edgeDofCount(edge))
             continue;
         const std::size_t dof = d.unknown - first;
-        if (dof < part.edgeShearDof(0))
+        if (dof < part.edgeShearDof(edge, 0))
             ++moments;
-        else if (dof < part.edgeRotationDof(0))
+        else if (dof < part.edgeRotationDof(edge, 0))
             ++shears;
         else
         {
             ++rotations;
-            if (dof == part.edgeRotationDof(0))
+            if (dof == part.edgeRotationDof(edge, 0))
                 rotationValue = d.value;
         }
     }
@@ -742,7 +743,7 @@ CHECK_CASE("shellpart: reference numbers, plate")
         const mh::ShellElementData& el = analysis.shell(3);
         const mh::Vector* momentTerm = thermal[3] ? &thermal[3]->momentTerm : nullptr;
         const std::array<double, 8> r =
-            mh::sectionResultants(part.referenceElement(4), el, 0.0, 0.0, el.local(u), momentTerm,
+            mh::sectionResultants(part.referenceElement(el), el, 0.0, 0.0, el.local(u), momentTerm,
                                   ic == 2 ? temperatures : mh::TemperatureAtPosition{});
         double resultantScale = 0.0;
         for (const double v : expectedResultants[ic])

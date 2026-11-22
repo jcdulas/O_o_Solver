@@ -82,11 +82,12 @@ an intermediate developer; the module layering.
 ## 3. The formulation in brief
 
 k is the polynomial degree of the shell displacement: 4 (the lowest degree that passes the validation of the
-reference), or the 2 or 3 the model parameter `MixedHybridDegree` gives (section 15, decision 7), p = k − 1. The
-counts of this document are those of k = 4. A quadrature has at most 2k + 4 Gauss points per direction in a shell
-element and on its edges (the rule of the reference; the matrices of each shell are integrated on the rule its shape
-needs, section 6), and d + 4 in a solid (d the degree of its stresses). The integrands of an element that is not
-affine are rational: these rules converge on them exponentially.
+reference), or the 2 or 3 the model parameter `MixedHybridDegree` gives, or the degree of each shell from its shape
+when it is `Auto` (section 3.1; section 15, decision 7), p = k − 1. The counts of this document are those of k = 4. A
+quadrature has at most 2k + 4 Gauss points per direction in a shell element and on its edges (the rule of the
+reference; the matrices of each shell are integrated on the rule its shape needs, section 6), and d + 4 in a solid (d
+the degree of its stresses). The integrands of an element that is not affine are rational: these rules converge on
+them exponentially.
 
 ### 3.1 Shells
 
@@ -122,6 +123,26 @@ locking.
 - Offsets: the unknowns stay on the surface of the grid points; the section acts on the strains of the offset
   surface (document 34, section 2.3).
 - Mass: ½ ∫ (I0 |u̇|² + 2 I1 u̇ · β̇ + I2 |β̇|²) dA, consistent.
+- Degrees of the shells: every shell has the degree of the model, or its own when `MixedHybridDegree` is `Auto`
+  (`ShellDegreeChoice`). Auto starts at degree 3. It uses degree 4 when the relative departure from the affine map
+  exceeds 0.05 or when the normal distance from that map exceeds the thickness (the minimum corner thickness
+  for a tapered section). Shape alone cannot bound the displacement or stress error even on an affine cell. The departure
+  is the largest sampled distance between the surface and that map, over the square root of the area
+  (zero for a flat parallelogram and for a flat triangle, about an eighth of the angle of an arc). One construction
+  gives every configuration of degrees: an element has a degree k for its inside and the degree n_e ≤ k of each of its
+  edges (the lowest of those of its shells), and with n_e = k on every edge it is the element of degree k. What an
+  edge of a lower degree takes out of the element is a bundle for each order between n_e and k: the displacement (3
+  functions), the shear and the rotation of the edge, two moments and two membrane strains, the same on both
+  sides, so that the unknowns of the edge are shared one for one and no constraint is needed between the shells. The
+  moments left are those that do no work on the functions of the displacement and of the rotation taken out
+  (`momentTransitionSpace`): without this condition they would outnumber the deflections and the element would be too
+  stiff in bending. The membrane space retains the interpolated strains of the admissible displacements and the
+  complement orthogonal to the strains of the full displacement space. Its interpolation functionals annihilate the
+  strain directions of the removed edge functions (`membraneTransition`). This construction uses only the interior
+  and edge degrees for every shape, curvature and thickness. The constant states, rigid motions and strains of
+  quadratic displacements stay exact on a flat element. The shells that share an edge with solids keep the degree of the model: the ties of
+  section 3.4 read as many functions on the edge of the shell as on that of the solid. The lines on an edge of the
+  shells take the degree of the edge. Solids and lines alone have the degree of the model.
 - Geometric stiffness: the second variation of the nonlinear energy at u = 0 with the stresses of the preload. It
   includes the membrane forces, the moments in the elements and the moments at the kinks (folds).
 
@@ -1107,10 +1128,10 @@ computation changing (the default `FieldUse`).
 - **Determinism.** No result may depend on thread scheduling. Loops over quadrature points and assembly into an
   element matrix run in a fixed order.
 - **Rule of a shell element.** The matrices of a shell (stiffness, mass, the operators of its recovery, its thermal
-  loads and geometric stiffness) are integrated on a rule chosen from its shape, of 6 to 2k + 4 points per direction
-  (`chooseShellPoints`). The integrands are polynomials times factors of the geometry of the element: its area
-  element, the maps of the membrane strains and of the moments to the local frame, the Christoffel symbols, the
-  normal, the section laws where the thickness varies or the section is offset. On an affine element those factors
+  loads and geometric stiffness) are integrated on a rule chosen from its shape, of 6 to 2k + 4 points per direction,
+  k the degree of the shell (`chooseShellPoints`). The integrands are polynomials times factors of the geometry of the
+  element: its area element, the maps of the membrane strains and of the moments to the local frame, the Christoffel
+  symbols, the normal, the section laws where the thickness varies or the section is offset. On an affine element those factors
   are constants and a small rule is exact; elsewhere a Gauss rule converges on them by a constant factor at each
   point, the faster the nearer the element is to an affine one. The choice measures it on the element: the integrals
   of those factors against polynomials of degree 8 in each coordinate (the highest the element multiplies them by)
@@ -1267,8 +1288,9 @@ shows what the fold angle alone decides, which is what a preprocessor shows befo
 **The diagnostics** of a run (`geometry_report` of the reference, extended):
 
 - `geometry-report`: a summary for the shells (the edges, how many raw, how many sharp and how many of these by the
-  fold angle alone, the largest kink, rounding and turn of the outline, and the number of shells on each quadrature
-  rule, section 6) and one for the skin of the solids;
+  fold angle alone, the largest kink, rounding and turn of the outline, the number of shells on each quadrature
+  rule, section 6, and, with `MixedHybridDegree` `Auto`, the number of shells of each degree, section 3.1) and one for
+  the skin of the solids;
 - `geometry-fold-by-angle`: a warning for an edge that the fold angle alone made sharp while its angle is under twice
   the fold angle, which a curved surface meshed coarsely gives as a shallow fold does; the edges above are folds and
   are only counted. The nearest to the fold angle are named first;
@@ -1312,6 +1334,7 @@ shows what the fold angle alone decides, which is what a preprocessor shows befo
 | A mesh transition on a straight outline or junction keeps it straight, and a side with quadrilaterals only is read as between quadrilaterals (section 4.4) | The reference reads three quadrilaterals at a boundary grid point as a re-entrant corner whatever their angles, and a quadrilateral side beside a triangle by the triangle rule. |
 | A shell that continues solids or stands on them is tied to them over its thickness: the displacement of its edge to the mean of the skin over its fibre, the rotation about its edge to the slope of the skin across the fibre (section 3.4) | The reference ties both on the line of the edge: a force and a couple on a line of a continuum, a joint that softens without bound as the solids are refined (1.26 to 3.8 times the deflection of a beam). |
 | The functions of the corners and edges of a shell triangle are orthogonal to its interior functions on the triangle itself (`h1Space`) | The reference takes the product of the reference square for the triangle too: the functions then depend on the corner the element starts from, and with them the share of a distributed load between the grid points in the applied load table (22 % on one grid point of an assembly). The space and the solution are the same. |
+| A shell can have a degree of its own, chosen from its shape, and its edges with a shell of a lower degree take that one: transition elements (section 3.1) | The reference has one degree for all its elements. |
 | The matrices of a shell are integrated on a rule chosen from its shape, of 6 to 2k + 4 points per direction (section 6) | The reference has 2k + 4 points on every element, which an affine element needs a quarter of and a curved element of a regular mesh less than half; the results are those of 2k + 4 points to 3e-11 on the meshes measured. |
 
 Implementation notes. The rows of the element tables are those of section 10; the grid point stress table of section
@@ -1372,6 +1395,11 @@ In `wasm/test`, tiny models within one second per case:
 - invariance under renumbering of the grid points and of the elements, and under the corner an element starts from:
   1e-8;
 - Mgg × rigid translation equals the mass; the rigid-body modes have zero energy;
+- every configuration of the degrees of one element (its inside of degree 2, 3 or 4, each of its edges from 2 to that
+  degree, 134 configurations in all): rigid motions and constant states exact; the tangent
+  and the geometric stiffness of a transition element are the derivatives of its energy;
+- a shell part with shells of degrees 2, 3 and 4 side by side, on flat distorted meshes and on a curved panel: rigid
+  motions and constant states exact, the edges numbered by their degree;
 - a cantilever of one line element alone: exact;
 - the support forces balance the loads.
 
@@ -1416,19 +1444,24 @@ Each phase ends with the full test suite passing and its own checks of section 1
    10.3).
 6. **Shell interiors in statics.** Kept as entity DOFs (one layout for statics and buckling; the global factorisation
    eliminates them first). No condensation in the element.
-7. **Degree.** k = 4 unless the model parameter `MixedHybridDegree` gives 2 or 3 (`Parameter;MixedHybridDegree;3`);
-   another value is refused (`invalid-parameter`). The shells, the lines and the solids of a model take the degree
-   together (the traces, the faces and the stresses of the solids), so that the functions of the edges they share
-   are the same; below 4 the skin of the solids is read with straight edges between its grid points. The parameter
-   enters the identity of the model and the key of the condensation cache. The reference and its validation are at
-   k = 4, the default. A lower degree costs less on the same mesh and is less accurate on a coarse one. Measured on
-   five cases (a cantilever bent in its plane and out of it on regular, parallelogram and trapezoid quadrilaterals
-   and on triangles, a skew membrane, a plate with a hole and a cylindrical roof on regular quadrilaterals, on
-   quadrilaterals with grid points moved by 30 % of a cell and on Delaunay triangles, each loaded by its weight;
-   the displacement and the von Mises stress at a grid point against a fine regular mesh): at the middle mesh of
-   each case the errors of degree 3 are those of degree 4 (0.1 to 0.7 % against 0.1 to 0.6 %) for about half the
-   time (a roof of 1 024 quadrilaterals: 2.4 s against 5.0 s), those of degree 2 are 0.1 to 1.3 % for a quarter of
-   it (1.2 s).
+7. **Degree.** k = 4 unless the model parameter `MixedHybridDegree` gives 2 or 3 (`Parameter;MixedHybridDegree;3`),
+   or `Auto` (`Parameter;MixedHybridDegree;Auto`). In Auto the shells take degree 3 or 4 as described in section
+   3.1. Other values are refused (`invalid-parameter`). With a uniform degree the shells, lines and solids of
+   a model take the degree together (the traces, the faces and the stresses of the solids), so that the functions of the
+   edges they share are the same; below 4 the skin of the solids is read with straight edges between its grid points.
+   The parameter enters the identity of the model and the key of the condensation cache. The reference and its
+   validation are at k = 4, the default. A lower degree costs less on the same mesh and is less accurate on a coarse
+   one. Measured on five cases (a cantilever bent in its plane and out of it on regular, parallelogram and trapezoid
+   quadrilaterals and on triangles, a skew membrane, a plate with a hole and a cylindrical roof on regular
+   quadrilaterals, on quadrilaterals with grid points moved by 30 % of a cell and on Delaunay triangles, each loaded by
+   its weight; the displacement and the von Mises stress at a grid point against a fine regular mesh): at the middle
+   mesh of each case the errors of degree 3 are those of degree 4 (0.1 to 0.7 % against 0.1 to 0.6 %) for about half the
+   time (a roof of 1 024 quadrilaterals: 2.4 s against 5.0 s), those of degree 2 are 0.1 to 1.3 % for a quarter of it
+   (1.2 s). On the regular 4 × 4 Scordelis-Lo roof, Auto gives the cubic sag of 0.300957 (reference 0.3024).
+   On the 8 × 8 roof with interior grid points moved by 12 % of a cell, it gives 0.301457 with four cubic and
+   sixty quartic shells. The uniform cubic and quartic results are 0.301250 and 0.301516. On the distorted
+   pinched hemisphere with a hole (8 × 8, thickness 0.04), Auto selects degree 4 throughout and both equatorial
+   displacements agree with the benchmark to within 0.46 %. Its cost approaches a quartic solve on such a mesh.
 8. **Membrane-only and bending-only shell properties** (MID2 or MID1 blank). Accepted, as new work (section 4.1,
    phase 6).
 9. **Reference data.** No exporter in the crate; the port is verified by the analytic checks of section 13.

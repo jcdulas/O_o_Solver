@@ -199,6 +199,11 @@ void MixedHybridModel::readDegree(const SnapshotIndex& index)
         m_degree = static_cast<std::size_t>(value->integer);
         return;
     }
+    if (value->kind == input::ParamValue::Kind::Text && value->text == MIXED_HYBRID_AUTOMATIC_DEGREE)
+    {
+        m_choosesShellDegrees = true;
+        return;
+    }
     base::Diagnostic diagnostic;
     diagnostic.code = "invalid-parameter";
     diagnostic.field = std::string(MIXED_HYBRID_DEGREE_PARAMETER);
@@ -206,11 +211,12 @@ void MixedHybridModel::readDegree(const SnapshotIndex& index)
         {"expected the model parameter ", MIXED_HYBRID_DEGREE_PARAMETER, " to be a whole number from ",
          std::to_string(MIXED_HYBRID_LOWEST_DEGREE), " to ", std::to_string(MIXED_HYBRID_HIGHEST_DEGREE),
          " (the degree of the displacement of ", MIXED_HYBRID_FORMULATION, ", ",
-         std::to_string(MIXED_HYBRID_DEFAULT_DEGREE), " when it is not given), found ",
+         std::to_string(MIXED_HYBRID_DEFAULT_DEGREE), " when it is not given) or ", MIXED_HYBRID_AUTOMATIC_DEGREE,
+         " (the degree of each shell from its shape), found ",
          value->kind == input::ParamValue::Kind::Integer ? std::to_string(value->integer)
          : value->kind == input::ParamValue::Kind::Real  ? std::to_string(value->real)
                                                          : std::string(value->text),
-         "; give 2, 3 or 4, or remove the parameter"});
+         "; give 2, 3, 4 or ", MIXED_HYBRID_AUTOMATIC_DEGREE, ", or remove the parameter"});
     m_problems.push_back(std::move(diagnostic));
 }
 

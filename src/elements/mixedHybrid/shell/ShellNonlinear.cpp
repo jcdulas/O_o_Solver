@@ -160,13 +160,12 @@ Matrix membraneSecondVariation(const ShellReferenceElement& re, const ShellEleme
 {
     const std::size_t n1 = re.h1Count;
     const std::size_t nv = re.cornerCount;
-    const std::size_t p = re.shearDegree;
     Matrix ks(n1, n1);
     std::size_t f = 0;
     std::vector<double> dt(n1);
     for (std::size_t k = 0; k < nv; ++k)
     {
-        for (std::size_t l = 0; l <= p; ++l)
+        for (std::size_t l = 0; l <= re.shearDegree; ++l)
         {
             const double wl = wf[f++];
             for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
@@ -461,7 +460,6 @@ NonlinearEvaluation evaluateNonlinear(const ShellReferenceElement& re, const She
     const std::size_t ns = re.momentCount;
     const std::size_t nr = re.reggeCount;
     const std::size_t nv = re.cornerCount;
-    const std::size_t p = re.shearDegree;
     const std::size_t nx = shellUnknownCount(re);
     const std::size_t nq = re.points.size();
     // the state at which the measures are differentiated
@@ -561,9 +559,9 @@ NonlinearEvaluation evaluateNonlinear(const ShellReferenceElement& re, const She
                 gmu += value * x[3 * n1 + i];
             }
             double aT = 0.0;
-            for (std::size_t l = 0; l <= p; ++l)
+            for (std::size_t l = 0; l < re.rotationCount(k); ++l)
             {
-                const std::size_t index = 3 * n1 + nc + k * (p + 1) + l;
+                const std::size_t index = shellRotationUnknown(re, k, l);
                 const double value = -sk * shelldetail::edgeLegendre(l, point.canonicalParameter) /
                                      (point.length * point.weight * point.weight);
                 column[index] += value;
@@ -613,7 +611,8 @@ NonlinearEvaluation evaluateNonlinear(const ShellReferenceElement& re, const She
         gt = subtract(std::move(gt), *momentTerm);
     const Vector m = matrices.complianceInverse * gt;
     const Vector nmem = subtract(pre.kr * c, fr0);
-    const Vector wf = transposeTimes(matrices.reggeFunctionalInverse, add(nmem, transposeTimes(pre.cr, m)));
+    const Vector wf =
+        re.rawMembraneWeights(transposeTimes(matrices.reggeFunctionalInverse, add(nmem, transposeTimes(pre.cr, m))));
 
     // ---- the second variations weighted by the stresses
     Matrix kgeo(nx, nx);
@@ -701,12 +700,11 @@ Vector membraneSecondVariationProducts(const ShellReferenceElement& re, const Sh
 {
     const std::size_t n1 = re.h1Count;
     const std::size_t nv = re.cornerCount;
-    const std::size_t p = re.shearDegree;
-    Vector products(re.reggeCount, 0.0);
+    Vector products(nv * (re.shearDegree + 1) + re.reggeInteriorMoments.size() + 3, 0.0); // the raw functionals
     std::size_t f = 0;
     for (std::size_t k = 0; k < nv; ++k)
     {
-        for (std::size_t l = 0; l <= p; ++l)
+        for (std::size_t l = 0; l <= re.shearDegree; ++l)
         {
             double sum = 0.0;
             for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
@@ -810,7 +808,8 @@ Vector geometricStiffnessGradient(const ShellReferenceElement& re, const ShellEl
     // of the Regge functionals; the thermal terms are constant in x). With a_f = φᵀ (Q_f ⊗ I₃) φ, b_j = φᵀ B_j φ and
     // α = F⁻¹ a:
     //   φᵀ K(x) φ = w · a + m · b,   ∂/∂x = Rᵀ K_rᵀ α + Pᵀ C⁻ᵀ (C_r α + b).
-    const Vector alpha = matrices.reggeFunctionalInverse * membraneSecondVariationProducts(re, def, pre, phi);
+    const Vector alpha =
+        matrices.reggeFunctionalInverse * re.membraneFunctionals(membraneSecondVariationProducts(re, def, pre, phi));
     const Vector b = momentSecondVariationProducts(re, def, pre, phi);
     const Vector onMoments = transposeTimes(matrices.complianceInverse, add(pre.cr * alpha, b));
     return add(transposeTimes(matrices.reggeInterpolation, transposeTimes(pre.kr, alpha)),

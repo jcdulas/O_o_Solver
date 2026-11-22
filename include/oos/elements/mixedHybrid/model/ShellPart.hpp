@@ -8,6 +8,7 @@
 #include "oos/elements/mixedHybrid/line/LineCore.hpp"
 #include "oos/elements/mixedHybrid/line/LineKinematics.hpp"
 #include "oos/elements/mixedHybrid/line/LineSection.hpp"
+#include "oos/elements/mixedHybrid/shell/ShellDegreeChoice.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellElement.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellElementData.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellElementLoads.hpp"
@@ -48,7 +49,7 @@ namespace oos::elements::mixedHybrid
 //                           (their rotation Λ at their grids). The other rotations are the integrator's (spec 5.4).
 //   then the entity DOFs, entity after entity in the order of entities():
 //   - one entity per edge of the shells, in the order of the topology (the shells in their order, edge k of a shell
-//     from its corner k to its corner k + 1), each with 3 (k − 1) + 2 k DOFs:
+//     from its corner k to its corner k + 1), each with 3 (k − 1) + 2 k DOFs, k the degree of the edge (edgeDegree):
 //       3 l + c                 the moment l (l < k − 1) of the displacement trace along the basic axis c, against
 //                               P_l(2τ − 1), τ from the lower grid of the edge (its canonical direction);
 //       3 (k − 1) + l           the shear γ · t of the edge, Legendre degree l ≤ p = k − 1;
@@ -62,6 +63,11 @@ namespace oos::elements::mixedHybrid
 // The grids are given by a dense index in increasing ID order and the shells by increasing element ID, so that the
 // canonical direction of an edge (from its lower grid) and the first shell of an edge (the one whose surface gives
 // the curve of the edge and the kinematics of its lines) do not depend on the order of the rows of the model.
+//
+// The degree of each shell (ShellPartInput::shellDegrees; not in the reference, whose shells have one degree): the
+// degree of an edge is the lowest degree of its shells, and a shell of a higher degree has, on that edge, the trace
+// of that lower degree (a transition element, ShellSpaces.hpp), so that the shells of an edge share its unknowns one
+// for one whatever their degrees. The lines on an edge have the degree of the edge.
 //
 // Mid-side grid points (ShellQuad8, ShellTria6, spec 4.1; not in the reference): each mid-side grid X_m given fixes
 // its edge as the parabola through the two corners and it, the conic of weight 1 whose control point is
@@ -152,13 +158,22 @@ struct ShellPartInput
     // the lines, held as the supports state them (only the note on the rotations held elsewhere reads it).
     std::set<std::size_t> lineGrids;
     // The degree k of the displacement (MixedHybridModel::degree in the formulation) and the points per direction of
-    // the rules (0: 2k + 4).
+    // the rules (0: 2k + 4, k the degree of each shell).
     std::size_t degree = 4;
     std::size_t pointsPerDirection = 0;
+    // The degree of each shell, from 2 to `degree`, when they do not all have `degree` (empty: `degree` for every
+    // shell, or the one `degreeChoice` gives it).
+    std::vector<std::size_t> shellDegrees;
+    // The degree of each shell chosen from its shape (chooseShellDegree on the surface read for it), not above
+    // `degree`; empty: `degree` for every shell. `shellDegrees` given goes before it.
+    std::optional<ShellDegreeChoice> degreeChoice;
+    // With `degreeChoice`, the edges whose shells take `degree` whatever their shape: those the shells share with
+    // solids, whose ties read as many functions on an edge of the shells as on that of the solids (SolidPart::ties).
+    std::set<EdgeKey> fullDegreeEdges;
     // The rule of each shell chosen from its shape (chooseShellPoints): the tolerance of the choice, 0 for the rule
-    // above on every shell, and the smallest rule it may take. The rule above is then the largest: the matrices of a
-    // shell are integrated on its own rule, everything else of the part (the map of the surface, the lines, the
-    // supports, the report) on the largest.
+    // above on every shell, and the smallest rule it may take. The rule above is then the largest of a shell: its
+    // matrices are integrated on its own rule, everything else of it (the map of its surface, the lines and the
+    // supports of its edges, the report) on its largest.
     double quadratureTolerance = 0.0;
     std::size_t minimumPointsPerDirection = 6;
     // The mass matrices and the loads of the inertia are built (elementWithMatrices, lineData).
@@ -201,7 +216,7 @@ struct ShellPartEntity
 {
     enum class Kind
     {
-        // The unknowns of an edge (3 (k − 1) + 2k).
+        // The unknowns of an edge (3 (k − 1) + 2k, k the degree of the edge).
         Edge,
         // The interior unknowns of a shell (3 n1i + nci).
         Interior
@@ -415,21 +430,24 @@ public:
     [[nodiscard]] bool usable() const { return m_usable; }
     [[nodiscard]] const std::vector<ShellPartProblem>& problems() const { return m_problems; }
     [[nodiscard]] const ShellPartInput& input() const { return m_input; }
+    // The highest degree a shell may have, the degree of shell `shell`, and that of edge `edge` of the topology (the
+    // lowest degree of its shells).
     [[nodiscard]] std::size_t degree() const { return m_input.degree; }
+    [[nodiscard]] std::size_t shellDegree(std::size_t shell) const { return m_shells[shell].degree; }
+    [[nodiscard]] std::size_t edgeDegree(std::size_t edge) const { return m_edgeDegrees[edge]; }
 
     // ---- the reading of the mesh and the elements
 
     [[nodiscard]] const MeshReadingInput& meshReading() const { return m_reading; }
     [[nodiscard]] const Topology& topology() const { return m_topology; }
-    // The reference element of the shells of `cornerCount` corners.
-    [[nodiscard]] const ShellReferenceElement& referenceElement(std::size_t cornerCount) const;
-    // The reference element of the rule the tables of `element` are on (ShellElementData::pointsPerDirection), which
-    // is the one to read those tables and its matrices with; that of the largest rule for an element without tables.
+    // The reference element of `element` (its corner count, its degree and those of its edges) on the rule its tables
+    // are on (ShellElementData::pointsPerDirection), which is the one to read those tables and its matrices with;
+    // on its largest rule for an element without tables.
     [[nodiscard]] const ShellReferenceElement& referenceElement(const ShellElementData& element) const;
-    // The points per direction of the rule the matrices of shell `shell` are integrated on: the largest rule, or the
+    // The points per direction of the rule the matrices of shell `shell` are integrated on: its largest rule, or the
     // one chosen from its shape (ShellPartInput::quadratureTolerance).
     [[nodiscard]] std::size_t pointsPerDirectionOf(std::size_t shell) const { return m_ownPoints[shell]; }
-    // Shell `shell` with its tables (jets) on the largest rule, its matrices empty.
+    // Shell `shell` with its tables (jets) on its largest rule, its matrices empty.
     [[nodiscard]] ShellElementData element(std::size_t shell) const;
     // Shell `shell` without its tables nor its matrices: what the functions of a reference point read (geometryAt,
     // h1At, rotationRowsOf take the weight and the map of the element, not the tables of its rule). Forming the tables
@@ -482,10 +500,17 @@ public:
     [[nodiscard]] std::size_t edgeEntity(std::size_t edge) const { return edge; }
     [[nodiscard]] std::size_t interiorEntity(std::size_t shell) const { return m_topology.edges.size() + shell; }
     [[nodiscard]] ShellPartUnknown describe(std::size_t unknown) const;
-    // The DOFs of an edge entity: per edge 3 (k − 1) displacement moments, then k shear, then k rotation.
-    [[nodiscard]] std::size_t edgeDofCount() const { return 3 * (degree() - 1) + 2 * degree(); }
-    [[nodiscard]] std::size_t edgeShearDof(std::size_t l) const { return 3 * (degree() - 1) + l; }
-    [[nodiscard]] std::size_t edgeRotationDof(std::size_t l) const { return 3 * (degree() - 1) + degree() + l; }
+    // The DOFs of the entity of edge `edge`, k its degree: 3 (k − 1) displacement moments, then k shear, then k
+    // rotation.
+    [[nodiscard]] std::size_t edgeDofCount(std::size_t edge) const { return 5 * edgeDegree(edge) - 3; }
+    [[nodiscard]] std::size_t edgeShearDof(std::size_t edge, std::size_t l) const
+    {
+        return 3 * (edgeDegree(edge) - 1) + l;
+    }
+    [[nodiscard]] std::size_t edgeRotationDof(std::size_t edge, std::size_t l) const
+    {
+        return 3 * (edgeDegree(edge) - 1) + edgeDegree(edge) + l;
+    }
 
     // ---- the lines on the edges of the shells
 
@@ -493,9 +518,9 @@ public:
     // The line's source: edge `localEdge` of shell `shell` (the first shell of its edge), `forward` along the shell's
     // direction of that edge. Empty for a line the part refused (problems()).
     [[nodiscard]] std::optional<LineSource> lineSource(std::size_t line) const;
-    // The line built from the kinematics of the first shell of its edge (moments of degree k, shear flexibility, the
-    // rule of the shell's edges), on the part unknowns (the shell's, then the rotations 6 a + 3 and 6 b + 3 of its
-    // grids A and B), or the message of a problem.
+    // The line built from the kinematics of the first shell of its edge (moments of the degree of the edge, shear
+    // flexibility, the rule of the shell's edges), on the part unknowns (the shell's, then the rotations 6 a + 3 and
+    // 6 b + 3 of its grids A and B), or the message of a problem.
     // Reference: the lines on shell edges of tdnns/analysis.rs::Analysis::new
     [[nodiscard]] std::variant<LineData, std::string> lineData(std::size_t line) const;
     // The same with the section `section` in place of the input's (a non-structural mass added by the model) and the
@@ -673,7 +698,8 @@ public:
     //                                 the moment ∫ W u_c P_l(2s − 1) ds, l = 0 … k − 2;
     //   rotation unknown l = Σ_g rotationWeights[l][g]·θ(points[g]),
     //                        the coefficient (2l + 1) ∫ W² (θ · X_s) P_l(2s − 1) ds, l = 0 … k − 1,
-    // s the parameter of the edge from its lower grid, u and θ in the basic system. Empty for an edge no shell has.
+    // k the degree of the edge, s the parameter of the edge from its lower grid, u and θ in the basic system. Empty
+    // for an edge no shell has.
     struct EdgeMoments
     {
         std::vector<SpaceVector> points;
@@ -736,10 +762,21 @@ private:
     bool checkInput();
     // The mid-side parabolas in place of the curves read from the mesh.
     void applyMidsideGrids();
-    // The geometry of every shell (surfaces, edge moments, map, section, axes), its numbering and the entities.
-    void buildShells();
-    // The entities, their unknowns and their positions on the surfaces of the shells.
-    void buildEntities(std::span<const ElementSurface> surfaces);
+    // The degrees of ShellPartInput::shellDegrees; false when they are not one per shell from 2 to the degree of the
+    // part.
+    bool checkDegrees();
+    // The surface read for every shell.
+    [[nodiscard]] std::vector<ElementSurface> readSurfaces() const;
+    // The degree of every shell (m_degrees): given, chosen from its surface, or that of the part.
+    void chooseDegrees(std::span<const ElementSurface> surfaces);
+    // The corners, the edges and the degrees of every shell and of every edge (what its reference element is built
+    // with), and the interior projections of their reference elements.
+    void describeShells();
+    // The geometry of every shell (edge moments, map, section, axes) on its surface, and its numbering.
+    void buildShells(std::span<const ElementSurface> surfaces);
+    // The entities and their unknowns (describeShells done); then their positions on the surfaces of the shells.
+    void buildEntities();
+    void placeEntities(std::span<const ElementSurface> surfaces);
     // The shell `shell` with its tables, and its matrices when `withMatrices` (those `request` asks), or the reason it
     // is refused.
     [[nodiscard]] std::variant<ShellElementData, std::string> build(std::size_t shell, bool withMatrices,
@@ -756,14 +793,15 @@ private:
     void checkElements();
     // The local edge of shell `shell` that is edge `edge` of the topology.
     [[nodiscard]] std::size_t localEdgeOf(std::size_t shell, std::size_t edge) const;
-    [[nodiscard]] const InteriorProjection& projectionOf(std::size_t cornerCount) const;
+    // The interior projection of the reference element of `element` (it depends on its displacement functions alone).
+    [[nodiscard]] const InteriorProjection& projectionOf(const ShellElementData& element) const;
     void addProblem(ShellPartProblem::Subject subject, std::size_t index, std::string message,
                     bool isGeometry = false);
     [[nodiscard]] std::string gridName(std::size_t grid) const;
 
     // What an affine field reads of the rigid motions of a shell (rigidMotionUnknowns): the coefficient of the
-    // constant 1 on each displacement function, and the edge rotation unknowns [k (p + 1) + l] of a unit rotation
-    // about each axis of the basic system.
+    // constant 1 on each displacement function, and the edge rotation unknowns (in their order in the element,
+    // ShellReferenceElement::firstRotation) of a unit rotation about each axis of the basic system.
     struct RigidField
     {
         std::vector<double> constants;
@@ -797,7 +835,13 @@ private:
     ShellPartInput m_input;
     std::unique_ptr<MatrixCache> m_cache = std::make_unique<MatrixCache>();
     std::unique_ptr<RigidFieldCache> m_rigidFields = std::make_unique<RigidFieldCache>();
-    std::size_t m_pointsPerDirection = 0;
+    // The points per direction of the largest rule of a shell of degree `degree`: ShellPartInput::pointsPerDirection,
+    // or 2 degree + 4.
+    [[nodiscard]] std::size_t largestPoints(std::size_t degree) const
+    {
+        return m_input.pointsPerDirection > 0 ? m_input.pointsPerDirection : shellPointsPerDirection(degree);
+    }
+
     bool m_usable = false;
     std::vector<ShellPartProblem> m_problems;
     MeshReadingInput m_reading;
@@ -806,9 +850,12 @@ private:
     std::vector<ShellElementData> m_shells;
     // The points per direction of the rule of the matrices of each shell.
     std::vector<std::size_t> m_ownPoints;
-    // The interior projections of the triangle and of the quadrilateral (built when a shell needs them).
-    std::optional<InteriorProjection> m_triangleProjection;
-    std::optional<InteriorProjection> m_quadrilateralProjection;
+    // The degree of each shell and of each edge of the topology.
+    std::vector<std::size_t> m_degrees;
+    std::vector<std::size_t> m_edgeDegrees;
+    // The interior projection of each reference element of the shells (on the largest rule), by its address: the
+    // reference elements are shared and live as long as the program.
+    std::map<const ShellReferenceElement*, InteriorProjection> m_projections;
     std::vector<ShellPartEntity> m_entities;
     std::size_t m_unknownCount = 0;
     std::vector<std::optional<LineEdge>> m_lineEdges;

@@ -663,7 +663,7 @@ test("a cantilever strip of ShellQuad4 in MixedHybridFormulation buckles at Eule
 // the cylinder (the formulation reads the curved surface from its grid points), held by symmetry along its middle
 // section x = 0 (u_x, θ_y, θ_z) and along its crown φ = 0 (u_y, θ_x, θ_z): the rotations held at grid points of shells
 // hold the rotation of the edges about their tangent.
-function scordelisLo({ nx = 4, nphi = 4, shape = "ShellQuad4", extra = [] }) {
+function scordelisLo({ nx = 4, nphi = 4, shape = "ShellQuad4", extra = [], moved = 0 }) {
   const radius = 25.0;
   const half = 25.0;
   const spread = (40 * Math.PI) / 180;
@@ -672,8 +672,10 @@ function scordelisLo({ nx = 4, nphi = 4, shape = "ShellQuad4", extra = [] }) {
     "StaticLoadSelection;2", "DisplacementOutput;All", "[model]"];
   for (let j = 0; j <= nphi; ++j)
     for (let i = 0; i <= nx; ++i) {
-      const phi = (spread * j) / nphi;
-      lines.push(`Node;${node(i, j)};;${real((half * i) / nx)};${real(radius * Math.sin(phi))};${real(radius * Math.cos(phi))}`);
+      // `moved`: the fraction of a cell by which the grid points of the inside are moved along the cylinder, alternately
+      const shift = moved !== 0 && i > 0 && i < nx && j > 0 && j < nphi ? moved * ((i + j) % 2 === 0 ? 1 : -1) : 0;
+      const phi = (spread * (j + shift)) / nphi;
+      lines.push(`Node;${node(i, j)};;${real((half * (i + shift)) / nx)};${real(radius * Math.sin(phi))};${real(radius * Math.cos(phi))}`);
     }
   let element = 0;
   for (let j = 0; j < nphi; ++j)
@@ -737,7 +739,78 @@ test("a Bar2 of MixedHybridFormulation of degree 2 or 3 gives the end forces of 
       1e-6, `forces at degree ${degree}`);
 });
 
-test("a MixedHybridDegree that is not 2, 3 or 4 is refused", () => {
+// The degree of each shell from its shape (spec section 3.1): the value Auto. The geometry report of the run gives the
+// degrees taken.
+const degreesReport = (run) => {
+  const report = run.diagnostics.find((d) => /degrees of the shells from their shape/.test(String(d.text)));
+  return report ? /degrees of the shells from their shape: ([^;]*)/.exec(report.text)[1].trim() : null;
+};
+
+test("the degrees of the shells of MixedHybridFormulation from their shape reproduce the cubic solution on a regular roof", () => {
+  const regular = scordelisLo({ extra: [DEGREE_PARAMETER("Auto")] });
+  const automatic = runShells(regular.text, "mixed-shell-roof-auto-regular");
+  assert.equal(degreesReport(automatic), "16 of degree 3");
+  const sag = (run, model) => -nodal(run, "displacements", model.freeEdgeMiddle)[2];
+  const uniform = scordelisLo({ extra: [DEGREE_PARAMETER(3)] });
+  assertClose([sag(automatic, regular)], [sag(runShells(uniform.text, "mixed-shell-roof-degree-3"), uniform)], 1e-12,
+    "the regular mesh at degree 3");
+});
+
+for (const [shape, moved] of [["ShellQuad4", 0.12], ["ShellTria3", 0.2]])
+  test(`the distorted Scordelis-Lo roof of ${shape} mixes cubic and quartic shells in Auto`, () => {
+    const model = scordelisLo({ shape, moved, extra: [DEGREE_PARAMETER("Auto")] });
+    const run = runShells(model.text, `mixed-shell-roof-auto-${shape}`);
+    assert.match(degreesReport(run), /^\d+ of degree 3, \d+ of degree 4$/);
+    const sag = -nodal(run, "displacements", model.freeEdgeMiddle)[2];
+    assert.ok(Math.abs(sag / 0.3024 - 1) < 0.005, `${shape}: sag ${sag}, reference 0.3024`);
+  });
+
+test("Auto recovers the tip displacement and root moment of a tapered mesh in plate bending", () => {
+  const p = 200;
+  const model = cantileverStrip({ loads: (nx, ny) =>
+    [`ShellPressureLoad;2;${real(p)};1;Through;${nx * ny}`, DEGREE_PARAMETER("Auto")] });
+  const text = loadCase(model.text)
+    .replace(`Node;${model.node(2, 1)};;1.;0.2;`, `Node;${model.node(2, 1)};;1.14;0.24;`)
+    .replace("SinglePointConstrForceOutput;All", "ElemForceOutput;All;CornerResults");
+  const rawElements = Array.from({ length: model.nx * model.ny }, (_, i) => i + 1);
+  withModel(text, "auto-tapered-cantilever", { ...SHELL_OPTIONS, formulationGeometry: { rawElements } }, (handle) => {
+    const run = solver.run(handle, "statics");
+    assert.ok(!run.diagnostics.some((d) => d.severity === "error"), JSON.stringify(run.diagnostics));
+    assert.equal(degreesReport(run), "4 of degree 3, 4 of degree 4");
+    // Per unit width, M(0) = p L? / 2. At zero Poisson ratio the deflection is the cantilever beam solution.
+    const { length, young, thickness } = STRIP;
+    const rootMoment = p * length ** 2 / 2;
+    const tip = p * length ** 4 / (8 * young * thickness ** 3 / 12) +
+      rootMoment / (SHEAR_FACTOR * (young / 2) * thickness);
+    const w = nodal(run, "displacements", model.node(model.nx, 1))[2];
+    const root = rowsOf(run, "ShellQuad4", "forces").find((r) => r.id === 1 && r.nodeId === model.node(0, 0));
+    assert.ok(Math.abs(w / tip - 1) < 1e-6, `tip displacement ${w}, expected ${tip}`);
+    assert.ok(root && Math.abs(root.mx / rootMoment - 1) < 1e-6, `root moment ${root?.mx}, expected ${rootMoment}`);
+  });
+});
+
+test("a free plate of ShellQuad4 in MixedHybridFormulation with two degrees has six rigid-body modes", () => {
+  // A grid point of the inside of the plate moved in its plane: the four elements about it are of degree 4, those of
+  // the other half of the plate of degree 3.
+  const model = strip({ nx: 4, ny: 2, extra: [DEGREE_PARAMETER("Auto")] });
+  const moved = model.text.replace(new RegExp(`Node;${model.node(3, 1)};;[^;]*;[^;]*;`), () =>
+    `Node;${model.node(3, 1)};;1.35;0.26;`);
+  assert.notEqual(moved, model.text, "a grid point is moved");
+  const text = moved.replace("SolutionSequence;101", "SolutionSequence;103")
+    .replace(/SubcaseStart;1\nSinglePointConstrSelection;1\n/, "SubcaseStart;1\nEigenMethodSelection;3\n") +
+    "LanczosEigenMethod;3;;;8\n";
+  withModel(text, "mixed-shell-free-auto", SHELL_OPTIONS, (handle) => {
+    const run = solver.run(handle, "modes");
+    assert.ok(!run.diagnostics.some((d) => d.severity === "error"), JSON.stringify(run.diagnostics));
+    assert.match(degreesReport(run), /of degree 3, [0-9]+ of degree 4/);
+    const values = run.eigenvalues[0].rows.map((row) => row.eigenvalue);
+    assert.ok(values.length >= 7, `${values.length} eigenvalues`);
+    for (let k = 0; k < 6; ++k)
+      assert.ok(Math.abs(values[k]) < 1e-6 * values[6], `eigenvalue ${k + 1} is ${values[k]}, the first elastic ${values[6]}`);
+  });
+});
+
+test("a MixedHybridDegree that is not 2, 3, 4 or Auto is refused", () => {
   for (const value of ["1", "5", "2.5", "FOUR"]) {
     const model = scordelisLo({ extra: [DEGREE_PARAMETER(value)] });
     withModel(model.text, "mixed-degree-refused", SHELL_OPTIONS, (handle) => {
@@ -1201,6 +1274,40 @@ for (const partner of ["a shell on its top face", "a Bar2 along its top edge"])
     assert.ok(Math.abs(pull / expected - 1) < 1e-8, `pull ${pull}, expected ${expected}`);
   });
 
+test("the degrees of the shells of MixedHybridFormulation from their shape are 3 and 4 on a mesh of tapered elements", () => {
+  // A grid point of the inside of a plate moved along it: the cells on its sides are tapered, the others keep the
+  // lowest degree. The elements are declared straight: the reading would round the edges through the grid point, and
+  // refuse the elements that fold.
+  const model = strip({ nx: 5, ny: 2, extra: [DEGREE_PARAMETER("Auto")],
+    records: (node, nx, ny) => Array.from({ length: ny + 1 }, (_, j) => `SinglePointConstrList;1;123456;${node(0, j)}`) });
+  const moved = model.text.replace(new RegExp(`Node;${model.node(2, 1)};;[^;]*;`), () => `Node;${model.node(2, 1)};;1.15;`);
+  assert.notEqual(moved, model.text, "a grid point is moved");
+  const straight = { ...SHELL_OPTIONS, formulationGeometry: { rawElements: Array.from({ length: 10 }, (_, i) => i + 1) } };
+  withModel(moved, "mixed-shell-tapered-degrees", straight, (handle) => {
+    const run = solver.run(handle, "statics");
+    const degrees = degreesReport(run);
+    assert.match(degrees, /^\d+ of degree 3, \d+ of degree 4$/);
+  });
+});
+
+test("a shell on a face of a block of SolidHexa in MixedHybridFormulation keeps the degree of the block when the degrees of the shells are from their shape", () => {
+  const delta = 1.0e-3;
+  const poisson = 0.3;
+  const model = solidBlock({ shape: "SolidHexa", nx: 2, poisson, records: (node, nx) => {
+    const records = stretchRecords(node, nx, delta);
+    records.push(`ShellProp;2;1;${real(SKIN.thickness)};1;;1`, DEGREE_PARAMETER("Auto"));
+    for (let i = 0; i < nx; ++i)
+      records.push(`ShellQuad4;${100 + i};2;${node(i, 0, 1)};${node(i + 1, 0, 1)};${node(i + 1, 1, 1)};${node(i, 1, 1)}`);
+    return records;
+  } });
+  const run = runSolids(model, "mixed-tie-stretch-auto");
+  assert.equal(degreesReport(run), "2 of degree 4");
+  const strain = delta / BLOCK.length;
+  for (const { id, x, y, z } of model.points)
+    assertClose(nodal(run, "displacements", id).slice(0, 3), [strain * x, -poisson * strain * y, -poisson * strain * z],
+      1e-8, `grid ${id}`, delta);
+});
+
 test("a block of SolidHexa and a separate strip of ShellQuad4 in MixedHybridFormulation stretched by their supports take their uniform stresses", () => {
   // The two parts share no grid point: the elements of each family read their own entities on the whole g set (the
   // estimate of the output volume and the recovery give them the entity values too).
@@ -1619,6 +1726,19 @@ test("the shape gradient of a strip in MixedHybridFormulation reaches the elemen
       { id: 11, type: "Displacement", attributeA: 1, targets: [strip.tip + 1] }], {},
     (problem) => assertGradients(problem, [0.05], SHAPE_GRADIENT_TOLERANCE, [1e-4]));
   });
+
+test("the shape gradient of a strip in MixedHybridFormulation with two degrees is the analysis'", () => {
+  // Grid point 4 is moved along the strip: elements 1 and 2 are tapered (degree 4), element 3 is regular (degree 3), on the
+  // perturbed snapshots as on the one of the design point (a move that changes a degree cannot be differenced: the
+  // layouts of the element differ).
+  const strip = designStrip({ n: 3, shape: true, load: "1.;0.;0.;1.", extra: [DEGREE_PARAMETER("Auto")] });
+  const tapered = { ...strip, text: strip.text.replace(/Node;4;;[^;]*;/, "Node;4;;0.55;") };
+  withModel(tapered.text, "mixed-design-two-degrees", SHELL_OPTIONS, (model) =>
+    assert.equal(degreesReport(solver.run(model, "statics")), "1 of degree 3, 2 of degree 4"));
+  withDesign(tapered, [{ id: 10, type: "Displacement", attributeA: 3, targets: [strip.tip] },
+    { id: 11, type: "Displacement", attributeA: 1, targets: [strip.tip + 1] }], {},
+  (problem) => assertGradients(problem, [0.05], SHAPE_GRADIENT_TOLERANCE, [1e-4]));
+});
 
 // A shape that moves the relations of the formulation (docs/mixed-hybrid-formulation-spec.md section 5.15): a spring
 // on the rotation of grid point 5, or a moment there, makes that rotation an observer relation of the shells' unknowns,

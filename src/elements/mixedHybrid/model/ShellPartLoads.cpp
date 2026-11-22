@@ -93,7 +93,6 @@ std::variant<ShellEdgeLoad, std::string> ShellPart::edgeLoad(std::size_t gridA, 
     const ShellElementDefinition def = el.definition();
     const std::size_t n1 = re.h1Count;
     const std::size_t nc = re.hcurlCount;
-    const std::size_t p = re.shearDegree;
     const std::size_t kk = localEdgeOf(ie, e);
     const double sk = el.edgeSigns[kk];
     const SpaceVector& xa = m_input.grids[gridA].position;
@@ -138,8 +137,8 @@ std::variant<ShellEdgeLoad, std::string> ShellPart::edgeLoad(std::size_t gridA, 
         // the couple about the edge works on a_T = s_k â / (|X_τ| W²): ∫ m_t â / W² dτ
         const double te = sk > 0.0 ? t : 1.0 - t;
         const double we = def.edgeWeights[kk][gi];
-        for (std::size_t l = 0; l <= p; ++l)
-            fl[3 * n1 + nc + kk * (p + 1) + l] += w * mt * legendreValue(l, 2.0 * te - 1.0) / (we * we);
+        for (std::size_t l = 0; l < re.rotationCount(kk); ++l)
+            fl[shellRotationUnknown(re, kk, l)] += w * mt * legendreValue(l, 2.0 * te - 1.0) / (we * we);
     }
     return ShellEdgeLoad{ie, std::move(fl)};
 }

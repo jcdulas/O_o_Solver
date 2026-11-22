@@ -721,13 +721,18 @@ function pinchedHemisphere({ n, shape = "ShellQuad4", distortion = 0, rotate = u
 }
 const HEMISPHERE_DISPLACEMENT = 0.0940;
 
-for (const { shape, n, distortion = 0 } of [{ shape: "ShellQuad4", n: 8 },
-  { shape: "ShellQuad4", n: 8, distortion: 0.2 }, { shape: "ShellQuad8", n: 8 }, { shape: "ShellTria6", n: 8 },
-  { shape: "ShellTria3", n: 16 }])
-  test(`pinched hemisphere with a hole, ${meshName({ shape, n, distortion })}`, (t) => {
+for (const { shape, n, distortion = 0, degree } of [{ shape: "ShellQuad4", n: 8 },
+  { shape: "ShellQuad4", n: 8, distortion: 0.2 }, { shape: "ShellQuad4", n: 8, distortion: 0.2, degree: "Auto" },
+  { shape: "ShellQuad8", n: 8 }, { shape: "ShellTria6", n: 8 }, { shape: "ShellTria3", n: 16 }])
+  test(`pinched hemisphere with a hole, ${meshName({ shape, n, distortion })}${degree ? `, degree ${degree}` : ""}`, (t) => {
     const checks = checksOf(t);
     const model = pinchedHemisphere({ n, shape, distortion });
-    const run = runModel(model.text, MIXED);
+    const run = runModel(degree ? model.text + `Parameter;MixedHybridDegree;${degree}\n` : model.text, MIXED);
+    if (degree) {
+      const report = run.diagnostics.find((d) => d.text.includes("degrees of the shells from their shape"));
+      assert.ok(report, "Auto reports the degrees actually used");
+      t.diagnostic(report.text);
+    }
     checks.ratio("displacement under the outward force", nodal(run, "displacements", model.pulled)[0],
       HEMISPHERE_DISPLACEMENT, CRITERIA.displacement);
     checks.ratio("displacement under the inward force", -nodal(run, "displacements", model.pushed)[1],
@@ -757,6 +762,53 @@ for (const distortion of [0, 0.2])
       HEMISPHERE_DISPLACEMENT, 0.08);
     checks.done();
   });
+
+// A plate of 8 × 8 cells on a quarter of a hemisphere with a hole of 18° (radius 10, thickness 0.04, E = 6.825e7, ν = 0.3),
+// with opposite forces at the two ends of its equator, its grid points inside moved by a fifth of a cell (a fixed
+// pseudo-random sequence): a thin shell that bends without stretching.
+function movedHemisphere(degree) {
+  const n = 8;
+  let seed = 4242;
+  const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+  const node = (i, j) => 1 + i + j * (n + 1);
+  const lines = ["[executive]", "SolutionSequence;101", "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
+    "StaticLoadSelection;2", "DisplacementOutput;All", "[model]"];
+  for (let j = 0; j <= n; ++j)
+    for (let i = 0; i <= n; ++i) {
+      const inside = i > 0 && i < n && j > 0 && j < n;
+      const u = i + (inside ? 0.2 * (2 * random() - 1) : 0), v = j + (inside ? 0.2 * (2 * random() - 1) : 0);
+      const azimuth = (Math.PI / 2) * (u / n), colatitude = ((18 + 72 * (v / n)) * Math.PI) / 180;
+      lines.push(`Node;${node(i, j)};;${real(10 * Math.sin(colatitude) * Math.cos(azimuth))};` +
+        `${real(10 * Math.sin(colatitude) * Math.sin(azimuth))};${real(10 * Math.cos(colatitude))}`);
+    }
+  let element = 0;
+  for (let j = 0; j < n; ++j)
+    for (let i = 0; i < n; ++i)
+      lines.push(`ShellQuad4;${++element};1;${node(i, j)};${node(i + 1, j)};${node(i + 1, j + 1)};${node(i, j + 1)}`);
+  lines.push("ShellProp;1;1;0.04;1;;1", "IsoMat;1;6.825e7;;0.3;1.");
+  for (let j = 0; j <= n; ++j)
+    lines.push(`SinglePointConstrList;1;24;${node(0, j)}`, `SinglePointConstrList;1;15;${node(n, j)}`);
+  lines.push(`SinglePointConstr;1;${node(0, n)};3;0.`, `PointForceLoad;2;${node(0, n)};;2.;1.;0.;0.`,
+    `PointForceLoad;2;${node(n, n)};;2.;0.;-1.;0.`, "Parameter;AutoSingularityConstr;Yes", `Parameter;MixedHybridDegree;${degree}`);
+  return { text: lines.join("\n") + "\n", equator: node(0, n) };
+}
+
+test("Auto resolves thin-shell bending on a distorted hemisphere at least as closely as degree 3", (t) => {
+  // Compare the displacement at the loaded equator with the quartic solution on exactly the same mesh.
+  const deflection = (degree) => {
+    const model = movedHemisphere(degree);
+    const run = runModel(model.text, { ...MIXED, formulationGeometry: {} });
+    if (degree === "Auto")
+      assert.ok(run.diagnostics.some((d) =>
+        /degrees of the shells from their shape: (?:\d+ of degree 3, )?\d+ of degree 4/.test(d.text)));
+    return nodal(run, "displacements", model.equator)[0];
+  };
+  const mixed = deflection("Auto");
+  const cubic = deflection(3);
+  const quartic = deflection(4);
+  t.diagnostic(`equator displacement: Auto ${mixed}, cubic ${cubic}, quartic ${quartic}`);
+  assert.ok(Math.abs(mixed - quartic) < Math.abs(cubic - quartic));
+});
 
 // The full pinched hemisphere (no hole), same data: 0.0924 in MacNeal and Harder. A quadrant in three blocks of
 // warped quadrilaterals, whose mesh lines change direction from one block to the next.

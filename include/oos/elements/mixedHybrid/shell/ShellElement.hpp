@@ -81,6 +81,10 @@ struct ShellElementMatrices
 // Reference: tdnns/element.rs::nx
 [[nodiscard]] std::size_t shellUnknownCount(const ShellReferenceElement& re);
 
+// The local unknown of the coefficient on P_l of the rotation about edge `edge`, l < re.rotationCount(edge): the
+// rotation unknowns follow the displacement and the shear unknowns, edge after edge.
+[[nodiscard]] std::size_t shellRotationUnknown(const ShellReferenceElement& re, std::size_t edge, std::size_t l);
+
 // The displacement u (3 × unknownCount) and the director change β (3 × unknownCount) of every unknown at surface
 // point q: u = Σ N_i u_i, β = −(∇u)ᵀ ν + γ, ∇N_i = a^α ∂_α N_i, γ = a^α g_α (covariant map of the shear functions).
 // Reference: tdnns/element.rs::kinematics

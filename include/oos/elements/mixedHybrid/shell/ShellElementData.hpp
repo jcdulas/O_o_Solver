@@ -26,11 +26,11 @@ namespace oos::elements::mixedHybrid
 // geometric stiffness.
 //
 // The local unknowns are those of ShellElement.hpp (3 per displacement function, the shear functions, the edge
-// rotations k (p + 1) + l). The global unknown of local unknown i is dofs[i], with the sign signs[i]: local = sign ×
-// global. The integrator fills dofs and signs (the reference: grid translations, edge moments 3 l + c with the sign
-// (−1)^l where the element runs the edge against its canonical direction, edge shear l with the sign +1 for the first
-// element of the edge and −1 for the others (the joint rule γ_L · t_L + γ_R · t_R = 0) times that same (−1)^l, edge
-// rotations without sign, then the interior unknowns of the element).
+// rotations, shellRotationUnknown). The global unknown of local unknown i is dofs[i], with the sign signs[i]: local =
+// sign × global. The integrator fills dofs and signs (the reference: grid translations, edge moments 3 l + c with the
+// sign (−1)^l where the element runs the edge against its canonical direction, edge shear l with the sign +1 for the
+// first element of the edge and −1 for the others (the joint rule γ_L · t_L + γ_R · t_R = 0) times that same (−1)^l,
+// edge rotations without sign, then the interior unknowns of the element).
 //
 // Reference: tdnns/analysis.rs (ShellElem, rotation_rows_of, InteriorProjection, Condensed, the isoparametric map and
 // the rigid modes of Analysis::new and Analysis::rigid_modes, the element part of Analysis::geometric_stiffness).
@@ -45,6 +45,11 @@ namespace oos::elements::mixedHybrid
 struct ShellElementData
 {
     std::size_t cornerCount = 0;
+    // The degree k of its displacement and the degree of the trace on each of its edges (the lowest degree of the
+    // elements of the edge; `degree` on every edge where the elements all have one degree): what its reference
+    // element is built with (ShellReferenceElement::edgeDegrees). Not in the reference, whose elements have one degree.
+    std::size_t degree = 0;
+    std::vector<std::size_t> edgeDegrees;
     // The grid points of the corners (numbers of the caller).
     std::vector<std::size_t> nodes;
     // The coefficients of the isoparametric map (the element's own orientation of the edges).
@@ -113,10 +118,11 @@ inline constexpr std::size_t MAP_EDGE_POINTS = 14;
 // The position X(ξ, η) of the surface of an element (its patch).
 using SurfaceAt = std::function<SpaceVector(double, double)>;
 
-// The Legendre moments l = 0 … k − 2 of X W along edge `edge` of an element, in the canonical direction of the edge
-// (from its lower grid point; `forward` when the element runs the edge that way): ∫_0^1 X W P_l(2τ_e − 1) dτ_e by the
-// rule of MAP_EDGE_POINTS points. The reference computes them once per edge from its first element, and every element
-// of the edge takes them (mapCoefficients), so that the edge is the same curve from both sides.
+// The Legendre moments l = 0 … k − 2 of X W along edge `edge` of an element, k = `degree` the degree of the edge,
+// in the canonical direction of the edge (from its lower grid point; `forward` when the element runs the edge that
+// way): ∫_0^1 X W P_l(2τ_e − 1) dτ_e by the rule of MAP_EDGE_POINTS points. The reference computes them once per
+// edge from its first element, and every element of the edge takes them (mapCoefficients), so that the edge is the
+// same curve from both sides.
 // Reference: the edge loop of tdnns/analysis.rs::Analysis::new
 [[nodiscard]] std::vector<SpaceVector> edgeMapMoments(std::size_t cornerCount, std::size_t degree, std::size_t edge,
                                                       bool forward, const SurfaceAt& surface,

@@ -285,6 +285,24 @@ void MixedHybridModel::readShells(const SnapshotIndex& index)
     }
 }
 
+std::set<EdgeKey> MixedHybridModel::shellEdgesOnSolids() const
+{
+    std::set<std::int32_t> solidRows;
+    for (const MixedSolid& solid : m_solids)
+        solidRows.insert(solid.cornerRows.begin(), solid.cornerRows.end());
+    std::set<EdgeKey> edges;
+    for (const MixedShell& shell : m_shells)
+        for (std::size_t k = 0; k < shell.cornerCount; ++k)
+        {
+            const std::int32_t a = shell.gridRows[k];
+            const std::int32_t b = shell.gridRows[(k + 1) % shell.cornerCount];
+            if (solidRows.contains(a) && solidRows.contains(b))
+                edges.insert(EdgeKey::of(static_cast<std::size_t>(m_gridIndexOfRow.at(a)),
+                                         static_cast<std::size_t>(m_gridIndexOfRow.at(b))));
+        }
+    return edges;
+}
+
 void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
 {
     if (m_shells.empty())
@@ -296,6 +314,13 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
 
     ShellPartInput input;
     input.degree = m_degree;
+    if (m_choosesShellDegrees)
+    {
+        // Each shell takes its degree from its shape (ShellDegreeChoice.hpp); those with an edge between two grid
+        // points of the solids keep the degree of the solids.
+        input.degreeChoice = ShellDegreeChoice{};
+        input.fullDegreeEdges = shellEdgesOnSolids();
+    }
     input.withMass = true;
     input.matrixCacheBytes = SHELL_MATRIX_CACHE_BYTES;
     input.recoveryCacheBytes = SHELL_RECOVERY_CACHE_BYTES;
@@ -874,7 +899,7 @@ std::map<EdgeKey, double> MixedHybridModel::edgeRoundings() const
     for (const MixedShell& shell : m_shells)
     {
         const ShellElementData& element = m_shellPart->elementAtPoints(shell.partIndex);
-        const ShellReferenceElement& reference = m_shellPart->referenceElement(shell.cornerCount);
+        const ShellReferenceElement& reference = m_shellPart->referenceElement(element);
         const ShellElementDefinition definition = element.definition();
         const SpaceVector z = unit3(cross3(element.axes[0], element.axes[1]));
         for (std::size_t k = 0; k < shell.cornerCount; ++k)
@@ -997,6 +1022,18 @@ void MixedHybridModel::reportGeometry()
     for (const auto& [points, count] : shellsByPoints)
         rules += base::concatenate({rules.empty() ? "" : ", ", std::to_string(count), " on ", std::to_string(points)});
     summary.message += base::concatenate({"; quadrature points per direction of the shells: ", rules});
+    if (m_choosesShellDegrees)
+    {
+        // The degrees the shells took from their shape (MIXED_HYBRID_AUTOMATIC_DEGREE).
+        std::map<std::size_t, std::size_t> shellsByDegree;
+        for (const MixedShell& shell : m_shells)
+            ++shellsByDegree[m_shellPart->shellDegree(shell.partIndex)];
+        std::string degrees;
+        for (const auto& [degree, count] : shellsByDegree)
+            degrees += base::concatenate(
+                {degrees.empty() ? "" : ", ", std::to_string(count), " of degree ", std::to_string(degree)});
+        summary.message += base::concatenate({"; degrees of the shells from their shape: ", degrees});
+    }
     m_problems.push_back(std::move(summary));
 
     nameEdges(foldsByAngle, base::Severity::Warning, "geometry-fold-by-angle", m_gridIds, foldByAngleMessage,
@@ -1350,7 +1387,7 @@ void MixedHybridModel::fillShellComponents(const NodalDisplacements& displacemen
         if (!needed)
             continue;
         const ShellElementData& element = m_shellPart->elementAtPoints(shell.partIndex);
-        const ShellReferenceElement& reference = m_shellPart->referenceElement(shell.cornerCount);
+        const ShellReferenceElement& reference = m_shellPart->referenceElement(element);
         const std::span<const std::size_t> unknowns = m_shellPart->localUnknowns(shell.partIndex);
         const std::span<const double> signs = m_shellPart->localSigns(shell.partIndex);
         Vector local(unknowns.size());

@@ -173,12 +173,14 @@ struct TestElement
     std::vector<mh::SpaceVector> corners;
 };
 
+// Each edge defaults to the degree of the interior.
 inline TestElement makeElement(const TestSurface& surface, std::size_t degree, const mh::ShellSection& section,
                                double offset, const std::vector<double>& edgeSigns, bool withMass,
-                               bool kirchhoff = false)
+                               bool kirchhoff = false, const std::vector<std::size_t>& edgeDegrees = {})
 {
     TestElement element;
-    element.re = &mh::shellReferenceElement(surface.cornerCount, degree, mh::shellPointsPerDirection(degree));
+    element.re = &mh::shellReferenceElement(surface.cornerCount, degree, mh::shellPointsPerDirection(degree),
+                                            edgeDegrees);
     element.surface = surface;
     const mh::ShellReferenceElement& re = *element.re;
     for (std::size_t k = 0; k < surface.cornerCount; ++k)
@@ -188,6 +190,8 @@ inline TestElement makeElement(const TestSurface& surface, std::size_t degree, c
     }
     mh::ShellElementData& d = element.data;
     d.cornerCount = surface.cornerCount;
+    d.degree = degree;
+    d.edgeDegrees = re.edgeDegrees;
     d.mapCoefficients = interpolate(re, surface, edgeSigns, surface.position);
     d.section = section;
     d.offset = offset;
@@ -216,7 +220,6 @@ inline mh::Vector unknownsOfField(const TestElement& element, const FieldOfPosit
     const mh::ShellReferenceElement& re = *element.re;
     const mh::ShellElementDefinition def = element.data.definition();
     const std::size_t n1 = re.h1Count;
-    const std::size_t p = re.shearDegree;
     mh::Vector x(mh::shellUnknownCount(re), 0.0);
     const std::vector<mh::SpaceVector> coefficients =
         interpolate(re, element.surface, element.data.edgeSigns,
@@ -227,7 +230,8 @@ inline mh::Vector unknownsOfField(const TestElement& element, const FieldOfPosit
     for (std::size_t k = 0; k < re.cornerCount; ++k)
     {
         const double sk = element.data.edgeSigns[k];
-        std::vector<double> moments(p + 1, 0.0);
+        const std::size_t rotations = re.rotationCount(k);
+        std::vector<double> moments(rotations, 0.0);
         for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
         {
             const mh::PointGeometry g = mh::edgeGeometry(def, n1, k, gi);
@@ -235,12 +239,12 @@ inline mh::Vector unknownsOfField(const TestElement& element, const FieldOfPosit
             const mh::SpaceVector xt = mh::scl3(mh::add3(mh::scl3(g.a[0], tv[0]), mh::scl3(g.a[1], tv[1])), sk);
             const double te = sk > 0.0 ? re.edgeParameters[gi] : 1.0 - re.edgeParameters[gi];
             const double we = element.data.edgeWeights[k][gi];
-            for (std::size_t l = 0; l <= p; ++l)
+            for (std::size_t l = 0; l < rotations; ++l)
                 moments[l] +=
                     re.edgeWeights[gi] * we * we * mh::dot3(theta(g.x), xt) * mh::legendreValue(l, 2.0 * te - 1.0);
         }
-        for (std::size_t l = 0; l <= p; ++l)
-            x[3 * n1 + re.hcurlCount + k * (p + 1) + l] = static_cast<double>(2 * l + 1) * moments[l];
+        for (std::size_t l = 0; l < rotations; ++l)
+            x[mh::shellRotationUnknown(re, k, l)] = static_cast<double>(2 * l + 1) * moments[l];
     }
     return x;
 }

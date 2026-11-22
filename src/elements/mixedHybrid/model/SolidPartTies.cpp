@@ -1113,8 +1113,9 @@ void SolidPart::addRotationTies(std::size_t edge, SkinFaces& skin, std::vector<P
         if (standing == owners.end())
             return;
         const std::size_t first = shells.entities()[shells.edgeEntity(topologyEdge)].firstUnknown;
-        for (std::size_t l = 0; l < shells.degree(); ++l)
-            dependents.push_back({TieUnknown::Kind::ShellUnknown, first + shells.edgeRotationDof(l), 0});
+        for (std::size_t l = 0; l < shells.edgeDegree(topologyEdge); ++l)
+            dependents.push_back(
+                {TieUnknown::Kind::ShellUnknown, first + shells.edgeRotationDof(topologyEdge, l), 0});
         for (const LineRulePoint& point : rule)
             frames.push_back(shells.edgeRotationFrame(e.tie.shell, e.tie.localEdge, point.point));
         // The rotation over the thickness of the first shell that does not lie on a face of the solids, where the

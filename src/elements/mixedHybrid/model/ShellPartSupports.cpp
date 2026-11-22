@@ -151,8 +151,6 @@ struct CarriedRod
 ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) const
 {
     const std::size_t ng = m_input.grids.size();
-    const std::size_t k = m_input.degree;
-    const std::size_t p = k - 1;
     ShellSupports out;
     // the supports of each grid (several entries of one grid add up)
     std::vector<ShellGridSupport> supportOf(ng);
@@ -198,13 +196,13 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
     // Kirchhoff elements
     for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
         if (m_topology.edgeElements[e].size() >= 3)
-            for (std::size_t l = 0; l <= p; ++l)
-                hold(m_entities[edgeEntity(e)].firstUnknown + edgeShearDof(l), 0.0, {});
+            for (std::size_t l = 0; l < edgeDegree(e); ++l)
+                hold(m_entities[edgeEntity(e)].firstUnknown + edgeShearDof(e, l), 0.0, {});
     for (std::size_t ie = 0; ie < m_shells.size(); ++ie)
     {
         if (!m_shells[ie].kirchhoff)
             continue;
-        const ShellReferenceElement& re = referenceElement(m_shells[ie].cornerCount);
+        const ShellReferenceElement& re = referenceElement(m_shells[ie]);
         for (std::size_t i = 0; i < re.hcurlCount; ++i)
             hold(m_shells[ie].dofs[3 * re.h1Count + i], 0.0, {});
     }
@@ -219,6 +217,9 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
     constexpr std::size_t READ_AS_EXTERNAL = 1;
     for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
     {
+        // the degree of the trace of the displacement on the edge, and that of its shear and of its rotation
+        const std::size_t k = edgeDegree(e);
+        const std::size_t p = k - 1;
         const std::size_t ga = m_topology.edges[e].lower;
         const std::size_t gb = m_topology.edges[e].higher;
         const bool isExternal = m_topology.edgeElements[e].size() == 1;
@@ -421,13 +422,13 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                     for (std::size_t cp = 0; cp < 3; ++cp)
                         if ((held.rotations[cp] || skewRotations) && rotationByRotation[l][end][cp] != 0.0)
                             carried.push_back({ends[end], 3 + cp, scale * rotationByRotation[l][end][cp]});
-                hold(first + edgeRotationDof(l), scale * rotationMoments[l], std::move(carried));
+                hold(first + edgeRotationDof(e, l), scale * rotationMoments[l], std::move(carried));
             }
         if (shearHeld && anyRotation)
         {
             if (normalHeld)
                 for (std::size_t l = 0; l <= p; ++l)
-                    hold(first + edgeShearDof(l), 0.0, {});
+                    hold(first + edgeShearDof(e, l), 0.0, {});
             else
                 out.notes.push_back("edge " + gridName(ga) + "-" + gridName(gb) +
                                     ": rotation across the edge held with the normal displacement free: not "
@@ -579,7 +580,7 @@ std::array<std::vector<ShellPartTerm>, 3> ShellPart::meanRotationRows(std::size_
 std::array<Vector, 6> ShellPart::rigidMotionsOf(std::size_t shell) const
 {
     const ShellElementData el = element(shell);
-    return rigidMotionUnknowns(referenceElement(el), el.definition(), projectionOf(el.cornerCount));
+    return rigidMotionUnknowns(referenceElement(el), el.definition(), projectionOf(el));
 }
 
 const std::vector<ShellPart::RigidField>& ShellPart::rigidFields() const
@@ -589,10 +590,10 @@ const std::vector<ShellPart::RigidField>& ShellPart::rigidFields() const
         std::vector<RigidField> fields(m_shells.size());
         for (std::size_t ie = 0; ie < m_shells.size(); ++ie)
         {
-            const ShellReferenceElement& re = referenceElement(m_shells[ie].cornerCount);
+            const ShellReferenceElement& re = referenceElement(m_shells[ie]);
             const std::size_t n1 = re.h1Count;
             const auto firstEdgeRotation = static_cast<std::ptrdiff_t>(3 * n1 + re.hcurlCount);
-            const auto edgeRotations = static_cast<std::ptrdiff_t>(m_shells[ie].cornerCount * (re.shearDegree + 1));
+            const auto edgeRotations = static_cast<std::ptrdiff_t>(re.rotationUnknownCount());
             const std::array<Vector, 6> rigid = rigidMotionsOf(ie);
             RigidField& field = fields[ie];
             field.constants.resize(n1);
@@ -625,7 +626,6 @@ void ShellPart::affineField(const std::array<SpaceVector, 3>& gradient, const Sp
         const ShellElementData& el = m_shells[ie];
         const ShellReferenceElement& re = referenceElement(el);
         const std::size_t n1 = re.h1Count;
-        const std::size_t p = re.shearDegree;
         // of the six rigid motions about the origin on the local unknowns: the coefficients c_i of the constant 1, and
         // the edge rotations of a unit rotation about each axis
         const RigidField& rigid = rigidOfShells[ie];
@@ -638,9 +638,9 @@ void ShellPart::affineField(const std::array<SpaceVector, 3>& gradient, const Sp
                 local[3 * i + c] = translation[c] * constant + dot3(gradient[c], x);
         }
         for (std::size_t kk = 0; kk < el.cornerCount; ++kk)
-            for (std::size_t l = 0; l <= p; ++l)
+            for (std::size_t l = 0; l < re.rotationCount(kk); ++l)
             {
-                const std::size_t rotation = kk * (p + 1) + l;
+                const std::size_t rotation = re.firstRotation(kk) + l;
                 local[3 * n1 + re.hcurlCount + rotation] = omega[0] * rigid.edgeRotations[0][rotation] +
                                                            omega[1] * rigid.edgeRotations[1][rotation] +
                                                            omega[2] * rigid.edgeRotations[2][rotation];
@@ -806,8 +806,8 @@ ShellPart::PointRows ShellPart::pointRowsOnEdges(std::size_t shell, double xi, d
                 for (const auto& [unknown, coefficient] : ofElement[c])
                     rows[r][unknown] -= carriers[i][r] * frames[i].tangent[c] * coefficient;
             // + d_i r_i, r_i = Σ_l a_l P_l(2s − 1) / (W² |X_s|)
-            for (std::size_t l = 0; l < m_input.degree; ++l)
-                rows[r][first + edgeRotationDof(l)] +=
+            for (std::size_t l = 0; l < edgeDegree(edge); ++l)
+                rows[r][first + edgeRotationDof(edge, l)] +=
                     carriers[i][r] * legendreValue(l, 2.0 * edgesAt[i].s - 1.0) / frames[i].measure;
         }
     }
@@ -826,7 +826,7 @@ ShellPart::EdgeMoments ShellPart::edgeMoments(std::size_t edge) const
     EdgeMoments out;
     if (m_topology.edgeElements[edge].empty())
         return out;
-    const std::size_t k = m_input.degree;
+    const std::size_t k = edgeDegree(edge);
     // the edge as its first shell runs it (the same curve from every shell of the edge)
     const std::size_t ie = m_topology.edgeElements[edge].front();
     const ShellElementData el = element(ie);
@@ -842,7 +842,7 @@ ShellPart::EdgeMoments ShellPart::edgeMoments(std::size_t edge) const
         for (std::size_t c = 0; c < 3; ++c)
             out.displacementUnknowns.push_back(first + 3 * l + c);
     for (std::size_t l = 0; l < k; ++l)
-        out.rotationUnknowns.push_back(first + edgeRotationDof(l));
+        out.rotationUnknowns.push_back(first + edgeRotationDof(edge, l));
     for (std::size_t gi = 0; gi < pointCount; ++gi)
     {
         const PointGeometry g = edgeGeometry(def, re.h1Count, kk, gi);
@@ -868,7 +868,7 @@ ShellPart::InteriorMoments ShellPart::interiorMoments(std::size_t shell) const
     InteriorMoments out;
     const ShellElementData el = element(shell);
     const ShellReferenceElement& re = referenceElement(el);
-    const InteriorProjection& projection = projectionOf(el.cornerCount);
+    const InteriorProjection& projection = projectionOf(el);
     const std::size_t n1 = re.h1Count;
     const std::size_t interiorCount = projection.interior.size();
     const std::size_t pointCount = re.points.size();

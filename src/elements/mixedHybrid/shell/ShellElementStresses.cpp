@@ -130,7 +130,6 @@ Matrix geometricMembrane(const ShellReferenceElement& re, const ShellElementDefi
     const std::size_t n1 = re.h1Count;
     const std::size_t nr = re.reggeCount;
     const std::size_t nv = re.cornerCount;
-    const std::size_t p = re.shearDegree;
     const std::size_t nx = shellUnknownCount(re);
     const std::vector<PointGeometry> geometries = shelldetail::volumeGeometries(re, def);
     // n_R,m = ∫ N : R_m dA; the weights of the functionals are D_R⁻ᵀ n_R
@@ -143,12 +142,12 @@ Matrix geometricMembrane(const ShellReferenceElement& re, const ShellElementDefi
         for (std::size_t m = 0; m < nr; ++m)
             nrv[m] += s * (rv(0, m) * forces[q][0] + rv(1, m) * forces[q][1] + rv(2, m) * forces[q][2]);
     }
-    const Vector wf = transposeTimes(matrices.reggeFunctionalInverse, nrv);
+    const Vector wf = re.rawMembraneWeights(transposeTimes(matrices.reggeFunctionalInverse, nrv));
     Matrix ks(n1, n1);
     std::size_t f = 0;
     for (std::size_t k = 0; k < nv; ++k)
     {
-        for (std::size_t l = 0; l <= p; ++l)
+        for (std::size_t l = 0; l <= re.shearDegree; ++l)
         {
             const double wl = wf[f++];
             if (wl == 0.0)

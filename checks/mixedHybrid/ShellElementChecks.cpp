@@ -20,31 +20,37 @@ namespace
 constexpr std::size_t DEGREE = 4;
 
 // The test elements: flat and distorted, warped, curved (rational patches), quadrilaterals and triangles.
-TestElement flatQuadrilateral(std::size_t degree = DEGREE, bool withMass = false)
+// (`edgeDegrees`: the degrees of the edges of a transition element; empty: the degree of the element.)
+using EdgeDegrees = std::vector<std::size_t>;
+
+TestElement flatQuadrilateral(std::size_t degree = DEGREE, bool withMass = false, const EdgeDegrees& edgeDegrees = {})
 {
     const TestSurface s = bilinearQuadrilateral({mh::SpaceVector{0.0, 0.0, 0.0}, mh::SpaceVector{2.2, 0.1, 0.0},
                                                  mh::SpaceVector{1.9, 1.7, 0.0}, mh::SpaceVector{-0.2, 1.2, 0.0}});
-    return makeElement(s, degree, isotropicSection(0.05), 0.0, {1.0, -1.0, 1.0, -1.0}, withMass);
+    return makeElement(s, degree, isotropicSection(0.05), 0.0, {1.0, -1.0, 1.0, -1.0}, withMass, false, edgeDegrees);
 }
 
-TestElement warpedQuadrilateral(std::size_t degree = DEGREE, bool withMass = false)
+TestElement warpedQuadrilateral(std::size_t degree = DEGREE, bool withMass = false,
+                                const EdgeDegrees& edgeDegrees = {})
 {
     const TestSurface s = bilinearQuadrilateral({mh::SpaceVector{0.0, 0.0, 0.0}, mh::SpaceVector{2.2, 0.1, 0.0},
                                                  mh::SpaceVector{1.9, 1.7, 0.25}, mh::SpaceVector{-0.2, 1.2, 0.0}});
-    return makeElement(s, degree, laminateSection({0.6, 0.8, 0.0}), 0.01, {1.0, -1.0, -1.0, 1.0}, withMass);
+    return makeElement(s, degree, laminateSection({0.6, 0.8, 0.0}), 0.01, {1.0, -1.0, -1.0, 1.0}, withMass, false,
+                       edgeDegrees);
 }
 
-TestElement cylindricalQuadrilateral(std::size_t degree = DEGREE, bool withMass = false)
+TestElement cylindricalQuadrilateral(std::size_t degree = DEGREE, bool withMass = false,
+                                     const EdgeDegrees& edgeDegrees = {})
 {
     return makeElement(cylinderQuadrant(2.0, 1.5), degree, isotropicSection(0.02), 0.0, {1.0, 1.0, -1.0, -1.0},
-                       withMass);
+                       withMass, false, edgeDegrees);
 }
 
-TestElement flatTriangle(std::size_t degree = DEGREE, bool withMass = false)
+TestElement flatTriangle(std::size_t degree = DEGREE, bool withMass = false, const EdgeDegrees& edgeDegrees = {})
 {
     const TestSurface s = affineTriangle(
         {mh::SpaceVector{0.0, 0.0, 0.0}, mh::SpaceVector{1.7, 0.3, 0.0}, mh::SpaceVector{0.4, 1.4, 0.0}});
-    return makeElement(s, degree, isotropicSection(0.05), 0.0, {1.0, -1.0, 1.0}, withMass);
+    return makeElement(s, degree, isotropicSection(0.05), 0.0, {1.0, -1.0, 1.0}, withMass, false, edgeDegrees);
 }
 
 TestElement curvedTriangle(std::size_t degree = DEGREE, bool withMass = false)
@@ -73,6 +79,33 @@ std::vector<NamedElement> allElements(std::size_t degree = DEGREE, bool withMass
     out.push_back({"cylindrical quadrilateral", cylindricalQuadrilateral(degree, withMass)});
     out.push_back({"flat triangle", flatTriangle(degree, withMass)});
     out.push_back({"curved triangle", curvedTriangle(degree, withMass)});
+    return out;
+}
+
+// Transition elements (ShellSpaces.hpp): elements of degree 3 and 4 some of whose edges, or all, have a lower degree.
+std::vector<NamedElement> transitionElements()
+{
+    std::vector<NamedElement> out;
+    out.push_back({"flat quadrilateral 3, edges 2 3 3 2", flatQuadrilateral(3, false, {2, 3, 3, 2})});
+    out.push_back({"flat quadrilateral 3, edges 2 2 2 2", flatQuadrilateral(3, false, {2, 2, 2, 2})});
+    out.push_back({"flat quadrilateral 4, edges 3 2 4 3", flatQuadrilateral(4, false, {3, 2, 4, 3})});
+    out.push_back({"warped quadrilateral 3, edges 3 2 3 3", warpedQuadrilateral(3, false, {3, 2, 3, 3})});
+    out.push_back({"cylindrical quadrilateral 4, edges 3 4 3 4", cylindricalQuadrilateral(4, false, {3, 4, 3, 4})});
+    out.push_back({"flat triangle 3, edges 2 3 2", flatTriangle(3, false, {2, 3, 2})});
+    const TestSurface cylinder = cylinderQuadrant(2.0, 1.5);
+    out.push_back({"thin curved quadrilateral 4, edges 2 4 2 3",
+                   makeElement(cylinder, 4, isotropicSection(0.02), 0.0, {1.0, 1.0, -1.0, -1.0}, false, false,
+                               {2, 4, 2, 3})});
+    const TestSurface warped =
+        bilinearQuadrilateral({mh::SpaceVector{0.0, 0.0, 0.0}, mh::SpaceVector{2.2, 0.1, 0.0},
+                               mh::SpaceVector{1.9, 1.7, 0.25}, mh::SpaceVector{-0.2, 1.2, 0.0}});
+    out.push_back({"warped quadrilateral 3, edges 2 2 2 2",
+                   makeElement(warped, 3, laminateSection({0.6, 0.8, 0.0}), 0.01, {1.0, -1.0, -1.0, 1.0}, false, false,
+                               {2, 2, 2, 2})});
+    out.push_back({"flat triangle 4, edges 2 2 3",
+                   makeElement(affineTriangle({mh::SpaceVector{0.0, 0.0, 0.0}, mh::SpaceVector{1.7, 0.3, 0.0},
+                                               mh::SpaceVector{0.4, 1.4, 0.0}}),
+                               4, isotropicSection(0.05), 0.0, {1.0, -1.0, 1.0}, false, false, {2, 2, 3})});
     return out;
 }
 
@@ -117,6 +150,116 @@ CHECK_CASE("shell: rigid motions of one element have no energy")
                                                                             std::to_string(err));
             }
         }
+    }
+}
+
+// The same for transition elements: the rotation about an edge of a lower degree still holds that of a rigid motion
+// (a constant on a straight edge, of degree 2 on a conic one, which an edge of degree 3 holds).
+CHECK_CASE("shell: rigid motions of a transition element have no energy")
+{
+    for (const NamedElement& named : transitionElements())
+    {
+        const TestElement& e = named.element;
+        const mh::Matrix& k = e.data.matrices.stiffness;
+        const std::array<mh::Vector, 6> rigid = mh::rigidMotionUnknowns(*e.re, e.data.definition());
+        const double kd = maxDiagonal(k);
+        for (std::size_t m = 0; m < 6; ++m)
+        {
+            const mh::Vector kr = k * rigid[m];
+            const double err = maxAbsVector(kr) / (kd * maxAbsVector(rigid[m]));
+            runner.expect(err < 1e-10, named.name + " mode " + std::to_string(m) + ": " + std::to_string(err));
+        }
+    }
+}
+
+// A transition element has the six rigid modes and no other mode without energy: the moments it keeps hold every
+// other motion of its unknowns.
+CHECK_CASE("shell: free transition element has exactly the rigid modes")
+{
+    for (const NamedElement& named : transitionElements())
+    {
+        const std::vector<double> values = sortedEigenvalues(named.element.data.matrices.stiffness);
+        const double top = values.back();
+        std::size_t zero = 0;
+        for (double v : values)
+            if (std::fabs(v) < 1e-11 * top)
+                ++zero;
+        runner.expect(zero == 6, named.name + ": " + std::to_string(zero) + " zero eigenvalues");
+        runner.expect(values.front() > -1e-11 * top, named.name + ": no negative eigenvalue");
+    }
+}
+
+// The membrane strain of a displacement that a transition element can have is interpolated exactly on an affine
+// element: a quadratic displacement in the plane gives the forces N = A ε, ε its exact (linear) strain, at every point,
+// whatever the degrees of the edges (whose displacement is of degree 2: the traces of a quadratic are within them).
+CHECK_CASE("shell: the linear strain of a quadratic displacement of a transition element is exact")
+{
+    const auto parallelogram = [](std::size_t degree, const EdgeDegrees& edges)
+    {
+        return makeElement(bilinearQuadrilateral({mh::SpaceVector{0, 0, 0}, mh::SpaceVector{2, 0.3, 0},
+                                                  mh::SpaceVector{2.5, 1.3, 0}, mh::SpaceVector{0.5, 1.0, 0}}),
+                           degree, isotropicSection(0.05), 0.0, {1, -1, 1, -1}, false, false, edges);
+    };
+    const auto triangle = [](std::size_t degree, const EdgeDegrees& edges)
+    {
+        return makeElement(affineTriangle({mh::SpaceVector{0.0, 0.0, 0.0}, mh::SpaceVector{1.7, 0.3, 0.0},
+                                           mh::SpaceVector{0.4, 1.4, 0.0}}),
+                           degree, isotropicSection(0.05), 0.0, {1.0, -1.0, 1.0}, false, false, edges);
+    };
+    std::vector<NamedElement> elements;
+    elements.push_back({"parallelogram 3, edges 2 2 2 2", parallelogram(3, {2, 2, 2, 2})});
+    elements.push_back({"parallelogram 4, edges 2 3 2 4", parallelogram(4, {2, 3, 2, 4})});
+    elements.push_back({"triangle 3, edges 2 2 2", triangle(3, {2, 2, 2})});
+    elements.push_back({"triangle 4, edges 2 3 2", triangle(4, {2, 3, 2})});
+    for (const NamedElement& named : elements)
+    {
+        const TestElement& e = named.element;
+        const mh::ShellReferenceElement& re = *e.re;
+        const mh::ShellElementDefinition def = e.data.definition();
+        const mh::Section& section = e.data.section.section();
+        // u_x = a x² + b x y + c y², u_y = d x² + f x y + g y²: the strain is linear in the position
+        const double a = 1e-3, b = -4e-4, c = 2e-4, d = 3e-4, f = -2e-4, g = 5e-4;
+        const mh::Vector x = unknownsOfField(
+            e,
+            [&](const mh::SpaceVector& p)
+            {
+                return mh::SpaceVector{a * p[0] * p[0] + b * p[0] * p[1] + c * p[1] * p[1],
+                                       d * p[0] * p[0] + f * p[0] * p[1] + g * p[1] * p[1], 0.0};
+            },
+            [](const mh::SpaceVector&) { return mh::SpaceVector{}; });
+        double worst = 0.0;
+        double scale = 0.0;
+        for (const mh::ReferencePoint& point : {mh::ReferencePoint{-0.5, -0.4}, mh::ReferencePoint{0.2, -0.3},
+                                                mh::ReferencePoint{-0.3, 0.3}})
+        {
+            const mh::PointGeometry geometry = mh::geometryAt(re, def, point[0], point[1]);
+            const double px = geometry.x[0];
+            const double py = geometry.x[1];
+            const double gradient[2][2] = {{2 * a * px + b * py, b * px + 2 * c * py},
+                                           {2 * d * px + f * py, f * px + 2 * g * py}};
+            const double sym[2][2] = {{gradient[0][0], 0.5 * (gradient[0][1] + gradient[1][0])},
+                                      {0.5 * (gradient[0][1] + gradient[1][0]), gradient[1][1]}};
+            const auto component = [&](std::size_t i, std::size_t j)
+            {
+                double sum = 0.0;
+                for (std::size_t m = 0; m < 2; ++m)
+                    for (std::size_t n = 0; n < 2; ++n)
+                        sum += geometry.e[i][m] * sym[m][n] * geometry.e[j][n];
+                return sum;
+            };
+            const mh::Voigt3 strain{component(0, 0), component(1, 1), 2.0 * component(0, 1)};
+            const std::array<double, 8> forces =
+                mh::resultants(re, def, e.data.matrices, x, nullptr, {0.0, 0.0}, point[0], point[1]);
+            for (std::size_t i = 0; i < 3; ++i)
+            {
+                double n = 0.0;
+                for (std::size_t j = 0; j < 3; ++j)
+                    n += section.a[i][j] * strain[j];
+                worst = std::fmax(worst, std::fabs(forces[i] - n));
+                scale = std::fmax(scale, std::fabs(n));
+            }
+        }
+        runner.expect(worst < 1e-9 * scale, named.name + ": " + std::to_string(worst / scale));
     }
 }
 
@@ -253,83 +396,149 @@ CHECK_CASE("shell: the resultants from the coefficients of a solution have the b
     }
 }
 
+namespace
+{
+
+// The constant membrane and bending states of a flat element (document 34 of the reference, section 4.3): a uniform
+// membrane strain gives N = A ε and no moment, a uniform curvature M = D κ and no membrane force, at every point.
+void checkConstantStates(oos::checks::CheckRunner& runner, const NamedElement& named)
+{
+    const TestElement& e = named.element;
+    const mh::ShellReferenceElement& re = *e.re;
+    const mh::ShellElementDefinition def = e.data.definition();
+    const mh::Section& section = e.data.section.section();
+    // membrane: u = G X with an in-plane gradient
+    const double g[2][2] = {{1e-3, 2e-4}, {-1e-4, 5e-4}};
+    const mh::Vector xm = unknownsOfField(
+        e, [&](const mh::SpaceVector& x)
+        { return mh::SpaceVector{g[0][0] * x[0] + g[0][1] * x[1], g[1][0] * x[0] + g[1][1] * x[1], 0.0}; },
+        [](const mh::SpaceVector&) { return mh::SpaceVector{}; });
+    // bending: w = ½ (kxx x² + 2 kxy x y + kyy y²), θ = ν × β = (w_,y, −w_,x, 0)
+    const double kxx = 2e-3;
+    const double kxy = -7e-4;
+    const double kyy = 1.2e-3;
+    const mh::Vector xb = unknownsOfField(
+        e,
+        [&](const mh::SpaceVector& x)
+        {
+            const double w = 0.5 * (kxx * x[0] * x[0] + 2.0 * kxy * x[0] * x[1] + kyy * x[1] * x[1]);
+            return mh::SpaceVector{0.0, 0.0, w};
+        },
+        [&](const mh::SpaceVector& x)
+        { return mh::SpaceVector{kxy * x[0] + kyy * x[1], -(kxx * x[0] + kxy * x[1]), 0.0}; });
+    double worstMembrane = 0.0;
+    double worstBending = 0.0;
+    const double points[3][2] = {{-0.6, -0.7}, {-0.2, 0.1}, {0.5, -0.9}};
+    for (const auto& point : points)
+    {
+        const double xi = point[0];
+        const double eta = point[1];
+        const mh::PointGeometry geometry = mh::geometryAt(re, def, xi, eta);
+        // the strain and the curvature in the local frame (engineering shear, κ = −∂²w)
+        const auto local = [&](const double t[2][2])
+        {
+            const auto component = [&](std::size_t i, std::size_t j)
+            {
+                double sum = 0.0;
+                for (std::size_t a = 0; a < 2; ++a)
+                    for (std::size_t b = 0; b < 2; ++b)
+                        sum += geometry.e[i][a] * t[a][b] * geometry.e[j][b];
+                return sum;
+            };
+            return mh::Voigt3{component(0, 0), component(1, 1), 2.0 * component(0, 1)};
+        };
+        const double sym[2][2] = {{g[0][0], 0.5 * (g[0][1] + g[1][0])}, {0.5 * (g[0][1] + g[1][0]), g[1][1]}};
+        const double curvature[2][2] = {{-kxx, -kxy}, {-kxy, -kyy}};
+        const mh::Voigt3 strain = local(sym);
+        const mh::Voigt3 kappa = local(curvature);
+        const std::array<double, 8> rm = mh::resultants(re, def, e.data.matrices, xm, nullptr, {0.0, 0.0}, xi, eta);
+        const std::array<double, 8> rb = mh::resultants(re, def, e.data.matrices, xb, nullptr, {0.0, 0.0}, xi, eta);
+        const double nScale = section.a[0][0] * 1e-3;
+        const double mScale = section.d[0][0] * 2e-3;
+        for (std::size_t i = 0; i < 3; ++i)
+        {
+            double n = 0.0;
+            double m = 0.0;
+            for (std::size_t j = 0; j < 3; ++j)
+            {
+                n += section.a[i][j] * strain[j];
+                m += section.d[i][j] * kappa[j];
+            }
+            worstMembrane = std::fmax(worstMembrane, std::fabs(rm[i] - n) / nScale);
+            worstMembrane = std::fmax(worstMembrane, std::fabs(rm[3 + i]) / mScale);
+            worstBending = std::fmax(worstBending, std::fabs(rb[3 + i] - m) / mScale);
+            worstBending = std::fmax(worstBending, std::fabs(rb[i]) / nScale);
+        }
+        for (std::size_t i = 6; i < 8; ++i)
+            worstMembrane = std::fmax(worstMembrane, std::fabs(rm[i]) / nScale);
+    }
+    runner.expect(worstMembrane < 1e-9, named.name + ": membrane state " + std::to_string(worstMembrane));
+    runner.expect(worstBending < 1e-9, named.name + ": bending state " + std::to_string(worstBending));
+}
+
+} // namespace
+
 CHECK_CASE("shell: constant membrane and bending states")
 {
+    // (the transition elements too: a constant state has traces of degree 2 at most, which every edge holds)
     for (const NamedElement& named :
-         {NamedElement{"flat quadrilateral", flatQuadrilateral()}, NamedElement{"flat triangle", flatTriangle()}})
-    {
-        const TestElement& e = named.element;
-        const mh::ShellReferenceElement& re = *e.re;
-        const mh::ShellElementDefinition def = e.data.definition();
-        const mh::Section& section = e.data.section.section();
-        // membrane: u = G X with an in-plane gradient
-        const double g[2][2] = {{1e-3, 2e-4}, {-1e-4, 5e-4}};
-        const mh::Vector xm = unknownsOfField(
-            e, [&](const mh::SpaceVector& x)
-            { return mh::SpaceVector{g[0][0] * x[0] + g[0][1] * x[1], g[1][0] * x[0] + g[1][1] * x[1], 0.0}; },
-            [](const mh::SpaceVector&) { return mh::SpaceVector{}; });
-        // bending: w = ½ (kxx x² + 2 kxy x y + kyy y²), θ = ν × β = (w_,y, −w_,x, 0)
-        const double kxx = 2e-3;
-        const double kxy = -7e-4;
-        const double kyy = 1.2e-3;
-        const mh::Vector xb = unknownsOfField(
-            e,
-            [&](const mh::SpaceVector& x)
-            {
-                const double w = 0.5 * (kxx * x[0] * x[0] + 2.0 * kxy * x[0] * x[1] + kyy * x[1] * x[1]);
-                return mh::SpaceVector{0.0, 0.0, w};
-            },
-            [&](const mh::SpaceVector& x)
-            { return mh::SpaceVector{kxy * x[0] + kyy * x[1], -(kxx * x[0] + kxy * x[1]), 0.0}; });
-        double worstMembrane = 0.0;
-        double worstBending = 0.0;
-        const double points[3][2] = {{-0.6, -0.7}, {-0.2, 0.1}, {0.5, -0.9}};
-        for (const auto& point : points)
+         {NamedElement{"flat quadrilateral", flatQuadrilateral()}, NamedElement{"flat triangle", flatTriangle()},
+          NamedElement{"flat quadrilateral 3, edges 2 3 3 2", flatQuadrilateral(3, false, {2, 3, 3, 2})},
+          NamedElement{"flat quadrilateral 3, edges 2 2 2 2", flatQuadrilateral(3, false, {2, 2, 2, 2})},
+          NamedElement{"flat quadrilateral 4, edges 3 2 4 3", flatQuadrilateral(4, false, {3, 2, 4, 3})},
+          NamedElement{"flat triangle 3, edges 2 3 2", flatTriangle(3, false, {2, 3, 2})}})
+        checkConstantStates(runner, named);
+}
+
+// Every configuration of the degrees of one element (its inside of degree 2, 3 or 4 and each edge from 2 to that
+// degree): the rigid motions have no energy and the constant states are exact, on a flat quadrilateral and a flat triangle.
+CHECK_CASE("shell: every configuration of degrees holds the rigid motions and the constant states")
+{
+    std::size_t configurations = 0;
+    for (const std::size_t corners : {std::size_t{4}, std::size_t{3}})
+        for (const std::size_t degree : {std::size_t{2}, std::size_t{3}, std::size_t{4}})
         {
-            const double xi = point[0];
-            const double eta = point[1];
-            const mh::PointGeometry geometry = mh::geometryAt(re, def, xi, eta);
-            // the strain and the curvature in the local frame (engineering shear, κ = −∂²w)
-            const auto local = [&](const double t[2][2])
+            std::size_t count = 1;
+            for (std::size_t k = 0; k < corners; ++k)
+                count *= degree - 1;
+            for (std::size_t code = 0; code < count; ++code)
             {
-                const auto component = [&](std::size_t i, std::size_t j)
+                EdgeDegrees edges;
+                std::size_t rest = code;
+                std::string name = corners == 4 ? "quadrilateral " : "triangle ";
+                name += std::to_string(degree) + ", edges";
+                for (std::size_t k = 0; k < corners; ++k)
                 {
-                    double sum = 0.0;
-                    for (std::size_t a = 0; a < 2; ++a)
-                        for (std::size_t b = 0; b < 2; ++b)
-                            sum += geometry.e[i][a] * t[a][b] * geometry.e[j][b];
-                    return sum;
-                };
-                return mh::Voigt3{component(0, 0), component(1, 1), 2.0 * component(0, 1)};
-            };
-            const double sym[2][2] = {{g[0][0], 0.5 * (g[0][1] + g[1][0])}, {0.5 * (g[0][1] + g[1][0]), g[1][1]}};
-            const double curvature[2][2] = {{-kxx, -kxy}, {-kxy, -kyy}};
-            const mh::Voigt3 strain = local(sym);
-            const mh::Voigt3 kappa = local(curvature);
-            const std::array<double, 8> rm = mh::resultants(re, def, e.data.matrices, xm, nullptr, {0.0, 0.0}, xi, eta);
-            const std::array<double, 8> rb = mh::resultants(re, def, e.data.matrices, xb, nullptr, {0.0, 0.0}, xi, eta);
-            const double nScale = section.a[0][0] * 1e-3;
-            const double mScale = section.d[0][0] * 2e-3;
-            for (std::size_t i = 0; i < 3; ++i)
-            {
-                double n = 0.0;
-                double m = 0.0;
-                for (std::size_t j = 0; j < 3; ++j)
-                {
-                    n += section.a[i][j] * strain[j];
-                    m += section.d[i][j] * kappa[j];
+                    edges.push_back(2 + rest % (degree - 1));
+                    rest /= degree - 1;
+                    name += " " + std::to_string(edges.back());
                 }
-                worstMembrane = std::fmax(worstMembrane, std::fabs(rm[i] - n) / nScale);
-                worstMembrane = std::fmax(worstMembrane, std::fabs(rm[3 + i]) / mScale);
-                worstBending = std::fmax(worstBending, std::fabs(rb[3 + i] - m) / mScale);
-                worstBending = std::fmax(worstBending, std::fabs(rb[i]) / nScale);
+                TestElement element = corners == 4
+                                          ? makeElement(bilinearQuadrilateral({mh::SpaceVector{0.0, 0.0, 0.0},
+                                                                               mh::SpaceVector{2.2, 0.1, 0.0},
+                                                                               mh::SpaceVector{1.9, 1.7, 0.0},
+                                                                               mh::SpaceVector{-0.2, 1.2, 0.0}}),
+                                                        degree, isotropicSection(0.05), 0.0, {1.0, -1.0, 1.0, -1.0},
+                                                        false, false, edges)
+                                          : makeElement(affineTriangle({mh::SpaceVector{0.0, 0.0, 0.0},
+                                                                        mh::SpaceVector{1.7, 0.3, 0.0},
+                                                                        mh::SpaceVector{0.4, 1.4, 0.0}}),
+                                                        degree, isotropicSection(0.05), 0.0, {1.0, -1.0, 1.0}, false,
+                                                        false, edges);
+                const mh::Matrix& k = element.data.matrices.stiffness;
+                const std::array<mh::Vector, 6> rigid =
+                    mh::rigidMotionUnknowns(*element.re, element.data.definition());
+                const double kd = maxDiagonal(k);
+                double worst = 0.0;
+                for (const mh::Vector& motion : rigid)
+                    worst = std::fmax(worst, maxAbsVector(k * motion) / (kd * maxAbsVector(motion)));
+                runner.expect(worst < 1e-10, name + ": rigid motions " + std::to_string(worst));
+                checkConstantStates(runner, NamedElement{name, std::move(element)});
+                ++configurations;
             }
-            for (std::size_t i = 6; i < 8; ++i)
-                worstMembrane = std::fmax(worstMembrane, std::fabs(rm[i]) / nScale);
         }
-        runner.expect(worstMembrane < 1e-9, named.name + ": membrane state " + std::to_string(worstMembrane));
-        runner.expect(worstBending < 1e-9, named.name + ": bending state " + std::to_string(worstBending));
-    }
+    runner.expect(configurations == 1 + 16 + 81 + 1 + 8 + 27,
+                  "configurations checked: " + std::to_string(configurations));
 }
 
 namespace

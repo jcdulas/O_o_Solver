@@ -22,12 +22,13 @@ mh::ShellSection thinSection()
     return mh::ShellSection::uniform(mh::Section::isotropic(2.0e5, 0.3, 0.02, 5.0 / 6.0, 1.0, 0.0), {1.0, 0.0, 0.0});
 }
 
-TestElement nonlinearQuadrilateral(std::size_t degree)
+TestElement nonlinearQuadrilateral(std::size_t degree, const std::vector<std::size_t>& edges = {})
 {
-    return makeElement(cylinderQuadrant(2.0, 1.5), degree, thinSection(), 0.004, {1.0, -1.0, -1.0, 1.0}, false);
+    return makeElement(cylinderQuadrant(2.0, 1.5), degree, thinSection(), 0.004, {1.0, -1.0, -1.0, 1.0}, false, false,
+                       edges);
 }
 
-TestElement nonlinearTriangle(std::size_t degree)
+TestElement nonlinearTriangle(std::size_t degree, const std::vector<std::size_t>& edges = {})
 {
     const mh::SpaceVector p0{2.0, 0.0, 0.0};
     const mh::SpaceVector p1{0.0, 0.0, 2.0};
@@ -35,7 +36,19 @@ TestElement nonlinearTriangle(std::size_t degree)
     const std::array<mh::SpaceVector, 3> controls{mh::SpaceVector{2.0, 0.0, 2.0}, mh::scl3(mh::add3(p1, p2), 0.5),
                                                   mh::scl3(mh::add3(p2, p0), 0.5)};
     const TestSurface s = rationalTriangle({p0, p1, p2}, controls, {std::numbers::sqrt2 / 2.0, 1.0, 1.0});
-    return makeElement(s, degree, thinSection(), 0.004, {1.0, 1.0, -1.0}, false);
+    return makeElement(s, degree, thinSection(), 0.004, {1.0, 1.0, -1.0}, false, false, edges);
+}
+
+// The elements of the checks at `degree`: those of that degree, and transition elements of that degree (some edges of
+// degree 2).
+std::vector<TestElement> nonlinearElements(std::size_t degree)
+{
+    std::vector<TestElement> elements{nonlinearQuadrilateral(degree), nonlinearTriangle(degree)};
+    elements.push_back(nonlinearQuadrilateral(degree, {2, degree, 2, degree}));
+    elements.push_back(nonlinearQuadrilateral(degree, {2, 2, 2, 2}));
+    elements.push_back(nonlinearTriangle(degree, {2, degree, 2}));
+    elements.push_back(nonlinearTriangle(degree, {2, 2, 2}));
+    return elements;
 }
 
 double maxAbsVector(const mh::Vector& v)
@@ -55,7 +68,7 @@ CHECK_CASE("shell: nonlinear tangent at the reference is the linear stiffness")
 {
     for (std::size_t degree : {3u, 4u})
     {
-        for (const TestElement& e : {nonlinearQuadrilateral(degree), nonlinearTriangle(degree)})
+        for (const TestElement& e : nonlinearElements(degree))
         {
             const mh::ShellReferenceElement& re = *e.re;
             const mh::ShellElementDefinition def = e.data.definition();
@@ -80,7 +93,7 @@ CHECK_CASE("shell: nonlinear tangent at the reference is the linear stiffness")
 // Reference: tests/tdnns.rs nonlinear_element_derivatives (its second part).
 CHECK_CASE("shell: nonlinear forces and tangent are the derivatives of the energy")
 {
-    for (const TestElement& e : {nonlinearQuadrilateral(3), nonlinearTriangle(3)})
+    for (const TestElement& e : nonlinearElements(3))
     {
         const mh::ShellReferenceElement& re = *e.re;
         const mh::ShellElementDefinition def = e.data.definition();
@@ -124,7 +137,7 @@ CHECK_CASE("shell: nonlinear forces and tangent are the derivatives of the energ
 // Accepting a state moves the start of the kink angles there without changing the energy of that state.
 CHECK_CASE("shell: accepting a nonlinear state keeps its energy")
 {
-    for (const TestElement& e : {nonlinearQuadrilateral(3), nonlinearTriangle(3)})
+    for (const TestElement& e : nonlinearElements(3))
     {
         const mh::ShellReferenceElement& re = *e.re;
         const mh::ShellElementDefinition def = e.data.definition();
@@ -194,7 +207,7 @@ CHECK_CASE("shell: geometric stiffness of a uniform membrane force")
 // K_g is linear in x, so φᵀ K_g(x) φ = g · x for every x, on the curved elements with an offset section.
 CHECK_CASE("shell: gradient of the geometric stiffness along a shape")
 {
-    for (const TestElement& e : {nonlinearQuadrilateral(4), nonlinearTriangle(4)})
+    for (const TestElement& e : nonlinearElements(4))
     {
         const mh::ShellReferenceElement& re = *e.re;
         const mh::ShellElementDefinition def = e.data.definition();

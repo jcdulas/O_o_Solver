@@ -42,14 +42,12 @@ std::size_t interiorCount(const std::vector<FunctionKind>& kinds)
 
 ShellPart::ShellPart(ShellPartInput input) : m_input(std::move(input))
 {
-    m_pointsPerDirection =
-        m_input.pointsPerDirection > 0 ? m_input.pointsPerDirection : shellPointsPerDirection(m_input.degree);
     if (m_input.degree < 2)
     {
         addProblem(ShellPartProblem::Subject::Model, 0, "the shells need a displacement of degree 2 at least");
         return;
     }
-    if (!checkInput())
+    if (!checkInput() || !checkDegrees())
         return;
     // The reading of the mesh: the shells alone (the edges of the lines alone are the integrator's; they come after
     // those of the shells in the reference's topology and change nothing of these).
@@ -66,7 +64,11 @@ ShellPart::ShellPart(ShellPartInput input) : m_input(std::move(input))
     m_reading.heldTranslations = m_input.heldTranslations;
     m_topology = Topology::fromMesh(m_reading);
     applyMidsideGrids();
-    buildShells();
+    const std::vector<ElementSurface> surfaces = readSurfaces();
+    chooseDegrees(surfaces);
+    describeShells();
+    buildEntities();
+    buildShells(surfaces);
     placeLines();
     m_usable = true;
     if (m_input.checkElements)
@@ -191,6 +193,21 @@ bool ShellPart::checkInput()
     return readable;
 }
 
+bool ShellPart::checkDegrees()
+{
+    if (m_input.shellDegrees.empty())
+        return true;
+    bool valid = m_input.shellDegrees.size() == m_input.shells.size();
+    for (const std::size_t degree : m_input.shellDegrees)
+        valid = valid && degree >= 2 && degree <= m_input.degree;
+    if (!valid)
+        addProblem(ShellPartProblem::Subject::Model, 0,
+                   "expected one degree per shell from 2 to " + std::to_string(m_input.degree) +
+                       " (the degree of the shells), found " + std::to_string(m_input.shellDegrees.size()) +
+                       " degrees for " + std::to_string(m_input.shells.size()) + " shells, or one out of that range");
+    return valid;
+}
+
 void ShellPart::applyMidsideGrids()
 {
     std::vector<bool> fixed(m_topology.edges.size(), false);
@@ -226,36 +243,38 @@ void ShellPart::applyMidsideGrids()
     }
 }
 
-const ShellReferenceElement& ShellPart::referenceElement(std::size_t cornerCount) const
-{
-    return shellReferenceElement(cornerCount, m_input.degree, m_pointsPerDirection);
-}
-
 const ShellReferenceElement& ShellPart::referenceElement(const ShellElementData& element) const
 {
-    const std::size_t points = element.pointsPerDirection > 0 ? element.pointsPerDirection : m_pointsPerDirection;
-    return shellReferenceElement(element.cornerCount, m_input.degree, points);
+    const std::size_t points =
+        element.pointsPerDirection > 0 ? element.pointsPerDirection : largestPoints(element.degree);
+    return shellReferenceElement(element.cornerCount, element.degree, points, element.edgeDegrees);
 }
 
 void ShellPart::chooseRules()
 {
-    m_ownPoints.assign(m_shells.size(), m_pointsPerDirection);
-    if (!(m_input.quadratureTolerance > 0.0))
-        return;
-    const ShellRuleChoice choice{std::min(m_input.minimumPointsPerDirection, m_pointsPerDirection),
-                                 m_pointsPerDirection, m_input.quadratureTolerance};
+    m_ownPoints.resize(m_shells.size());
     for (std::size_t ie = 0; ie < m_shells.size(); ++ie)
-        m_ownPoints[ie] =
-            chooseShellPoints(m_shells[ie].cornerCount, m_input.degree, m_shells[ie].definition(), choice);
+    {
+        const std::size_t largest = largestPoints(m_shells[ie].degree);
+        m_ownPoints[ie] = largest;
+        if (!(m_input.quadratureTolerance > 0.0))
+            continue;
+        const ShellRuleChoice choice{std::min(m_input.minimumPointsPerDirection, largest), largest,
+                                     m_input.quadratureTolerance};
+        m_ownPoints[ie] = chooseShellPoints(m_shells[ie].cornerCount, m_shells[ie].degree, m_shells[ie].definition(),
+                                            choice, m_shells[ie].edgeDegrees);
+    }
 }
 
-const InteriorProjection& ShellPart::projectionOf(std::size_t cornerCount) const
+const InteriorProjection& ShellPart::projectionOf(const ShellElementData& element) const
 {
-    const std::optional<InteriorProjection>& projection =
-        cornerCount == 3 ? m_triangleProjection : m_quadrilateralProjection;
-    if (!projection)
-        throw base::InternalError("shell part: no interior projection for this corner count");
-    return *projection;
+    // the reference element of the largest rule of the element, whatever the rule of its tables
+    const ShellReferenceElement& re = shellReferenceElement(
+        element.cornerCount, element.degree, largestPoints(element.degree), element.edgeDegrees);
+    const auto found = m_projections.find(&re);
+    if (found == m_projections.end())
+        throw base::InternalError("shell part: no interior projection for this reference element");
+    return found->second;
 }
 
 std::size_t ShellPart::localEdgeOf(std::size_t shell, std::size_t edge) const
@@ -267,45 +286,86 @@ std::size_t ShellPart::localEdgeOf(std::size_t shell, std::size_t edge) const
     throw base::InternalError("shell part: the element does not have the edge");
 }
 
-void ShellPart::buildShells()
+std::vector<ElementSurface> ShellPart::readSurfaces() const
 {
-    const std::size_t ng = m_input.grids.size();
+    std::vector<ElementSurface> surfaces;
+    surfaces.reserve(m_input.shells.size());
+    for (std::size_t ie = 0; ie < m_input.shells.size(); ++ie)
+        surfaces.push_back(elementSurface(m_reading, m_topology, ie));
+    return surfaces;
+}
+
+void ShellPart::chooseDegrees(std::span<const ElementSurface> surfaces)
+{
+    const std::size_t ne = m_input.shells.size();
+    m_degrees.assign(ne, m_input.degree);
+    if (!m_input.shellDegrees.empty())
+    {
+        m_degrees = m_input.shellDegrees;
+        return;
+    }
+    if (!m_input.degreeChoice)
+        return;
+    for (std::size_t ie = 0; ie < ne; ++ie)
+    {
+        const ShellPartShell& shell = m_input.shells[ie];
+        const std::size_t nv = shell.corners.count;
+        const ShellShapeDeparture departure = shellShapeDeparture(nv, surfaceOf(surfaces[ie].patch));
+        double thickness = shell.section.referenceThickness;
+        if (shell.gridThicknesses)
+            thickness = *std::min_element(shell.gridThicknesses->begin(), shell.gridThicknesses->begin() + nv);
+        const std::size_t degree = chooseShellDegree(departure, thickness, *m_input.degreeChoice);
+        m_degrees[ie] = std::min(degree, m_input.degree);
+    }
+    for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
+        if (m_input.fullDegreeEdges.contains(m_topology.edges[e]))
+            for (const std::size_t ie : m_topology.edgeElements[e])
+                m_degrees[ie] = m_input.degree;
+}
+
+void ShellPart::describeShells()
+{
+    const std::size_t ne = m_input.shells.size();
+    // the degree of each edge: the lowest degree of its shells
+    m_edgeDegrees.assign(m_topology.edges.size(), m_input.degree);
+    for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
+        for (const std::size_t ie : m_topology.edgeElements[e])
+            m_edgeDegrees[e] = std::min(m_edgeDegrees[e], m_degrees[ie]);
+    m_shells.resize(ne);
+    for (std::size_t ie = 0; ie < ne; ++ie)
+    {
+        const ShellPartShell& shell = m_input.shells[ie];
+        const std::size_t nv = shell.corners.count;
+        ShellElementData& el = m_shells[ie];
+        el.cornerCount = nv;
+        el.degree = m_degrees[ie];
+        el.nodes.assign(shell.corners.grids.begin(), shell.corners.grids.begin() + static_cast<std::ptrdiff_t>(nv));
+        for (std::size_t kk = 0; kk < nv; ++kk)
+        {
+            el.edges.push_back(m_topology.indexOf(el.nodes[kk], el.nodes[(kk + 1) % nv]));
+            el.edgeSigns.push_back(el.nodes[kk] < el.nodes[(kk + 1) % nv] ? 1.0 : -1.0);
+            el.edgeDegrees.push_back(m_edgeDegrees[el.edges[kk]]);
+        }
+        const ShellReferenceElement& re = referenceElement(el);
+        if (!m_projections.contains(&re))
+            m_projections.emplace(&re, InteriorProjection::build(re));
+    }
+}
+
+void ShellPart::buildShells(std::span<const ElementSurface> surfaces)
+{
     const std::size_t ne = m_input.shells.size();
     const std::size_t nedge = m_topology.edges.size();
-    const std::size_t k = m_input.degree;
-    const std::size_t p = k - 1;
-    for (const ShellPartShell& shell : m_input.shells)
-    {
-        std::optional<InteriorProjection>& projection =
-            shell.corners.count == 3 ? m_triangleProjection : m_quadrilateralProjection;
-        if (!projection)
-            projection = InteriorProjection::build(referenceElement(shell.corners.count));
-    }
+    // the first unknown of an edge and of the interior of a shell (buildEntities)
+    const auto edgeBase = [&](std::size_t e) { return m_entities[edgeEntity(e)].firstUnknown; };
+    const auto elementBase = [&](std::size_t ie) { return m_entities[interiorEntity(ie)].firstUnknown; };
 
-    // ---- numbering: six per grid, then per edge the moments of the displacement trace (3 (k − 1)), the shear along
-    // the edge (k) and the rotation about it (k), then per shell its interior unknowns (displacement and shear)
-    const std::size_t perEdge = edgeDofCount();
-    const auto edgeBase = [&](std::size_t e) { return 6 * ng + perEdge * e; };
-    std::vector<std::size_t> elementBase(ne);
-    std::size_t next = 6 * ng + perEdge * nedge;
-    for (std::size_t ie = 0; ie < ne; ++ie)
-    {
-        const ShellReferenceElement& re = referenceElement(m_input.shells[ie].corners.count);
-        elementBase[ie] = next;
-        next += 3 * interiorCount(re.h1Kinds) + interiorCount(re.hcurlKinds);
-    }
-    m_unknownCount = next;
-
-    // ---- geometry: the surfaces, the edge moments of the shared curves (from the first shell of each edge)
-    std::vector<ElementSurface> surfaces;
+    // ---- geometry: the weights of the surfaces, the edge moments of the shared curves (from the first shell of each
+    // edge)
     std::vector<Polynomial2> weights;
-    surfaces.reserve(ne);
     weights.reserve(ne);
     for (std::size_t ie = 0; ie < ne; ++ie)
-    {
-        surfaces.push_back(elementSurface(m_reading, m_topology, ie));
-        weights.push_back(weightPolynomial(surfaces.back().patch));
-    }
+        weights.push_back(weightPolynomial(surfaces[ie].patch));
     std::vector<std::vector<SpaceVector>> edgeGeometry(nedge);
     for (std::size_t e = 0; e < nedge; ++e)
     {
@@ -313,24 +373,17 @@ void ShellPart::buildShells()
         const ShellCorners& corners = m_input.shells[ie].corners;
         const std::size_t kk = localEdgeOf(ie, e);
         const bool forward = corners.at(kk) < corners.at(kk + 1);
-        edgeGeometry[e] = edgeMapMoments(corners.count, k, kk, forward, surfaceOf(surfaces[ie].patch), weights[ie]);
+        edgeGeometry[e] =
+            edgeMapMoments(corners.count, m_edgeDegrees[e], kk, forward, surfaceOf(surfaces[ie].patch), weights[ie]);
     }
 
     // ---- the shells
-    m_shells.resize(ne);
     for (std::size_t ie = 0; ie < ne; ++ie)
     {
         const ShellPartShell& shell = m_input.shells[ie];
         const std::size_t nv = shell.corners.count;
-        const ShellReferenceElement& re = referenceElement(nv);
         ShellElementData& el = m_shells[ie];
-        el.cornerCount = nv;
-        el.nodes.assign(shell.corners.grids.begin(), shell.corners.grids.begin() + static_cast<std::ptrdiff_t>(nv));
-        for (std::size_t kk = 0; kk < nv; ++kk)
-        {
-            el.edges.push_back(m_topology.indexOf(el.nodes[kk], el.nodes[(kk + 1) % nv]));
-            el.edgeSigns.push_back(el.nodes[kk] < el.nodes[(kk + 1) % nv] ? 1.0 : -1.0);
-        }
+        const ShellReferenceElement& re = referenceElement(el);
         // the isoparametric map: the corners, the edge moments of the shared curves, the projection of the interior
         std::vector<SpaceVector> corners;
         std::vector<std::vector<SpaceVector>> canonicalMoments;
@@ -340,7 +393,7 @@ void ShellPart::buildShells()
             canonicalMoments.push_back(edgeGeometry[el.edges[kk]]);
         }
         el.weight = weights[ie];
-        el.mapCoefficients = mapCoefficients(re, projectionOf(nv), corners, canonicalMoments, el.edgeSigns,
+        el.mapCoefficients = mapCoefficients(re, projectionOf(el), corners, canonicalMoments, el.edgeSigns,
                                              surfaceOf(surfaces[ie].patch), weights[ie]);
         // the section: the material direction given, or the angle θ from the side G1-G2 about the element normal
         const ElementSurface& surface = surfaces[ie];
@@ -388,7 +441,7 @@ void ShellPart::buildShells()
                 }
                 else
                 {
-                    el.dofs[li] = elementBase[ie] + 3 * m + c;
+                    el.dofs[li] = elementBase(ie) + 3 * m + c;
                 }
             }
             if (kind.isInterior())
@@ -403,7 +456,7 @@ void ShellPart::buildShells()
             if (kind.place == FunctionKind::Place::Edge)
             {
                 const std::size_t e = el.edges[kind.entity];
-                el.dofs[li] = edgeBase(e) + edgeShearDof(kind.moment);
+                el.dofs[li] = edgeBase(e) + edgeShearDof(e, kind.moment);
                 // γ_T · t_T + γ_R · t_R = 0 (document 34 of the reference, 2.4): +1 for the first shell of the edge,
                 // −1 for the others, times the change of sign of the odd moments with the direction of the edge
                 const double joint = m_topology.edgeElements[e].front() == ie ? 1.0 : -1.0;
@@ -412,52 +465,63 @@ void ShellPart::buildShells()
             }
             else
             {
-                el.dofs[li] = elementBase[ie] + 3 * n1i + mc;
+                el.dofs[li] = elementBase(ie) + 3 * n1i + mc;
                 ++mc;
             }
         }
         for (std::size_t kk = 0; kk < nv; ++kk)
-            for (std::size_t l = 0; l <= p; ++l)
-                el.dofs[3 * re.h1Count + re.hcurlCount + kk * (p + 1) + l] =
-                    edgeBase(el.edges[kk]) + edgeRotationDof(l);
+            for (std::size_t l = 0; l < re.rotationCount(kk); ++l)
+                el.dofs[shellRotationUnknown(re, kk, l)] = edgeBase(el.edges[kk]) + edgeRotationDof(el.edges[kk], l);
     }
-    buildEntities(surfaces);
+    placeEntities(surfaces);
     chooseRules();
 }
 
-void ShellPart::buildEntities(std::span<const ElementSurface> surfaces)
+// The numbering: six per grid, then per edge the moments of the displacement trace (3 (k − 1), k the degree of the
+// edge), the shear along the edge (k) and the rotation about it (k), then per shell its interior unknowns (displacement
+// and shear).
+void ShellPart::buildEntities()
 {
-    const std::size_t ng = m_input.grids.size();
-    const std::size_t perEdge = edgeDofCount();
+    std::size_t next = 6 * m_input.grids.size();
     for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
     {
-        const std::size_t ie = m_topology.edgeElements[e].front();
-        const std::size_t kk = localEdgeOf(ie, e);
-        const ReferencePoint middle = referenceEdgePointAndDirection(m_input.shells[ie].corners.count, kk, 0.5).first;
         ShellPartEntity entity;
         entity.kind = ShellPartEntity::Kind::Edge;
         entity.grids = {m_topology.edges[e].lower, m_topology.edges[e].higher};
         entity.edge = e;
-        entity.shell = ie;
-        entity.dofCount = perEdge;
-        entity.firstUnknown = 6 * ng + perEdge * e;
-        entity.position = surfaces[ie].patch.evaluate(middle[0], middle[1]);
+        entity.shell = m_topology.edgeElements[e].front();
+        entity.dofCount = edgeDofCount(e);
+        entity.firstUnknown = next;
+        next += entity.dofCount;
         m_entities.push_back(entity);
     }
-    std::size_t next = 6 * ng + perEdge * m_topology.edges.size();
-    for (std::size_t ie = 0; ie < m_input.shells.size(); ++ie)
+    for (std::size_t ie = 0; ie < m_shells.size(); ++ie)
     {
-        const std::size_t nv = m_input.shells[ie].corners.count;
-        const ShellReferenceElement& re = referenceElement(nv);
-        const ReferencePoint centre = referenceCentre(nv);
+        const ShellReferenceElement& re = referenceElement(m_shells[ie]);
         ShellPartEntity entity;
         entity.kind = ShellPartEntity::Kind::Interior;
         entity.shell = ie;
         entity.dofCount = 3 * interiorCount(re.h1Kinds) + interiorCount(re.hcurlKinds);
         entity.firstUnknown = next;
-        entity.position = surfaces[ie].patch.evaluate(centre[0], centre[1]);
         next += entity.dofCount;
         m_entities.push_back(entity);
+    }
+    m_unknownCount = next;
+}
+
+void ShellPart::placeEntities(std::span<const ElementSurface> surfaces)
+{
+    for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
+    {
+        const std::size_t ie = m_topology.edgeElements[e].front();
+        const std::size_t kk = localEdgeOf(ie, e);
+        const ReferencePoint middle = referenceEdgePointAndDirection(m_input.shells[ie].corners.count, kk, 0.5).first;
+        m_entities[edgeEntity(e)].position = surfaces[ie].patch.evaluate(middle[0], middle[1]);
+    }
+    for (std::size_t ie = 0; ie < m_input.shells.size(); ++ie)
+    {
+        const ReferencePoint centre = referenceCentre(m_input.shells[ie].corners.count);
+        m_entities[interiorEntity(ie)].position = surfaces[ie].patch.evaluate(centre[0], centre[1]);
     }
 }
 
@@ -492,7 +556,7 @@ ShellElementData ShellPart::withTables(ShellElementData data, std::size_t points
 
 ShellElementData ShellPart::element(std::size_t shell) const
 {
-    return withTables(m_shells[shell], m_pointsPerDirection);
+    return withTables(m_shells[shell], largestPoints(m_shells[shell].degree));
 }
 
 std::variant<ShellElementData, std::string> ShellPart::build(std::size_t shell, bool withMatrices,
@@ -731,7 +795,7 @@ std::vector<EdgeGeometry> ShellPart::geometryReport() const
     if (m_input.shells.empty())
         return {};
     // the points of the edge rule (the same on the triangle and on the quadrilateral)
-    const std::vector<double>& tau = referenceElement(m_input.shells.front().corners.count).edgeParameters;
+    const std::vector<double>& tau = referenceElement(m_shells.front()).edgeParameters;
     // the isoparametric surface of the elements at the points of their edges, by the map at the point: the position
     // and the normal need the weight and the map of the element alone (elementAtPoints), and are those the tables of
     // the edge rule give at its points (the same polynomials at the same points)

@@ -3,6 +3,7 @@
 #include "oos/elements/mixedHybrid/shell/ShellElementDefinition.hpp"
 
 #include <cstddef>
+#include <span>
 
 namespace oos::elements::mixedHybrid
 {
@@ -39,7 +40,10 @@ struct ShellRuleChoice
 // The points per direction of the rule of the element of `cornerCount` corners and displacement degree `degree` whose
 // map, weight, axes, section and offset `shape` gives (its tables of jets are not read: the choice forms its own on
 // each rule it tries). The largest rule when a point of the element has no area (the build then refuses the element).
+// `edgeDegrees`: the degree of each edge of the element when some are below `degree` (empty: `degree` on every edge);
+// the map of `shape` is given on the displacement functions of that element.
 [[nodiscard]] std::size_t chooseShellPoints(std::size_t cornerCount, std::size_t degree,
-                                            const ShellElementDefinition& shape, const ShellRuleChoice& choice);
+                                            const ShellElementDefinition& shape, const ShellRuleChoice& choice,
+                                            std::span<const std::size_t> edgeDegrees = {});
 
 } // namespace oos::elements::mixedHybrid

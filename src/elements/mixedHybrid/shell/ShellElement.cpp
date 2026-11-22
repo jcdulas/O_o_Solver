@@ -166,7 +166,12 @@ Matrix membraneStrainFunctionals(const ShellReferenceElement& re, const ShellEle
 
 std::size_t shellUnknownCount(const ShellReferenceElement& re)
 {
-    return 3 * re.h1Count + re.hcurlCount + re.cornerCount * (re.shearDegree + 1);
+    return 3 * re.h1Count + re.hcurlCount + re.rotationUnknownCount();
+}
+
+std::size_t shellRotationUnknown(const ShellReferenceElement& re, std::size_t edge, std::size_t l)
+{
+    return 3 * re.h1Count + re.hcurlCount + re.firstRotation(edge) + l;
 }
 
 std::pair<Matrix, Matrix> pointKinematics(const ShellReferenceElement& re, const ShellElementDefinition& def,
@@ -293,7 +298,7 @@ Vector reggeFunctionals(const ShellReferenceElement& re, const ReggeFunctionalTa
     const std::size_t p = re.shearDegree;
     const std::size_t nri = re.reggeInteriorMoments.size();
     const std::size_t edgePoints = re.edgeParameters.size();
-    Vector out(re.reggeCount, 0.0);
+    Vector out(nv * (p + 1) + nri + 3, 0.0); // the raw functionals
     std::size_t row = 0;
     // the tangential moments of each edge: Σ_g w_g ε_tt(g) P_l(g), the strain read once for the p + 1 moments
     for (std::size_t k = 0; k < nv; ++k)
@@ -333,7 +338,7 @@ Vector reggeFunctionals(const ShellReferenceElement& re, const ReggeFunctionalTa
             }
         }
     }
-    return out;
+    return re.membraneFunctionals(std::move(out));
 }
 
 std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellReferenceElement& re,
@@ -387,12 +392,11 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
     const std::size_t ns = re.momentCount;
     const std::size_t nr = re.reggeCount;
     const std::size_t nv = re.cornerCount;
-    const std::size_t p = re.shearDegree;
     const std::size_t nx = shellUnknownCount(re);
     const std::size_t nq = re.points.size();
     const auto ue = [&](std::size_t i, std::size_t c) { return 3 * i + c; };
     const auto ge = [&](std::size_t i) { return 3 * n1 + i; };
-    const auto ae = [&](std::size_t k, std::size_t l) { return 3 * n1 + nc + k * (p + 1) + l; };
+    const auto ae = [&](std::size_t k, std::size_t l) { return shellRotationUnknown(re, k, l); };
 
     const std::vector<PointGeometry> geometries = shelldetail::volumeGeometries(re, def);
     double jmax = 0.0;
@@ -514,7 +518,7 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
             const double tau = re.edgeParameters[gi];
             const double te = sk > 0.0 ? tau : 1.0 - tau;
             const double we = def.edgeWeights[k][gi];
-            for (std::size_t l = 0; l <= p; ++l)
+            for (std::size_t l = 0; l < re.rotationCount(k); ++l)
                 column[ae(k, l)] = -sk * shelldetail::edgeLegendre(l, te) / (len * we * we);
             for (std::size_t j = 0; j < ns; ++j)
             {

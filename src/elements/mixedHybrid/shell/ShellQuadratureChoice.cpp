@@ -295,9 +295,10 @@ PointGeometry geometryOfMap(const ShellElementDefinition& shape, std::size_t fun
 // The integrals of the geometric factors of the element on the rule of `points` points per direction; nothing when
 // a point of the element has no area.
 std::optional<RuleIntegrals> integralsOn(std::size_t cornerCount, std::size_t degree,
+                                         std::span<const std::size_t> edgeDegrees,
                                          const ShellElementDefinition& shape, std::size_t points)
 {
-    const ShellReferenceElement& re = shellReferenceElement(cornerCount, degree, points);
+    const ShellDisplacementTables& re = shellDisplacementTables(cornerCount, degree, points, edgeDegrees);
     const std::size_t n1 = re.h1Count;
     const bool readsSection = hasVaryingSection(shape);
     const std::array<TestDegrees, TEST_COUNT>& testDegrees = cornerCount == 3 ? TRIANGLE_TESTS : QUADRILATERAL_TESTS;
@@ -349,19 +350,19 @@ std::optional<RuleIntegrals> integralsOn(std::size_t cornerCount, std::size_t de
 } // namespace
 
 std::size_t chooseShellPoints(std::size_t cornerCount, std::size_t degree, const ShellElementDefinition& shape,
-                              const ShellRuleChoice& choice)
+                              const ShellRuleChoice& choice, std::span<const std::size_t> edgeDegrees)
 {
     const std::size_t largest = choice.maximumPoints;
     std::size_t points = std::min(choice.minimumPoints, largest);
     if (points == largest)
         return largest;
-    std::optional<RuleIntegrals> current = integralsOn(cornerCount, degree, shape, points);
+    std::optional<RuleIntegrals> current = integralsOn(cornerCount, degree, edgeDegrees, shape, points);
     // The change of the integrals from a rule to the next is the error of the first, the error of a Gauss rule on
     // these factors falling by about a constant factor at each point (their singularities are off the element).
     double previousChange = 0.0;
     while (points < largest)
     {
-        std::optional<RuleIntegrals> next = integralsOn(cornerCount, degree, shape, points + 1);
+        std::optional<RuleIntegrals> next = integralsOn(cornerCount, degree, edgeDegrees, shape, points + 1);
         if (!current || !next)
             return largest;
         const double change = next->changeFrom(*current, cornerCount);
@@ -387,7 +388,7 @@ std::size_t chooseShellPoints(std::size_t cornerCount, std::size_t degree, const
         }
         else
         {
-            current = integralsOn(cornerCount, degree, shape, following);
+            current = integralsOn(cornerCount, degree, edgeDegrees, shape, following);
         }
         previousChange = following == points + 1 ? change : 0.0;
         points = following;

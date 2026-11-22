@@ -639,9 +639,9 @@ CHECK_CASE("solidtie: a shell fin standing on a block follows it and turns with 
         if (tie.dependent.kind == TieKind::ShellUnknown)
         {
             const mh::ShellPartUnknown u = model.shellPart->describe(tie.dependent.index);
-            runner.expect(
-                u.kind == mh::ShellPartUnknown::Kind::EntityDof && u.component >= model.shellPart->edgeRotationDof(0),
-                "a rotation tie writes a rotation unknown of an edge");
+            runner.expect(u.kind == mh::ShellPartUnknown::Kind::EntityDof &&
+                              u.component >= model.shellPart->edgeRotationDof(u.index, 0),
+                          "a rotation tie writes a rotation unknown of an edge");
         }
     expectConsistent(runner, model, ties);
 }
@@ -696,7 +696,7 @@ CHECK_CASE("solidtie: an upright shell fin is tied to the face under it over its
             for (const mh::TieTerm& term : tie.terms)
                 sum += term.coefficient * values(term.unknown);
             const mh::ShellPartUnknown u = model.shellPart->describe(tie.dependent.index);
-            const bool isFirst = u.component == model.shellPart->edgeRotationDof(0);
+            const bool isFirst = u.component == model.shellPart->edgeRotationDof(u.index, 0);
             worst = std::max(worst, std::fabs(sum - (isFirst ? EDGE_LENGTH * field.a[2][1] : 0.0)));
         }
         runner.expect(worst < TIE_TOLERANCE,

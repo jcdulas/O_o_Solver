@@ -87,9 +87,10 @@ The `elementFormulation` option (or the `ElementFormulation` model parameter) ch
 model. `MixedHybridFormulation` puts every shell, line and solid card in the mixed hybrid formulation together; it
 needs geometry declarations, from the `formulationGeometry` option or from the `SurfaceEdge`, `SurfaceFacet` and
 `SurfaceLine` cards of the deck: the smooth, sharp and raw edges of the mesh, its raw elements and its mesh lines. Its
-elements have degree 4; the model parameter `MixedHybridDegree` lowers it to 3 or 2 for the whole model, for less
-computing on the same mesh. An
-empty declaration (`formulationGeometry: {}`, or `Parameter;GeometryDeclarations;Given` in the deck) leaves every edge
+elements default to degree 4. The model parameter `MixedHybridDegree` also accepts a uniform 2 or 3.
+With `Auto`, shells start at degree 3 and rise to 4 where their geometry is distorted, their sagitta exceeds
+the local thickness, or they share an edge with a solid. One shell formulation handles the degrees on both sides of
+each edge. An empty declaration (`formulationGeometry: {}`, or `Parameter;GeometryDeclarations;Given` in the deck) leaves every edge
 to the model's `ShellNormalAngle`. `model.surfaceEdges()` gives what was read at every edge (see the
 [specification](mixed-hybrid-formulation-spec.md), sections 4.4 and 10.5).
 

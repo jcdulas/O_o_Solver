@@ -21,9 +21,7 @@ LineKinematics shellLineKinematics(const ShellReferenceElement& re, const ShellE
                                    std::size_t localEdge, double tau, bool forward)
 {
     const std::size_t n1 = re.h1Count;
-    const std::size_t nc = re.hcurlCount;
     const std::size_t nv = re.cornerCount;
-    const std::size_t p = re.shearDegree;
     const std::size_t nx = shellUnknownCount(re);
     const auto [xp, tv] = referenceEdgePointAndDirection(nv, localEdge, tau);
     const std::vector<ReferenceJet> jets = h1At(re, def, xp[0], xp[1]);
@@ -72,11 +70,11 @@ LineKinematics shellLineKinematics(const ShellReferenceElement& re, const ShellE
     }
     // θ · t = a_T = s_k â(τ_e) / (|X_τ| W²)
     const double tg = sk > 0.0 ? tau : 1.0 - tau;
-    for (std::size_t l = 0; l <= p; ++l)
+    for (std::size_t l = 0; l < re.rotationCount(localEdge); ++l)
     {
         const double v = sk * legendreValue(l, 2.0 * tg - 1.0) / (len * we * we);
         for (std::size_t r = 0; r < 3; ++r)
-            th(r, 3 * n1 + nc + localEdge * (p + 1) + l) += v * te[r];
+            th(r, shellRotationUnknown(re, localEdge, l)) += v * te[r];
     }
     const double s = forward ? 1.0 : -1.0;
     LineKinematics kin;
@@ -158,8 +156,9 @@ std::variant<LineData, std::string> ShellPart::lineData(std::size_t line, const 
         points.push_back({std::move(kin), ds});
     }
     const std::array<std::size_t, 2> rotations{6 * input.element.grids[0] + 3, 6 * input.element.grids[1] + 3};
+    // the moments of the line have the degree of its edge, as the trace of the shells there
     return lineCore(LineSource::onShellEdge(at.shell, at.localEdge, at.forward), points, shellUnknownCount(re),
-                    m_input.degree, true, input.element, section, shell.dofs, shell.signs, rotations,
+                    edgeDegree(at.edge), true, input.element, section, shell.dofs, shell.signs, rotations,
                     m_input.withMass && withMass);
 }
 

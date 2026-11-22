@@ -215,7 +215,6 @@ std::array<Vector, 6> rigidMotionUnknowns(const ShellReferenceElement& re, const
 {
     const std::size_t n1 = re.h1Count;
     const std::size_t nv = re.cornerCount;
-    const std::size_t p = re.shearDegree;
     const std::size_t nx = shellUnknownCount(re);
     // a constant field: the coefficients of W on the displacement basis (corner values 1, the edge moments of W along
     // the edge in the element's own direction, the interior by projection)
@@ -266,7 +265,8 @@ std::array<Vector, 6> rigidMotionUnknowns(const ShellReferenceElement& re, const
         for (std::size_t k = 0; k < nv; ++k)
         {
             const double sk = def.edgeSigns[k];
-            std::vector<double> moments(p + 1, 0.0);
+            const std::size_t rotations = re.rotationCount(k);
+            std::vector<double> moments(rotations, 0.0);
             for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
             {
                 const PointGeometry g = edgeGeometry(def, n1, k, gi);
@@ -274,11 +274,11 @@ std::array<Vector, 6> rigidMotionUnknowns(const ShellReferenceElement& re, const
                 const SpaceVector xt = scl3(add3(scl3(g.a[0], tv[0]), scl3(g.a[1], tv[1])), sk);
                 const double te = sk > 0.0 ? re.edgeParameters[gi] : 1.0 - re.edgeParameters[gi];
                 const double we = def.edgeWeights[k][gi];
-                for (std::size_t l = 0; l <= p; ++l)
+                for (std::size_t l = 0; l < rotations; ++l)
                     moments[l] += re.edgeWeights[gi] * we * we * dot3(omega, xt) * shelldetail::edgeLegendre(l, te);
             }
-            for (std::size_t l = 0; l <= p; ++l)
-                v[3 * n1 + re.hcurlCount + k * (p + 1) + l] = static_cast<double>(2 * l + 1) * moments[l];
+            for (std::size_t l = 0; l < rotations; ++l)
+                v[shellRotationUnknown(re, k, l)] = static_cast<double>(2 * l + 1) * moments[l];
         }
     }
     return out;

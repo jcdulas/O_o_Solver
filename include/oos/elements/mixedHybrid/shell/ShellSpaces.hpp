@@ -1,8 +1,10 @@
 #pragma once
 
+#include "oos/elements/mixedHybrid/core/Matrix.hpp"
 #include "oos/elements/mixedHybrid/core/Polynomial2.hpp"
 
 #include <cstddef>
+#include <span>
 #include <vector>
 
 namespace oos::elements::mixedHybrid
@@ -105,6 +107,77 @@ struct ReggeMoment
 // k) against P_l(2τ − 1), l = 0 … p; then the interior functions.
 // Reference: tdnns/space.rs::hcurl_space
 [[nodiscard]] SpaceBasis hcurlSpace(std::size_t cornerCount, std::size_t degree);
+
+// The spaces of an element whose neighbours across some edges have a lower degree (a transition element): the
+// functions of `full` = h1Space(cornerCount, degree) whose trace on edge e is a polynomial of degree edgeDegrees[e]
+// at most, 2 ≤ edgeDegrees[e] ≤ degree, with the corner values and the moments l = 0 … edgeDegrees[e] − 2 of each
+// edge as degrees of freedom; and the functions of `full` = hcurlSpace(cornerCount, degree) whose tangential trace on
+// edge e has the degree edgeDegrees[e] at most, with its moments l = 0 … edgeDegrees[e]. An edge then carries the
+// unknowns of the element of the lower degree, and the two elements share them one for one. The interior functions
+// are those of the full spaces. With every edge at the degree of the element they are the full spaces. Not in the
+// reference, whose elements have one degree.
+//
+// The displacement: a trace of degree n on an edge is q = Σ_j c_j P_j(2τ − 1), j ≤ n, whose moments are
+// m_j = c_j / (2j + 1). The corner values a (τ = 0) and b (τ = 1) and the moments j ≤ n − 2 give its two last
+// coefficients: with s = (−1)^(n−1), r_a = a − Σ_{j ≤ n−2} c_j (−1)^j and r_b = b − Σ_{j ≤ n−2} c_j,
+//     c_(n−1) = (r_b + s r_a) / 2,   c_n = (r_b − s r_a) / 2,
+// so that the functions of the corners and of the kept moments each take a share of the functions of the moments
+// n − 1 and n of the full space; the functions of its higher moments are left out. The shear: the functions of the
+// moments above the degree of the edge are left out (a trace of that degree has none).
+[[nodiscard]] SpaceBasis h1TransitionSpace(const SpaceBasis& full, std::size_t cornerCount, std::size_t degree,
+                                           std::span<const std::size_t> edgeDegrees);
+[[nodiscard]] SpaceBasis hcurlTransitionSpace(const SpaceBasis& full, std::size_t degree,
+                                              std::span<const std::size_t> edgeDegrees);
+
+// The moments of a transition element: the functions S of `full` (the moment space of degree p = `degree` with its
+// three constants last, splitConstants of hhjSpace) that do no work on the functions the element leaves out on its
+// edges of a lower degree:
+// - the rotation about edge e has the degree edgeDegrees[e]: the normal-normal trace n̂ · S n̂ on the edge (n̂ the unit
+//   normal of the edge in the reference domain), which works with it (ShellElement.hpp: −∫ m_μμ (β · μ − a_T) ds), has
+//   that degree at most;
+// - the trace of the displacement on edge e has the degree edgeDegrees[e] + 1: for each function φ of the
+//   displacement space `displacement` = h1Space(cornerCount, p + 1) of a moment l ≥ edgeDegrees[e] of edge e (the
+//   ones h1TransitionSpace leaves out), the work of the moments on the deflection φ,
+//       ∫ S : ∇̂²φ dÂ − Σ_f ∫_f (n̂ · S n̂) ∂φ/∂n̂ dŝ  (f the edges of the reference domain),
+//   is zero.
+// The element condensed on the functions left out would be the same: their work would vanish because nothing holds
+// them, and the moments that do no work on them are those that remain. Without it the moments, too many for the
+// displacement functions that remain, would make the element too stiff in bending. The work above is the one of the
+// reference coordinates: on an affine element it is the work of the moments on the surface up to a constant factor,
+// the part of the conormal derivative of φ along the edge having no work of its own on a moment of that degree
+// (φ has zero corner values and zero moments of a lower degree, so that its derivative along the edge is orthogonal to
+// the polynomials of degree edgeDegrees[e]). The result is an L2-orthonormal basis of the functions orthogonal to
+// the constants, then the three constants (which do no work on φ). With every edge at `degree` it is `full`. Not in
+// the reference.
+[[nodiscard]] std::vector<Field> momentTransitionSpace(const std::vector<Field>& full,
+                                                       const SpaceBasis& displacement, std::size_t cornerCount,
+                                                       std::size_t degree, std::span<const std::size_t> edgeDegrees);
+
+// The membrane strains of a transition element and the functionals of their interpolation. `full` is the membrane space
+// of degree p = `degree` with its three constants last (splitConstants of reggeSpace), `displacement` the space
+// h1Space(cornerCount, p + 1), and edgeDegrees[e] the degree of the tangential-tangential trace on edge e
+// (the degree of the displacement trace there, less one). The functionals of the full space, F_i, are the moments of
+// the tangential-tangential trace of each edge against P_l(2τ − 1), l = 0 … p, then the moments of the components of
+// reggeInterior against polynomials of zero mean, then the three moments of the constants.
+//
+// Each discarded displacement function φ_i (edge moment l ≥ edgeDegrees[e]) takes its two strain directions with it:
+// with ε(φ_i c) = sym(∇̂ φ_i ⊗ c) for the two constant covectors c, Π ε the strain of `full` that has the functionals
+// of ε and V = span Π ε(φ_i c), the strains are
+//       span{Π ε(u c), u a displacement function kept} ⊕ {ε in `full` orthogonal to every Π ε(u c), u in `full`},
+// two functions less for each φ_i, and the functionals the combinations of F_i (the edges and the inside) that are zero
+// on V. This pairs the membrane interpolation with the displacement space on every geometry.
+struct MembraneTransition
+{
+    // The strains, L2-orthonormal and orthogonal to the three constants, then the constants.
+    std::vector<Field> strains;
+    // The functionals: one row per functional kept but the constants, each column the one of F_i in their order (the
+    // edges, then inside).
+    Matrix functionals;
+};
+// With every edge at `degree`, `strains` is `full` and `functionals` is empty.
+[[nodiscard]] MembraneTransition membraneTransition(const std::vector<Field>& full, const SpaceBasis& displacement,
+                                                    std::size_t cornerCount, std::size_t degree,
+                                                    std::span<const std::size_t> edgeDegrees);
 
 // The broken moment space of degree p (contravariant components 11, 22, 12): P_p symmetric on the triangle, the
 // quadrilateral HHJ space (dimension 3p² + 10p + 5) on the square. L2-orthonormal basis on the reference domain.

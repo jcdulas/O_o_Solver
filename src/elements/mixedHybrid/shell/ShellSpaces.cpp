@@ -2,6 +2,7 @@
 
 #include "ShellSpacesDetail.hpp"
 #include "oos/base/errors/InternalError.hpp"
+#include "oos/elements/mixedHybrid/core/DenseDecompositions.hpp"
 #include "oos/elements/mixedHybrid/core/JacobiEigen.hpp"
 #include "oos/elements/mixedHybrid/core/Matrix.hpp"
 #include "oos/elements/mixedHybrid/core/PolynomialBases.hpp"
@@ -9,6 +10,7 @@
 #include "oos/elements/mixedHybrid/geometry/ReferenceShapes.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <functional>
 #include <string>
@@ -343,6 +345,426 @@ SpaceBasis hcurlSpace(std::size_t cornerCount, std::size_t degree)
             basis.kinds.push_back(FunctionKind::edge(e, l));
     basis.kinds.resize(basis.functions.size(), FunctionKind::interior());
     return basis;
+}
+
+namespace
+{
+
+// The share of the function of moment `moment` of an edge (the full space) in the function of the corner at the start
+// (a) or at the end (b) of the edge, and in the function of the kept moment j, for a trace of degree `edgeDegree`:
+// ∂m_moment / ∂a, ∂b, ∂m_j (h1Space with edge degrees). Zero for a moment above the degree of the edge.
+struct TraceShares
+{
+    std::size_t edgeDegree;
+    std::size_t moment;
+
+    [[nodiscard]] bool isDependent() const { return moment + 1 == edgeDegree || moment == edgeDegree; }
+    // +1 for the coefficient n − 1, −1 for the coefficient n, times s = (−1)^(n−1)
+    [[nodiscard]] double startSign() const
+    {
+        const double s = (edgeDegree - 1) % 2 == 0 ? 1.0 : -1.0;
+        return moment + 1 == edgeDegree ? s : -s;
+    }
+    [[nodiscard]] double scale() const { return 0.5 / static_cast<double>(2 * moment + 1); }
+    [[nodiscard]] double ofStart() const { return isDependent() ? startSign() * scale() : 0.0; }
+    [[nodiscard]] double ofEnd() const { return isDependent() ? scale() : 0.0; }
+    [[nodiscard]] double ofMoment(std::size_t j) const
+    {
+        if (!isDependent())
+            return 0.0;
+        const double parity = j % 2 == 0 ? 1.0 : -1.0;
+        return -static_cast<double>(2 * j + 1) * (1.0 + startSign() * parity) * scale();
+    }
+};
+
+bool isFullDegree(std::size_t degree, std::span<const std::size_t> edgeDegrees)
+{
+    return std::all_of(edgeDegrees.begin(), edgeDegrees.end(), [&](std::size_t n) { return n == degree; });
+}
+
+} // namespace
+
+SpaceBasis h1TransitionSpace(const SpaceBasis& full, std::size_t cornerCount, std::size_t degree,
+                             std::span<const std::size_t> edgeDegrees)
+{
+    if (isFullDegree(degree, edgeDegrees))
+        return full;
+    const std::size_t nv = cornerCount;
+    const std::size_t perEdge = degree - 1;
+    const auto fullEdgeFunction = [&](std::size_t e, std::size_t l) { return nv + e * perEdge + l; };
+    SpaceBasis basis;
+    // The function of a kept degree of freedom: that of the full space, with its share of the functions of the
+    // moments that depend on it.
+    const auto add = [&](const FunctionKind& kind, Vector coefficients)
+    {
+        basis.functions.push_back(shellspaces::combine(full.functions, coefficients));
+        basis.kinds.push_back(kind);
+    };
+    for (std::size_t v = 0; v < nv; ++v)
+    {
+        Vector coefficients(full.functions.size(), 0.0);
+        coefficients[v] = 1.0;
+        const std::size_t before = (v + nv - 1) % nv; // the edge that ends at the corner; edge v starts there
+        for (std::size_t l = 0; l < perEdge; ++l)
+        {
+            coefficients[fullEdgeFunction(v, l)] += TraceShares{edgeDegrees[v], l}.ofStart();
+            coefficients[fullEdgeFunction(before, l)] += TraceShares{edgeDegrees[before], l}.ofEnd();
+        }
+        add(FunctionKind::vertex(v), std::move(coefficients));
+    }
+    for (std::size_t e = 0; e < nv; ++e)
+    {
+        for (std::size_t j = 0; j + 1 < edgeDegrees[e]; ++j)
+        {
+            Vector coefficients(full.functions.size(), 0.0);
+            coefficients[fullEdgeFunction(e, j)] = 1.0;
+            for (std::size_t l = edgeDegrees[e] - 1; l < perEdge; ++l)
+                coefficients[fullEdgeFunction(e, l)] += TraceShares{edgeDegrees[e], l}.ofMoment(j);
+            add(FunctionKind::edge(e, j), std::move(coefficients));
+        }
+    }
+    for (std::size_t i = 0; i < full.functions.size(); ++i)
+    {
+        if (!full.kinds[i].isInterior())
+            continue;
+        basis.functions.push_back(full.functions[i]);
+        basis.kinds.push_back(full.kinds[i]);
+    }
+    return basis;
+}
+
+SpaceBasis hcurlTransitionSpace(const SpaceBasis& full, std::size_t degree, std::span<const std::size_t> edgeDegrees)
+{
+    if (isFullDegree(degree, edgeDegrees))
+        return full;
+    SpaceBasis basis;
+    for (std::size_t i = 0; i < full.functions.size(); ++i)
+    {
+        const FunctionKind& kind = full.kinds[i];
+        if (kind.place == FunctionKind::Place::Edge && kind.moment > edgeDegrees[kind.entity])
+            continue;
+        basis.functions.push_back(full.functions[i]);
+        basis.kinds.push_back(kind);
+    }
+    return basis;
+}
+
+namespace
+{
+
+// The normal of edge e of the reference domain as its direction turned by a quarter turn, of the length of the edge.
+ReferencePoint edgeNormal(std::size_t cornerCount, std::size_t e)
+{
+    const ReferencePoint direction = referenceEdgePointAndDirection(cornerCount, e, 0.0).second;
+    return {direction[1], -direction[0]};
+}
+
+// The work of the moments S on the deflection φ (momentTransitionSpace) in the reference coordinates.
+double workOn(std::size_t cornerCount, const Field& moment, const Polynomial2& deflection)
+{
+    const Polynomial2 hessian11 = deflection.dXi().dXi();
+    const Polynomial2 hessian12 = deflection.dXi().dEta();
+    const Polynomial2 hessian22 = deflection.dEta().dEta();
+    double work = 0.0;
+    for (const SurfaceRulePoint& point : referenceSurfaceRule(cornerCount, shellspaces::BUILD_POINTS))
+    {
+        const double x = point.point[0];
+        const double y = point.point[1];
+        work += point.weight * (moment[0].evaluate(x, y) * hessian11.evaluate(x, y) +
+                                moment[1].evaluate(x, y) * hessian22.evaluate(x, y) +
+                                2.0 * moment[2].evaluate(x, y) * hessian12.evaluate(x, y));
+    }
+    const Polynomial2 slope1 = deflection.dXi();
+    const Polynomial2 slope2 = deflection.dEta();
+    for (std::size_t f = 0; f < cornerCount; ++f)
+    {
+        // n̂ unit, dŝ = |N| dτ, N the normal of the length of the edge:
+        // (n̂ · S n̂) ∂φ/∂n̂ dŝ = (N · S N)(N · ∇̂φ) / |N|² dτ
+        const ReferencePoint n = edgeNormal(cornerCount, f);
+        const double lengthSquared = n[0] * n[0] + n[1] * n[1];
+        for (const LineRulePoint& point : unitIntervalRule(shellspaces::BUILD_POINTS))
+        {
+            const ReferencePoint x = referenceEdgePointAndDirection(cornerCount, f, point.point).first;
+            const double normalMoment = moment[0].evaluate(x[0], x[1]) * n[0] * n[0] +
+                                        moment[1].evaluate(x[0], x[1]) * n[1] * n[1] +
+                                        2.0 * moment[2].evaluate(x[0], x[1]) * n[0] * n[1];
+            const double normalSlope =
+                slope1.evaluate(x[0], x[1]) * n[0] + slope2.evaluate(x[0], x[1]) * n[1];
+            work -= point.weight * normalMoment * normalSlope / lengthSquared;
+        }
+    }
+    return work;
+}
+
+} // namespace
+
+namespace
+{
+
+// The three constants of a tensor space are its last functions (splitConstants).
+constexpr std::size_t CONSTANT_COUNT = 3;
+
+// The functions of `full` (its constants last) that the linear conditions `rows` leave: each row has one coefficient
+// per function before the constants, and the combination Σ_j c_j others_j is kept when Σ_j row_j c_j = 0 for every row
+// (an L2-orthonormal basis of those, then the constants). The null space of the rows is spanned by the eigenvectors of
+// CᵀC whose eigenvalue is zero (below SPAN_EIGENVALUE_RATIO of the largest); they are orthonormal, and so are the
+// functions they give from the orthonormal `others`.
+std::vector<Field> satisfyingConditions(const std::vector<Field>& full, const std::vector<Vector>& rows)
+{
+    const std::size_t free = full.size() - CONSTANT_COUNT;
+    const std::vector<Field> others(full.begin(), full.begin() + static_cast<std::ptrdiff_t>(free));
+    Matrix gram(free, free);
+    for (const Vector& row : rows)
+        for (std::size_t a = 0; a < free; ++a)
+            for (std::size_t b = 0; b < free; ++b)
+                gram(a, b) += row[a] * row[b];
+    const SymmetricEigen eigen = jacobiEigen(gram);
+    const double top = largestValue(eigen.values);
+    std::vector<Field> basis;
+    for (std::size_t k = 0; k < free; ++k)
+        if (!(eigen.values[k] > SPAN_EIGENVALUE_RATIO * top))
+            basis.push_back(shellspaces::combine(others, eigen.vectors.column(k)));
+    basis.insert(basis.end(), full.begin() + static_cast<std::ptrdiff_t>(free), full.end());
+    return basis;
+}
+
+// The quadratic form N · F N of a symmetric tensor field F along edge e of the reference domain at the parameter τ, N
+// the given vector (a normal, or the edge vector itself).
+double tensorAlongEdge(std::size_t cornerCount, std::size_t e, double tau, const Field& tensor,
+                       const ReferencePoint& n)
+{
+    const ReferencePoint x = referenceEdgePointAndDirection(cornerCount, e, tau).first;
+    return tensor[0].evaluate(x[0], x[1]) * n[0] * n[0] + tensor[1].evaluate(x[0], x[1]) * n[1] * n[1] +
+           2.0 * tensor[2].evaluate(x[0], x[1]) * n[0] * n[1];
+}
+
+// The conditions that the trace N · F N of the functions on each edge, N given by `edgeVector`, is a polynomial of
+// degree edgeDegrees[e] at most: its moments against P_l(2τ − 1), l above that degree, are zero.
+std::vector<Vector> traceConditions(const std::vector<Field>& full, std::size_t cornerCount, std::size_t degree,
+                                    std::span<const std::size_t> edgeDegrees,
+                                    const std::function<ReferencePoint(std::size_t)>& edgeVector)
+{
+    const std::size_t free = full.size() - CONSTANT_COUNT;
+    const std::vector<LineRulePoint> rule = unitIntervalRule(shellspaces::BUILD_POINTS);
+    std::vector<Vector> rows;
+    for (std::size_t e = 0; e < cornerCount; ++e)
+        for (std::size_t l = edgeDegrees[e] + 1; l <= degree; ++l)
+        {
+            Vector row(free, 0.0);
+            for (std::size_t j = 0; j < free; ++j)
+                row[j] = edgeMoment(rule, l, [&](double tau)
+                                    { return tensorAlongEdge(cornerCount, e, tau, full[j], edgeVector(e)); });
+            rows.push_back(std::move(row));
+        }
+    return rows;
+}
+
+} // namespace
+
+namespace
+{
+
+// The strains sym(∇̂ φ ⊗ c) of a displacement φ c along the two constant covectors c = (1, 0) and (0, 1).
+std::array<Field, 2> strainsOf(const Polynomial2& phi)
+{
+    const Polynomial2 dXi = phi.dXi();
+    const Polynomial2 dEta = phi.dEta();
+    return {Field{dXi, Polynomial2::zero(), dEta.scaled(0.5)}, Field{Polynomial2::zero(), dEta, dXi.scaled(0.5)}};
+}
+
+// The membrane functionals of a strain on the reference domain (the edges' moments l = 0 … p, the interior moments of
+// the components against polynomials of zero mean, the moments of the three constants), in that order.
+std::vector<double> membraneFunctionals(const Field& strain, std::size_t cornerCount, std::size_t degree,
+                                        const std::vector<ReggeMoment>& interior, const Matrix& centredMonomials,
+                                        const std::vector<SurfaceRulePoint>& surface,
+                                        const std::vector<LineRulePoint>& edge)
+{
+    std::vector<double> out;
+    for (std::size_t e = 0; e < cornerCount; ++e)
+    {
+        const ReferencePoint vector = referenceEdgePointAndDirection(cornerCount, e, 0.0).second;
+        for (std::size_t l = 0; l <= degree; ++l)
+            out.push_back(edgeMoment(
+                edge, l, [&](double tau) { return tensorAlongEdge(cornerCount, e, tau, strain, vector); }));
+    }
+    for (std::size_t m = 0; m < interior.size(); ++m)
+    {
+        double sum = 0.0;
+        for (std::size_t q = 0; q < surface.size(); ++q)
+        {
+            const SurfaceRulePoint& point = surface[q];
+            sum += point.weight * strain[interior[m].component].evaluate(point.point[0], point.point[1]) *
+                   centredMonomials(m, q);
+        }
+        out.push_back(sum);
+    }
+    for (std::size_t c = 0; c < 3; ++c)
+    {
+        double sum = 0.0;
+        for (const SurfaceRulePoint& point : surface)
+            sum += point.weight * strain[c].evaluate(point.point[0], point.point[1]);
+        out.push_back(sum);
+    }
+    return out;
+}
+
+// The orthonormal basis of the vectors x with A x = 0, from the eigenvectors of AᵀA of zero eigenvalue (the rows of A
+// scaled to unit length first; the rows that are zero stay).
+std::vector<Vector> nullSpaceOf(const Matrix& a)
+{
+    Matrix scaled = a;
+    for (std::size_t i = 0; i < a.rows(); ++i)
+    {
+        double norm = 0.0;
+        for (std::size_t j = 0; j < a.columns(); ++j)
+            norm += a(i, j) * a(i, j);
+        for (std::size_t j = 0; j < a.columns(); ++j)
+            scaled(i, j) = norm > 0.0 ? a(i, j) / std::sqrt(norm) : 0.0;
+    }
+    const SymmetricEigen eigen = jacobiEigen(transposeTimes(scaled, scaled));
+    const double top = largestValue(eigen.values);
+    std::vector<Vector> out;
+    for (std::size_t k = 0; k < a.columns(); ++k)
+        if (!(eigen.values[k] > SPAN_EIGENVALUE_RATIO * std::max(top, 1.0)))
+            out.push_back(eigen.vectors.column(k));
+    return out;
+}
+
+} // namespace
+
+MembraneTransition membraneTransition(const std::vector<Field>& full, const SpaceBasis& displacement,
+                                      std::size_t cornerCount, std::size_t degree,
+                                      std::span<const std::size_t> edgeDegrees)
+{
+    if (isFullDegree(degree, edgeDegrees))
+    {
+        MembraneTransition transition;
+        transition.strains = full;
+        return transition;
+    }
+    MembraneTransition transition;
+    const std::size_t nr = full.size();
+    const std::vector<SurfaceRulePoint> surface = referenceSurfaceRule(cornerCount, shellspaces::BUILD_POINTS);
+    const std::vector<LineRulePoint> edgeRule = unitIntervalRule(shellspaces::BUILD_POINTS);
+    const std::vector<ReggeMoment> interior = reggeInterior(cornerCount, degree);
+    double area = 0.0;
+    for (const SurfaceRulePoint& point : surface)
+        area += point.weight;
+    // Every trial strain uses the same zero-mean monomials in its interior moments.
+    Matrix centredMonomials(interior.size(), surface.size());
+    for (std::size_t m = 0; m < interior.size(); ++m)
+    {
+        const Polynomial2 monomial = Polynomial2::monomial(interior[m].i, interior[m].j);
+        double sum = 0.0;
+        for (std::size_t q = 0; q < surface.size(); ++q)
+        {
+            const SurfaceRulePoint& point = surface[q];
+            centredMonomials(m, q) = monomial.evaluate(point.point[0], point.point[1]);
+            sum += point.weight * centredMonomials(m, q);
+        }
+        const double mean = sum / area;
+        for (std::size_t q = 0; q < surface.size(); ++q)
+            centredMonomials(m, q) -= mean;
+    }
+    const auto functionalsOf = [&](const Field& strain)
+    { return membraneFunctionals(strain, cornerCount, degree, interior, centredMonomials, surface, edgeRule); };
+
+    // Π as the coefficients on `full`: D the functionals of its functions
+    Matrix d(nr, nr);
+    for (std::size_t m = 0; m < nr; ++m)
+    {
+        const std::vector<double> column = functionalsOf(full[m]);
+        for (std::size_t i = 0; i < nr; ++i)
+            d(i, m) = column[i];
+    }
+    const LuDecomposition lu(d);
+    if (lu.isSingular())
+        throw base::InternalError("the membrane functionals are not independent on the reference element");
+
+    // the displacement functions kept (h1TransitionSpace of the edges) and left out, with the strains of both
+    std::vector<std::size_t> degreesOfEdges;
+    for (const std::size_t traceDegree : edgeDegrees)
+        degreesOfEdges.push_back(traceDegree + 1);
+    const SpaceBasis kept = h1TransitionSpace(displacement, cornerCount, degree + 1, degreesOfEdges);
+    std::vector<Vector> keptCoefficients;
+    std::vector<Vector> allCoefficients;
+    std::vector<Vector> removedFunctionals; // of the strains of the functions left out
+    const auto solveFor = [&](const Field& strain) { return lu.solve(functionalsOf(strain)).value(); };
+    for (const Field& function : kept.functions)
+        for (const Field& strain : strainsOf(function[0]))
+            keptCoefficients.push_back(solveFor(strain));
+    for (std::size_t i = 0; i < displacement.functions.size(); ++i)
+    {
+        const FunctionKind& kind = displacement.kinds[i];
+        const bool isLeftOut = kind.place == FunctionKind::Place::Edge && kind.moment + 1 > edgeDegrees[kind.entity];
+        if (!isLeftOut)
+            continue;
+        for (const Field& strain : strainsOf(displacement.functions[i][0]))
+            removedFunctionals.push_back(functionalsOf(strain));
+    }
+    for (const Field& function : displacement.functions)
+        for (const Field& strain : strainsOf(function[0]))
+            allCoefficients.push_back(solveFor(strain));
+
+    // the functionals kept: the combinations of those of the edges and of the inside that are zero on the strains left
+    // out (the rows of the null space of the matrix whose columns are those strains)
+    const std::size_t constants = CONSTANT_COUNT;
+    Matrix onRemoved(removedFunctionals.size(), nr - constants);
+    for (std::size_t r = 0; r < removedFunctionals.size(); ++r)
+        for (std::size_t i = 0; i < nr - constants; ++i)
+            onRemoved(r, i) = removedFunctionals[r][i];
+    for (const Vector& removed : removedFunctionals)
+        for (std::size_t c = 0; c < constants; ++c)
+            if (std::fabs(removed[nr - constants + c]) > 1e-9)
+                throw base::InternalError("the strain of a removed edge function has a constant part");
+    const std::vector<Vector> rows = nullSpaceOf(onRemoved);
+    transition.functionals = Matrix(rows.size(), nr - constants);
+    for (std::size_t r = 0; r < rows.size(); ++r)
+        for (std::size_t i = 0; i < nr - constants; ++i)
+            transition.functionals(r, i) = rows[r][i];
+
+    // the strains: those of the displacements kept, and the strains of `full` orthogonal to every strain of a
+    // displacement
+    Matrix weighted(allCoefficients.size(), nr);
+    const Matrix gram = gramOnRule(full, surface);
+    for (std::size_t r = 0; r < allCoefficients.size(); ++r)
+        for (std::size_t c = 0; c < nr; ++c)
+            for (std::size_t s = 0; s < nr; ++s)
+                weighted(r, c) += allCoefficients[r][s] * gram(s, c);
+    std::vector<Field> generators;
+    for (const Vector& coefficients : keptCoefficients)
+        generators.push_back(shellspaces::combine(full, coefficients));
+    for (const Vector& coefficients : nullSpaceOf(weighted))
+        generators.push_back(shellspaces::combine(full, coefficients));
+    transition.strains = splitConstants(shellspaces::orthonormal(generators, cornerCount), cornerCount);
+    if (transition.strains.size() != rows.size() + constants)
+        throw base::InternalError("the membrane strains of a transition element do not match their functionals: " +
+                                  std::to_string(transition.strains.size()) + " and " + std::to_string(rows.size()));
+    return transition;
+}
+
+std::vector<Field> momentTransitionSpace(const std::vector<Field>& full, const SpaceBasis& displacement,
+                                         std::size_t cornerCount, std::size_t degree,
+                                         std::span<const std::size_t> edgeDegrees)
+{
+    if (isFullDegree(degree, edgeDegrees))
+        return full;
+    const std::size_t free = full.size() - CONSTANT_COUNT;
+    // The conditions: the normal-normal trace on each edge of the degree of its rotation (the moments above it zero,
+    // traceConditions) and no work on the functions of the moments of the trace of the displacement left out.
+    const auto edgeVector = [&](std::size_t e) { return edgeNormal(cornerCount, e); };
+    std::vector<Vector> rows = traceConditions(full, cornerCount, degree, edgeDegrees, edgeVector);
+    for (std::size_t i = 0; i < displacement.functions.size(); ++i)
+    {
+        const FunctionKind& kind = displacement.kinds[i];
+        if (kind.place != FunctionKind::Place::Edge || kind.moment < edgeDegrees[kind.entity])
+            continue;
+        Vector row(free, 0.0);
+        for (std::size_t j = 0; j < free; ++j)
+            row[j] = workOn(cornerCount, full[j], displacement.functions[i][0]);
+        rows.push_back(std::move(row));
+    }
+    return satisfyingConditions(full, rows);
 }
 
 std::vector<Field> hhjSpace(std::size_t cornerCount, std::size_t degree)

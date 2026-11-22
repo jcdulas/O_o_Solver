@@ -217,3 +217,151 @@ CHECK_CASE("shell: constants of the tensor spaces")
         }
     }
 }
+
+// The spaces of a transition element (ShellSpaces.hpp; not in the reference): on an edge of degree n the trace of a
+// displacement function is a polynomial of degree n at most whose corner values and moments l ≤ n − 2 are those of
+// its kind; the tangential trace of a shear function and the normal-normal trace of a moment have the degree n − 1 at
+// most. The moments stay orthonormal, their three constants last.
+CHECK_CASE("shell: traces of the spaces of a transition element")
+{
+    struct Pattern
+    {
+        std::size_t cornerCount;
+        std::size_t degree;
+        std::vector<std::size_t> edgeDegrees;
+    };
+    const std::vector<Pattern> patterns{{4, 3, {2, 3, 3, 2}}, {4, 3, {2, 2, 2, 2}}, {4, 4, {3, 2, 4, 3}},
+                                        {3, 3, {2, 3, 2}},    {3, 4, {2, 2, 3}},    {3, 4, {4, 3, 4}}};
+    const std::vector<mh::LineRulePoint> rule = mh::unitIntervalRule(10);
+    // the moment l of a function of the parameter of edge e
+    const auto momentOf = [&](std::size_t nv, std::size_t e, std::size_t l, const auto& valueAt)
+    {
+        double moment = 0.0;
+        for (const mh::LineRulePoint& point : rule)
+        {
+            const mh::ReferencePoint x = mh::referenceEdgePointAndDirection(nv, e, point.point).first;
+            moment += point.weight * valueAt(x) * mh::legendreValue(l, 2.0 * point.point - 1.0);
+        }
+        return moment;
+    };
+    for (const Pattern& pattern : patterns)
+    {
+        const std::size_t nv = pattern.cornerCount;
+        const std::size_t k = pattern.degree;
+        const std::size_t p = k - 1;
+        std::string name = (nv == 3 ? "triangle " : "quadrilateral ") + text(k) + ", edges";
+        std::vector<std::size_t> traceDegrees; // of the shear and of the moments: one less
+        std::size_t lowered = 0;
+        for (const std::size_t n : pattern.edgeDegrees)
+        {
+            name += " " + text(n);
+            traceDegrees.push_back(n - 1);
+            lowered += k - n;
+        }
+        const mh::SpaceBasis fullH1 = mh::h1Space(nv, k);
+        const mh::SpaceBasis h1 = mh::h1TransitionSpace(fullH1, nv, k, pattern.edgeDegrees);
+        runner.expect(h1.functions.size() == fullH1.functions.size() - lowered, name + ": displacement functions");
+        double worst = 0.0;
+        for (std::size_t i = 0; i < h1.functions.size(); ++i)
+        {
+            const mh::Polynomial2& f = h1.functions[i][0];
+            const auto value = [&](const mh::ReferencePoint& x) { return f.evaluate(x[0], x[1]); };
+            for (std::size_t v = 0; v < nv; ++v)
+            {
+                const double expected = (h1.kinds[i] == mh::FunctionKind::vertex(v)) ? 1.0 : 0.0;
+                worst = std::fmax(worst, std::fabs(value(mh::referenceCorner(nv, v)) - expected));
+            }
+            for (std::size_t e = 0; e < nv; ++e)
+            {
+                const std::size_t n = pattern.edgeDegrees[e];
+                // its own moments, and no Legendre coefficient above the degree of the edge
+                for (std::size_t l = 0; l + 1 < n; ++l)
+                {
+                    const double expected = (h1.kinds[i] == mh::FunctionKind::edge(e, l)) ? 1.0 : 0.0;
+                    worst = std::fmax(worst, std::fabs(momentOf(nv, e, l, value) - expected));
+                }
+                for (std::size_t l = n + 1; l <= k; ++l)
+                    worst = std::fmax(worst, std::fabs(momentOf(nv, e, l, value)));
+            }
+        }
+        runner.expect(worst < 1e-10, name + ": displacement traces " + std::to_string(worst));
+
+        const mh::SpaceBasis fullShear = mh::hcurlSpace(nv, p);
+        const mh::SpaceBasis shear = mh::hcurlTransitionSpace(fullShear, p, traceDegrees);
+        runner.expect(shear.functions.size() == fullShear.functions.size() - lowered, name + ": shear functions");
+        worst = 0.0;
+        for (const mh::Field& f : shear.functions)
+            for (std::size_t e = 0; e < nv; ++e)
+            {
+                const mh::ReferencePoint d = mh::referenceEdgePointAndDirection(nv, e, 0.0).second;
+                const auto tangential = [&](const mh::ReferencePoint& x)
+                { return d[0] * f[0].evaluate(x[0], x[1]) + d[1] * f[1].evaluate(x[0], x[1]); };
+                for (std::size_t l = traceDegrees[e] + 1; l <= p; ++l)
+                    worst = std::fmax(worst, std::fabs(momentOf(nv, e, l, tangential)));
+            }
+        runner.expect(worst < 1e-10, name + ": shear traces " + std::to_string(worst));
+
+        const std::vector<mh::Field> fullMoments = mh::splitConstants(mh::hhjSpace(nv, p), nv);
+        const std::vector<mh::Field> moments = mh::momentTransitionSpace(fullMoments, fullH1, nv, p, traceDegrees);
+        // one function less for each rotation and for each displacement function left out
+        runner.expect(moments.size() == fullMoments.size() - 2 * lowered, name + ": moment functions");
+        worst = 0.0;
+        for (const mh::Field& s : moments)
+            for (std::size_t e = 0; e < nv; ++e)
+            {
+                const mh::ReferencePoint d = mh::referenceEdgePointAndDirection(nv, e, 0.0).second;
+                const double n1 = d[1];
+                const double n2 = -d[0];
+                const auto normal = [&](const mh::ReferencePoint& x)
+                {
+                    return s[0].evaluate(x[0], x[1]) * n1 * n1 + s[1].evaluate(x[0], x[1]) * n2 * n2 +
+                           2.0 * s[2].evaluate(x[0], x[1]) * n1 * n2;
+                };
+                for (std::size_t l = traceDegrees[e] + 1; l <= p; ++l)
+                    worst = std::fmax(worst, std::fabs(momentOf(nv, e, l, normal)));
+            }
+        runner.expect(worst < 1e-10, name + ": moment traces " + std::to_string(worst));
+        // Each removed scalar displacement has two in-plane strain directions.
+        const std::vector<mh::Field> fullRegge = mh::splitConstants(mh::reggeSpace(nv, p), nv);
+        const mh::MembraneTransition membrane = mh::membraneTransition(fullRegge, fullH1, nv, p, traceDegrees);
+        runner.expect(membrane.strains.size() == fullRegge.size() - 2 * lowered, name + ": membrane functions");
+        runner.expect(membrane.functionals.rows() + 3 == membrane.strains.size(), name + ": membrane functionals");
+        // The functions before the three constants are orthonormal, and orthogonal to the constants (the product of
+        // the spaces: the sum of the products of the components 11, 22 and 12 over the reference domain).
+        worst = 0.0;
+        const std::vector<mh::SurfaceRulePoint> surface = mh::referenceSurfaceRule(nv, 10);
+        const std::size_t constants = moments.size() - 3;
+        for (std::size_t a = 0; a < constants; ++a)
+            for (std::size_t b = a; b < moments.size(); ++b)
+            {
+                double gram = 0.0;
+                for (const mh::SurfaceRulePoint& point : surface)
+                    for (std::size_t c = 0; c < 3; ++c)
+                        gram += point.weight * moments[a][c].evaluate(point.point[0], point.point[1]) *
+                                moments[b][c].evaluate(point.point[0], point.point[1]);
+                worst = std::fmax(worst, std::fabs(gram - (a == b ? 1.0 : 0.0)));
+            }
+        runner.expect(worst < 1e-9, name + ": moments orthonormal " + std::to_string(worst));
+    }
+}
+
+// With every edge at the degree of the element, the transition spaces are the full ones, to the bit.
+CHECK_CASE("shell: the transition spaces of an element of one degree are its spaces")
+{
+    for (std::size_t nv : {3u, 4u})
+    {
+        const std::vector<std::size_t> edges(nv, 3);
+        const std::vector<std::size_t> traces(nv, 2);
+        const mh::SpaceBasis h1 = mh::h1Space(nv, 3);
+        runner.expect(mh::h1TransitionSpace(h1, nv, 3, edges).functions == h1.functions,
+                      "displacement, nv " + text(nv));
+        const mh::SpaceBasis shear = mh::hcurlSpace(nv, 2);
+        runner.expect(mh::hcurlTransitionSpace(shear, 2, traces).functions == shear.functions, "shear, nv " + text(nv));
+        const std::vector<mh::Field> moments = mh::splitConstants(mh::hhjSpace(nv, 2), nv);
+        runner.expect(mh::momentTransitionSpace(moments, h1, nv, 2, traces) == moments, "moments, nv " + text(nv));
+        const std::vector<mh::Field> regge = mh::splitConstants(mh::reggeSpace(nv, 2), nv);
+        const mh::MembraneTransition membrane = mh::membraneTransition(regge, h1, nv, 2, traces);
+        runner.expect(membrane.strains == regge && membrane.functionals.empty(),
+                      "membrane strains, nv " + text(nv));
+    }
+}
