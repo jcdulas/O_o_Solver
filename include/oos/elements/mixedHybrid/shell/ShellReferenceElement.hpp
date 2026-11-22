@@ -1,5 +1,6 @@
 #pragma once
 
+#include "oos/elements/mixedHybrid/geometry/ReferenceShapes.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellSpaces.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellTypes.hpp"
 
@@ -34,6 +35,23 @@ namespace oos::elements::mixedHybrid
 // Thread-safety: immutable once built. shellReferenceElement() builds each table once, under a lock, and hands out a
 // reference that stays valid for the life of the program and may be read from any thread.
 // Reference: tdnns/space.rs::RefElement
+
+// The bases of the reference element at one reference point where the results of every element are read (its centre
+// or a corner): the values the basis polynomials give there, kept so that they are evaluated once for all the
+// elements of the shape and all their cases.
+struct ReferencePointValues
+{
+    ReferencePoint point{};
+    // [i]: value, ∂ξ, ∂η, ∂ξξ, ∂ξη, ∂ηη of the displacement functions (before the division by an element's weight).
+    std::vector<ReferenceJet> h1;
+    // [i]: g_ξ, g_η.
+    std::vector<std::array<double, 2>> hcurl;
+    // [j]: S^11, S^22, S^12.
+    std::vector<std::array<double, 3>> moments;
+    // [m]: R_11, R_22, R_12.
+    std::vector<std::array<double, 3>> regge;
+};
+
 struct ShellReferenceElement
 {
     std::size_t cornerCount = 0;
@@ -78,6 +96,12 @@ struct ShellReferenceElement
     std::vector<Field> hcurlBasis;
     std::vector<Field> momentBasis;
     std::vector<Field> reggeBasis;
+    // The bases at the centre, then at the corners in their order.
+    std::vector<ReferencePointValues> outputPoints;
+
+    // The bases at (ξ, η) when it is one of outputPoints (the same coordinates, to the bit), null otherwise: the
+    // values the basis polynomials give there.
+    [[nodiscard]] const ReferencePointValues* valuesAt(double xi, double eta) const noexcept;
 
     // The reference element of `cornerCount` corners (3 or 4) for the displacement degree k ≥ 2, with
     // `pointsPerDirection` points per direction on the surface and on the edges. Checks the unisolvence of the

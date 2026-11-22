@@ -2,6 +2,7 @@
 
 #include "oos/elements/mixedHybrid/core/Matrix.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellElementData.hpp"
+#include "oos/elements/mixedHybrid/shell/ShellElementStresses.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellReferenceElement.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellSection.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellTypes.hpp"
@@ -92,6 +93,29 @@ struct ShellPointState
 [[nodiscard]] ShellPointState cornerState(const ShellReferenceElement& re, const ShellElementData& element,
                                           std::size_t corner, std::span<const double> x, const Vector* momentTerm,
                                           const TemperatureAtPosition& temperatureAt);
+
+// gridResultants, sectionResultants, pointState, cornerState and transverseShear from the coefficients of the
+// solution x (solutionCoefficients, which holds its thermal term): the same values, to the bit, for a caller that
+// reads several points of an element (the recovery of its centre and its corners).
+[[nodiscard]] std::array<double, 8> gridResultants(const ShellReferenceElement& re, const ShellElementData& element,
+                                                   double xi, double eta, std::span<const double> x,
+                                                   const ShellSolutionCoefficients& coefficients,
+                                                   const TemperatureAtPosition& temperatureAt);
+[[nodiscard]] std::array<double, 8> sectionResultants(const ShellReferenceElement& re, const ShellElementData& element,
+                                                      double xi, double eta, std::span<const double> x,
+                                                      const ShellSolutionCoefficients& coefficients,
+                                                      const TemperatureAtPosition& temperatureAt);
+[[nodiscard]] ShellPointState pointState(const ShellReferenceElement& re, const ShellElementData& element, double xi,
+                                         double eta, std::span<const double> x,
+                                         const ShellSolutionCoefficients& coefficients,
+                                         const TemperatureAtPosition& temperatureAt);
+[[nodiscard]] ShellPointState cornerState(const ShellReferenceElement& re, const ShellElementData& element,
+                                          std::size_t corner, std::span<const double> x,
+                                          const ShellSolutionCoefficients& coefficients,
+                                          const TemperatureAtPosition& temperatureAt);
+[[nodiscard]] std::pair<std::array<double, 2>, std::array<double, 2>> transverseShear(
+    const ShellReferenceElement& re, const ShellElementData& element, double xi, double eta, std::span<const double> x,
+    const ShellSolutionCoefficients& coefficients, const TemperatureAtPosition& temperatureAt, double z);
 
 // The stresses at the distance z from the middle of the section: in the material axes of the section and in the axes
 // of the ply that contains z (σ = Q_ply (ε + z κ − α (T0 + z T1))).

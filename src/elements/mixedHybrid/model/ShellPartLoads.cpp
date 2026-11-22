@@ -148,6 +148,12 @@ ShellRecovery ShellPart::recover(const ShellElementData& element, std::span<cons
                                  const TemperatureAtPosition& temperatures, std::span<const double> fibres) const
 {
     const ShellReferenceElement& re = referenceElement(element);
+    // PERFORMANCE: the coefficients of the moments and of the membrane strains of the solution, formed once for the
+    // centre and the corners (and the four points about each that the transverse shear of a fibre reads). Each point
+    // formed them again: two products by the matrices of the element, most of the cost of a point.
+    // Measured on the recovery of 10 modes of 1 024 quadrilaterals, with the element taken as the part keeps it
+    // (no table of its points built for a case without temperatures): 3.9 s to 2.5 s.
+    const ShellSolutionCoefficients coefficients = solutionCoefficients(element.matrices, x, momentTerm);
     const auto pointResults = [&](double xi, double eta, ShellPointState state)
     {
         ShellRecoveryPoint point;
@@ -155,19 +161,19 @@ ShellRecovery ShellPart::recover(const ShellElementData& element, std::span<cons
         for (const double z : fibres)
         {
             point.stresses.push_back(plyStresses(element, point.state, z));
-            point.transverseShear.push_back(transverseShear(re, element, xi, eta, x, momentTerm, temperatures, z));
+            point.transverseShear.push_back(transverseShear(re, element, xi, eta, x, coefficients, temperatures, z));
         }
         return point;
     };
     ShellRecovery out;
     const ReferencePoint centre = referenceCentre(element.cornerCount);
-    out.centre =
-        pointResults(centre[0], centre[1], pointState(re, element, centre[0], centre[1], x, momentTerm, temperatures));
+    out.centre = pointResults(centre[0], centre[1],
+                              pointState(re, element, centre[0], centre[1], x, coefficients, temperatures));
     for (std::size_t c = 0; c < element.cornerCount; ++c)
     {
         const ReferencePoint corner = referenceCorner(element.cornerCount, c);
         out.corners.push_back(
-            pointResults(corner[0], corner[1], cornerState(re, element, c, x, momentTerm, temperatures)));
+            pointResults(corner[0], corner[1], cornerState(re, element, c, x, coefficients, temperatures)));
     }
     return out;
 }

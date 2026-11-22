@@ -93,6 +93,29 @@ void checkReggeUnisolvence(const ShellReferenceElement& re)
 
 } // namespace
 
+namespace
+{
+
+// The bases of `re` at a reference point, from their polynomials.
+ReferencePointValues valuesAtPoint(const ShellReferenceElement& re, const ReferencePoint& point)
+{
+    const double xi = point[0];
+    const double eta = point[1];
+    ReferencePointValues values;
+    values.point = point;
+    for (const Field& f : re.h1Basis)
+        values.h1.push_back(f[0].jet(xi, eta));
+    for (const Field& f : re.hcurlBasis)
+        values.hcurl.push_back({f[0].evaluate(xi, eta), f[1].evaluate(xi, eta)});
+    for (const Field& f : re.momentBasis)
+        values.moments.push_back({f[0].evaluate(xi, eta), f[1].evaluate(xi, eta), f[2].evaluate(xi, eta)});
+    for (const Field& f : re.reggeBasis)
+        values.regge.push_back({f[0].evaluate(xi, eta), f[1].evaluate(xi, eta), f[2].evaluate(xi, eta)});
+    return values;
+}
+
+} // namespace
+
 ShellReferenceElement ShellReferenceElement::build(std::size_t cornerCount, std::size_t degree,
                                                    std::size_t pointsPerDirection)
 {
@@ -202,7 +225,18 @@ ShellReferenceElement ShellReferenceElement::build(std::size_t cornerCount, std:
             re.reggeTest.push_back(integerPower(x[0], re.reggeInteriorMoments[m].i) *
                                        integerPower(x[1], re.reggeInteriorMoments[m].j) -
                                    means[m]);
+    re.outputPoints.push_back(valuesAtPoint(re, referenceCentre(cornerCount)));
+    for (std::size_t c = 0; c < cornerCount; ++c)
+        re.outputPoints.push_back(valuesAtPoint(re, referenceCorner(cornerCount, c)));
     return re;
+}
+
+const ReferencePointValues* ShellReferenceElement::valuesAt(double xi, double eta) const noexcept
+{
+    for (const ReferencePointValues& values : outputPoints)
+        if (values.point[0] == xi && values.point[1] == eta)
+            return &values;
+    return nullptr;
 }
 
 const ShellReferenceElement& shellReferenceElement(std::size_t cornerCount, std::size_t degree,

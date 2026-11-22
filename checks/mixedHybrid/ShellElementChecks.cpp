@@ -178,6 +178,81 @@ CHECK_CASE("shell: symmetry of the stiffness, mass and geometric stiffness")
 
 // The constant states of a flat distorted element (document 34 of the reference, section 4.3): a uniform membrane
 // strain gives N = A ε and no moment, a uniform curvature gives M = D κ and no membrane force, at every point.
+CHECK_CASE("shell: the mass built alone has the bits of the mass built with the element")
+{
+    for (const NamedElement& named : allElements(DEGREE, true))
+    {
+        const TestElement& e = named.element;
+        const mh::Matrix& together = *e.data.matrices.mass;
+        const mh::Matrix alone = mh::buildShellMass(*e.re, e.data.definition());
+        bool isSame = alone.rows() == together.rows() && alone.columns() == together.columns();
+        for (std::size_t i = 0; isSame && i < together.rows(); ++i)
+            for (std::size_t j = 0; isSame && j < together.columns(); ++j)
+                isSame = alone(i, j) == together(i, j);
+        runner.expect(isSame, named.name);
+    }
+}
+
+CHECK_CASE("shell: the bases kept at the centre and the corners are the values of their polynomials")
+{
+    for (const std::size_t cornerCount : {std::size_t{3}, std::size_t{4}})
+    {
+        const mh::ShellReferenceElement& re =
+            mh::shellReferenceElement(cornerCount, DEGREE, mh::shellPointsPerDirection(DEGREE));
+        const std::string shape = cornerCount == 3 ? "triangle" : "quadrilateral";
+        runner.expect(re.outputPoints.size() == cornerCount + 1, shape + ": the centre and the corners");
+        runner.expect(re.valuesAt(0.123, -0.456) == nullptr, shape + ": no values kept at another point");
+        std::vector<mh::ReferencePoint> points{mh::referenceCentre(cornerCount)};
+        for (std::size_t c = 0; c < cornerCount; ++c)
+            points.push_back(mh::referenceCorner(cornerCount, c));
+        for (const mh::ReferencePoint& point : points)
+        {
+            const mh::ReferencePointValues* kept = re.valuesAt(point[0], point[1]);
+            runner.expect(kept != nullptr, shape + ": values kept at an output point");
+            if (kept == nullptr)
+                continue;
+            bool isSame = true;
+            for (std::size_t i = 0; i < re.h1Basis.size(); ++i)
+                isSame = isSame && kept->h1[i] == re.h1Basis[i][0].jet(point[0], point[1]);
+            for (std::size_t i = 0; i < re.hcurlBasis.size(); ++i)
+                for (std::size_t c = 0; c < 2; ++c)
+                    isSame = isSame && kept->hcurl[i][c] == re.hcurlBasis[i][c].evaluate(point[0], point[1]);
+            for (std::size_t j = 0; j < re.momentBasis.size(); ++j)
+                for (std::size_t c = 0; c < 3; ++c)
+                    isSame = isSame && kept->moments[j][c] == re.momentBasis[j][c].evaluate(point[0], point[1]);
+            for (std::size_t m = 0; m < re.reggeBasis.size(); ++m)
+                for (std::size_t c = 0; c < 3; ++c)
+                    isSame = isSame && kept->regge[m][c] == re.reggeBasis[m][c].evaluate(point[0], point[1]);
+            runner.expect(isSame, shape + ": the values of the polynomials, to the bit");
+        }
+    }
+}
+
+CHECK_CASE("shell: the resultants from the coefficients of a solution have the bits of those of the solution")
+{
+    for (const NamedElement& named : allElements())
+    {
+        const TestElement& e = named.element;
+        const mh::ShellElementMatrices& m = e.data.matrices;
+        const mh::ShellElementDefinition def = e.data.definition();
+        mh::Vector x(m.unknownCount, 0.0);
+        Xorshift random;
+        for (double& value : x)
+            value = 1e-3 * random.next();
+        const mh::ShellSolutionCoefficients coefficients = mh::solutionCoefficients(m, x, nullptr);
+        // an output point (the bases kept by the reference element) and another one (their polynomials)
+        const mh::ReferencePoint centre = mh::referenceCentre(e.re->cornerCount);
+        for (const mh::ReferencePoint& point : {centre, mh::ReferencePoint{-0.31, -0.42}})
+        {
+            const std::array<double, 8> direct =
+                mh::resultants(*e.re, def, m, x, nullptr, {0.0, 0.0}, point[0], point[1]);
+            const std::array<double, 8> hoisted =
+                mh::resultants(*e.re, def, coefficients, x, {0.0, 0.0}, point[0], point[1]);
+            runner.expect(direct == hoisted, named.name);
+        }
+    }
+}
+
 CHECK_CASE("shell: constant membrane and bending states")
 {
     for (const NamedElement& named :

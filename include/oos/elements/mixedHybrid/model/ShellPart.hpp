@@ -448,6 +448,11 @@ public:
     // without them (ShellPartInput::recoveryCacheBytes) or builds it without them.
     [[nodiscard]] std::variant<ShellElementData, std::string> elementWithMatrices(
         std::size_t shell, const ShellMatrixRequest& request) const;
+    // Shell `shell` as the part keeps it: with the operators of its stress recovery (and its stiffness and its mass
+    // when it is kept whole), without the tables of its points. It serves what reads the element at given points
+    // alone, as the recovery of a case without temperatures, with no copy. Null when the part does not keep the
+    // element (not built yet, or no room: ShellPartInput::recoveryCacheBytes).
+    [[nodiscard]] std::shared_ptr<const ShellElementData> keptElement(std::size_t shell) const;
     // Why the formulation refuses shell `shell`: a section without bending stiffness (without membrane stiffness for a
     // membrane-only section) or a thickness that is not positive (a singular section), a normal that turns by 90° or
     // more from that of its corners at a point of the element (an element that turns too much), a map that is not
@@ -773,6 +778,9 @@ private:
         std::vector<RigidField> shells;
     };
     [[nodiscard]] const std::vector<RigidField>& rigidFields() const;
+
+    // The element `kept` (keptElement) with the tables of its points and its mass, built alone (buildShellMass).
+    [[nodiscard]] ShellElementData withMassAdded(const ShellElementData& kept, std::size_t shell) const;
 
     // The shells with their matrices kept once built, by shell, without the tables of their points (withTables), and
     // the bytes they take; guarded by its mutex (the part is shared by the threads of the assembly). An element is

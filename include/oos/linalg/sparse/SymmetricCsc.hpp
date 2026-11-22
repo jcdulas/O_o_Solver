@@ -69,6 +69,12 @@ public:
                                                             std::span<const std::int64_t> offsets,
                                                             std::span<const std::int32_t> rows,
                                                             std::span<const double> values, base::MemoryBudget& budget);
+    // The terms of `matrix` that are not zero (the structural pattern keeps the zero terms of a stored block): the
+    // matrix of the same products in fewer operations. A product by it has the bits of the product by `matrix` for
+    // finite vectors: a zero term adds ±0 to a sum that starts at +0 and so is never −0.
+    [[nodiscard]] static SymmetricCsc withoutZeroTerms(const SymmetricCsc& matrix, base::MemoryBudget& budget);
+    // The number of stored terms whose value is zero.
+    [[nodiscard]] std::int64_t zeroTermCount() const noexcept;
     // True when `other` has the same dimension, column offsets and row indices.
     [[nodiscard]] bool hasSameStructure(const SymmetricCsc& other) const noexcept;
 
@@ -77,16 +83,20 @@ public:
     void multiply(std::span<const double> x, std::span<double> y) const;
 
     // Y = A·X for a block of vectors (X and Y dimension() × r, distinct storage). Each column is computed as
-    // multiply() computes it, in the same order of terms, whatever the block: the columns are the pieces of the
-    // parallel work (COLUMNS_PER_MULTIPLY_PIECE per piece), so the bits do not depend on the pool. Throws
-    // std::invalid_argument when a size differs; OperationCancelledError between pieces.
+    // multiply() computes it, in the same order of terms, whatever the block and the pool: the columns are made by
+    // groups of at most MULTIPLY_GROUP_COLUMNS in one pass over the terms of A, each column its own sums, and the
+    // groups are the pieces of the parallel work (as many groups as the pool has threads when the block allows).
+    // Throws std::invalid_argument when a size differs; OperationCancelledError between pieces.
     void multiply(ConstDenseMatrixView x, DenseMatrixView y, base::ThreadPool* pool = nullptr,
                   const base::CancellationToken* cancellation = nullptr) const;
 
-    // The columns of one piece of the parallel block product.
-    static constexpr std::size_t COLUMNS_PER_MULTIPLY_PIECE = 1;
+    // The most columns of a block product made in one pass over the terms.
+    static constexpr std::size_t MULTIPLY_GROUP_COLUMNS = 8;
 
 private:
+    // Columns [first, first + count) of Y = A·X, count at most MULTIPLY_GROUP_COLUMNS, in one pass over the terms.
+    void multiplyGroup(ConstDenseMatrixView x, DenseMatrixView y, std::size_t first, std::size_t count) const;
+
     std::int32_t m_dimension = 0;
     base::BudgetedBuffer<std::int64_t> m_columnOffsets; // dimension + 1
     base::BudgetedBuffer<std::int32_t> m_rows;

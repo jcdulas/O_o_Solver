@@ -342,6 +342,40 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
     return buildShellElement(re, def, ShellMatrixRequest{true, withMass});
 }
 
+namespace
+{
+
+// Adds to `mass` the mass of surface point q, of geometry g, section point sp and weight wj (the weight of the rule
+// times the area element): I0 uᵀ u + I1 (uᵀ β + βᵀ u) + I2 βᵀ β (spec section 3). u has columns on the displacement
+// unknowns, β on those and on the shear unknowns.
+void addPointMass(Matrix& mass, const ShellReferenceElement& re, const ShellElementDefinition& def, std::size_t q,
+                  const PointGeometry& g, const SectionPoint& sp, double wj)
+{
+    const std::size_t displacementColumns = 3 * re.h1Count;
+    const std::size_t fieldColumns = displacementColumns + re.hcurlCount;
+    const auto [uu, bb] = pointKinematics(re, def, q, g, mass.rows());
+    shelldetail::addTransposeProduct(mass, uu, uu, sp.mass[0] * wj, displacementColumns);
+    shelldetail::addTransposeProduct(mass, uu, bb, sp.mass[1] * wj, fieldColumns);
+    shelldetail::addTransposeProduct(mass, bb, uu, sp.mass[1] * wj, displacementColumns);
+    shelldetail::addTransposeProduct(mass, bb, bb, sp.mass[2] * wj, fieldColumns);
+}
+
+} // namespace
+
+Matrix buildShellMass(const ShellReferenceElement& re, const ShellElementDefinition& def)
+{
+    const std::size_t nx = shellUnknownCount(re);
+    const std::vector<PointGeometry> geometries = shelldetail::volumeGeometries(re, def);
+    Matrix mass(nx, nx);
+    for (std::size_t q = 0; q < re.points.size(); ++q)
+    {
+        const PointGeometry& g = geometries[q];
+        const SectionPoint sp = sectionAtGeometry(*def.section, def.offset, re.points[q][0], re.points[q][1], g);
+        addPointMass(mass, re, def, q, g, sp, re.weights[q] * g.j);
+    }
+    return mass;
+}
+
 std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellReferenceElement& re,
                                                                   const ShellElementDefinition& def,
                                                                   const ShellMatrixRequest& request)
@@ -426,14 +460,7 @@ std::variant<ShellElementMatrices, std::string> buildShellElement(const ShellRef
                 shelldetail::addCongruence2(ks, shearOperator(re, q, g, nx), laws.h, wj, displacementColumns, nc);
         }
         if (mass)
-        {
-            // u has columns on the displacement unknowns, β on those and on the shear unknowns
-            const auto [uu, bb] = pointKinematics(re, def, q, g, nx);
-            shelldetail::addTransposeProduct(*mass, uu, uu, sp.mass[0] * wj, displacementColumns);
-            shelldetail::addTransposeProduct(*mass, uu, bb, sp.mass[1] * wj, fieldColumns);
-            shelldetail::addTransposeProduct(*mass, bb, uu, sp.mass[1] * wj, displacementColumns);
-            shelldetail::addTransposeProduct(*mass, bb, bb, sp.mass[2] * wj, fieldColumns);
-        }
+            addPointMass(*mass, re, def, q, g, sp, wj);
     }
 
     if (!moments)

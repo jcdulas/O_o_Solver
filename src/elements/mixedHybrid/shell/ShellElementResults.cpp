@@ -46,18 +46,36 @@ std::array<double, 8> gridResultants(const ShellReferenceElement& re, const Shel
                                      double eta, std::span<const double> x, const Vector* momentTerm,
                                      const TemperatureAtPosition& temperatureAt)
 {
+    return gridResultants(re, element, xi, eta, x, solutionCoefficients(element.matrices, x, momentTerm),
+                          temperatureAt);
+}
+
+std::array<double, 8> gridResultants(const ShellReferenceElement& re, const ShellElementData& element, double xi,
+                                     double eta, std::span<const double> x,
+                                     const ShellSolutionCoefficients& coefficients,
+                                     const TemperatureAtPosition& temperatureAt)
+{
     const ShellElementDefinition def = element.definition();
     std::array<double, 2> temperatures{0.0, 0.0};
     if (temperatureAt)
         temperatures = temperatureAt(geometryAt(re, def, xi, eta).x);
-    return resultants(re, def, element.matrices, x, momentTerm, temperatures, xi, eta);
+    return resultants(re, def, coefficients, x, temperatures, xi, eta);
 }
 
 std::array<double, 8> sectionResultants(const ShellReferenceElement& re, const ShellElementData& element, double xi,
                                         double eta, std::span<const double> x, const Vector* momentTerm,
                                         const TemperatureAtPosition& temperatureAt)
 {
-    std::array<double, 8> r = gridResultants(re, element, xi, eta, x, momentTerm, temperatureAt);
+    return sectionResultants(re, element, xi, eta, x, solutionCoefficients(element.matrices, x, momentTerm),
+                             temperatureAt);
+}
+
+std::array<double, 8> sectionResultants(const ShellReferenceElement& re, const ShellElementData& element, double xi,
+                                        double eta, std::span<const double> x,
+                                        const ShellSolutionCoefficients& coefficients,
+                                        const TemperatureAtPosition& temperatureAt)
+{
+    std::array<double, 8> r = gridResultants(re, element, xi, eta, x, coefficients, temperatureAt);
     const double z0 = element.offset;
     if (z0 == 0.0)
         return r;
@@ -116,7 +134,14 @@ ShellPointState pointState(const ShellReferenceElement& re, const ShellElementDa
                            std::span<const double> x, const Vector* momentTerm,
                            const TemperatureAtPosition& temperatureAt)
 {
-    const std::array<double, 8> r = sectionResultants(re, element, xi, eta, x, momentTerm, temperatureAt);
+    return pointState(re, element, xi, eta, x, solutionCoefficients(element.matrices, x, momentTerm), temperatureAt);
+}
+
+ShellPointState pointState(const ShellReferenceElement& re, const ShellElementData& element, double xi, double eta,
+                           std::span<const double> x, const ShellSolutionCoefficients& coefficients,
+                           const TemperatureAtPosition& temperatureAt)
+{
+    const std::array<double, 8> r = sectionResultants(re, element, xi, eta, x, coefficients, temperatureAt);
     return pointStateOf(re, element, xi, eta, r, temperatureAt);
 }
 
@@ -124,8 +149,15 @@ ShellPointState cornerState(const ShellReferenceElement& re, const ShellElementD
                             std::span<const double> x, const Vector* momentTerm,
                             const TemperatureAtPosition& temperatureAt)
 {
+    return cornerState(re, element, corner, x, solutionCoefficients(element.matrices, x, momentTerm), temperatureAt);
+}
+
+ShellPointState cornerState(const ShellReferenceElement& re, const ShellElementData& element, std::size_t corner,
+                            std::span<const double> x, const ShellSolutionCoefficients& coefficients,
+                            const TemperatureAtPosition& temperatureAt)
+{
     const ReferencePoint point = referenceCorner(element.cornerCount, corner);
-    return pointState(re, element, point[0], point[1], x, momentTerm, temperatureAt);
+    return pointState(re, element, point[0], point[1], x, coefficients, temperatureAt);
 }
 
 std::pair<Voigt3, Voigt3> plyStresses(const ShellElementData& element, const ShellPointState& state, double z)
@@ -162,6 +194,14 @@ std::pair<std::array<double, 2>, std::array<double, 2>> transverseShear(
     const ShellReferenceElement& re, const ShellElementData& element, double xi, double eta, std::span<const double> x,
     const Vector* momentTerm, const TemperatureAtPosition& temperatureAt, double z)
 {
+    return transverseShear(re, element, xi, eta, x, solutionCoefficients(element.matrices, x, momentTerm),
+                           temperatureAt, z);
+}
+
+std::pair<std::array<double, 2>, std::array<double, 2>> transverseShear(
+    const ShellReferenceElement& re, const ShellElementData& element, double xi, double eta, std::span<const double> x,
+    const ShellSolutionCoefficients& coefficients, const TemperatureAtPosition& temperatureAt, double z)
+{
     const Section& section = element.section.section();
     const PointGeometry g = geometryAt(re, element.definition(), xi, eta);
     const SectionPoint sp = sectionAt(element.section, 0.0, xi, eta, g.e);
@@ -170,7 +210,7 @@ std::pair<std::array<double, 2>, std::array<double, 2>> transverseShear(
     const Matrix22 ci = g.cov();
     const double h = GRADIENT_STEP;
     const auto at = [&](double du, double dv)
-    { return sectionResultants(re, element, xi + du, eta + dv, x, momentTerm, temperatureAt); };
+    { return sectionResultants(re, element, xi + du, eta + dv, x, coefficients, temperatureAt); };
     const std::array<double, 8> up = at(h, 0.0);
     const std::array<double, 8> um = at(-h, 0.0);
     const std::array<double, 8> vp = at(0.0, h);

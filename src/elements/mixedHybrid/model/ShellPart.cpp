@@ -591,24 +591,25 @@ std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::
                                                                            const ShellMatrixRequest& request) const
 {
     const ShellMatrixRequest asked{request.stiffness, request.mass && m_input.withMass};
-    {
-        std::shared_ptr<const ShellElementData> kept;
-        {
-            const std::lock_guard<std::mutex> lock(m_cache->mutex);
-            if (shell < m_cache->elements.size())
-                kept = m_cache->elements[shell];
-        }
-        if (kept && holds(kept->matrices, asked))
-            return withTables(*kept, m_ownPoints[shell]);
-    }
-    std::variant<ShellElementData, std::string> built = build(shell, true, asked);
+    const std::shared_ptr<const ShellElementData> held = keptElement(shell);
+    if (held && holds(held->matrices, asked))
+        return withTables(*held, m_ownPoints[shell]);
+    // PERFORMANCE: the mass of an element the part keeps is built alone. An eigenvalue analysis asks the stiffness of
+    // every element, then the mass: building the element again for it formed its recovery operators a second time.
+    // Measured on the eigenvalue analysis of 1 024 quadrilaterals: the masses from 3.4 s to 1.5 s.
+    const bool isMassAlone = held && asked.mass && !asked.stiffness;
+    std::variant<ShellElementData, std::string> built =
+        isMassAlone ? std::variant<ShellElementData, std::string>(withMassAdded(*held, shell))
+                    : build(shell, true, asked);
     const ShellElementData* data = std::get_if<ShellElementData>(&built);
     const std::size_t wholeBudget = m_input.matrixCacheBytes;
     const std::size_t budget = std::max(wholeBudget, m_input.recoveryCacheBytes);
     if (data == nullptr || budget == 0)
         return built;
-    // What the part keeps of it: the element without the tables of its points, which take as much as its matrices.
+    // What the part keeps of it: the element without the tables of its points, which take as much as its matrices,
+    // on its own rule (referenceElement(element) is then the reference element its matrices were built on).
     ShellElementData element = m_shells[shell];
+    element.pointsPerDirection = m_ownPoints[shell];
     element.matrices = data->matrices;
     const std::lock_guard<std::mutex> lock(m_cache->mutex);
     if (m_cache->elements.size() < m_shells.size())
@@ -648,6 +649,19 @@ std::variant<ShellElementData, std::string> ShellPart::elementWithMatrices(std::
         m_cache->bytes = others + recoveryBytes;
     }
     return built;
+}
+
+std::shared_ptr<const ShellElementData> ShellPart::keptElement(std::size_t shell) const
+{
+    const std::lock_guard<std::mutex> lock(m_cache->mutex);
+    return shell < m_cache->elements.size() ? m_cache->elements[shell] : nullptr;
+}
+
+ShellElementData ShellPart::withMassAdded(const ShellElementData& kept, std::size_t shell) const
+{
+    ShellElementData data = withTables(kept, m_ownPoints[shell]);
+    data.matrices.mass = buildShellMass(referenceElement(data), data.definition());
+    return data;
 }
 
 std::optional<std::string> ShellPart::elementRefusal(std::size_t shell) const

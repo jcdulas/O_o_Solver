@@ -147,6 +147,14 @@ std::vector<ReferenceJet> h1At(const ShellReferenceElement& re, const ShellEleme
     const ReferenceJet wj = def.weight->jet(xi, eta);
     std::vector<ReferenceJet> out;
     out.reserve(re.h1Basis.size());
+    // PERFORMANCE: at the centre and the corners, where the results of every element are read, the jets of the
+    // basis are those the reference element keeps (ReferencePointValues): the same values, evaluated once.
+    if (const ReferencePointValues* kept = re.valuesAt(xi, eta))
+    {
+        for (const ReferenceJet& jet : kept->h1)
+            out.push_back(rationalJet(jet, wj));
+        return out;
+    }
     for (const Field& f : re.h1Basis)
         out.push_back(rationalJet(f[0].jet(xi, eta), wj));
     return out;

@@ -31,6 +31,25 @@ namespace oos::elements::mixedHybrid
                                                const Vector* momentTerm, const std::array<double, 2>& temperatures,
                                                double xi, double eta);
 
+// What the stresses of an element read of a solution x beside x itself, the same at all its points: the coefficients
+// of the moments M_σ⁻¹ ((G + C) x − h) on the element's moment space, and those of the membrane strain I x on its
+// membrane space. Two products by the matrices of the element: formed once, they serve every point of the recovery.
+struct ShellSolutionCoefficients
+{
+    Vector moments;
+    Vector membraneStrains;
+};
+
+// The coefficients of the solution x (`momentTerm` the thermal term h of the moments, null without temperature).
+[[nodiscard]] ShellSolutionCoefficients solutionCoefficients(const ShellElementMatrices& matrices,
+                                                             std::span<const double> x, const Vector* momentTerm);
+
+// resultants() from the coefficients of the solution: the same values, to the bit.
+[[nodiscard]] std::array<double, 8> resultants(const ShellReferenceElement& re, const ShellElementDefinition& def,
+                                               const ShellSolutionCoefficients& coefficients,
+                                               std::span<const double> x, const std::array<double, 2>& temperatures,
+                                               double xi, double eta);
+
 // The membrane forces (local N11, N22, N12, about the surface of the grid points) at the surface points for the
 // element unknowns x (`momentTerm`, `temperatures`: the thermal term and the temperatures; null and empty without).
 // Reference: tdnns/element.rs::membrane_forces

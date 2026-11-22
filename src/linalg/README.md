@@ -152,14 +152,16 @@ the folders in that order, which is the order in which the pieces depend on one 
 
 - `eigen/ShiftedPencil` (the interface: factorise K − σM, solve, multiply by M, the spectrum scale; the caller
   provides it, linalg stays below assembly) and `eigen/SparsePencil` (two `SymmetricCsc` of one pattern, K − σM by
-  `SymmetricCsc::combine`, the supernodal factor in indefinite mode, a lumped mass multiplied by its diagonal).
+  `SymmetricCsc::combine`, the supernodal factor in indefinite mode, a lumped mass multiplied by its diagonal, a
+  coupled mass that stores mostly zeros by its non-zero terms alone).
 - `eigen/EigenRequest` (range, mode count), `eigen/SturmCheck` (Sturm points and the walk that confirms no root is
   missed), `eigen/ShiftStrategy` (where the shifts go, when the request is met), `eigen/BlockLanczos` (the driver:
   shifts, runs, locking, the M-orthonormal result).
 - Internal: `eigen/LanczosRun` (block shift-invert Lanczos at one shift: thick restart, full reorthogonalisation,
   purification), `eigen/MassOrthogonalizer` (block Gram-Schmidt in the M-inner product, its inner products by fixed
   pieces of rows on the threads), `eigen/EigenvectorStore` (the pairs found, locked out of every later basis).
-- Sparse additions: `SymmetricCsc::combine`, `hasSameStructure` and the block product `multiply(X, Y, pool)`.
+- Sparse additions: `SymmetricCsc::combine`, `hasSameStructure`, `withoutZeroTerms` and the block product
+  `multiply(X, Y, pool)` (the columns by groups in one pass over the terms, each column the bits of its own product).
 - `eigen/BorderedEigenSystem`: the sparse linearisation `[K-lambda M, M phi; (M phi)^T, 0]` of a simple
   eigenpair, with a balanced border eliminated last. One indefinite factor serves modal response adjoints,
   eigenvector tangents and differentiated adjoints. The original pencil order is retained before its postorder;

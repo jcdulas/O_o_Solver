@@ -188,4 +188,10 @@ struct ShellMatrixRequest
                                                                                 const ShellElementDefinition& def,
                                                                                 const ShellMatrixRequest& request);
 
+// The mass of the element alone (unknownCount × unknownCount): the matrix buildShellElement forms when its request
+// asks for it, by the same operations, for a caller that holds the other matrices of the element already (the mass
+// is then about a third of the build that forms it with the operators of the recovery). The element must be one
+// buildShellElement accepts.
+[[nodiscard]] Matrix buildShellMass(const ShellReferenceElement& re, const ShellElementDefinition& def);
+
 } // namespace oos::elements::mixedHybrid

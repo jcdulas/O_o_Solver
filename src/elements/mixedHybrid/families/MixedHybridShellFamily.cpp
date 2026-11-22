@@ -290,7 +290,15 @@ OutputPlaces outputPlacesOf(const ElementBatchView& view, const MixedHybridModel
                             const NodalDisplacements& displacements)
 {
     const ShellPart& part = *model.shellPart();
-    const ShellElementData element = shellElementOf(model, shell, RECOVERY_OPERATORS);
+    // PERFORMANCE: the recovery reads the element at its centre and its corners, not at the points of its rule: a
+    // case without temperatures (whose thermal load is integrated on the rule) takes the element as the part keeps
+    // it, without building the tables of its points nor copying its matrices, once per case (each mode of an
+    // eigenvalue analysis).
+    const std::shared_ptr<const ShellElementData> kept =
+        displacements.temperatures == nullptr ? part.keptElement(shell.partIndex) : nullptr;
+    const std::optional<ShellElementData> built =
+        kept ? std::nullopt : std::optional<ShellElementData>(shellElementOf(model, shell, RECOVERY_OPERATORS));
+    const ShellElementData& element = kept ? *kept : *built;
     const Vector x = localUnknowns(shellMapOf(view, model, shell), displacements);
     const ShellCaseTemperatures temperatures =
         caseTemperaturesOf(view, shell.batchRow, part, shell, element, displacements.temperatures);

@@ -50,8 +50,13 @@ public:
     // The factor of the last shift (for reports and tests); empty before the first factorisation.
     [[nodiscard]] const SupernodalFactor& factor() const noexcept { return m_factor; }
 
-    // An upper bound of the bytes the pencil holds at once: the shifted matrix and one factor (before the growth of
-    // delayed pivots).
+    // A mass matrix whose terms that are not zero are at most this share of its pattern is copied without its zero
+    // terms for its products (the pattern is that of K: a mass that couples fewer DOFs than the stiffness, as a lumped
+    // mass with the terms of an offset, stores mostly zeros).
+    static constexpr double COMPACT_MASS_SHARE = 1.0 / 3.0;
+
+    // An upper bound of the bytes the pencil holds at once: the shifted matrix, the diagonal or the non-zero terms of
+    // the mass, and one factor (before the growth of delayed pivots).
     [[nodiscard]] static std::uint64_t estimateMemoryBytes(const SymbolicFactor& symbolic,
                                                            const SymmetricCsc& stiffness, std::size_t threadCount);
 
@@ -67,6 +72,8 @@ private:
     bool m_hasFactor = false;
     // The diagonal of a lumped M (empty for a coupled one).
     base::BudgetedBuffer<double> m_massDiagonal;
+    // The non-zero terms of a coupled M that stores mostly zeros (COMPACT_MASS_SHARE; empty otherwise).
+    SymmetricCsc m_massTerms;
     SymmetricCsc m_shifted;
     SupernodalFactor m_factor;
 };

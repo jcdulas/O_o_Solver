@@ -1,6 +1,7 @@
 #include "oos/linalg/sparse/SymmetricCsc.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/base/errors/InternalError.hpp"
 #include "oos/base/threading/ParallelFor.hpp"
 
 #include <algorithm>
@@ -307,6 +308,39 @@ SymmetricCsc SymmetricCsc::fromCompressedColumns(std::int32_t dimension, std::sp
     return result;
 }
 
+SymmetricCsc SymmetricCsc::withoutZeroTerms(const SymmetricCsc& matrix, base::MemoryBudget& budget)
+{
+    const auto columns = static_cast<std::size_t>(matrix.m_dimension);
+    const auto kept = static_cast<std::size_t>(matrix.nonZeroCount() - matrix.zeroTermCount());
+    SymmetricCsc result;
+    result.m_dimension = matrix.m_dimension;
+    result.m_columnOffsets =
+        base::BudgetedBuffer<std::int64_t>(budget, columns + 1, "symmetric CSC: offsets", base::FOR_OVERWRITE);
+    result.m_rows = base::BudgetedBuffer<std::int32_t>(budget, kept, "symmetric CSC: rows", base::FOR_OVERWRITE);
+    result.m_values = base::BudgetedBuffer<double>(budget, kept, "symmetric CSC: values", base::FOR_OVERWRITE);
+    std::size_t next = 0;
+    result.m_columnOffsets[0] = 0;
+    for (std::size_t j = 0; j < columns; ++j)
+    {
+        for (auto k = static_cast<std::size_t>(matrix.m_columnOffsets[j]);
+             k < static_cast<std::size_t>(matrix.m_columnOffsets[j + 1]); ++k)
+        {
+            if (matrix.m_values[k] == 0.0)
+                continue;
+            result.m_rows[next] = matrix.m_rows[k];
+            result.m_values[next] = matrix.m_values[k];
+            ++next;
+        }
+        result.m_columnOffsets[j + 1] = static_cast<std::int64_t>(next);
+    }
+    return result;
+}
+
+std::int64_t SymmetricCsc::zeroTermCount() const noexcept
+{
+    return std::count(m_values.data(), m_values.data() + m_values.size(), 0.0);
+}
+
 bool SymmetricCsc::hasSameStructure(const SymmetricCsc& other) const noexcept
 {
     if (m_dimension != other.m_dimension || m_rows.size() != other.m_rows.size())
@@ -325,14 +359,107 @@ void SymmetricCsc::multiply(ConstDenseMatrixView x, DenseMatrixView y, base::Thr
             {"SymmetricCsc::multiply: expected blocks of ", std::to_string(dimension),
              " rows with the same columns, found ", std::to_string(x.rows), " × ", std::to_string(x.columns), " and ",
              std::to_string(y.rows), " × ", std::to_string(y.columns)}));
+    // PERFORMANCE: the columns of a group in one pass over the terms. A pass per column reads the whole matrix for
+    // each (12 bytes per term, far more than the caches hold) and makes one sum after the other; a pass per group
+    // reads it once, and the sums of its columns, independent of each other, go side by side. The bits of a column do
+    // not depend on its group. Measured on one thread: the mass products of the eigenvalue solve of 1 024 shells of
+    // the mixed hybrid formulation (89 859 equations, 8.1 M terms, blocks of 7 columns), 15.8 s by column and 6.3 s
+    // by groups, of a solve of 36.5 s then 26.5 s.
+    const std::size_t threads = pool != nullptr ? std::max<std::size_t>(pool->threadCount(), 1) : 1;
+    const std::size_t groupColumns =
+        std::clamp<std::size_t>(base::pieceCount(x.columns, threads), 1, MULTIPLY_GROUP_COLUMNS);
     base::parallelFor(
-        pool, x.columns, COLUMNS_PER_MULTIPLY_PIECE,
-        [&](std::size_t first, std::size_t end)
+        pool, base::pieceCount(x.columns, groupColumns), 1,
+        [&](std::size_t firstGroup, std::size_t endGroup)
         {
-            for (std::size_t column = first; column < end; ++column)
-                multiply({x.pointer(0, column), dimension}, {&y(0, column), dimension});
+            for (std::size_t group = firstGroup; group < endGroup; ++group)
+            {
+                const std::size_t first = group * groupColumns;
+                multiplyGroup(x, y, first, std::min(groupColumns, x.columns - first));
+            }
         },
         cancellation);
+}
+
+namespace
+{
+
+// Columns [first, first + Width) of Y = A·X in one pass over the terms of A (its lower triangle by columns: offsets,
+// rows, values). Each column of Y gets the sums SymmetricCsc::multiply(span, span) makes, in the same order: a value
+// of row j is first added to by the columns before j (their term of row j), then by column j.
+template <std::size_t Width>
+void multiplyColumnsTogether(std::span<const std::int64_t> offsets, std::span<const std::int32_t> rows,
+                             std::span<const double> values, ConstDenseMatrixView x, DenseMatrixView y,
+                             std::size_t first)
+{
+    std::array<const double*, Width> xColumns;
+    std::array<double*, Width> yColumns;
+    for (std::size_t c = 0; c < Width; ++c)
+    {
+        xColumns[c] = x.pointer(0, first + c);
+        yColumns[c] = &y(0, first + c);
+        std::fill_n(yColumns[c], y.rows, 0.0);
+    }
+    for (std::size_t j = 0; j + 1 < offsets.size(); ++j)
+    {
+        // Row j of X, and row j of Y while column j adds to it (no other row of this column is row j).
+        std::array<double, Width> xOfColumn;
+        std::array<double, Width> yOfColumn;
+        for (std::size_t c = 0; c < Width; ++c)
+        {
+            xOfColumn[c] = xColumns[c][j];
+            yOfColumn[c] = yColumns[c][j];
+        }
+        for (auto k = static_cast<std::size_t>(offsets[j]); k < static_cast<std::size_t>(offsets[j + 1]); ++k)
+        {
+            const auto i = static_cast<std::size_t>(rows[k]);
+            const double value = values[k];
+            if (i == j)
+            {
+                for (std::size_t c = 0; c < Width; ++c)
+                    yOfColumn[c] += value * xOfColumn[c];
+                continue;
+            }
+            for (std::size_t c = 0; c < Width; ++c)
+            {
+                yColumns[c][i] += value * xOfColumn[c];
+                yOfColumn[c] += value * xColumns[c][i];
+            }
+        }
+        for (std::size_t c = 0; c < Width; ++c)
+            yColumns[c][j] = yOfColumn[c];
+    }
+}
+
+} // namespace
+
+void SymmetricCsc::multiplyGroup(ConstDenseMatrixView x, DenseMatrixView y, std::size_t first,
+                                 std::size_t count) const
+{
+    const std::span<const std::int64_t> offsets = columnOffsets();
+    const std::span<const std::int32_t> rows = rowIndices();
+    const std::span<const double> terms = values();
+    // One function per width, so that the sums of the columns of a group are written side by side.
+    switch (count)
+    {
+    case 1:
+        return multiplyColumnsTogether<1>(offsets, rows, terms, x, y, first);
+    case 2:
+        return multiplyColumnsTogether<2>(offsets, rows, terms, x, y, first);
+    case 3:
+        return multiplyColumnsTogether<3>(offsets, rows, terms, x, y, first);
+    case 4:
+        return multiplyColumnsTogether<4>(offsets, rows, terms, x, y, first);
+    case 5:
+        return multiplyColumnsTogether<5>(offsets, rows, terms, x, y, first);
+    case 6:
+        return multiplyColumnsTogether<6>(offsets, rows, terms, x, y, first);
+    case 7:
+        return multiplyColumnsTogether<7>(offsets, rows, terms, x, y, first);
+    default:
+        OOS_ASSERT(count == MULTIPLY_GROUP_COLUMNS);
+        return multiplyColumnsTogether<8>(offsets, rows, terms, x, y, first);
+    }
 }
 
 void SymmetricCsc::multiply(std::span<const double> x, std::span<double> y) const
