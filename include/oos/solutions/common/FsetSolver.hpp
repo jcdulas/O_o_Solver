@@ -42,7 +42,7 @@ struct FsetSolverOptions
     StructureCache* structures = nullptr;
     // The stiffness before the relations of the model are eliminated (Kgg, on the DOF map of the solver), for the
     // ratio test of the entity DOFs of an element formulation (the class comment says why); read by the constructor
-    // only. Null, or a model without entity DOFs: the test of every DOF against the diagonal of Knn. Not owned.
+    // only. Null: the test of the entity DOFs reads the diagonal of Knn. Not owned.
     const linalg::BlockSparseMatrix* unreducedStiffness = nullptr;
 };
 
@@ -73,8 +73,17 @@ struct FsetReuse
 // elements, and its ratio to the diagonal of Knn, about k·c_j² over that stiffness, would be read as a mechanism.
 // Against the diagonal of Kgg a mechanism at an entity DOF is still one (its pivot far below the stiffness of its
 // own elements; a pivot that kept fewer than four digits of the diagonal of Knn fails too, whatever that stiffness),
-// and the reference is never above the diagonal of Knn: the test only gets less strict there. The grid and scalar
-// points keep the diagonal of Knn, and so does every DOF of a model without entity DOFs.
+// and the reference is never above the diagonal of Knn: the test only gets less strict there.
+//
+// The ratio of an entity DOF may also be ten times MaxDiagonalRatio (ENTITY_RATIO_ALLOWANCE in FsetSolver.cpp). The
+// diagonal of a function of an edge or of an interior is its stiffness with every other unknown held, a bending
+// stiffness at the scale of its element, which grows as the mesh is refined where the pivot, the stiffness of the
+// structure seen from that unknown, does not: their ratio measures the refinement of the mesh before it measures a
+// mechanism, and a plate in bending passes MaxDiagonalRatio while its results are still exact. Beyond the allowance
+// the results do lose their digits (the loss grows as the square of the ratio): the test then fails a model whose
+// elements are much smaller than its thickness, for which a coarser mesh or a lower degree of the formulation is the
+// answer. The grid and scalar points keep MaxDiagonalRatio against the diagonal of Knn, and so does every DOF of a
+// model without entity DOFs.
 //
 // With a structure cache, the factorisation takes the panels' storage a freed factor of the same shape left in the
 // cache's slot, and the destructor leaves its own there for the next analysis: a design loop's points factorise in

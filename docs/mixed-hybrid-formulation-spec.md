@@ -744,6 +744,17 @@ translation) gives the total mass on each axis, and D gives zero strain energy (
   stiffens one combination of them, and the test would read the others as mechanisms. A true mechanism at an entity
   DOF is still reported. The units and the interface of the condensed path and the streamed path keep the matrix
   diagonal.
+- The ratio of an entity DOF may be ten times `MaxDiagonalRatio` (1e8 at its default). The diagonal of a function of
+  an edge or of an interior is a bending stiffness at the scale of its element, which grows as the mesh is refined
+  where the stiffness of the structure does not: the ratio measures the refinement of the mesh before it measures a
+  mechanism. Measured on a cantilever plate bent out of its plane (length 6, width 0.2, thickness 0.1; 6 × 1
+  quadrilaterals of degree 4 cut in two, four, eight, twelve, sixteen and twenty-four each way): the largest ratio
+  is 6e6, 3e7, 1e8, 2e8, 5e8 and 1e9, where the grid points of the classic formulation stay at 3e5, and the tip
+  deflection is exact to 4e-5 up to 1e8, then off by 9e-4, 4e-3 and 1e-2. Beyond the allowance the test fails the
+  model, as it should: **in bending, a mesh whose elements are much smaller than the thickness loses the digits of
+  the results** (the loss grows as the square of the ratio, and faster at a higher degree: at degree 2 the same
+  plate is exact to 1e-4 on 192 × 32 elements). A coarser mesh or a lower degree is the answer; the formulation is
+  meant for elements larger than the thickness.
 
 ### 5.9 Refusals
 

@@ -240,3 +240,35 @@ test("a hinge between two plates of MixedHybridFormulation is still a mechanism 
     return true;
   });
 });
+
+// A cantilever plate of 6 × 1 ShellQuad4 (length 6, width 0.2, thickness 0.1) bent out of its plane by its weight, at
+// degree 2 of the formulation. The largest ratio of its factorisation is 1.4e7, at an unknown of the interior of the
+// element of its tip: the diagonal of such an unknown is a bending stiffness at the scale of its element, far above
+// the stiffness of the plate seen from it, and the plate has no mechanism (its deflection is that of the beam).
+function cantileverPlate(maxRatio) {
+  const [nx, length, width] = [6, 6.0, 0.2];
+  const lines = CASE_RECORDS.filter((record) => record !== "ElemStrainEnergyOutput;All");
+  const id = (i, j) => 1 + i + j * (nx + 1);
+  for (let j = 0; j <= 1; ++j)
+    for (let i = 0; i <= nx; ++i) lines.push(`Node;${id(i, j)};;${real((length * i) / nx)};${real(width * j)};0.`);
+  for (let i = 0; i < nx; ++i)
+    lines.push(`ShellQuad4;${i + 1};1;${id(i, 0)};${id(i + 1, 0)};${id(i + 1, 1)};${id(i, 1)}`);
+  lines.push("ShellProp;1;1;0.1;1;;1", "IsoMat;1;1.e7;;0.3;1.", `SinglePointConstrList;1;123456;${id(0, 0)};${id(0, 1)}`,
+    "GravityLoad;2;;1.;0.;0.;-1.", "Parameter;AutoSingularityConstr;Yes", "Parameter;MixedHybridDegree;2");
+  if (maxRatio !== undefined) lines.push(`Parameter;MaxDiagonalRatio;${real(maxRatio)}`);
+  return { text: lines.join("\n") + "\n", tip: id(nx, 0) };
+}
+
+test("the unknowns of the edges and interiors of MixedHybridFormulation may have ten times MaxDiagonalRatio", () => {
+  // The deflection of the beam: q L⁴ / (8 E I) with q = ρ g b t and I = b t³ / 12, plus the shear deflection.
+  const beam = (1.0 * 0.2 * 0.1 * 6.0 ** 4) / (8 * 1.0e7 * (0.2 * 0.1 ** 3) / 12);
+  const { text, tip } = cantileverPlate();
+  assertRatio(-displacement(solved(text, MIXED), tip)[2], beam, 0.01, "deflection of the tip at the default limit");
+  // The ratio is 1.4e7: it passes ten times a limit of 2e6, and fails ten times a limit of 1e6.
+  assertRatio(-displacement(solved(cantileverPlate(2.0e6).text, MIXED), tip)[2], beam, 0.01, "deflection of the tip");
+  assert.throws(() => statics(cantileverPlate(1.0e6).text, MIXED), (error) => {
+    assert.match(error.message, /factor diagonal ratio test/);
+    assert.match(error.message, /of the (interior of element|edge between grid points)/);
+    return true;
+  });
+});

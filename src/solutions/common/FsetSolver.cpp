@@ -30,10 +30,19 @@ double diagonalOf(const linalg::BlockSparseMatrix& matrix, const assembly::DofMa
 // elimination: it is not known from zero, whatever the stiffness of the elements of its DOF.
 constexpr double PIVOT_PRECISION_RATIO = 1.0e12;
 
+// How many times MaxDiagonalRatio the ratio of an entity DOF may be (the class comment of FsetSolver says why).
+// Measured on a cantilever plate bent out of its plane (length 6, width 0.2, thickness 0.1), 6 × 1 quadrilaterals of
+// the mixed hybrid formulation of degree 4 cut in two, four, eight, twelve, sixteen and twenty-four each way: the
+// largest ratio, at a function of an edge across the plate, is 6e6, 3e7, 1e8, 2e8, 5e8 then 1e9 (four times more
+// each time the elements are cut in two), and the tip deflection is exact to 4e-5 up to 1e8, then off by 9e-4, 4e-3
+// and 1e-2: the loss grows as the square of the ratio. Ten times MaxDiagonalRatio (1e8 at its default) keeps it
+// below 2e-4.
+constexpr double ENTITY_RATIO_ALLOWANCE = 10.0;
+
 // The reference diagonal of the ratio test (linalg::FactorOptions::referenceDiagonal), one value per equation of
 // `selection`: at an entity DOF, the diagonal of the stiffness before the relations are eliminated (`kgg`: the
-// stiffness of the elements of the DOF) where it is below that of `knn` (the class comment of FsetSolver says why);
-// no reference at the other DOFs, nor where the relations did not raise the diagonal.
+// stiffness of the elements of the DOF; that of `knn` where it is the smaller) over ENTITY_RATIO_ALLOWANCE (the class
+// comment of FsetSolver says why); no reference at the other DOFs.
 //
 // The reference is not taken below the diagonal of Knn times maxRatio / PIVOT_PRECISION_RATIO, so that the test,
 // reference / pivot > maxRatio, also fails a pivot below the diagonal of Knn over PIVOT_PRECISION_RATIO: under a
@@ -55,8 +64,8 @@ base::BudgetedBuffer<double> entityReferenceDiagonal(const linalg::BlockSparseMa
         if (dof < dofMap.firstEntityDof())
             continue;
         const double reduced = diagonalOf(knn, dofMap, dof);
-        const double ofElements = diagonalOf(kgg, dofMap, dof);
-        const double candidate = std::max(ofElements, precisionShare * reduced);
+        const double ofElements = std::min(diagonalOf(kgg, dofMap, dof), reduced);
+        const double candidate = std::max(ofElements / ENTITY_RATIO_ALLOWANCE, precisionShare * reduced);
         if (candidate < reduced)
             reference[equation] = candidate;
     }
@@ -101,9 +110,10 @@ FsetSolver::FsetSolver(const linalg::BlockSparseMatrix& knn, const linalg::NodeG
         linalg::SymmetricCsc::fromBlocks(knn, m_ordering->selection(), budget, pool, control);
     // The reference of the ratio test at the entity DOFs; none (the test as it is) for a model without entity DOFs.
     base::BudgetedBuffer<double> referenceDiagonal;
-    if (options.unreducedStiffness != nullptr && dofMap.hasEntities())
-        referenceDiagonal = entityReferenceDiagonal(*options.unreducedStiffness, knn, dofMap, m_ordering->selection(),
-                                                    options.pivotPolicy.maxRatio, budget);
+    if (dofMap.hasEntities())
+        referenceDiagonal = entityReferenceDiagonal(
+            options.unreducedStiffness != nullptr ? *options.unreducedStiffness : knn, knn, dofMap,
+            m_ordering->selection(), options.pivotPolicy.maxRatio, budget);
     m_timings.conversion = watch.lap();
     linalg::FactorOptions factorOptions;
     factorOptions.pivoting = linalg::PivotingMode::PositiveDefinite;
