@@ -326,6 +326,16 @@ function withMixedComponents(text, action) {
 }
 
 const MIXED_CONNECTIONS = ["springs", "rotationSprings", "mpc", "rigidBodyStar", "fastener", "fastenerGivenPoints"];
+test("condensed statics with Auto uses the geometric shell degrees of its plan", () => {
+  const text = overlappingPlates("springs") + "\nParameter;MixedHybridDegree;Auto\n";
+  withMixedComponents(text, (model) => {
+    const run = solver.run(model, "statics", { condensation: "all" });
+    assert.deepEqual(run.condensation.condensedUnits, [1, 2]);
+    assert.ok(run.diagnostics.some((d) => d.text.includes("degrees of the shells from their shape:")));
+    assert.ok(!run.diagnostics.some((d) => d.code === "mixed-hybrid-shell-adaptation" || d.severity === "error"));
+  });
+});
+
 for (const connection of MIXED_CONNECTIONS)
   test(`condensed statics of two mixed hybrid plates connection=${connection}`, () => {
     withMixedComponents(overlappingPlates(connection), (model) => {

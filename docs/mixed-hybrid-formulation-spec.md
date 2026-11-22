@@ -82,7 +82,7 @@ an intermediate developer; the module layering.
 ## 3. The formulation in brief
 
 k is the polynomial degree of the shell displacement: 4 (the lowest degree that passes the validation of the
-reference), or the 2 or 3 the model parameter `MixedHybridDegree` gives, or the degree of each shell from its shape
+reference), or the 2 or 3 the model parameter `MixedHybridDegree` gives, or the degree chosen for each shell
 when it is `Auto` (section 3.1; section 15, decision 7), p = k − 1. The counts of this document are those of k = 4. A
 quadrature has at most 2k + 4 Gauss points per direction in a shell element and on its edges (the rule of the
 reference; the matrices of each shell are integrated on the rule its shape needs, section 6), and d + 4 in a solid (d
@@ -124,9 +124,11 @@ locking.
   surface (document 34, section 2.3).
 - Mass: ½ ∫ (I0 |u̇|² + 2 I1 u̇ · β̇ + I2 |β̇|²) dA, consistent.
 - Degrees of the shells: every shell has the degree of the model, or its own when `MixedHybridDegree` is `Auto`
-  (`ShellDegreeChoice`). Auto starts at degree 3. It uses degree 4 when the relative departure from the affine map
-  exceeds 0.05 or when the normal distance from that map exceeds the thickness (the minimum corner thickness
-  for a tapered section). Shape alone cannot bound the displacement or stress error even on an affine cell. The departure
+  (`ShellDegreeChoice`). Auto starts at degree 3. Let h be the square root of the affine area, s the maximum normal departure,
+  and t the minimum corner thickness. A cell with h > 4t and s > t/64 takes degree 4 on the exterior outline.
+  Inside the same thin curved region, relative departure above 0.20 triggers enrichment. Elsewhere the
+  distortion threshold is 0.05. A cell with s > t always takes degree 4. These dimensionless cutoffs set the initial
+  layout. The outline includes cuts along symmetry planes. Shape alone cannot bound displacement or stress error. The departure
   is the largest sampled distance between the surface and that map, over the square root of the area
   (zero for a flat parallelogram and for a flat triangle, about an eighth of the angle of an arc). One construction
   gives every configuration of degrees: an element has a degree k for its inside and the degree n_e ≤ k of each of its
@@ -143,6 +145,32 @@ locking.
   quadratic displacements stay exact on a flat element. The shells that share an edge with solids keep the degree of the model: the ties of
   section 3.4 read as many functions on the edge of the shell as on that of the solid. The lines on an edge of the
   shells take the degree of the edge. Solids and lines alone have the degree of the model.
+- In full linear statics, Auto tests the loaded solution on every edge still at degree 3.
+  On each side it projects the difference between the kinematic and hybrid rotations on Legendre modes 0 through 3
+  using five Gauss points and the rational edge measure. Mode 3 probes the additional quartic rotation. On a
+  smooth interior edge without a stiffener it also sums the membrane work of the two sides on the added
+  displacement trace (1 - z^2)(5z^2 - 1)/W, with z in [-1,1]. Each load case scales the angular defect by its
+  kinematic scale and the force defect by its membrane force scale. The larger ratio ranks each edge. Both
+  incident cells are marked for the highest scores carrying half the sum of squares, including ties. Scores
+  below the relative noise floor of 1e-6 are discarded.
+  For cubic shear-flexible shells the solver also tests director equilibrium inside the cell on the pilot surface.
+  The two triangular and eight quadrilateral test fields belong to the quartic element's shear space and vanish on
+  every side. Their residual is the applied director work minus the work of the recovered bending moments on the
+  covariant symmetric gradient and the transverse shear forces on the director. Thermal moments and the first and
+  second mass moments under affine acceleration enter this balance. The work of the local correction is
+  `rᵀ K⁻¹ r`, with the bending and shear stiffness integrated on these modes. Cells carrying half the correction
+  work above the numerical floor are marked, including ties. The union with the edge marks over the requested cases
+  gives one final layout. Kirchhoff and membrane-only cells use the trace checks. Inertia relief uses the trace checks,
+  and combined cases inherit the interior marks of their constituent solves. When a degree changes the solver releases
+  the pilot and solves again. These indicators rank cells for enrichment. Their values give no bound on a point result.
+  The full static result lists the final degree-4 element IDs in `selectedQuarticShells`. Analyses that need a fixed
+  layout use the geometric selection, including normal modes, buckling, trim, condensed and streamed statics, and
+  statics with external units or superelements.
+  On the regular 8 x 8 Scordelis-Lo quarter roof, the cubic, Auto and quartic sags are 0.30124559, 0.30150845
+  and 0.30150893. Auto starts with 28 quartic cells, adds six after the pilot solve and uses 4,590 equations.
+  The bending moment difference against the uniform quartic centre and corner rows is 0.155%.
+  On the 8 x 8 pinched hemisphere with a hole, geometry selects degree 4 throughout and Auto takes one solve.
+  Both cases are in `wasm/test/validation/shell-statics.test.mjs`.
 - Geometric stiffness: the second variation of the nonlinear energy at u = 0 with the stresses of the preload. It
   includes the membrane forces, the moments in the elements and the moments at the kinks (folds).
 
@@ -1457,11 +1485,7 @@ Each phase ends with the full test suite passing and its own checks of section 1
    its weight; the displacement and the von Mises stress at a grid point against a fine regular mesh): at the middle
    mesh of each case the errors of degree 3 are those of degree 4 (0.1 to 0.7 % against 0.1 to 0.6 %) for about half the
    time (a roof of 1 024 quadrilaterals: 2.4 s against 5.0 s), those of degree 2 are 0.1 to 1.3 % for a quarter of it
-   (1.2 s). On the regular 4 × 4 Scordelis-Lo roof, Auto gives the cubic sag of 0.300957 (reference 0.3024).
-   On the 8 × 8 roof with interior grid points moved by 12 % of a cell, it gives 0.301457 with four cubic and
-   sixty quartic shells. The uniform cubic and quartic results are 0.301250 and 0.301516. On the distorted
-   pinched hemisphere with a hole (8 × 8, thickness 0.04), Auto selects degree 4 throughout and both equatorial
-   displacements agree with the benchmark to within 0.46 %. Its cost approaches a quartic solve on such a mesh.
+   (1.2 s). Section 3.1 gives the measured results for Auto on curved shells.
 8. **Membrane-only and bending-only shell properties** (MID2 or MID1 blank). Accepted, as new work (section 4.1,
    phase 6).
 9. **Reference data.** No exporter in the crate; the port is verified by the analytic checks of section 13.

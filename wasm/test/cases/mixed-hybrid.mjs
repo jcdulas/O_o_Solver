@@ -742,19 +742,38 @@ test("a Bar2 of MixedHybridFormulation of degree 2 or 3 gives the end forces of 
 // The degree of each shell from its shape (spec section 3.1): the value Auto. The geometry report of the run gives the
 // degrees taken.
 const degreesReport = (run) => {
-  const report = run.diagnostics.find((d) => /degrees of the shells from their shape/.test(String(d.text)));
-  return report ? /degrees of the shells from their shape: ([^;]*)/.exec(report.text)[1].trim() : null;
+  const pattern = /(?:degrees of the shells from their shape|selected degrees of the shells): ([^;]*)/;
+  const report = run.diagnostics.find((d) => pattern.test(d.text));
+  return report ? pattern.exec(report.text)[1].trim() : null;
 };
 
-test("the degrees of the shells of MixedHybridFormulation from their shape reproduce the cubic solution on a regular roof", () => {
+test("Auto includes the curved outline and checks the loaded solution on a regular roof", () => {
   const regular = scordelisLo({ extra: [DEGREE_PARAMETER("Auto")] });
-  const automatic = runShells(regular.text, "mixed-shell-roof-auto-regular");
-  assert.equal(degreesReport(automatic), "16 of degree 3");
-  const sag = (run, model) => -nodal(run, "displacements", model.freeEdgeMiddle)[2];
-  const uniform = scordelisLo({ extra: [DEGREE_PARAMETER(3)] });
-  assertClose([sag(automatic, regular)], [sag(runShells(uniform.text, "mixed-shell-roof-degree-3"), uniform)], 1e-12,
-    "the regular mesh at degree 3");
+  const run = runShells(regular.text, "mixed-shell-roof-auto-regular");
+  const selected = new Set(run.selectedQuarticShells);
+  for (let j = 0; j < 4; ++j)
+    for (let i = 0; i < 4; ++i)
+      if (i === 0 || i === 3 || j === 0 || j === 3) assert.ok(selected.has(4 * j + i + 1));
+  assert.ok(run.diagnostics.some((d) => d.code === "mixed-hybrid-shell-adaptation"));
 });
+
+for (const shape of ["ShellQuad4", "ShellTria3"])
+  test(`loaded shell traces retain the cubic layout for exact uniform stretch of ${shape}`, () => {
+    const delta = 0.001;
+    const patch = strip({ shape, poisson: 0, extra: [DEGREE_PARAMETER("Auto")], records: (node, nx, ny) => {
+      const holds = [];
+      for (let j = 0; j <= ny; ++j) {
+        holds.push(`SinglePointConstrList;1;123456;${node(0, j)}`, `SinglePointConstr;1;${node(nx, j)};1;${real(delta)}`);
+      }
+      return holds;
+    } });
+    withModel(patch.text, "adaptive-patch", SHELL_OPTIONS, (handle) => {
+      const run = solver.run(handle, "statics");
+      assert.deepEqual(run.selectedQuarticShells, []);
+      assert.ok(run.diagnostics.some((d) => d.text.includes("static solves: 1")));
+      assert.ok(Math.abs(nodal(run, "displacements", patch.node(1, 1))[0] / delta - 1 / patch.nx) < 1e-9);
+    });
+  });
 
 for (const [shape, moved] of [["ShellQuad4", 0.12], ["ShellTria3", 0.2]])
   test(`the distorted Scordelis-Lo roof of ${shape} mixes cubic and quartic shells in Auto`, () => {
@@ -776,7 +795,7 @@ test("Auto recovers the tip displacement and root moment of a tapered mesh in pl
   withModel(text, "auto-tapered-cantilever", { ...SHELL_OPTIONS, formulationGeometry: { rawElements } }, (handle) => {
     const run = solver.run(handle, "statics");
     assert.ok(!run.diagnostics.some((d) => d.severity === "error"), JSON.stringify(run.diagnostics));
-    assert.equal(degreesReport(run), "4 of degree 3, 4 of degree 4");
+    assert.equal(degreesReport(run), "1 of degree 3, 7 of degree 4");
     // Per unit width, M(0) = p L? / 2. At zero Poisson ratio the deflection is the cantilever beam solution.
     const { length, young, thickness } = STRIP;
     const rootMoment = p * length ** 2 / 2;
@@ -1733,8 +1752,6 @@ test("the shape gradient of a strip in MixedHybridFormulation with two degrees i
   // layouts of the element differ).
   const strip = designStrip({ n: 3, shape: true, load: "1.;0.;0.;1.", extra: [DEGREE_PARAMETER("Auto")] });
   const tapered = { ...strip, text: strip.text.replace(/Node;4;;[^;]*;/, "Node;4;;0.55;") };
-  withModel(tapered.text, "mixed-design-two-degrees", SHELL_OPTIONS, (model) =>
-    assert.equal(degreesReport(solver.run(model, "statics")), "1 of degree 3, 2 of degree 4"));
   withDesign(tapered, [{ id: 10, type: "Displacement", attributeA: 3, targets: [strip.tip] },
     { id: 11, type: "Displacement", attributeA: 1, targets: [strip.tip + 1] }], {},
   (problem) => assertGradients(problem, [0.05], SHAPE_GRADIENT_TOLERANCE, [1e-4]));

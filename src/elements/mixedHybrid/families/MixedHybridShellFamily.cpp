@@ -320,6 +320,29 @@ OutputPlaces outputPlacesOf(const ElementBatchView& view, const MixedHybridModel
 
 } // namespace
 
+ShellInteriorDefect shellDefects(const ElementBatchView& view, std::int64_t row, const NodalDisplacements& field,
+                                 bool testInterior, std::vector<ShellEdgeDefect>& defects)
+{
+    const auto& model = MixedHybridModel::of(view.index());
+    const ShellPart& part = *model.shellPart();
+    const MixedShell& shell = requiredShell(model, view, row);
+    const auto& edges = part.elementAtPoints(shell.partIndex).edges;
+    if (std::none_of(edges.begin(), edges.end(), [&](auto edge) { return part.edgeDegree(edge) == 3; }))
+        return {shell.partIndex};
+    const auto kept = field.temperatures ? nullptr : part.keptElement(shell.partIndex);
+    const auto built =
+        kept ? std::nullopt : std::optional<ShellElementData>(shellElementOf(model, shell, RECOVERY_OPERATORS));
+    const auto& element = kept ? *kept : *built;
+    const Vector x = localUnknowns(shellMapOf(view, model, shell), field);
+    const auto thermal = caseTemperaturesOf(view, row, part, shell, element, field.temperatures);
+    const auto coefficients =
+        solutionCoefficients(element.matrices, x, thermal.load ? &thermal.load->momentTerm : nullptr);
+    appendTraceDefects(part, shell.partIndex, element, x, coefficients, thermal.at, defects);
+    if (testInterior && element.degree == 3 && !element.kirchhoff && part.carriesMoments(shell.partIndex))
+        return directorEquilibrium(part, shell.partIndex, element, x, coefficients, field.bodyAcceleration);
+    return {shell.partIndex};
+}
+
 MixedHybridShellFamily::MixedHybridShellFamily(std::unique_ptr<ElementFamily> classic) : m_classic(std::move(classic))
 {
 }

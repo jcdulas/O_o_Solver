@@ -1,6 +1,9 @@
 #include "CheckRunner.hpp"
 #include "ShellPartCheckSupport.hpp"
+#include "oos/elements/core/ElementFamily.hpp"
+#include "oos/elements/mixedHybrid/model/ShellTraceDefect.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellDegreeChoice.hpp"
+#include "oos/elements/mixedHybrid/shell/ShellPointLaw.hpp"
 
 #include <algorithm>
 #include <array>
@@ -371,9 +374,79 @@ CHECK_CASE("shell degree: the degrees a part chooses from the shapes")
     input.fullDegreeEdges = {mh::EdgeKey::of(0, 1)};
     const mh::ShellPart full(input);
     runner.expect(full.shellDegree(0) == full.degree(), "a shell on an edge named full has the degree of the part");
+    input.shellDegrees.assign(input.shells.size(), 3);
+    const mh::ShellPart prescribed(input);
+    runner.expect(prescribed.shellDegree(0) == 4, "a frozen cubic layout keeps a full solid interface");
+    input.shellDegrees.clear();
     input.fullDegreeEdges.clear();
     const mh::ShellPart again(input);
     runner.expect(again.shellDegree(0) == 3, "no edge named full: the degree of its shape");
+}
+
+CHECK_CASE("shell degree: local director work on an affine element")
+{
+    const auto plate = mappedMesh(1, 1, [](double s, double t) { return mh::SpaceVector{s, t, 0.0}; });
+    for (const bool triangles : {false, true})
+    {
+        auto input = shellInput(plate, isotropicSection(1000., 0.3, 0.1), triangles);
+        input.degree = 3;
+        for (auto& cell : input.shells)
+            cell.offset = 0.05;
+        const mh::ShellPart part(input);
+        const auto& element = part.elementAtPoints(0);
+        const auto& ref = part.referenceElement(element);
+        mh::Vector x(mh::shellUnknownCount(ref), 0.0);
+        mh::ShellSolutionCoefficients field;
+        field.moments.resize(ref.momentCount);
+        const auto work = [&] { return mh::directorEquilibrium(part, 0, element, x, field, nullptr).work; };
+        // Constant M with Q=0 equilibrates every zero-boundary director.
+        field.moments.back() = 1.;
+        const double constant = work();
+        field.moments.back() = 0.;
+        double unbalanced = 0.0;
+        for (std::size_t i = 0; i + 3 < ref.momentCount && unbalanced < 1.e-8; ++i)
+        {
+            field.moments.assign(ref.momentCount, 0.);
+            field.moments[i] = 1.;
+            unbalanced = work();
+        }
+        runner.expect(
+            unbalanced > 1.e-8 && constant < 1.e-20 * unbalanced,
+            shapeName(triangles) + ": distinguishes a varying unbalanced moment from a constant equilibrated moment");
+        for (auto& m : field.moments)
+            m *= -3.;
+        runner.expectNear(work(), 9. * unbalanced, 1.e-11, shapeName(triangles) + ": quadratic correction work");
+
+        // An offset isotropic skin has a uniform director load I1 a. Project
+        // the exact constant shear H^-1 I1 a onto the covariant shear basis.
+        oos::elements::BodyAcceleration acceleration;
+        acceleration.constant = {1., 2., 0.};
+        const auto g = mh::geometryAt(ref, element.definition(), 0., 0.);
+        const auto section = mh::sectionAtGeometry(element.section, element.offset, 0., 0., g);
+        std::array<double, 2> target{};
+        for (std::size_t c = 0; c < 2; ++c)
+            target[c] = section.mass[1] * mh::dot3(g.a[c], acceleration.constant.components) / section.h[0][0];
+        mh::Matrix gram(ref.hcurlCount, ref.hcurlCount);
+        mh::Vector rhs(ref.hcurlCount);
+        for (std::size_t q = 0; q < ref.points.size(); ++q)
+            for (std::size_t i = 0; i < ref.hcurlCount; ++i)
+            {
+                const auto& a = ref.hcurl[q * ref.hcurlCount + i];
+                rhs[i] += ref.weights[q] * (a[0] * target[0] + a[1] * target[1]);
+                for (std::size_t j = 0; j < ref.hcurlCount; ++j)
+                {
+                    const auto& b = ref.hcurl[q * ref.hcurlCount + j];
+                    gram(i, j) += ref.weights[q] * (a[0] * b[0] + a[1] * b[1]);
+                }
+            }
+        const auto shear = mh::EquilibratedCholesky::factor(gram).value().solve(rhs);
+        std::copy(shear.begin(), shear.end(), x.begin() + 3 * ref.h1Count);
+        field.moments.assign(ref.momentCount, 0.);
+        const double unloaded = work();
+        const auto balanced = mh::directorEquilibrium(part, 0, element, x, field, &acceleration);
+        runner.expect(unloaded > 0. && balanced.work < 1.e-20 * unloaded,
+                      shapeName(triangles) + ": transverse shear balances the applied director couple");
+    }
 }
 
 // The same panel uses the same transition construction. Only the selected degrees respond to thickness.

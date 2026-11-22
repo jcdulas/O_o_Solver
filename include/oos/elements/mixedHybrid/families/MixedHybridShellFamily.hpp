@@ -2,6 +2,7 @@
 
 #include "oos/elements/core/ElementFamily.hpp"
 #include "oos/elements/core/ElementFormulation.hpp"
+#include "oos/elements/mixedHybrid/model/ShellTraceDefect.hpp"
 
 #include <memory>
 #include <string>
@@ -10,6 +11,10 @@
 
 namespace oos::elements::mixedHybrid
 {
+
+[[nodiscard]] ShellInteriorDefect shellDefects(const ElementBatchView& view, std::int64_t row,
+                                               const NodalDisplacements& field, bool testInterior,
+                                               std::vector<ShellEdgeDefect>& edges);
 
 // The family of a shell card (ShellQuad4, ShellTria3, ShellQuad4Drilling, ShellTria3Drilling, ShellQuad8, ShellTria6)
 // in the mixed hybrid formulation (docs/mixed-hybrid-formulation-spec.md sections 3.1 and 4.1): the shell of

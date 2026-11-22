@@ -207,6 +207,7 @@ export interface EigenvalueTable {
 }
 
 export interface AnalysisResult {
+  selectedQuarticShells?: number[]; // IDs selected by MixedHybridDegree Auto in full statics
   nodalTables: NodalTable[];
   elementTables: ElementTable[];
   gridPointForces: GridPointForceTable[];

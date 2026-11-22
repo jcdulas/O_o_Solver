@@ -88,10 +88,25 @@ model. `MixedHybridFormulation` puts every shell, line and solid card in the mix
 needs geometry declarations, from the `formulationGeometry` option or from the `SurfaceEdge`, `SurfaceFacet` and
 `SurfaceLine` cards of the deck: the smooth, sharp and raw edges of the mesh, its raw elements and its mesh lines. Its
 elements default to degree 4. The model parameter `MixedHybridDegree` also accepts a uniform 2 or 3.
-With `Auto`, shells start at degree 3 and rise to 4 where their geometry is distorted, their sagitta exceeds
-the local thickness, or they share an edge with a solid. One shell formulation handles the degrees on both sides of
+With `Auto`, shells start at degree 3. The solver enriches the outline of thin curved patches, strongly distorted
+cells, cells whose sagitta exceeds their thickness, and shell edges shared with solids. One shell formulation handles the degrees on both sides of
 each edge. An empty declaration (`formulationGeometry: {}`, or `Parameter;GeometryDeclarations;Given` in the deck) leaves every edge
 to the model's `ShellNormalAngle`. `model.surfaceEdges()` gives what was read at every edge (see the
 [specification](mixed-hybrid-formulation-spec.md), sections 4.4 and 10.5).
+
+Set the model parameter once to let the solver choose the shell degrees.
+
+```text
+Parameter;MixedHybridDegree;Auto
+```
+
+In a full static analysis, Auto checks the loaded solution and solves again only if additional cells need degree 4.
+For multiple load cases it uses one final layout. The diagnostic gives the number of solves and the result lists
+the selected elements in `selectedQuarticShells`. Modes, buckling, trim and static paths that require a fixed layout
+use the degrees selected from geometry.
+
+```js
+const result = solver.run(model, "statics");
+```
 
 The [module guide](modules.md) covers assembly, linear algebra, reduction, output and design calculations.

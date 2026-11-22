@@ -303,7 +303,7 @@ std::set<EdgeKey> MixedHybridModel::shellEdgesOnSolids() const
     return edges;
 }
 
-void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
+void MixedHybridModel::buildShellPart(const SnapshotIndex& index, const std::set<std::int32_t>* quarticShells)
 {
     if (m_shells.empty())
         return;
@@ -341,6 +341,9 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
         for (std::size_t k = 0; k < shell.cornerCount; ++k)
             shell.part.midside[k] = shell.midRows[k] >= 0 ? m_gridIndexOfRow.at(shell.midRows[k]) : -1;
         input.shells.push_back(shell.part);
+        if (quarticShells && m_choosesShellDegrees)
+            input.shellDegrees.push_back(quarticShells->contains(shell.elementId) ? input.degree
+                                                                                  : input.degreeChoice->baseDegree);
     }
     // The lines on the edges of the shells, by increasing element ID.
     std::vector<std::size_t> shellLines;
@@ -1032,7 +1035,9 @@ void MixedHybridModel::reportGeometry()
         for (const auto& [degree, count] : shellsByDegree)
             degrees += base::concatenate(
                 {degrees.empty() ? "" : ", ", std::to_string(count), " of degree ", std::to_string(degree)});
-        summary.message += base::concatenate({"; degrees of the shells from their shape: ", degrees});
+        const auto label = m_shellPart->input().shellDegrees.empty() ? "; degrees of the shells from their shape: "
+                                                                     : "; selected degrees of the shells: ";
+        summary.message += base::concatenate({label, degrees});
     }
     m_problems.push_back(std::move(summary));
 

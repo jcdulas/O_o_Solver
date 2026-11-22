@@ -561,7 +561,8 @@ std::vector<api::ExternalUnitSettings> externalUnitsOf(const val& given)
     return units;
 }
 
-val numberArray(const std::vector<std::int64_t>& values)
+template <typename Integer>
+val numberArray(const std::vector<Integer>& values)
 {
     val array = val::array();
     for (const std::int64_t value : values)
@@ -652,6 +653,8 @@ val runAnalysis(Model& model, const std::string& analysis, const val& settings)
                 envelopes.call<void>("push", envelopeTableObject(table));
 
             val result = val::object();
+            if (output.selectedQuarticShells)
+                result.set("selectedQuarticShells", numberArray(*output.selectedQuarticShells));
             result.set("nodalTables", nodal);
             result.set("elementTables", elements);
             result.set("gridPointForces", forces);

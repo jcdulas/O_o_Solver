@@ -300,22 +300,24 @@ void ShellPart::chooseDegrees(std::span<const ElementSurface> surfaces)
     const std::size_t ne = m_input.shells.size();
     m_degrees.assign(ne, m_input.degree);
     if (!m_input.shellDegrees.empty())
-    {
         m_degrees = m_input.shellDegrees;
-        return;
-    }
-    if (!m_input.degreeChoice)
-        return;
-    for (std::size_t ie = 0; ie < ne; ++ie)
+    else if (m_input.degreeChoice)
     {
-        const ShellPartShell& shell = m_input.shells[ie];
-        const std::size_t nv = shell.corners.count;
-        const ShellShapeDeparture departure = shellShapeDeparture(nv, surfaceOf(surfaces[ie].patch));
-        double thickness = shell.section.referenceThickness;
-        if (shell.gridThicknesses)
-            thickness = *std::min_element(shell.gridThicknesses->begin(), shell.gridThicknesses->begin() + nv);
-        const std::size_t degree = chooseShellDegree(departure, thickness, *m_input.degreeChoice);
-        m_degrees[ie] = std::min(degree, m_input.degree);
+        for (std::size_t ie = 0; ie < ne; ++ie)
+        {
+            const ShellPartShell& shell = m_input.shells[ie];
+            const std::size_t nv = shell.corners.count;
+            const ShellShapeDeparture departure = shellShapeDeparture(nv, surfaceOf(surfaces[ie].patch));
+            double thickness = shell.section.referenceThickness;
+            if (shell.gridThicknesses)
+                thickness = *std::min_element(shell.gridThicknesses->begin(), shell.gridThicknesses->begin() + nv);
+            bool onBoundary = false;
+            for (std::size_t k = 0; k < nv; ++k)
+                onBoundary |=
+                    m_topology.isExternal(m_topology.indexOf(shell.corners.at(k), shell.corners.at((k + 1) % nv)));
+            const std::size_t degree = chooseShellDegree(departure, thickness, *m_input.degreeChoice, onBoundary);
+            m_degrees[ie] = std::min(degree, m_input.degree);
+        }
     }
     for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
         if (m_input.fullDegreeEdges.contains(m_topology.edges[e]))

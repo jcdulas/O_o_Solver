@@ -121,6 +121,8 @@ struct AnalysisOutput
     // The memory budget of the run: the result buffers hold their reservations in it, so it is declared first and
     // destroyed last.
     std::shared_ptr<base::MemoryBudget> budget;
+    // The applied quartic shell IDs chosen by Auto in full statics.
+    std::optional<std::vector<std::int32_t>> selectedQuarticShells;
     // The nodal and element tables, in the layout of O_o_Reader's results ({kind, subcase, step, ids, values}).
     output::ResultArrays tables;
     // The eigenvalue table of each modal or buckling subcase (empty for statics).

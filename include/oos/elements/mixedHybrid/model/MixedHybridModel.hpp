@@ -139,7 +139,9 @@ public:
     // SnapshotIndex::computedOnce build of the same index.
     [[nodiscard]] static const MixedHybridModel& of(const SnapshotIndex& index);
 
-    explicit MixedHybridModel(const SnapshotIndex& index);
+    // An analysis may initialise its own fresh index with a cubic pilot or a frozen enrichment.
+    // Solid interfaces retain their full trace degree in both passes.
+    explicit MixedHybridModel(const SnapshotIndex& index, const std::set<std::int32_t>* quarticShells = nullptr);
 
     // FormulationModel.
     [[nodiscard]] const EntityLayout& layout(EntityLayout::Kind kind) const override;
@@ -322,7 +324,7 @@ private:
     // The shell elements of every shell card of the snapshot.
     void readShells(const SnapshotIndex& index);
     // The ShellPart of the shells (and of the lines on their edges), and its entities.
-    void buildShellPart(const SnapshotIndex& index);
+    void buildShellPart(const SnapshotIndex& index, const std::set<std::int32_t>* quarticShells);
     // The edges of the shells between two grid points of the solids (a superset of those the solids share).
     [[nodiscard]] std::set<EdgeKey> shellEdgesOnSolids() const;
     // The geometry report of the shells (spec section 10.5), as diagnostics of the model: its summary, and the edges

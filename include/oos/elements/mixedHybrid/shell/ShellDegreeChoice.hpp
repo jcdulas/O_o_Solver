@@ -32,12 +32,13 @@ struct ShellShapeDeparture
 {
     double relative;
     double normal;
+    double size; // square root of the affine area
 };
 
 [[nodiscard]] ShellShapeDeparture shellShapeDeparture(std::size_t cornerCount, const SurfaceAt& surface);
 
 // Enrich for in-plane distortion or for curvature whose sagitta exceeds the local thickness.
 [[nodiscard]] std::size_t chooseShellDegree(const ShellShapeDeparture& departure, double thickness,
-                                            const ShellDegreeChoice& choice);
+                                            const ShellDegreeChoice& choice, bool onBoundary = false);
 
 } // namespace oos::elements::mixedHybrid

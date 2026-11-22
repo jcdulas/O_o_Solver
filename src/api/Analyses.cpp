@@ -1,5 +1,6 @@
 #include "oos/api/Analyses.hpp"
 
+#include "AdaptiveShellStatics.hpp"
 #include "oos/api/Threading.hpp"
 #include "oos/assembly/assemble/ElementSet.hpp"
 #include "oos/base/diagnostics/DiagnosticSink.hpp"
@@ -222,8 +223,8 @@ AnalysisOutput runStatics(const input::ModelSnapshot& snapshot, const AnalysisSe
         options.externalUnits.push_back({unit.zone, externalUnitOf(unit, budget)});
     options.envelopes = settings.envelopes;
     options.keepsCaseTables = settings.keepsCaseTables;
-    solutions::StaticResults results = solutions::StaticSolution(snapshot, options).run(budget);
     AnalysisOutput output;
+    solutions::StaticResults results = runStaticSolution(snapshot, options, budget, output.selectedQuarticShells);
     output.diagnostics = std::move(results.diagnostics);
     // The plan's own analysis model reports what the run reports again: only its other diagnostics are added.
     addPlanDiagnostics(output.diagnostics, planDiagnostics);

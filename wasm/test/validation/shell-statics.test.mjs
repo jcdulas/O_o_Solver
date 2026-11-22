@@ -13,7 +13,7 @@
 // Run: node --test wasm/test/validation/shell-statics.test.mjs   (Node.js 24; needs ../O_o_Reader/build/wasm/dist)
 
 import assert from "node:assert/strict";
-import { CRITERIA, MIXED, CLASSIC, real, runModel, nodal, innerEdges, prepared, surfaceRecords, test }
+import { CRITERIA, MIXED, CLASSIC, real, runModel, withModel, solver, nodal, innerEdges, prepared, surfaceRecords, test }
   from "./support.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -601,6 +601,96 @@ function scordelisLo({ n, shape = "ShellQuad4", distortion = 0, shear = true, fa
 }
 const ROOF_SAG = 0.3024;
 
+test("Scordelis-Lo roof, equal-mesh cubic, Auto and quartic resultants", (t) => {
+  const n = 8;
+  const roof = scordelisLo({ n });
+  const text = roof.text.replace("[model]", "ElemForceOutput;All;CornerResults\n[model]");
+  const solve = (degree) => {
+    const r = runModel(text + `Parameter;MixedHybridDegree;${degree}\n`, MIXED);
+    const report = r.diagnostics.find((d) => d.code === "mixed-hybrid-shell-adaptation");
+    if (degree === "Auto") {
+      assert.match(report.text, /selected by interior equilibrium: [1-9]/);
+      assert.match(report.text, /static solves: 2/);
+      t.diagnostic(report.text);
+    } else {
+      assert.equal(report, undefined);
+      assert.equal(r.selectedQuarticShells, undefined);
+    }
+    return { sag: -nodal(r, "displacements", roof.freeEdgeMiddle)[2], rows: rowsOf(r, "ShellQuad4", "forces") };
+  };
+  const quartic = solve(4);
+  const cubic = solve(3);
+  const relative = (rows, components) => {
+    let delta = 0, scale = 0;
+    for (const [i, row] of rows.entries()) {
+      const ref = quartic.rows[i];
+      assert.deepEqual([row.id, row.nodeId], [ref.id, ref.nodeId]);
+      for (const c of components) {
+        delta += (row[c] - ref[c]) ** 2;
+        scale += ref[c] ** 2;
+      }
+    }
+    return Math.sqrt(delta / scale);
+  };
+  const auto = solve("Auto");
+  for (const [name, run] of [["cubic", cubic], ["Auto", auto], ["quartic", quartic]])
+    t.diagnostic(`${name}  sag ${run.sag.toFixed(8)}  relative moments ${relative(run.rows, MOMENTS).toPrecision(3)}`);
+  assert.ok(Math.abs(auto.sag - quartic.sag) < 0.02 * Math.abs(cubic.sag - quartic.sag));
+  assert.ok(relative(auto.rows, MOMENTS) < 0.002);
+  assert.ok(relative(auto.rows, FORCES) < 0.02);
+});
+
+test("Auto selects interior point loads and shares the final layout across subcases", () => {
+  const n = 6;
+  const grid = mesh({ nu: n, nv: n, shape: "ShellQuad4", position: (u, v) => [u, v, 0] });
+  const records = [...grid.lines, ...smoothSurface(grid), "ShellProp;1;1;0.03;1;;1", "IsoMat;1;7.e10;;0.3;1.",
+    "Parameter;MixedHybridDegree;Auto", `PointForceLoad;2;${grid.node(2, 3)};;1.;0.;0.;1.`,
+    `PointForceLoad;3;${grid.node(4, 3)};;1.;0.;0.;1.`];
+  for (const p of grid.points)
+    if (p.a === 0 || p.a === 1 || p.b === 0 || p.b === 1) records.push(...hold("123456", [p.id]));
+  const text = deck({ model: records, outputs: [] }).replace("[model]",
+    "SubcaseStart;2\nSinglePointConstrSelection;1\nStaticLoadSelection;3\nDisplacementOutput;All\n[model]");
+  const { chosen, multiple } = withModel(text, MIXED, (model) => {
+    const solve = (subcase) => solver.run(model, "statics", { subcases: [subcase] }).selectedQuarticShells;
+    const chosen = [solve(1), solve(2)];
+    const multiple = solver.run(model, "statics");
+    assert.deepEqual(solve(1), chosen[0]);
+    return { chosen, multiple };
+  });
+  for (const [k, marked] of chosen.entries()) {
+    const loadedNode = grid.node(k === 0 ? 2 : 4, 3);
+    assert.ok(grid.elements.some((e) => e.grids.includes(loadedNode) && marked.includes(e.id)));
+    assert.ok(marked.length < grid.elements.length);
+  }
+  const ids = [...new Set(chosen.flat())].sort((a, b) => a - b);
+  assert.deepEqual(multiple.selectedQuarticShells, ids);
+  const gridOf = permutation(grid.points.length);
+  const elementOf = permutation(grid.elements.length);
+  const reordered = runModel(renumbered(text, gridOf, elementOf), MIXED);
+  assert.deepEqual(reordered.selectedQuarticShells, ids.map(elementOf).sort((a, b) => a - b));
+  for (const c of [1, 2]) {
+    const centre = grid.node(3, 3);
+    const expected = nodal(multiple, "displacements", centre, c)[2];
+    const actual = nodal(reordered, "displacements", gridOf(centre), c)[2];
+    assert.ok(Math.abs(actual / expected - 1) < 1.e-8);
+  }
+});
+
+test("a membrane-only plate selects interior quartic traces from membrane work", () => {
+  const n = 6;
+  const grid = mesh({ nu: n, nv: n, shape: "ShellTria3", position: (u, v) => [u, v, 0] });
+  const centre = grid.node(3, 3);
+  const model = [...grid.lines, ...smoothSurface(grid), "ShellProp;1;1;0.01;;;", "IsoMat;1;7.e10;;0.3;1.",
+    "Parameter;MixedHybridDegree;Auto", `PointForceLoad;2;${centre};;1.;1.;0.;0.`];
+  for (const p of grid.points) {
+    if (p.a === 0 || p.a === 1 || p.b === 0 || p.b === 1) model.push(...hold("123456", [p.id]));
+    else model.push(...hold("3456", [p.id]));
+  }
+  const run = runModel(deck({ model, outputs: [] }), MIXED);
+  assert.ok(run.selectedQuarticShells.length < grid.elements.length);
+  assert.ok(grid.elements.some((e) => e.grids.includes(centre) && run.selectedQuarticShells.includes(e.id)));
+});
+
 for (const { shape, n, distortion = 0 } of [{ shape: "ShellTria3", n: 4 }, { shape: "ShellQuad4", n: 8 },
   { shape: "ShellTria3", n: 8 }, { shape: "ShellQuad8", n: 4 }, { shape: "ShellTria6", n: 4 },
   { shape: "ShellQuad4", n: 4, distortion: 0.2 }, { shape: "ShellQuad4", n: 8, distortion: 0.2 }])
@@ -721,6 +811,31 @@ function pinchedHemisphere({ n, shape = "ShellQuad4", distortion = 0, rotate = u
 }
 const HEMISPHERE_DISPLACEMENT = 0.0940;
 
+test("Auto keeps the fully quartic geometric selection on a curved skin with a hole", (t) => {
+  const solve = (n, degree) => {
+    const model = pinchedHemisphere({ n });
+    const text = model.text.replace("[model]", "ElemForceOutput;All;CornerResults\n[model]");
+    const run = runModel(text + `Parameter;MixedHybridDegree;${degree}\n`, MIXED);
+    // Frobenius norm of the bending resultant at the same physical point on
+    // the cutout, on the meridian of the outward load, for every mesh.
+    const rim = rowsOf(run, "ShellQuad4", "forces").find((r) => r.nodeId === model.grid.node(0, n));
+    const moment = Math.hypot(rim.mx, rim.my, Math.SQRT2 * rim.mxy);
+    const displacement = nodal(run, "displacements", model.pulled)[0];
+    const report = run.diagnostics.find((d) => d.text.includes("selected by interior equilibrium"));
+    t.diagnostic(`${n} x ${n} degree ${degree}: displacement ${displacement}, rim moment ${moment}` +
+      (report ? `  ${report.text}` : ""));
+    return { moment, displacement, report };
+  };
+  const cubic = solve(8, 3);
+  const auto = solve(8, "Auto");
+  const intermediate = solve(12, 4);
+  const fine = solve(16, 4);
+  assert.match(auto.report.text, /static solves: 1/);
+  assert.ok(Math.abs(intermediate.moment / fine.moment - 1) < 0.01);
+  assert.ok(Math.abs(auto.displacement - fine.displacement) < 0.5 * Math.abs(cubic.displacement - fine.displacement));
+  assert.ok(Math.abs(auto.moment - fine.moment) < Math.abs(cubic.moment - fine.moment));
+});
+
 for (const { shape, n, distortion = 0, degree } of [{ shape: "ShellQuad4", n: 8 },
   { shape: "ShellQuad4", n: 8, distortion: 0.2 }, { shape: "ShellQuad4", n: 8, distortion: 0.2, degree: "Auto" },
   { shape: "ShellQuad8", n: 8 }, { shape: "ShellTria6", n: 8 }, { shape: "ShellTria3", n: 16 }])
@@ -729,7 +844,7 @@ for (const { shape, n, distortion = 0, degree } of [{ shape: "ShellQuad4", n: 8 
     const model = pinchedHemisphere({ n, shape, distortion });
     const run = runModel(degree ? model.text + `Parameter;MixedHybridDegree;${degree}\n` : model.text, MIXED);
     if (degree) {
-      const report = run.diagnostics.find((d) => d.text.includes("degrees of the shells from their shape"));
+      const report = run.diagnostics.find((d) => d.code === "mixed-hybrid-shell-adaptation");
       assert.ok(report, "Auto reports the degrees actually used");
       t.diagnostic(report.text);
     }
@@ -799,8 +914,7 @@ test("Auto resolves thin-shell bending on a distorted hemisphere at least as clo
     const model = movedHemisphere(degree);
     const run = runModel(model.text, { ...MIXED, formulationGeometry: {} });
     if (degree === "Auto")
-      assert.ok(run.diagnostics.some((d) =>
-        /degrees of the shells from their shape: (?:\d+ of degree 3, )?\d+ of degree 4/.test(d.text)));
+      assert.ok(run.selectedQuarticShells.length > 0);
     return nodal(run, "displacements", model.equator)[0];
   };
   const mixed = deflection("Auto");

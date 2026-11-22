@@ -220,7 +220,7 @@ void MixedHybridModel::readDegree(const SnapshotIndex& index)
     m_problems.push_back(std::move(diagnostic));
 }
 
-MixedHybridModel::MixedHybridModel(const SnapshotIndex& index)
+MixedHybridModel::MixedHybridModel(const SnapshotIndex& index, const std::set<std::int32_t>* quarticShells)
 {
     readDegree(index);
     readDeclarations(index);
@@ -229,7 +229,7 @@ MixedHybridModel::MixedHybridModel(const SnapshotIndex& index)
     readSolids(index);
     checkDeclarations(index);
     buildGridsAndEdges(index);
-    buildShellPart(index);
+    buildShellPart(index, quarticShells);
     buildAloneEdges(index);
     buildSolidPart(index);
     reportUnknownDeclarations();
@@ -416,6 +416,15 @@ void MixedHybridModel::describeSurroundings(std::span<const std::int32_t> gridRo
                                                                : m_solids[element].elementId;
         mix(static_cast<double>(kind));
         mix(static_cast<double>(elementId));
+        if (kind == SHELL_ELEMENT && m_choosesShellDegrees && m_shellPart && m_shellPart->usable())
+        {
+            // A neighbour's thickness or the outline can change the trace while this
+            // shell's own property and grid coordinates remain the same.
+            const auto& shell = m_shellPart->elementAtPoints(m_shells[element].partIndex);
+            mix(static_cast<double>(shell.degree));
+            for (const auto degree : shell.edgeDegrees)
+                mix(static_cast<double>(degree));
+        }
         for (const char letter : card)
             mix(static_cast<double>(letter));
         for (const std::int32_t grid : gridsOfElement(kind, element))

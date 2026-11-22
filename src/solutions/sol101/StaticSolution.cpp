@@ -1345,7 +1345,6 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
     // particular stresses of a body force (BodyAccelerations): the solids of an element formulation with entities,
     // whose inertial loads are affine fields (GravityLoad, RotationalForceLoad; the others are refused there). A
     // SUBCOM combines those of its terms.
-    const double massFactor = assembly::MassAssemblyOptions::fromParams(params, std::nullopt, sink).weightToMass;
     const BodyAccelerations bodyAccelerations =
         [&](const StaticSubcase& subcase) -> std::optional<elements::BodyAcceleration>
     {
@@ -1358,6 +1357,10 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                 return;
             elements::BodyAcceleration own;
             loadBuilder.addInertialAffineAcceleration(*loaded.load, own);
+            if (own.isZero())
+                return;
+            const double massFactor =
+                assembly::MassAssemblyOptions::fromParams(params, loaded.label, sink).weightToMass;
             for (std::size_t k = 0; k < own.gradient.values.size(); ++k)
                 field.gradient.values[k] += factor * massFactor * own.gradient.values[k];
             field.constant = field.constant + (factor * massFactor) * own.constant;
@@ -1804,6 +1807,19 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         const std::unique_ptr<assembly::TemperatureField> temperatures =
             initialStrainsOf(snapshot, index.points(), subcase, budget, sink);
         const elements::ElementTemperatures* temperatureView = temperatures ? &temperatures->temperatures() : nullptr;
+        if (m_options.observeDisplacements)
+        {
+            auto field = elements::NodalDisplacements::ofGSet(
+                state.elementDisplacementsOrAll(), static_cast<std::size_t>(dofMap.gridCount()),
+                static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
+            field.temperatures = temperatureView;
+            const auto acceleration = bodyAccelerations(subcase);
+            field.bodyAcceleration = acceleration ? &*acceleration : nullptr;
+            // Relief adds a mass load from the solved rigid accelerations. Its
+            // local work is unavailable here. SUBCOM is covered by its solved terms.
+            m_options.observeDisplacements(
+                elementSet, field, reliefModes[s] == assembly::InertiaReliefMode::None && !subcase.isCombination);
+        }
         const output::ElementOutputSelection selection = output::elementSelectionOf(plan);
         std::vector<output::ElementResultTable> elementTables;
         if (vectorised != nullptr)

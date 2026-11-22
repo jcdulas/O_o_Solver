@@ -77,7 +77,7 @@ ShellShapeDeparture shellShapeDeparture(std::size_t cornerCount, const SurfaceAt
 {
     const AffineMap affine = affineMapOf(cornerCount, surface);
     if (!(affine.area > 0.0))
-        return {std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()};
+        return {std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity(), 0.0};
     const SpaceVector normal = cross3(affine.along[0], affine.along[1]);
     const SpaceVector unitNormal = scl3(normal, 1.0 / norm3(normal));
     double largest = 0.0;
@@ -88,13 +88,22 @@ ShellShapeDeparture shellShapeDeparture(std::size_t cornerCount, const SurfaceAt
         largest = std::max(largest, norm3(offset));
         sagitta = std::max(sagitta, std::fabs(dot3(offset, unitNormal)));
     }
-    return {largest / std::sqrt(affine.area), sagitta};
+    const double size = std::sqrt(affine.area);
+    return {largest / size, sagitta, size};
 }
 
-std::size_t chooseShellDegree(const ShellShapeDeparture& departure, double thickness, const ShellDegreeChoice& choice)
+std::size_t chooseShellDegree(const ShellShapeDeparture& departure, double thickness, const ShellDegreeChoice& choice,
+                              bool onBoundary)
 {
-    return departure.relative > choice.enrichmentDeparture || departure.normal > thickness ? choice.enrichedDegree
-                                                                                          : choice.baseDegree;
+    // One row on a curved outline captures bending that an interior geometry test misses.
+    // These dimensionless resolution cutoffs leave thick and well-resolved cells cubic.
+    const bool curvedThinCell = departure.size > 4.0 * thickness && departure.normal > thickness / 64.0;
+    const bool boundaryLayer = onBoundary && curvedThinCell;
+    // In the interior of the same curved patch, moderate tangential distortion alone
+    // is a weak predictor of bending error. A pronounced warp still triggers enrichment.
+    const double distortionLimit = curvedThinCell ? 4.0 * choice.enrichmentDeparture : choice.enrichmentDeparture;
+    return boundaryLayer || departure.relative > distortionLimit || departure.normal > thickness ? choice.enrichedDegree
+                                                                                                 : choice.baseDegree;
 }
 
 } // namespace oos::elements::mixedHybrid

@@ -98,6 +98,8 @@ struct StaticOptions
     // The subcases whose g-set displacements the results keep (StaticResults::keptDisplacements): the preload subcases
     // of a buckling solution, whose differential stiffness is computed from them.
     std::vector<base::EntityId> keptDisplacements;
+    // Full static recovery, once per solved case, while its g-set and element views are alive.
+    std::function<void(const assembly::ElementSet&, const elements::NodalDisplacements&, bool)> observeDisplacements;
     // The analysis whose cards the support check accepts: a static run, or the preload of a buckling run (its
     // LanczosEigenMethod and BucklingEigenMethod cards are then read, not ignored).
     AnalysisKind analysis = AnalysisKind::Statics;
