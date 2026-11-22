@@ -151,8 +151,8 @@ struct ShellPartInput
     // The grids of every line element of the formulation (on the shell edges or alone): their rotations are the Λ of
     // the lines, held as the supports state them (only the note on the rotations held elsewhere reads it).
     std::set<std::size_t> lineGrids;
-    // The degree k of the displacement (MIXED_HYBRID_DEGREE in the formulation) and the points per direction of the
-    // rules (0: 2k + 4).
+    // The degree k of the displacement (MixedHybridModel::degree in the formulation) and the points per direction of
+    // the rules (0: 2k + 4).
     std::size_t degree = 4;
     std::size_t pointsPerDirection = 0;
     // The rule of each shell chosen from its shape (chooseShellPoints): the tolerance of the choice, 0 for the rule

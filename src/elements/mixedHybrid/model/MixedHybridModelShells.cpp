@@ -60,6 +60,9 @@ constexpr std::size_t SHELL_MATRIX_CACHE_BYTES = std::size_t{128} << 20;
 // that size reads each element instead of building it a second time, which took as long as the stiffnesses; what is
 // kept, about 0.2 MB a shell, is a fifth of what the factorisation of such a model takes for each of its shells.
 constexpr std::size_t SHELL_RECOVERY_CACHE_BYTES = std::size_t{1} << 30;
+
+// The row of an entity of the ShellPart that has no unknown, and so no row of the layouts.
+constexpr std::int32_t NO_ENTITY_ROW = -1;
 // The tolerance of the rule each shell is given from its shape (ShellPartInput::quadratureTolerance,
 // chooseShellPoints): the integrals of the geometric factors of the element change by less than this, relatively,
 // from its rule to the next. Measured on curved, warped and distorted meshes against the rule of 12 points on every
@@ -292,6 +295,7 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
     const std::span<const std::int32_t> ids = nodes.ids();
 
     ShellPartInput input;
+    input.degree = m_degree;
     input.withMass = true;
     input.matrixCacheBytes = SHELL_MATRIX_CACHE_BYTES;
     input.recoveryCacheBytes = SHELL_RECOVERY_CACHE_BYTES;
@@ -444,6 +448,13 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index)
         {
             name.kind = EntityKind::Interior;
             name.elementId = m_shells[entity.shell].elementId;
+        }
+        // An entity without unknowns takes no row of the layouts (the interior of a triangle of degree 2): nothing
+        // names it, the unknowns of the part being those of the entities that have some.
+        if (entity.dofCount == 0)
+        {
+            m_shellEntityRow.push_back(NO_ENTITY_ROW);
+            continue;
         }
         m_shellEntityRow.push_back(m_staticLayout.add(static_cast<int>(entity.dofCount), position, name));
         m_modalLayout.add(static_cast<int>(entity.dofCount), position, name);

@@ -40,7 +40,7 @@ using Gradient = std::array<std::array<double, 3>, 3>;
 constexpr double SHELL_THICKNESS = 0.02;
 // The kernels the solid parts keep (a hexahedron of degree 4 takes about 3 MB).
 constexpr std::size_t KERNEL_CACHE_BYTES = 64u << 20;
-// The degree of the lines alone (MIXED_HYBRID_DEGREE).
+// The degree of the lines alone (MIXED_HYBRID_DEFAULT_DEGREE).
 constexpr std::size_t LINE_DEGREE = 4;
 // A tie holds an affine field to round-off: the values are of order one.
 constexpr double TIE_TOLERANCE = 1e-9;

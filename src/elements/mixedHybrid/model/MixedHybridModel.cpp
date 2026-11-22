@@ -22,11 +22,17 @@ namespace oos::elements::mixedHybrid
 namespace
 {
 
-// The DOFs of an edge of lines alone: the moments of the displacement trace, 3 (k − 1), and the twist, k (the line
-// kernel's edge layout without the k shear slots a shell edge has).
-constexpr int ALONE_EDGE_DOFS = 3 * (static_cast<int>(MIXED_HYBRID_DEGREE) - 1) + static_cast<int>(MIXED_HYBRID_DEGREE);
+// The DOFs of an edge of lines alone at degree k: the moments of the displacement trace, 3 (k − 1), and the twist, k
+// (the line kernel's edge layout without the k shear slots a shell edge has).
+constexpr int aloneEdgeDofs(std::size_t degree)
+{
+    return 3 * (static_cast<int>(degree) - 1) + static_cast<int>(degree);
+}
 // The first twist DOF of an edge of lines alone.
-constexpr int ALONE_EDGE_FIRST_TWIST = 3 * (static_cast<int>(MIXED_HYBRID_DEGREE) - 1);
+constexpr int aloneEdgeFirstTwist(std::size_t degree)
+{
+    return 3 * (static_cast<int>(degree) - 1);
+}
 
 // An entity DOF whose stiffness diagonal is at most this share of the largest diagonal of its lines carries nothing
 // (the functions across a rod, the twist of a rod without torsion constant): held at 0, as the reference holds the
@@ -177,8 +183,40 @@ const MixedHybridModel& MixedHybridModel::of(const SnapshotIndex& index)
     return index.computedOnce<MixedHybridModel>([&] { return MixedHybridModel(index); });
 }
 
+void MixedHybridModel::readDegree(const SnapshotIndex& index)
+{
+    const input::ModelSnapshot& snapshot = index.snapshot();
+    if (!snapshot.hasTable(input::TableRole::Params))
+        return;
+    const std::optional<input::ParamValue> value = snapshot.params().find(MIXED_HYBRID_DEGREE_PARAMETER);
+    if (!value)
+        return;
+    const bool isAccepted = value->kind == input::ParamValue::Kind::Integer &&
+                            value->integer >= static_cast<std::int32_t>(MIXED_HYBRID_LOWEST_DEGREE) &&
+                            value->integer <= static_cast<std::int32_t>(MIXED_HYBRID_HIGHEST_DEGREE);
+    if (isAccepted)
+    {
+        m_degree = static_cast<std::size_t>(value->integer);
+        return;
+    }
+    base::Diagnostic diagnostic;
+    diagnostic.code = "invalid-parameter";
+    diagnostic.field = std::string(MIXED_HYBRID_DEGREE_PARAMETER);
+    diagnostic.message = base::concatenate(
+        {"expected the model parameter ", MIXED_HYBRID_DEGREE_PARAMETER, " to be a whole number from ",
+         std::to_string(MIXED_HYBRID_LOWEST_DEGREE), " to ", std::to_string(MIXED_HYBRID_HIGHEST_DEGREE),
+         " (the degree of the displacement of ", MIXED_HYBRID_FORMULATION, ", ",
+         std::to_string(MIXED_HYBRID_DEFAULT_DEGREE), " when it is not given), found ",
+         value->kind == input::ParamValue::Kind::Integer ? std::to_string(value->integer)
+         : value->kind == input::ParamValue::Kind::Real  ? std::to_string(value->real)
+                                                         : std::string(value->text),
+         "; give 2, 3 or 4, or remove the parameter"});
+    m_problems.push_back(std::move(diagnostic));
+}
+
 MixedHybridModel::MixedHybridModel(const SnapshotIndex& index)
 {
+    readDegree(index);
     readDeclarations(index);
     readLines(index);
     readShells(index);
@@ -568,7 +606,7 @@ void MixedHybridModel::buildAloneEdges(const SnapshotIndex& index)
         std::variant<AloneEdge, std::string> alone =
             aloneEdgeOfLine(first.element, first.section,
                             {static_cast<std::size_t>(edge.grids[0]), static_cast<std::size_t>(edge.grids[1])},
-                            {lower[0], lower[1], lower[2]}, {upper[0], upper[1], upper[2]}, MIXED_HYBRID_DEGREE, 0);
+                            {lower[0], lower[1], lower[2]}, {upper[0], upper[1], upper[2]}, m_degree, 0);
         if (const std::string* message = std::get_if<std::string>(&alone))
         {
             for (const std::int32_t l : edge.lines)
@@ -603,17 +641,18 @@ void MixedHybridModel::buildEntities(const SnapshotIndex& index)
              ids[static_cast<std::size_t>(m_gridRows[static_cast<std::size_t>(edge.grids[1])])], 0, 0},
             0};
         const base::Vec3 middle{0.5 * (lower[0] + upper[0]), 0.5 * (lower[1] + upper[1]), 0.5 * (lower[2] + upper[2])};
-        edge.entity = m_staticLayout.add(ALONE_EDGE_DOFS, middle, name);
-        m_modalLayout.add(ALONE_EDGE_DOFS, middle, name);
+        const int edgeDofs = aloneEdgeDofs(m_degree);
+        edge.entity = m_staticLayout.add(edgeDofs, middle, name);
+        m_modalLayout.add(edgeDofs, middle, name);
 
         // The DOFs of the edge that its lines do not stiffen (the functions across a rod...): held at 0.
-        std::array<double, ALONE_EDGE_DOFS> diagonal{};
+        std::vector<double> diagonal(static_cast<std::size_t>(edgeDofs), 0.0); // bounded by the DOFs of an edge
         double largest = 0.0;
         for (const std::int32_t l : edge.lines)
         {
             const MixedLine& line = m_lines[static_cast<std::size_t>(l)];
             std::variant<LineData, std::string> data = aloneLineData(*edge.alone, e, line.element, line.section, {0, 3},
-                                                                     linePointCount(MIXED_HYBRID_DEGREE), false);
+                                                                     linePointCount(m_degree), false);
             if (const std::string* message = std::get_if<std::string>(&data))
             {
                 addElementProblem(
@@ -625,18 +664,18 @@ void MixedHybridModel::buildEntities(const SnapshotIndex& index)
             const Matrix& stiffness = std::get<LineData>(data).stiffness;
             for (std::size_t i = 0; i < stiffness.rows(); ++i)
                 largest = std::max(largest, std::fabs(stiffness(i, i)));
-            const std::vector<LineUnknown> unknowns = aloneLineUnknowns(MIXED_HYBRID_DEGREE);
+            const std::vector<LineUnknown> unknowns = aloneLineUnknowns(m_degree);
             for (std::size_t i = 0; i < unknowns.size(); ++i)
             {
                 const LineUnknown& unknown = unknowns[i];
                 if (unknown.kind == LineUnknownKind::EdgeFunction)
                     diagonal[3 * unknown.index + unknown.component] += std::fabs(stiffness(i, i));
                 else if (unknown.kind == LineUnknownKind::EdgeTwist)
-                    diagonal[static_cast<std::size_t>(ALONE_EDGE_FIRST_TWIST) + unknown.index] +=
+                    diagonal[static_cast<std::size_t>(aloneEdgeFirstTwist(m_degree)) + unknown.index] +=
                         std::fabs(stiffness(i, i));
             }
         }
-        for (int d = 0; d < ALONE_EDGE_DOFS; ++d)
+        for (int d = 0; d < edgeDofs; ++d)
             if (diagonal[static_cast<std::size_t>(d)] <= UNSTIFFENED_DIAGONAL_RATIO * largest)
                 m_unstiffenedEntityDofs.push_back(ElementDof::entity(edge.entity, d));
     }
@@ -729,7 +768,7 @@ MixedHybridModel::LocalDofs MixedHybridModel::aloneLineDofs(const MixedLine& lin
 {
     const MixedEdge& edge = m_edges[static_cast<std::size_t>(line.edge)];
     LocalDofs local;
-    for (const LineUnknown& unknown : aloneLineUnknowns(MIXED_HYBRID_DEGREE))
+    for (const LineUnknown& unknown : aloneLineUnknowns(m_degree))
     {
         local.signs.push_back(1.0);
         const auto component = static_cast<int>(unknown.component);
@@ -748,7 +787,7 @@ MixedHybridModel::LocalDofs MixedHybridModel::aloneLineDofs(const MixedLine& lin
             break;
         case LineUnknownKind::EdgeTwist:
             local.dofs.push_back(
-                ElementDof::entity(edge.entity, ALONE_EDGE_FIRST_TWIST + static_cast<int>(unknown.index)));
+                ElementDof::entity(edge.entity, aloneEdgeFirstTwist(m_degree) + static_cast<int>(unknown.index)));
             local.basicGridRows.push_back(-1);
             break;
         case LineUnknownKind::GridRotation:
@@ -841,7 +880,8 @@ void MixedHybridModel::affineField(EntityLayout::Kind kind, const base::Mat3& gr
         const Vec3Of<double>& upper = edge.alone->upperPoint;
         const double twist =
             omega[0] * (upper[0] - lower[0]) + omega[1] * (upper[1] - lower[1]) + omega[2] * (upper[2] - lower[2]);
-        entityValues[static_cast<std::size_t>(entities.dofOffset(edge.entity)) + ALONE_EDGE_FIRST_TWIST] = twist;
+        entityValues[static_cast<std::size_t>(entities.dofOffset(edge.entity)) +
+                     static_cast<std::size_t>(aloneEdgeFirstTwist(m_degree))] = twist;
     }
     // The shells: their edges and interiors take the field of their own unknowns (the edge rotations from ω).
     if (m_shellPart != nullptr && m_shellPart->usable())
@@ -855,6 +895,8 @@ void MixedHybridModel::affineField(EntityLayout::Kind kind, const base::Mat3& gr
         const std::vector<ShellPartEntity>& partEntities = m_shellPart->entities();
         for (std::size_t e = 0; e < partEntities.size(); ++e)
         {
+            if (partEntities[e].dofCount == 0)
+                continue; // an entity without unknowns has no row (the interior of a triangle of degree 2)
             const auto offset = static_cast<std::size_t>(entities.dofOffset(m_shellEntityRow[e]));
             for (std::size_t d = 0; d < partEntities[e].dofCount; ++d)
                 entityValues[offset + d] = partValues[partEntities[e].firstUnknown - first + d];

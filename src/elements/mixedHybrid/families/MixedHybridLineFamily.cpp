@@ -43,7 +43,7 @@ LineData lineDataWith(const MixedHybridModel& model, const MixedLine& line, cons
         line.shellLine >= 0
             ? model.shellPart()->lineData(static_cast<std::size_t>(line.shellLine), section, withMass)
             : aloneLineData(*model.edge(line.edge).alone, static_cast<std::size_t>(line.edge), line.element, section,
-                            {0, 3}, linePointCount(MIXED_HYBRID_DEGREE), withMass);
+                            {0, 3}, linePointCount(model.degree()), withMass);
     if (const std::string* message = std::get_if<std::string>(&data))
         throw std::logic_error(base::concatenate({"MixedHybridLineFamily: element ", std::to_string(line.elementId),
                                                   ": ", *message, " (check() accepted it: a bug of O_o_Solver)"}));
@@ -278,7 +278,7 @@ Vector lineLoadVector(const MixedHybridModel& model, const MixedLine& line, cons
         addAt(load.start, load.startValue, 1.0);
         return vector;
     }
-    const LineRule rule = gaussLegendre(linePointCount(MIXED_HYBRID_DEGREE));
+    const LineRule rule = gaussLegendre(linePointCount(model.degree()));
     const double half = 0.5 * (load.end - load.start);
     for (std::size_t q = 0; q < rule.points.size(); ++q)
     {

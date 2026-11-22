@@ -81,8 +81,9 @@ an intermediate developer; the module layering.
 
 ## 3. The formulation in brief
 
-k is the polynomial degree of the shell displacement, fixed at 4 (the lowest degree that passes the validation of the
-reference; section 15, decision 7), p = k − 1. A quadrature has at most 2k + 4 Gauss points per direction in a shell
+k is the polynomial degree of the shell displacement: 4 (the lowest degree that passes the validation of the
+reference), or the 2 or 3 the model parameter `MixedHybridDegree` gives (section 15, decision 7), p = k − 1. The
+counts of this document are those of k = 4. A quadrature has at most 2k + 4 Gauss points per direction in a shell
 element and on its edges (the rule of the reference; the matrices of each shell are integrated on the rule its shape
 needs, section 6), and d + 4 in a solid (d the degree of its stresses). The integrands of an element that is not
 affine are rational: these rules converge on them exponentially.
@@ -1404,7 +1405,19 @@ Each phase ends with the full test suite passing and its own checks of section 1
    10.3).
 6. **Shell interiors in statics.** Kept as entity DOFs (one layout for statics and buckling; the global factorisation
    eliminates them first). No condensation in the element.
-7. **Degree.** k = 4 fixed, no parameter.
+7. **Degree.** k = 4 unless the model parameter `MixedHybridDegree` gives 2 or 3 (`Parameter;MixedHybridDegree;3`);
+   another value is refused (`invalid-parameter`). The shells, the lines and the solids of a model take the degree
+   together (the traces, the faces and the stresses of the solids), so that the functions of the edges they share
+   are the same; below 4 the skin of the solids is read with straight edges between its grid points. The parameter
+   enters the identity of the model and the key of the condensation cache. The reference and its validation are at
+   k = 4, the default. A lower degree costs less on the same mesh and is less accurate on a coarse one. Measured on
+   five cases (a cantilever bent in its plane and out of it on regular, parallelogram and trapezoid quadrilaterals
+   and on triangles, a skew membrane, a plate with a hole and a cylindrical roof on regular quadrilaterals, on
+   quadrilaterals with grid points moved by 30 % of a cell and on Delaunay triangles, each loaded by its weight;
+   the displacement and the von Mises stress at a grid point against a fine regular mesh): at the middle mesh of
+   each case the errors of degree 3 are those of degree 4 (0.1 to 0.7 % against 0.1 to 0.6 %) for about half the
+   time (a roof of 1 024 quadrilaterals: 2.4 s against 5.0 s), those of degree 2 are 0.1 to 1.3 % for a quarter of
+   it (1.2 s).
 8. **Membrane-only and bending-only shell properties** (MID2 or MID1 blank). Accepted, as new work (section 4.1,
    phase 6).
 9. **Reference data.** No exporter in the crate; the port is verified by the analytic checks of section 13.

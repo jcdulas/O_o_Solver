@@ -663,7 +663,7 @@ test("a cantilever strip of ShellQuad4 in MixedHybridFormulation buckles at Eule
 // the cylinder (the formulation reads the curved surface from its grid points), held by symmetry along its middle
 // section x = 0 (u_x, θ_y, θ_z) and along its crown φ = 0 (u_y, θ_x, θ_z): the rotations held at grid points of shells
 // hold the rotation of the edges about their tangent.
-function scordelisLo({ nx = 4, nphi = 4 }) {
+function scordelisLo({ nx = 4, nphi = 4, shape = "ShellQuad4", extra = [] }) {
   const radius = 25.0;
   const half = 25.0;
   const spread = (40 * Math.PI) / 180;
@@ -677,9 +677,13 @@ function scordelisLo({ nx = 4, nphi = 4 }) {
     }
   let element = 0;
   for (let j = 0; j < nphi; ++j)
-    for (let i = 0; i < nx; ++i)
-      lines.push(`ShellQuad4;${++element};1;${node(i, j)};${node(i + 1, j)};${node(i + 1, j + 1)};${node(i, j + 1)}`);
-  lines.push("ShellProp;1;1;0.25;1;;1", "IsoMat;1;4.32e8;;0.;360.", "GravityLoad;2;;1.;0.;0.;-1.");
+    for (let i = 0; i < nx; ++i) {
+      const c = [node(i, j), node(i + 1, j), node(i + 1, j + 1), node(i, j + 1)];
+      if (shape === "ShellTria3")
+        lines.push(`ShellTria3;${++element};1;${c[0]};${c[1]};${c[2]}`, `ShellTria3;${++element};1;${c[0]};${c[2]};${c[3]}`);
+      else lines.push(`ShellQuad4;${++element};1;${c.join(";")}`);
+    }
+  lines.push("ShellProp;1;1;0.25;1;;1", "IsoMat;1;4.32e8;;0.;360.", "GravityLoad;2;;1.;0.;0.;-1.", ...extra);
   for (let j = 0; j <= nphi; ++j)
     lines.push(`SinglePointConstrList;1;23;${node(nx, j)}`, `SinglePointConstrList;1;156;${node(0, j)}`);
   for (let i = 0; i <= nx; ++i) lines.push(`SinglePointConstrList;1;246;${node(i, 0)}`);
@@ -691,6 +695,57 @@ test("the Scordelis-Lo roof of ShellQuad4 in MixedHybridFormulation sags as the 
   const run = runShells(model.text, "mixed-shell-roof");
   const sag = -nodal(run, "displacements", model.freeEdgeMiddle)[2];
   assert.ok(Math.abs(sag / 0.3024 - 1) < 0.01, `sag ${sag}, reference 0.3024`);
+});
+
+// The degree of the formulation (spec section 15, decision 7): 4, or the 2 or 3 the MixedHybridDegree parameter gives,
+// for the shells, the lines and the solids together. A lower degree is less accurate on the same mesh: the roof of
+// 4 × 4 elements is within 1 % of the reference at degree 4, and within a few % below.
+const DEGREE_PARAMETER = (degree) => `Parameter;MixedHybridDegree;${degree}`;
+
+for (const { degree, shape, tolerance } of [
+  { degree: 2, shape: "ShellQuad4", tolerance: 0.03 }, { degree: 3, shape: "ShellQuad4", tolerance: 0.01 },
+  { degree: 2, shape: "ShellTria3", tolerance: 0.05 }, { degree: 3, shape: "ShellTria3", tolerance: 0.02 }])
+  test(`the Scordelis-Lo roof of ${shape} in MixedHybridFormulation of degree ${degree} sags near the reference value`, () => {
+    const model = scordelisLo({ shape, extra: [DEGREE_PARAMETER(degree)] });
+    const run = runShells(model.text, `mixed-shell-roof-degree-${degree}-${shape}`);
+    const sag = -nodal(run, "displacements", model.freeEdgeMiddle)[2];
+    assert.ok(Math.abs(sag / 0.3024 - 1) < tolerance, `sag ${sag}, reference 0.3024`);
+  });
+
+test("the degree of MixedHybridFormulation changes the results, and degree 4 is the default", () => {
+  const sagOf = (extra) => {
+    const model = scordelisLo({ extra });
+    return -nodal(runShells(model.text, "mixed-shell-roof-degrees"), "displacements", model.freeEdgeMiddle)[2];
+  };
+  const byDefault = sagOf([]);
+  assert.equal(sagOf([DEGREE_PARAMETER(4)]), byDefault, "degree 4 is the default");
+  assert.notEqual(sagOf([DEGREE_PARAMETER(3)]), byDefault, "degree 3 is another model");
+});
+
+test("a Bar2 of MixedHybridFormulation of degree 2 or 3 gives the end forces of the ClassicFormulation bar", () => {
+  const text = cantilever({ count: 2, axis: [0.6, 0.8, 0], orientation: [0, 0, 1], load: [30, -40, 50, 7, -3, 2] });
+  const forces = (deck, options) => withModel(deck, "mixed-bar-forces-degree", options, (model) => {
+    const run = solver.run(model, "statics");
+    assert.ok(!run.diagnostics.some((d) => d.severity === "error"), JSON.stringify(run.diagnostics));
+    const table = run.elementTables.find((t) => t.elementType === "Bar2" && t.kind === "forces");
+    assert.ok(table, "a Bar2 force table");
+    return Array.from(table.values);
+  });
+  const classic = forces(text, {});
+  for (const degree of [2, 3])
+    assertClose(forces(`${text}${DEGREE_PARAMETER(degree)}\n`, { elementFormulation: "MixedHybridFormulation" }), classic,
+      1e-6, `forces at degree ${degree}`);
+});
+
+test("a MixedHybridDegree that is not 2, 3 or 4 is refused", () => {
+  for (const value of ["1", "5", "2.5", "FOUR"]) {
+    const model = scordelisLo({ extra: [DEGREE_PARAMETER(value)] });
+    withModel(model.text, "mixed-degree-refused", SHELL_OPTIONS, (handle) => {
+      const refusals = handle.checkSupport("statics").refusals;
+      assert.ok(refusals.some((d) => d.code === "invalid-parameter" && /MixedHybridDegree/.test(d.text)),
+        `value ${value}: ${JSON.stringify(refusals.map((d) => d.code))}`);
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -832,6 +887,30 @@ for (const shape of ["SolidHexa", "SolidTetra"])
 
 // The pure bending of a block: u = −κ x y', v = κ (x² + ν (y'² − z'²)) / 2, w = κ ν y' z' (y', z' from the centre of
 // the section), and the supports that impose it: u on both ends, and v, w at two grid points of the end x = 0.
+for (const degree of [2, 3])
+  test(`a block of SolidHexa in MixedHybridFormulation of degree ${degree} stretched by its supports takes the uniform uniaxial stress`, () => {
+    const delta = 1.0e-3;
+    const poisson = 0.3;
+    const model = solidBlock({ shape: "SolidHexa", poisson, records: (node, nx) => {
+      const records = [`SinglePointConstrList;1;23;${node(0, 0, 0)}`, `SinglePointConstrList;1;3;${node(0, 1, 0)}`,
+        `SinglePointConstrList;1;2;${node(0, 0, 1)}`, DEGREE_PARAMETER(degree)];
+      for (let k = 0; k <= 1; ++k)
+        for (let j = 0; j <= 1; ++j)
+          records.push(`SinglePointConstrList;1;1;${node(0, j, k)}`, `SinglePointConstr;1;${node(nx, j, k)};1;${real(delta)}`);
+      return records;
+    } });
+    const run = runSolids(model, `mixed-solid-stretch-degree-${degree}`);
+    const strain = delta / BLOCK.length;
+    for (const { id, x, y, z } of model.points)
+      assertClose(nodal(run, "displacements", id), [strain * x, -poisson * strain * y, -poisson * strain * z, 0, 0, 0],
+        1e-8, `grid ${id}`, delta);
+    const rows = rowsOf(run, "SolidHexa", "stress");
+    assert.ok(rows.length > 0, "stress rows");
+    for (const row of rows)
+      assertClose([row.oxx, row.oyy, row.ozz, row.txy, row.tyz, row.txz], [BLOCK.young * strain, 0, 0, 0, 0, 0], 1e-8,
+        `stresses of element ${row.id} at ${row.nodeId}`);
+  });
+
 const BENT_BLOCK = { kappa: 1.0e-3, poisson: 0.3 };
 function bentBlockField(x, y, z) {
   const { kappa, poisson } = BENT_BLOCK;

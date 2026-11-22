@@ -30,9 +30,16 @@
 namespace oos::elements::mixedHybrid
 {
 
-// The degree k of the displacement of the formulation: 4, the lowest that passes the validation of the reference
-// (docs/mixed-hybrid-formulation-spec.md section 15, decision 7).
-inline constexpr std::size_t MIXED_HYBRID_DEGREE = 4;
+// The degree k of the displacement of the formulation (docs/mixed-hybrid-formulation-spec.md section 15, decision
+// 7): 4 unless the model parameter MixedHybridDegree gives 2 or 3. Degree 4 is that of the reference and of its
+// validation. A lower degree costs less on the same mesh (an element of degree 3 about half, one of degree 2 about a
+// fifth) and is less accurate on a coarse one; the shells, the lines and the solids of a model take it together, so
+// that the functions of the edges they share are the same. Below 4 the skin of the solids is read with straight
+// edges between its grid points (SolidPart::takesCurves).
+inline constexpr std::size_t MIXED_HYBRID_DEFAULT_DEGREE = 4;
+inline constexpr std::size_t MIXED_HYBRID_LOWEST_DEGREE = 2;
+inline constexpr std::size_t MIXED_HYBRID_HIGHEST_DEGREE = 4;
+inline constexpr std::string_view MIXED_HYBRID_DEGREE_PARAMETER = "MixedHybridDegree";
 
 // A component released at an end of a line (the pin flags PA, PB of a bar or beam, section 4.2): the line's own
 // unknown there instead of the grid point's, DOF `index` of the entity `entity` (the end of the line), along the unit
@@ -261,7 +268,14 @@ public:
     [[nodiscard]] std::int32_t gridIndexOfRow(std::int32_t row) const;
     [[nodiscard]] std::vector<SurfaceEdgeReading> surfaceEdges() const override { return m_surfaceEdges; }
 
+    // The degree k of the displacement of this model (MIXED_HYBRID_DEGREE_PARAMETER).
+    [[nodiscard]] std::size_t degree() const noexcept { return m_degree; }
+
 private:
+    // The degree of the model, from its parameter; a value that is not a whole number of
+    // [MIXED_HYBRID_LOWEST_DEGREE, MIXED_HYBRID_HIGHEST_DEGREE] is a problem of the model, which then keeps the
+    // default degree.
+    void readDegree(const SnapshotIndex& index);
     // The geometry declarations of the model (section 4.4): those of the program, with those of the deck (the
     // SurfaceEdge, SurfaceFacet and SurfaceLine cards) added where the program does not name the same edge or the
     // same mesh line; an empty declaration when the deck says only that it was prepared (the GeometryDeclarations
@@ -373,6 +387,7 @@ private:
     void solidAffineField(EntityLayout::Kind kind, const base::Mat3& gradient, std::span<double> entityValues) const;
     void addElementProblem(std::string_view card, std::int64_t batchRow, base::Diagnostic problem);
 
+    std::size_t m_degree = MIXED_HYBRID_DEFAULT_DEGREE;
     EntityLayout m_staticLayout{EntityLayout::Kind::Static};
     EntityLayout m_modalLayout{EntityLayout::Kind::Modal};
     std::vector<base::Diagnostic> m_problems;

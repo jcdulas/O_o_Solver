@@ -320,6 +320,11 @@ void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
     SolidPartInput input;
     input.kernelCacheBytes = SOLID_KERNEL_CACHE_BYTES;
     input.reducedCacheBytes = SOLID_REDUCED_CACHE_BYTES;
+    // The traces, the faces and the stresses of the solids at the degree of the model, as those of the shells and of
+    // the lines they share edges with.
+    input.options.traceDegree = m_degree;
+    input.options.faceDegree = m_degree;
+    input.options.stressDegree = m_degree;
     // What the solids tie to (spec section 3.4): the shells, and the edges of lines alone.
     if (m_shellPart != nullptr && m_shellPart->usable())
         input.shells = m_shellPart.get();
