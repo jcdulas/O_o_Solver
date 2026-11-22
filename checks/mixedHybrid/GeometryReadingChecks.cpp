@@ -339,6 +339,32 @@ CHECK_CASE("geometry: cylinder in triangles is read exactly")
     }
 }
 
+// A bicubic graph with changing principal curvatures, sampled only at the vertices of its distorted triangles.
+CHECK_CASE("geometry: distorted triangles on a bicubic surface")
+{
+    const auto height = [](double x, double y)
+    { return 0.10 * x * x - 0.07 * y * y + 0.08 * x * x * y + 0.05 * y * y * y; };
+    const auto normal = [](const Vector3& p)
+    {
+        const auto [x, y, z] = p;
+        return mh::unit3(Vector3{-(0.20 * x + 0.16 * x * y), 0.14 * y - 0.08 * x * x - 0.15 * y * y, 1.0});
+    };
+    const auto error = [&](std::size_t n)
+    {
+        auto input = flatMesh(1.0, 1.0, n, 0.2, CellPattern::AlternateDiagonals);
+        for (Vector3& p : input.grids)
+            p[2] = height(p[0], p[1]);
+        return surfaceError(
+            read(std::move(input)), [&](const Vector3& p) { return p[2] - height(p[0], p[1]); }, normal);
+    };
+    const auto coarse = error(8);
+    const auto fine = error(16);
+    runner.expect(fine[0] < 0.5 * coarse[0],
+                  "height error on refinement: " + std::to_string(coarse[0]) + " to " + std::to_string(fine[0]));
+    runner.expect(fine[1] < 0.8 * coarse[1],
+                  "normal error on refinement: " + std::to_string(coarse[1]) + " to " + std::to_string(fine[1]));
+}
+
 // Triangles on a sphere: their edges are arcs of great circles and the normals at the grids are exact; the fitted
 // interiors leave kinks of about 1.7e-3 rad between them (document 34, section 9).
 CHECK_CASE("geometry: triangles on a sphere")

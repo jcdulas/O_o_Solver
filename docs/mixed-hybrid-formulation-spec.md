@@ -311,12 +311,6 @@ These are properties of the formulation; the port reproduces them and does not t
   point (section 5.6; not in the reference, which reads it along the edges only).
 - Measured by the validation suite of this repository (section 13.3, `wasm/test/validation/known-limits.mjs`), and
   reproduced by the reference on the same meshes:
-  - distorted triangles on a curved surface keep kinks of 1 to 3 degrees however fine the mesh, which the shell takes
-    as folds: the Scordelis-Lo roof is 30 % off and a pressurised cylinder up to 50 %, without converging. Such a
-    mesh is warned (`geometry-kink`, section 10.5); its triangles are given mid-side nodes, or replaced by
-    quadrilaterals, which read the same surfaces to 0.3 % when distorted. Declared raw (facets), the roof is within
-    0.1 %, but a pressurised cylinder and the frequencies of a cylinder are not within their criteria: facets are no
-    general remedy;
   - a shell that continues solids, or stands on them, with its fibre out of their skin (an oblique fin, an edge inside
     the solids), and a line alone along an edge of solids, pass their moment to them along a line (section 3.4): the
     joint softens as the solids are refined. A shell whose fibre lies in the skin is read over its thickness and does
@@ -469,6 +463,13 @@ preprocessor's to decide and declare. Without a declaration the rules of the rea
   quadrilaterals beside a triangle of another surface was rounded (the outline going round the corner).
 - An edge that no element faces across on the side of one of its elements (a sharp edge, a side of a junction) is a
   boundary of that side: with triangles there, its line goes on by the rule of the outline.
+
+On a triangular sheet, successive mesh-line turns in opposite directions are evidence that the line direction is
+a poor guide to the tangent plane. The reconstruction then compares the normal from the lines with a local quadric
+through neighbouring grid points, accounting for the residual and the uncertainty of its slopes. Near an outline a
+third ring supplies samples when two rings leave the fit poorly constrained. Each ring follows the same smooth side
+of folds and junctions. An informed outline keeps its own tangent. This geometry reading applies with every shell
+degree, including Auto. The distorted Scordelis-Lo and pressurised-cylinder cases in section 13.3 exercise it.
 
 **How they are given.** Two ways, which add up; where both name the same edge or the same mesh line, the program
 wins, as for the choice of the formulation:

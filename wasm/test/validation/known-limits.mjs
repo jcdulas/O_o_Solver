@@ -11,17 +11,9 @@
 
 export const KNOWN_LIMITS = [
   // ---- the reading of the surface (section 3.6: kinks between elements are folds)
-  { match: "Scordelis-Lo roof, 8 x 8 ShellTria3 distorted by 0.2 (OPEN",
-    reason: "reading: distorted triangles on a curved surface keep kinks of 1 to 3 degrees, which the shell takes as " +
-      "folds (30 % off, not converging; warned by geometry-kink); declare them raw or use quadrilaterals" },
-  { match: "cylinder under internal pressure, 8 x 8 ShellTria3 distorted by 0.2",
-    reason: "reading: distorted triangles on a curved surface (as the roof above)" },
   { match: "cylinder under internal pressure, 8 x 8 ShellTria6 over 90 degrees",
     reason: "fibre stresses 1.17 % off at 8 x 8 (0.54 % at 16 x 16): the curvature term of the theory, O(t / R), and " +
       "the parabolic edges of the mid-side nodes" },
-  { match: "modes of a cylinder between diaphragms, R/t = 100, 24 x 6 distorted ShellTria3",
-    reason: "the frequencies pass; the case asks for no warning and the kinks between the distorted triangles are " +
-      "warned (geometry-kink), as they must be" },
   { match: "Lamé: an octant of a thick sphere of SolidHexa with mid-side nodes",
     reason: "mid-side nodes on a doubly curved skin: the eight-node face is not the sphere (stress 4.9 % at 22.5 " +
       "degrees per cell, 0.97 % at 11.25); the skin read without mid-side nodes gives 0.3 %" },

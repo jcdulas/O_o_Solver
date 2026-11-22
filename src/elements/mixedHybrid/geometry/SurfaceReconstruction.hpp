@@ -78,6 +78,7 @@ private:
         double weight = 0.0;
         double normalVariance = 0.0;
         double positionVariance = 0.0;
+        bool irregularLines = false;
     };
     // A normal from the edges of a fan and its uncertainty (a squared angle).
     struct FanNormal
@@ -141,6 +142,7 @@ private:
     [[nodiscard]] std::optional<FanNormal> triangleNormal(std::size_t e, std::size_t a);
     [[nodiscard]] Vector3 lineNormal(std::size_t e, std::size_t a);
     [[nodiscard]] std::optional<QuadricFit> fit(std::size_t e, std::size_t g);
+    [[nodiscard]] bool reversesTurn(std::size_t a, std::size_t b);
     [[nodiscard]] std::optional<QuadricFit> fitAt(std::size_t e, std::size_t g);
     [[nodiscard]] Vector3 normal(std::size_t e, std::size_t a);
     [[nodiscard]] EdgeGridNormal edgeGridNormal(const std::vector<std::size_t>& owners, const Vector3& frameNormal,
@@ -166,6 +168,7 @@ private:
     std::map<GridPair, double> m_tangentUncertainty;
     // (element, grid) → the quadric fitted on the neighbourhood of the grid.
     std::map<GridPair, std::optional<QuadricFit>> m_fits;
+    std::map<EdgeKey, bool> m_reversesTurn;
     // The variance of the tangent of the curve of edge a → b at a (a squared angle).
     std::map<GridPair, double> m_tangentVariance;
     // The normal at a of the edge a − b that is a plane section of the surface.

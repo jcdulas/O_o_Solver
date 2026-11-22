@@ -981,6 +981,29 @@ std::optional<SurfaceReconstruction::QuadricFit> SurfaceReconstruction::fit(std:
     return out;
 }
 
+bool SurfaceReconstruction::reversesTurn(std::size_t a, std::size_t b)
+{
+    const EdgeKey edge = EdgeKey::of(a, b);
+    if (const auto it = m_reversesTurn.find(edge); it != m_reversesTurn.end())
+        return it->second;
+    bool reverses = false;
+    const auto& owners = elementsOf(a, b);
+    if (owners.size() == 2 && shell(owners[0]).count == 3 && shell(owners[1]).count == 3 && facing(owners[0], a, b) &&
+        !isRaw(a, b))
+    {
+        const auto before = previous(a, b);
+        const auto after = previous(b, a);
+        if (before && after)
+        {
+            const auto first = circle(position(*before), position(a), position(b));
+            const auto second = circle(position(a), position(b), position(*after));
+            reverses = first && second && dot3(first->binormal, second->binormal) < 0.0;
+        }
+    }
+    m_reversesTurn.emplace(edge, reverses);
+    return reverses;
+}
+
 // The normal of the surface at grid g, on the side of element e, from a quadric fitted on the neighbourhood of the
 // grid, with the weight in [0, 1] it is given against the mesh lines.
 //
@@ -1005,13 +1028,47 @@ std::optional<SurfaceReconstruction::QuadricFit> SurfaceReconstruction::fit(std:
 // Reference: Reconstruction::fit.
 std::optional<SurfaceReconstruction::QuadricFit> SurfaceReconstruction::fitAt(std::size_t e, std::size_t g)
 {
+    const auto nextRing = [&](const auto& elements)
+    {
+        std::set<std::size_t> neighbours;
+        for (const std::size_t f : elements)
+            for (const std::size_t h : shell(f).view())
+                for (const std::size_t other : fan(f, h))
+                    neighbours.insert(other);
+        return neighbours;
+    };
     std::set<std::size_t> nodes;
-    for (const std::size_t f : fan(e, g))
-        for (const std::size_t h : shell(f).view())
-            for (const std::size_t ff : fan(f, h))
-                for (const std::size_t q : shell(ff).view())
-                    nodes.insert(q);
-    nodes.erase(g);
+    const auto collectNodes = [&](const auto& elements)
+    {
+        for (const std::size_t f : elements)
+            for (const std::size_t h : shell(f).view())
+                if (h != g)
+                    nodes.insert(h);
+    };
+    const auto hasReversal = [&](const auto& elements)
+    {
+        return std::any_of(elements.begin(), elements.end(),
+                           [&](std::size_t f)
+                           {
+                               const ShellCorners& corners = shell(f);
+                               for (std::size_t k = 0; k < corners.count; ++k)
+                                   if (reversesTurn(corners.at(k), corners.at(k + 1)))
+                                       return true;
+                               return false;
+                           });
+    };
+    const auto secondRing = nextRing(fan(e, g));
+    collectNodes(secondRing);
+    bool irregular = shell(e).count == 3 && hasReversal(secondRing);
+    if (shell(e).count == 3 && (!irregular || nodes.size() < 2 * QUADRIC_COEFFICIENTS))
+    {
+        // At the outline the mesh lines can end before either turn is observable. Follow their
+        // neighbouring lines one ring farther on the same sheet. Extend the fit only where it needs data.
+        const auto thirdRing = nextRing(secondRing);
+        irregular = irregular || hasReversal(thirdRing);
+        if (irregular && nodes.size() < 2 * QUADRIC_COEFFICIENTS)
+            collectNodes(thirdRing);
+    }
     // eight coefficients: the fit must be over-determined to say anything
     if (nodes.size() < QUADRIC_LEAST_GRIDS)
         return std::nullopt;
@@ -1055,9 +1112,26 @@ std::optional<SurfaceReconstruction::QuadricFit> SurfaceReconstruction::fitAt(st
         xm.scaleColumn(c, inverse[c]);
     }
     Matrix ata = transposeTimes(xm, xm);
-    for (std::size_t c = 0; c < QUADRIC_COEFFICIENTS; ++c)
-        ata(c, c) += QUADRIC_RIDGE + (inverse[c] == 0.0 ? 1.0 : 0.0);
-    const std::optional<Cholesky> factor = Cholesky::factor(ata);
+    // When the data determine all coefficients, avoid biasing small slope components with a ridge.
+    // Those components determine whether the tangent of a symmetry boundary lies in its plane.
+    std::optional<Cholesky> factor;
+    if (irregular)
+    {
+        factor = Cholesky::factor(ata);
+        if (factor)
+            for (std::size_t c = 0; c < QUADRIC_COEFFICIENTS; ++c)
+                if (factor->lower()(c, c) < std::sqrt(QUADRIC_RIDGE))
+                {
+                    factor.reset();
+                    break;
+                }
+    }
+    if (!factor)
+    {
+        for (std::size_t c = 0; c < QUADRIC_COEFFICIENTS; ++c)
+            ata(c, c) += QUADRIC_RIDGE + (inverse[c] == 0.0 ? 1.0 : 0.0);
+        factor = Cholesky::factor(ata);
+    }
     if (!factor)
         return std::nullopt;
     const Vector beta = factor->solve(transposeTimes(xm, zv));
@@ -1085,9 +1159,14 @@ std::optional<SurfaceReconstruction::QuadricFit> SurfaceReconstruction::fitAt(st
     // (a surface that is not a quadric, read on a narrow strip). Lines that zigzag or kink have a large uncertainty
     // and do not constrain it.
     const Vector3 dn = sub3(n, lineNormal(e, g));
+    // On triangles a pair of zigzagging mesh lines can agree on a tangent plane which misses the surrounding
+    // points. Count the part of that disagreement outside the fitted normal's three-sigma uncertainty against
+    // the lines. An underdetermined fit has large slope variance and leaves the line estimate in control.
+    if (irregular)
+        dl2 = std::fmax(dl2, dot3(dn, dn) - 9.0 * dq2);
     const double df2 = dq2 + std::fmax(dot3(dn, dn) - dl2, 0.0);
     // the more certain of the two is taken; they share only when their uncertainties are alike
-    return QuadricFit{n, dl2 * dl2 / (dl2 * dl2 + df2 * df2 + TINY), dq2, sigma2 * size * size};
+    return QuadricFit{n, dl2 * dl2 / (dl2 * dl2 + df2 * df2 + TINY), dq2, sigma2 * size * size, irregular};
 }
 
 // The unit normal of the surface at grid a on the side of element e: that of the mesh lines and that of the local
@@ -1165,8 +1244,10 @@ Vector3 SurfaceReconstruction::tangent(std::size_t a, std::size_t b)
             m_section[{a, b}] = atA.normal;
         if (owners.size() == 1 && !sectionOnly)
         {
-            // boundary: the line is geometry
-            t = inPlane;
+            // An informed outline supplies its own tangent. Projecting it onto a plane inferred from
+            // irregular interior triangles can take a planar boundary out of its symmetry plane.
+            const auto local = fit(owners.front(), a);
+            t = local && local->irregularLines ? line : inPlane;
         }
         else
         {

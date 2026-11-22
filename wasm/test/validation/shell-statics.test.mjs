@@ -586,8 +586,8 @@ const RADIANS = Math.PI / 180;
 // shear-deformable shell along its free edges and soft supports, of the width of the thickness, is not resolved by
 // these meshes. The reference crate gives the same numbers on the same meshes.
 // The roof is declared smooth, or every element raw with `facets`.
-function scordelisLo({ n, shape = "ShellQuad4", distortion = 0, shear = true, facets = false }) {
-  const grid = mesh({ nu: n, nv: n, shape, distortion,
+function scordelisLo({ n, shape = "ShellQuad4", distortion = 0, alternate = false, shear = true, facets = false }) {
+  const grid = mesh({ nu: n, nv: n, shape, distortion, alternate,
     position: (u, v) => [25 * u, 25 * Math.sin(40 * RADIANS * v), 25 * Math.cos(40 * RADIANS * v)] });
   const surface = facets ? surfaceRecords({ rawElements: grid.elements.map((e) => e.id) }) : smoothSurface(grid);
   const model = [...grid.lines, ...surface, `ShellProp;1;1;0.25;1${shear ? ";;1" : ""}`, "IsoMat;1;4.32e8;;0.;360.",
@@ -714,23 +714,22 @@ test("Scordelis-Lo roof: coarse mesh and Kirchhoff section, recorded", (t) => {
   checks.done();
 });
 
-// OPEN. Triangles on a distorted mesh of a curved surface: the reading of the surface leaves kinks of 1 to 3 degrees
-// between the triangles (geometry-kink diagnostics), which do not shrink with the mesh, and the roof sags 31 % too
-// much on every mesh (1.3059, 1.3096, 1.3287 of 0.3024 at 4, 8 and 16 with a distortion of 0.2; 1.3117 at 8 with a
-// distortion of 0.05; 0.9965 without distortion). The reference crate gives the same displacement to seven digits on
-// the same mesh: the limit is the reference's (its document 26 lists unstructured triangles on curved surfaces as not
-// covered), larger than the kinks of 1.7e-3 rad of section 3.6. Declared as facets (every element raw) the same mesh
-// gives 1.0009.
-test("Scordelis-Lo roof, 8 x 8 ShellTria3 distorted by 0.2 (OPEN: the reading of distorted triangles)", (t) => {
-  const checks = checksOf(t);
-  const model = scordelisLo({ n: 8, shape: "ShellTria3", distortion: 0.2 });
-  const run = runModel(model.text, MIXED);
-  const kinks = run.diagnostics.filter((d) => d.code === "geometry-kink");
-  checks.info("kinks", `${kinks.length} geometry-kink diagnostics`);
-  checks.ratio("sag of the free edge", -nodal(run, "displacements", model.freeEdgeMiddle)[2], ROOF_SAG,
-    CRITERIA.displacement);
-  checks.done();
-});
+// All grids remain on the cylinder. Vary the spacing, connectivity and degree choice while keeping the
+// published load, diaphragms, symmetries and free-edge measurement.
+for (const { n, distortion, alternate = false, degree = "Auto" } of [
+  { n: 4, distortion: 0.05 }, { n: 4, distortion: 0.2 }, { n: 8, distortion: 0.2 },
+  { n: 16, distortion: 0.2 }, { n: 8, distortion: 0.35, alternate: true },
+  { n: 8, distortion: 0.2, degree: 4 }])
+  test(`Scordelis-Lo roof, ${n} x ${n} distorted ShellTria3, offset ${distortion}, degree ${degree}` +
+    (alternate ? ", alternating diagonals" : ""), (t) => {
+    const checks = checksOf(t);
+    const model = scordelisLo({ n, shape: "ShellTria3", distortion, alternate });
+    const run = runModel(model.text + `Parameter;MixedHybridDegree;${degree}\n`, MIXED);
+    assert.ok(!run.diagnostics.some((d) => d.code === "geometry-kink" && d.severity === "warning"));
+    checks.ratio("sag of the free edge", -nodal(run, "displacements", model.freeEdgeMiddle)[2], ROOF_SAG,
+      CRITERIA.displacement);
+    checks.done();
+  });
 
 test("Scordelis-Lo roof, 8 x 8 ShellTria3 distorted by 0.2, every element declared raw (facets)", (t) => {
   const checks = checksOf(t);
@@ -1766,10 +1765,8 @@ for (const { shape, distortion = 0 } of [{ shape: "ShellQuad4", distortion: 0.2 
     checks.done();
   });
 
-// OPEN (the reading of distorted triangles on a curved surface, as on the Scordelis-Lo roof above): the radial
-// displacement is 0.19 to 1.52 of its value at 8 x 8 and 0.82 to 1.16 at 16 x 16, the fibre stresses 0.49 to 1.53 and
-// 0.74 to 1.26. The reference crate gives the same displacements.
-test("cylinder under internal pressure, 8 x 8 ShellTria3 distorted by 0.2 over 90 degrees (OPEN)", (t) => {
+// This membrane case checks the reconstructed surface through the pressure response and fibre stresses.
+test("cylinder under internal pressure, 8 x 8 ShellTria3 distorted by 0.2 over 90 degrees", (t) => {
   const checks = checksOf(t);
   const model = cylinderRing({ n: 8, shape: "ShellTria3", distortion: 0.2 });
   const run = runModel(model.text, MIXED);
