@@ -97,6 +97,23 @@ public:
     // geometry (not for a kernel that build() gave).
     [[nodiscard]] SolidResult<VolumeKernel> withMass(double density) const;
 
+    // This kernel without its stiffness, its mass and its interior fields: the matrices on the parameters that an
+    // analysis assembles once. What is left serves everything else: the stresses of the element (stressCoefficients,
+    // affineBodyStresses, stressAt), its geometry (functionsAt, gradients, the points and the loads of its faces), its
+    // volume, and, by its bubble operator, its geometric stiffness (geometric, geometricGradient) and its mass
+    // (withMass). About five sixths of the bytes of a kernel without mass, for a caller that keeps the kernels of
+    // many elements after their stiffness is assembled. hasStiffness() is false on it and stiffness() is empty.
+    [[nodiscard]] VolumeKernel withoutStiffness() const;
+    [[nodiscard]] bool hasStiffness() const { return !m_stiffness.empty(); }
+
+    // The bytes of the matrices of the kernel (the rest is small).
+    [[nodiscard]] std::size_t bytes() const;
+
+    // Why build() refuses the geometry (the degrees and the options, an element that is flat or folds at a point of
+    // its rule), without forming a matrix: about a sixth of a build. Empty when the geometry is accepted: build() may
+    // still refuse the element for matrices that are not positive definite.
+    [[nodiscard]] static std::string geometryRefusal(const VolumeGeometry& geometry, const SolidOptions& options);
+
     // `p`, `pf`, `d`: the trace, face and stress degrees.
     [[nodiscard]] std::size_t traceDegree() const { return m_traceDegree; }
     [[nodiscard]] std::size_t faceDegree() const { return m_faceDegree; }

@@ -136,8 +136,14 @@ struct SolidPartInput
     // The degrees and the interior fields (defaults: trace 4, face 4, stress 4, three interior fields).
     SolidOptions options;
     // The bytes of kernels the part keeps once built (kernelOf), 0 for none: a hexahedron of degree 4 takes about
-    // 40 ms to build and 3 MB to keep. The kernels built once the budget is spent are built again at each call.
+    // 40 ms to build and 3 MB to keep. The kernels built once the budget is spent are built again at each call that
+    // asks for their stiffness.
     std::size_t kernelCacheBytes = 0;
+    // The bytes of kernels the part keeps in all, those beyond kernelCacheBytes without their stiffness
+    // (VolumeKernel::withoutStiffness, 2.5 MB for a hexahedron of degree 4): what serves everything but the stiffness
+    // (SolidKernelRequest), so that the loads, the mass and the recovery of a model do not build again the kernels its
+    // stiffness was assembled from. Not above kernelCacheBytes: no such kernel is kept.
+    std::size_t reducedCacheBytes = 0;
     // The shells of the model (ties 1, 2 and 4), built on the same grids (the same dense indices), or null when the
     // model has none. Not copied: the ShellPart must outlive the SolidPart and its copies.
     const ShellPart* shells = nullptr;
@@ -468,9 +474,28 @@ public:
     [[nodiscard]] std::variant<SharedKernel, std::string> kernelOf(std::size_t solid, EntityLayout::Kind kind,
                                                                    bool withMass) const;
 
+    // What a use asks of the kernel of a solid beside what every kernel has (its stress operator, its bubble
+    // operator, its geometry, its volume): its stiffness, its mass, or neither (the stresses, the geometric
+    // stiffness, the volume, the functions and the loads of the faces).
+    struct SolidKernelRequest
+    {
+        bool stiffness = false;
+        bool mass = false;
+    };
+
+    // The kernel of a usable solid with what `request` asks, the same matrices as kernelOf(solid, kind, withMass)
+    // gives. A call that does not ask for the stiffness takes the kernel the part keeps, whole or without its
+    // stiffness (SolidPartInput::reducedCacheBytes; VolumeKernel::hasStiffness says which); the mass alone is added
+    // to it (VolumeKernel::withMass, a third of a build). Or the reason the solid is refused.
+    [[nodiscard]] std::variant<SharedKernel, std::string> kernelOf(std::size_t solid, EntityLayout::Kind kind,
+                                                                   const SolidKernelRequest& request) const;
+
     // The problem of a usable solid that its kernel finds (a folded element, a trace residual...), as buildKernel
-    // finds it for a static analysis without mass: costs one kernel (then kept: kernelOf). Empty when the solid is
-    // accepted.
+    // finds it for a static analysis without mass. Empty when the solid is accepted. While the part has room to keep
+    // the kernel whole (SolidPartInput::kernelCacheBytes) it is built, and kept for the stiffness; beyond, the
+    // geometry of the element alone is checked (VolumeKernel::geometryRefusal, a sixth of a build), and the refusals
+    // that only its matrices show (matrices that are not positive definite) are those of kernelOf when the stiffness
+    // is assembled.
     [[nodiscard]] std::optional<SolidPartProblem> validate(std::size_t solid) const;
 
     // The stiffness and the mass of a solid on its local unknowns (localUnknowns(solid, kind)): the kernel's on its
@@ -631,16 +656,30 @@ private:
     // does (`quartic` in solid.rs::build); below, the edges and faces are straight but for the mid-side grids.
     [[nodiscard]] bool takesCurves() const;
 
+    // The options of the kernel of a solid for an analysis of the given kind (the interior fields in a modal
+    // analysis alone), and whether it has interior fields then.
+    [[nodiscard]] SolidOptions kernelOptions(std::size_t solid, EntityLayout::Kind kind) const;
+    // The kernel the part keeps of a solid, whole or without its stiffness; null when it keeps none.
+    [[nodiscard]] SharedKernel keptKernel(std::size_t solid) const;
+    // Keeps `kernel` (with its stiffness, just built) for a solid: whole while kernelCacheBytes lasts, in place of
+    // what was kept with less; otherwise without its stiffness while reducedCacheBytes lasts, when nothing of it is
+    // kept.
+    void keep(std::size_t solid, const SharedKernel& kernel) const;
+    // Whether validate() builds the kernel of a solid: the part keeps nothing (every kernel is built), holds it
+    // already, or has room to keep it whole.
+    [[nodiscard]] bool buildsToValidate(std::size_t solid) const;
+
     // The kernels kept once built (kernelOf), by solid, with what each holds and the bytes they take; guarded by its
-    // mutex (the part is shared by the threads of the assembly). Shared by the copies of the part.
+    // mutex (the part is shared by the threads of the assembly). Shared by the copies of the part. A kernel is kept
+    // whole while SolidPartInput::kernelCacheBytes lasts, then without its stiffness while reducedCacheBytes lasts.
     struct KernelCache
     {
         std::mutex mutex;
         std::vector<SharedKernel> kernels;
-        std::vector<bool> hasMass;
-        std::vector<bool> hasInterior;
         std::vector<std::size_t> entryBytes;
         std::size_t bytes = 0;
+        // The bytes of the largest kernel kept whole so far: what the next one is expected to take (buildsToValidate).
+        std::size_t largestWholeBytes = 0;
     };
 
     SolidPartInput m_input;

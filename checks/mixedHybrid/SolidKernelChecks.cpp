@@ -375,3 +375,94 @@ CHECK_CASE("solid: invariants, distorted curved hexahedron")
 {
     invariantsOf(runner, mh::VolumeShape::Hexahedron, true, true);
 }
+
+namespace
+{
+
+// Whether two matrices have the same sizes and the same values, to the bit.
+bool hasSameBits(const mh::Matrix& a, const mh::Matrix& b)
+{
+    if (a.rows() != b.rows() || a.columns() != b.columns())
+        return false;
+    for (std::size_t i = 0; i < a.rows(); ++i)
+        for (std::size_t j = 0; j < a.columns(); ++j)
+            if (a(i, j) != b(i, j))
+                return false;
+    return true;
+}
+
+} // namespace
+
+// What a caller keeps of a kernel after its stiffness is assembled (VolumeKernel::withoutStiffness) serves the
+// stresses, the geometric stiffness and the mass of the element as the whole kernel does.
+CHECK_CASE("solid: a kernel without its stiffness serves the stresses, the geometric stiffness and the mass")
+{
+    const std::size_t degree = 3;
+    for (const mh::VolumeShape shape : SHAPES)
+    {
+        const std::string what = name(shape, degree, degree, degree);
+        const std::vector<GridId> order = numbersOf(shape);
+        const std::optional<mh::VolumeGeometry> geometry =
+            geometryOf(shape, distorted(shape), order, degree, degree, false);
+        runner.expect(geometry.has_value(), what + ": geometry");
+        if (!geometry)
+            continue;
+        mh::SolidOptions options = optionsOf(degree, degree, degree);
+        options.interiorFieldCount = 0;
+        const mh::SolidMaterial material = steel();
+        const mh::SolidResult<mh::VolumeKernel> built =
+            mh::VolumeKernel::build(*geometry, order, material, options, false, {});
+        const mh::SolidResult<mh::VolumeKernel> builtWithMass =
+            mh::VolumeKernel::build(*geometry, order, material, options, true, {});
+        runner.expect(built.ok() && builtWithMass.ok(), what + ": kernel");
+        if (!built.ok() || !builtWithMass.ok())
+            continue;
+        const mh::VolumeKernel& whole = built.value();
+        const mh::VolumeKernel reduced = whole.withoutStiffness();
+        runner.expect(whole.hasStiffness() && !reduced.hasStiffness(), what + ": the stiffness is left out");
+        runner.expect(reduced.bytes() < whole.bytes(), what + ": fewer bytes");
+        runner.expect(reduced.volume() == whole.volume(), what + ": the volume");
+        mh::Vector q(whole.parameterCount());
+        for (std::size_t i = 0; i < q.size(); ++i)
+            q[i] = 1.0e-3 * std::sin(static_cast<double>(i + 1));
+        const mh::Vector beta = whole.stressCoefficients(q, {});
+        runner.expect(reduced.stressCoefficients(q, {}) == beta, what + ": the stress coefficients");
+        const mh::SolidResult<mh::Matrix> geometric = whole.geometric(beta);
+        const mh::SolidResult<mh::Matrix> reducedGeometric = reduced.geometric(beta);
+        runner.expect(geometric.ok() && reducedGeometric.ok() &&
+                          hasSameBits(geometric.value(), reducedGeometric.value()),
+                      what + ": the geometric stiffness");
+        const mh::SolidResult<mh::VolumeKernel> withMass = reduced.withMass(material.density);
+        runner.expect(withMass.ok() && withMass.value().mass() &&
+                          hasSameBits(*withMass.value().mass(), *builtWithMass.value().mass()),
+                      what + ": the mass added is the mass of the build");
+    }
+}
+
+// The check of the geometry alone (VolumeKernel::geometryRefusal) accepts what build() accepts for its geometry, and
+// gives its refusal of an element that folds.
+CHECK_CASE("solid: the refusal of the geometry alone is that of the build")
+{
+    const std::size_t degree = 2;
+    const mh::VolumeShape shape = mh::VolumeShape::Hexahedron;
+    const std::vector<GridId> order = numbersOf(shape);
+    const mh::SolidOptions options = optionsOf(degree, degree, degree);
+    const std::optional<mh::VolumeGeometry> accepted =
+        geometryOf(shape, distorted(shape), order, degree, degree, false);
+    runner.expect(accepted.has_value(), "geometry of a distorted hexahedron");
+    if (accepted)
+        runner.expect(mh::VolumeKernel::geometryRefusal(*accepted, options).empty(), "a distorted hexahedron accepted");
+    // a hexahedron whose faces cross: two corners of each of two opposite faces exchanged
+    std::vector<mh::SolidPoint> corners = affine(shape);
+    std::swap(corners[2], corners[3]);
+    std::swap(corners[6], corners[7]);
+    const std::optional<mh::VolumeGeometry> crossed = geometryOf(shape, corners, order, degree, degree, false);
+    runner.expect(crossed.has_value(), "geometry of a hexahedron whose faces cross");
+    if (!crossed)
+        return;
+    const mh::SolidResult<mh::VolumeKernel> built =
+        mh::VolumeKernel::build(*crossed, order, steel(), options, false, {});
+    const std::string refusal = mh::VolumeKernel::geometryRefusal(*crossed, options);
+    runner.expect(!built.ok() && !refusal.empty() && refusal == built.refusal(),
+                  "the refusal of the build: " + refusal);
+}

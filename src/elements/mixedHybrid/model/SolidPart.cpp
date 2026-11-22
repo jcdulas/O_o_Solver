@@ -602,79 +602,135 @@ SolidResult<VolumeKernel> SolidPart::buildKernel(std::size_t solid, EntityLayout
     SolidResult<VolumeGeometry> geometry = geometryOf(solid);
     if (!geometry.ok())
         return SolidResult<VolumeKernel>::refused(geometry.refusal());
-    SolidOptions options = m_input.options;
-    const bool interior = kind == EntityLayout::Kind::Modal && m_interiorEntities[solid].has_value();
-    if (!interior)
-        options.interiorFieldCount = 0;
+    const SolidOptions options = kernelOptions(solid, kind);
+    const bool interior = options.interiorFieldCount > 0;
     const std::vector<base::EntityId> order = orderOf(solid);
     return VolumeKernel::build(geometry.value(), order, m_basicMaterials[solid], options, withMass || interior, loads);
+}
+
+SolidOptions SolidPart::kernelOptions(std::size_t solid, EntityLayout::Kind kind) const
+{
+    SolidOptions options = m_input.options;
+    if (kind != EntityLayout::Kind::Modal || !m_interiorEntities[solid].has_value())
+        options.interiorFieldCount = 0;
+    return options;
+}
+
+SolidPart::SharedKernel SolidPart::keptKernel(std::size_t solid) const
+{
+    KernelCache& cache = *m_kernelCache;
+    const std::lock_guard<std::mutex> lock(cache.mutex);
+    return solid < cache.kernels.size() ? cache.kernels[solid] : nullptr;
+}
+
+void SolidPart::keep(std::size_t solid, const SharedKernel& kernel) const
+{
+    // A kernel without its stiffness is one the part keeps already, with its mass added: nothing more to keep.
+    if (!kernel->hasStiffness())
+        return;
+    KernelCache& cache = *m_kernelCache;
+    const std::size_t wholeBytes = kernel->bytes();
+    const std::size_t budget = std::max(m_input.kernelCacheBytes, m_input.reducedCacheBytes);
+    {
+        const std::lock_guard<std::mutex> lock(cache.mutex);
+        if (cache.kernels.size() < m_input.solids.size())
+        {
+            cache.kernels.resize(m_input.solids.size());
+            cache.entryBytes.resize(m_input.solids.size(), 0);
+        }
+        const SharedKernel& kept = cache.kernels[solid];
+        // Another thread kept one with as much meanwhile.
+        if (kept && kept->hasStiffness() && (kept->mass() || !kernel->mass()) &&
+            (kept->interiorFields() || !kernel->interiorFields()))
+            return;
+        // A kernel kept with less gives its place to this one.
+        const std::size_t others = cache.bytes - cache.entryBytes[solid];
+        if (others + wholeBytes <= m_input.kernelCacheBytes)
+        {
+            cache.kernels[solid] = kernel;
+            cache.entryBytes[solid] = wholeBytes;
+            cache.bytes = others + wholeBytes;
+            cache.largestWholeBytes = std::max(cache.largestWholeBytes, wholeBytes);
+            return;
+        }
+        // No room for the whole kernel: what is kept of it stays, and nothing is kept once every budget is spent.
+        if (kept || cache.bytes >= budget)
+            return;
+    }
+    // The kernel without its stiffness, copied outside the lock (2.5 MB for a hexahedron).
+    SharedKernel reduced = std::make_shared<const VolumeKernel>(kernel->withoutStiffness());
+    const std::size_t reducedBytes = reduced->bytes();
+    const std::lock_guard<std::mutex> lock(cache.mutex);
+    if (cache.kernels[solid] || cache.bytes + reducedBytes > budget)
+        return;
+    cache.kernels[solid] = std::move(reduced);
+    cache.entryBytes[solid] = reducedBytes;
+    cache.bytes += reducedBytes;
+}
+
+bool SolidPart::buildsToValidate(std::size_t solid) const
+{
+    if (m_input.kernelCacheBytes == 0)
+        return true;
+    KernelCache& cache = *m_kernelCache;
+    const std::lock_guard<std::mutex> lock(cache.mutex);
+    if (solid < cache.kernels.size() && cache.kernels[solid])
+        return true;
+    return cache.bytes + cache.largestWholeBytes <= m_input.kernelCacheBytes;
 }
 
 std::variant<SolidPart::SharedKernel, std::string> SolidPart::kernelOf(std::size_t solid, EntityLayout::Kind kind,
                                                                        bool withMass) const
 {
+    return kernelOf(solid, kind, SolidKernelRequest{true, withMass});
+}
+
+std::variant<SolidPart::SharedKernel, std::string> SolidPart::kernelOf(std::size_t solid, EntityLayout::Kind kind,
+                                                                       const SolidKernelRequest& request) const
+{
+    // The interior fields of a modal analysis come from the mass, and from bubble matrices no kept kernel has: a
+    // kernel serves them when it was built with them.
     const bool interior = kind == EntityLayout::Kind::Modal && m_interiorEntities[solid].has_value();
-    const bool mass = withMass || interior;
-    KernelCache& cache = *m_kernelCache;
-    const auto serves = [&](std::size_t s)
-    {
-        return s < cache.kernels.size() && cache.kernels[s] && (!mass || cache.hasMass[s]) &&
-               (!interior || cache.hasInterior[s]);
-    };
-    // A kept kernel without the mass that a call asks for (without interior fields) gets its mass added.
-    SharedKernel withoutMass;
-    {
-        const std::lock_guard<std::mutex> lock(cache.mutex);
-        if (serves(solid))
-            return cache.kernels[solid];
-        if (mass && !interior && solid < cache.kernels.size())
-            withoutMass = cache.kernels[solid];
-    }
-    SolidResult<VolumeKernel> built = withoutMass != nullptr ? withoutMass->withMass(m_basicMaterials[solid].density)
-                                                             : buildKernel(solid, kind, withMass);
+    const bool mass = request.mass || interior;
+    const SharedKernel kept = keptKernel(solid);
+    const bool hasStiffness = kept && (!request.stiffness || kept->hasStiffness());
+    if (hasStiffness && (!mass || kept->mass()) && (!interior || kept->interiorFields()))
+        return kept;
+    // PERFORMANCE: a kept kernel that lacks the mass alone gets it added (a third of a build), whether it is kept
+    // whole or without its stiffness. The inertial loads of a static analysis ask the mass of every element after
+    // its stiffness. Measured on 216 hexahedra of degree 4 under gravity: the masses from 9.6 s to 4.5 s.
+    const bool addsMass = hasStiffness && !interior;
+    SolidResult<VolumeKernel> built = addsMass ? kept->withMass(m_basicMaterials[solid].density)
+                                               : buildKernel(solid, kind, request.mass);
     if (!built.ok())
         return built.refusal();
     SharedKernel kernel = std::make_shared<const VolumeKernel>(std::move(built.value()));
-    if (m_input.kernelCacheBytes == 0)
-        return kernel;
-    // The bytes of the kernel: its matrices (the rest is small).
-    const auto bytesOf = [](const Matrix& m) { return m.rows() * m.columns() * sizeof(double); };
-    std::size_t bytes = bytesOf(kernel->stiffness()) + bytesOf(kernel->stressOperator()) +
-                        bytesOf(kernel->bubbleOperator()) + bytesOf(kernel->geometry().functionCoefficients);
-    if (kernel->mass())
-        bytes += bytesOf(*kernel->mass());
-    if (kernel->interiorFields())
-        bytes += bytesOf(kernel->interiorFields()->massCoupling);
-    for (const SolidLoadResult& load : kernel->loads())
-        bytes += (load.force.size() + load.particularStresses.size()) * sizeof(double);
-    const std::lock_guard<std::mutex> lock(cache.mutex);
-    if (cache.kernels.size() < m_input.solids.size())
-    {
-        cache.kernels.resize(m_input.solids.size());
-        cache.hasMass.resize(m_input.solids.size(), false);
-        cache.hasInterior.resize(m_input.solids.size(), false);
-        cache.entryBytes.resize(m_input.solids.size(), 0);
-    }
-    if (serves(solid))
-        return kernel; // another thread kept one meanwhile
-    // A kernel kept with less gives its place to this one.
-    const std::size_t total = cache.bytes - cache.entryBytes[solid] + bytes;
-    if (total <= m_input.kernelCacheBytes)
-    {
-        cache.kernels[solid] = kernel;
-        cache.hasMass[solid] = kernel->mass().has_value();
-        cache.hasInterior[solid] = kernel->interiorFields().has_value();
-        cache.entryBytes[solid] = bytes;
-        cache.bytes = total;
-    }
+    if (m_input.kernelCacheBytes > 0)
+        keep(solid, kernel);
     return kernel;
 }
 
 std::optional<SolidPartProblem> SolidPart::validate(std::size_t solid) const
 {
-    const std::variant<SharedKernel, std::string> kernel = kernelOf(solid, EntityLayout::Kind::Static, false);
-    if (const std::string* refusal = std::get_if<std::string>(&kernel))
-        return SolidPartProblem{SolidPartProblem::Severity::Error, solid, m_input.solids[solid].elementId, *refusal};
+    // PERFORMANCE: a kernel the part has no room to keep whole is not built here: it would be built again for the
+    // stiffness. Its geometry alone is checked. Measured on 216 hexahedra of degree 4 (the first 80 or so kept whole):
+    // the checks of the model from 12.3 s to 5.5 s.
+    std::string refusal;
+    if (buildsToValidate(solid))
+    {
+        const std::variant<SharedKernel, std::string> kernel = kernelOf(solid, EntityLayout::Kind::Static, false);
+        if (const std::string* message = std::get_if<std::string>(&kernel))
+            refusal = *message;
+    }
+    else
+    {
+        const SolidResult<VolumeGeometry> geometry = geometryOf(solid);
+        refusal = geometry.ok() ? VolumeKernel::geometryRefusal(
+                                      geometry.value(), kernelOptions(solid, EntityLayout::Kind::Static))
+                                : geometry.refusal();
+    }
+    if (!refusal.empty())
+        return SolidPartProblem{SolidPartProblem::Severity::Error, solid, m_input.solids[solid].elementId, refusal};
     return std::nullopt;
 }
 

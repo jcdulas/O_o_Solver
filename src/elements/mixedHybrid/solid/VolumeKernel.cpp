@@ -657,6 +657,52 @@ SolidResult<VolumeKernel> VolumeKernel::build(const VolumeGeometry& geometry, st
     return kernel;
 }
 
+std::string VolumeKernel::geometryRefusal(const VolumeGeometry& geometry, const SolidOptions& options)
+{
+    const std::string refusal = optionsRefusal(geometry, options);
+    if (!refusal.empty())
+        return refusal;
+    const std::size_t points = options.pointsPerDirection.value_or(options.stressDegree + RULE_EXTRA_POINTS);
+    const SolidResult<Fields> tabulated = tabulateFields(geometry, options.stressDegree, points);
+    return tabulated.ok() ? std::string() : tabulated.refusal();
+}
+
+VolumeKernel VolumeKernel::withoutStiffness() const
+{
+    VolumeKernel out;
+    out.m_traceDegree = m_traceDegree;
+    out.m_faceDegree = m_faceDegree;
+    out.m_stressDegree = m_stressDegree;
+    out.m_parameterCount = m_parameterCount;
+    out.m_bubbleCount = m_bubbleCount;
+    out.m_stressFunctionCount = m_stressFunctionCount;
+    out.m_stressOperator = m_stressOperator;
+    out.m_bubbleOperator = m_bubbleOperator;
+    out.m_loads = m_loads;
+    out.m_affineBodyStresses = m_affineBodyStresses;
+    out.m_volume = m_volume;
+    out.m_geometry = m_geometry;
+    out.m_order = m_order;
+    out.m_pointsPerDirection = m_pointsPerDirection;
+    out.m_stressGramFactor = m_stressGramFactor;
+    return out;
+}
+
+std::size_t VolumeKernel::bytes() const
+{
+    const auto bytesOf = [](const Matrix& m) { return m.rows() * m.columns() * sizeof(double); };
+    std::size_t bytes = bytesOf(m_stiffness) + bytesOf(m_stressOperator) + bytesOf(m_bubbleOperator) +
+                        bytesOf(m_affineBodyStresses) + bytesOf(m_stressGramFactor) +
+                        bytesOf(m_geometry.functionCoefficients);
+    if (m_mass)
+        bytes += bytesOf(*m_mass);
+    if (m_interiorFields)
+        bytes += bytesOf(m_interiorFields->massCoupling);
+    for (const SolidLoadResult& load : m_loads)
+        bytes += (load.force.size() + load.particularStresses.size()) * sizeof(double);
+    return bytes;
+}
+
 SolidResult<VolumeKernel> VolumeKernel::withMass(double density) const
 {
     SolidResult<Fields> tabulated = tabulateFields(m_geometry, m_stressDegree, m_pointsPerDirection);

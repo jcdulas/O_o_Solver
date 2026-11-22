@@ -4,6 +4,7 @@
 // along their skin, the affine fields on their unknowns).
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/base/errors/SolverError.hpp"
 #include "oos/elements/core/ElementBatchView.hpp"
 #include "oos/elements/core/ElementFamily.hpp"
 #include "oos/elements/core/ElementFormulation.hpp"
@@ -45,6 +46,12 @@ constexpr std::array<SolidCard, 4> SOLID_CARDS{{{"SolidTetra", VolumeShape::Tetr
 // degree 4, or many more tetrahedra, so that the check, the stiffness, the mass and the recovery of a model of that
 // size build each kernel once.
 constexpr std::size_t SOLID_KERNEL_CACHE_BYTES = std::size_t{256} << 20;
+
+// The bytes of solid kernels the SolidPart keeps in all, those beyond SOLID_KERNEL_CACHE_BYTES without their stiffness
+// (SolidPartInput::reducedCacheBytes): about 390 hexahedra of degree 4. The loads, the mass and the recovery of a
+// model of that size read its kernels instead of building each again (40 ms for a hexahedron); a larger model builds
+// those beyond for its stiffness, then for each of those uses.
+constexpr std::size_t SOLID_REDUCED_CACHE_BYTES = std::size_t{1} << 30;
 
 // Two expansion coefficients are the same when they differ by less than this share of the larger.
 constexpr double SAME_EXPANSION = 1.0e-12;
@@ -312,6 +319,7 @@ void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
 
     SolidPartInput input;
     input.kernelCacheBytes = SOLID_KERNEL_CACHE_BYTES;
+    input.reducedCacheBytes = SOLID_REDUCED_CACHE_BYTES;
     // What the solids tie to (spec section 3.4): the shells, and the edges of lines alone.
     if (m_shellPart != nullptr && m_shellPart->usable())
         input.shells = m_shellPart.get();
@@ -769,11 +777,16 @@ MixedHybridModel::SolidCaseStresses MixedHybridModel::solidStresses(const MixedS
     }
     else
     {
-        std::variant<SolidPart::SharedKernel, std::string> kernel = m_solidPart->kernelOf(solid.partIndex, kind, false);
+        // The stresses and the geometric stiffness read no stiffness: the kernel as the part keeps it.
+        std::variant<SolidPart::SharedKernel, std::string> kernel =
+            m_solidPart->kernelOf(solid.partIndex, kind, SolidPart::SolidKernelRequest{});
+        // The check of the model builds the kernels the part keeps whole; it checks the geometry of the others, and
+        // their matrices may refuse them here.
         if (const std::string* message = std::get_if<std::string>(&kernel))
-            throw std::logic_error(
-                base::concatenate({"MixedHybridModel: solid ", std::to_string(solid.elementId), ": ", *message,
-                                   " (its check accepted it: a bug of O_o_Solver)"}));
+            throw base::SolverError(base::concatenate(
+                {"solid element ", std::to_string(solid.elementId), " of ", MIXED_HYBRID_FORMULATION, ": ", *message,
+                 "; its geometry or its material makes its matrices singular: check its grid points and its "
+                 "material"}));
         out.kernel = std::get<SolidPart::SharedKernel>(std::move(kernel));
         out.beta = SolidPart::stressCoefficients(*out.kernel, x, {});
     }

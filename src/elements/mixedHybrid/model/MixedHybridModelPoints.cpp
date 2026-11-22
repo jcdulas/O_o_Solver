@@ -170,7 +170,7 @@ std::optional<FormulationModel::PointMotion> MixedHybridModel::facePointMotion(
             return std::nullopt;
         r = scl3(r, 1.0 / total);
         std::variant<SolidPart::SharedKernel, std::string> kernel =
-            m_solidPart->kernelOf(solid->partIndex, EntityLayout::Kind::Static, false);
+            m_solidPart->kernelOf(solid->partIndex, EntityLayout::Kind::Static, SolidPart::SolidKernelRequest{});
         if (!std::holds_alternative<SolidPart::SharedKernel>(kernel))
             return std::nullopt; // a refused solid: its family reports it
         const std::vector<double> functions = std::get<SolidPart::SharedKernel>(kernel)->functionsAt(r);

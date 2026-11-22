@@ -1002,3 +1002,50 @@ CHECK_CASE("solidpart: projections on the functions of an edge and of a face")
             expectVector(runner, projected[m], inside[m], 1e-10, "a face function projected back");
     }
 }
+
+// The kernels a part keeps: whole while SolidPartInput::kernelCacheBytes lasts, then without their stiffness while
+// reducedCacheBytes lasts. Every call gets the matrices a part that keeps nothing builds, to the bit.
+CHECK_CASE("solid part: a kernel kept without its stiffness serves everything but the stiffness")
+{
+    const auto hasSameBits = [](const mh::Matrix& a, const mh::Matrix& b)
+    {
+        if (a.rows() != b.rows() || a.columns() != b.columns())
+            return false;
+        for (std::size_t i = 0; i < a.rows(); ++i)
+            for (std::size_t j = 0; j < a.columns(); ++j)
+                if (a(i, j) != b(i, j))
+                    return false;
+        return true;
+    };
+    const auto accepted = [](std::variant<mh::SolidPart::SharedKernel, std::string> kernel)
+    { return std::get<mh::SolidPart::SharedKernel>(std::move(kernel)); };
+    // the reference: a part that keeps nothing builds every kernel whole
+    const Mesh referenceMesh = hexaBlock(2, 2);
+    const mh::SolidPart reference(referenceMesh.input);
+    const std::size_t count = referenceMesh.input.solids.size();
+    const std::size_t wholeBytes = accepted(reference.kernelOf(0, Kind::Static, false))->bytes();
+    // room for one kernel whole, and for all of them without their stiffness
+    Mesh mesh = hexaBlock(2, 2);
+    mesh.input.kernelCacheBytes = wholeBytes + wholeBytes / 2;
+    mesh.input.reducedCacheBytes = count * wholeBytes;
+    const mh::SolidPart part(mesh.input);
+    const mh::SolidPart::SolidKernelRequest asKept{};
+    const mh::SolidPart::SolidKernelRequest withMass{false, true};
+    // the check builds the first kernel, kept whole; the others have no room whole: their geometry is checked
+    for (std::size_t s = 0; s < count; ++s)
+        runner.expect(!part.validate(s).has_value(), "solid " + std::to_string(s) + " accepted");
+    for (std::size_t s = 0; s < count; ++s)
+    {
+        const std::string what = "solid " + std::to_string(s);
+        const mh::SolidPart::SharedKernel whole = accepted(reference.kernelOf(s, Kind::Static, false));
+        const mh::SolidPart::SharedKernel stiff = accepted(part.kernelOf(s, Kind::Static, false));
+        runner.expect(stiff->hasStiffness() && hasSameBits(stiff->stiffness(), whole->stiffness()),
+                      what + ": the stiffness");
+        const mh::SolidPart::SharedKernel kept = accepted(part.kernelOf(s, Kind::Static, asKept));
+        runner.expect(kept->hasStiffness() == (s == 0), what + ": kept whole or without its stiffness");
+        runner.expect(hasSameBits(kept->stressOperator(), whole->stressOperator()), what + ": the stress operator");
+        const mh::SolidPart::SharedKernel massive = accepted(part.kernelOf(s, Kind::Static, withMass));
+        const mh::SolidPart::SharedKernel wholeMassive = accepted(reference.kernelOf(s, Kind::Static, true));
+        runner.expect(massive->mass() && hasSameBits(*massive->mass(), *wholeMassive->mass()), what + ": the mass");
+    }
+}

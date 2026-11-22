@@ -1,6 +1,7 @@
 #include "oos/elements/mixedHybrid/families/MixedHybridSolidFamily.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/base/errors/SolverError.hpp"
 #include "oos/elements/core/ElementProblem.hpp"
 #include "oos/elements/core/SolidShapeFunctions.hpp"
 #include "oos/elements/mixedHybrid/families/LocalMap.hpp"
@@ -37,16 +38,29 @@ EntityLayout::Kind kindOf(const ElementBatchView& view)
     return view.entities()->kind();
 }
 
-// The kernel of a solid without loads (kept by the SolidPart).
-SolidPart::SharedKernel kernelOf(const MixedHybridModel& model, const MixedSolid& solid, EntityLayout::Kind kind,
-                                 bool withMass)
+// The kernel a call got, or the error of the solid it is refused for. check() builds the kernels the SolidPart keeps
+// whole; in a larger model it checks the geometry of the others, and their matrices may refuse them here.
+SolidPart::SharedKernel acceptedKernel(std::variant<SolidPart::SharedKernel, std::string> kernel,
+                                       const MixedSolid& solid)
 {
-    std::variant<SolidPart::SharedKernel, std::string> kernel =
-        model.solidPart()->kernelOf(solid.partIndex, kind, withMass);
     if (const std::string* message = std::get_if<std::string>(&kernel))
-        throw std::logic_error(base::concatenate({"MixedHybridSolidFamily: element ", std::to_string(solid.elementId),
-                                                  ": ", *message, " (check() accepted it: a bug of O_o_Solver)"}));
+        throw base::SolverError(base::concatenate(
+            {"solid element ", std::to_string(solid.elementId), " of ", MIXED_HYBRID_FORMULATION, ": ", *message,
+             "; its geometry or its material makes its matrices singular: check its grid points and its material"}));
     return std::get<SolidPart::SharedKernel>(std::move(kernel));
+}
+
+// What the facets ask of the kernel of a solid: its stiffness, its mass, or neither (its volume, its functions and
+// the loads of its faces: the kernel as the SolidPart keeps it, with or without its stiffness).
+constexpr SolidPart::SolidKernelRequest WITH_STIFFNESS{true, false};
+constexpr SolidPart::SolidKernelRequest WITH_MASS{false, true};
+constexpr SolidPart::SolidKernelRequest AS_KEPT{false, false};
+
+// The kernel of a solid without loads, with what `request` asks.
+SolidPart::SharedKernel kernelOf(const MixedHybridModel& model, const MixedSolid& solid, EntityLayout::Kind kind,
+                                 const SolidPart::SolidKernelRequest& request)
+{
+    return acceptedKernel(model.solidPart()->kernelOf(solid.partIndex, kind, request), solid);
 }
 
 // The map of the local unknowns of a solid to its DOFs.
@@ -120,7 +134,7 @@ void MixedHybridSolidFamily::computeStiffness(const ElementBatchView& view, Elem
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const MixedSolid& solid = requiredSolid(model, view, row);
-        const SolidPart::SharedKernel kernel = kernelOf(model, solid, kind, false);
+        const SolidPart::SharedKernel kernel = kernelOf(model, solid, kind, WITH_STIFFNESS);
         const LocalMap map = solidMapOf(view, model, solid, kind);
         block.append(row, map.dofs, congruent(model.solidPart()->localStiffness(solid.partIndex, *kernel, kind), map));
     }
@@ -136,7 +150,7 @@ void MixedHybridSolidFamily::computeMass(const ElementBatchView& view, ElementRa
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const MixedSolid& solid = requiredSolid(model, view, row);
-        const SolidPart::SharedKernel kernel = kernelOf(model, solid, kind, true);
+        const SolidPart::SharedKernel kernel = kernelOf(model, solid, kind, WITH_MASS);
         const LocalMap map = solidMapOf(view, model, solid, kind);
         block.append(row, map.dofs, congruent(model.solidPart()->localMass(solid.partIndex, *kernel, kind), map));
     }
@@ -152,8 +166,8 @@ bool MixedHybridSolidFamily::computeVolumes(const ElementBatchView& view, Elemen
     const EntityLayout::Kind kind = kindOf(view);
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
-        // The kernel without its mass: the one the stiffness of the element is made from, kept by the SolidPart.
-        const SolidPart::SharedKernel kernel = kernelOf(model, requiredSolid(model, view, row), kind, false);
+        // The kernel the stiffness of the element is made from, as the SolidPart keeps it.
+        const SolidPart::SharedKernel kernel = kernelOf(model, requiredSolid(model, view, row), kind, AS_KEPT);
         volumes[static_cast<std::size_t>(row - range.first)] = kernel->volume();
     }
     return true;
@@ -226,7 +240,7 @@ void MixedHybridSolidFamily::computePressureLoads(const ElementBatchView& view,
         for (const std::int32_t id : pressure.faceNodes)
             grids.push_back(static_cast<std::size_t>(model.gridIndexOfRow(*view.index().points().findGrid(id))));
         const std::size_t face = *part.localFaceOf(solid.partIndex, grids);
-        const SolidPart::SharedKernel kernel = kernelOf(model, solid, kind, false);
+        const SolidPart::SharedKernel kernel = kernelOf(model, solid, kind, AS_KEPT);
         Vector onParameters;
         if (!pressure.hasDirection)
             onParameters = part.facePressureLoad(
@@ -367,6 +381,10 @@ void MixedHybridSolidFamily::recover(const ElementBatchView& view, ElementRange 
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const MixedSolid& solid = requiredSolid(model, view, row);
+        // PERFORMANCE: the stresses read the kernel as the SolidPart keeps it, without its stiffness beyond the first
+        // 80 hexahedra or so: before, each of the others was built again here. Measured on 216 hexahedra of degree 4:
+        // the recovery from 6.5 s to 0.1 s, the stresses at the grid points (MixedHybridModel::gridPointStresses)
+        // the same.
         const MixedHybridModel::SolidCaseStresses stresses = model.solidStresses(solid, kindOf(view), displacements);
         const SolidPointStresses points = SolidPart::pointStresses(*stresses.kernel, stresses.beta);
         // The places: the centre, then the corners; the temperature change there for the strains (the functions of

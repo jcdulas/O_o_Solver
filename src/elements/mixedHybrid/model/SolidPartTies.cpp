@@ -143,7 +143,7 @@ std::vector<SolidAroundEdge> solidsAround(const SolidPart& part, const SolidPart
     for (const std::size_t is : edge.solids)
     {
         std::variant<SolidPart::SharedKernel, std::string> kernel =
-            part.kernelOf(is, EntityLayout::Kind::Static, false);
+            part.kernelOf(is, EntityLayout::Kind::Static, SolidPart::SolidKernelRequest{});
         if (!std::holds_alternative<SolidPart::SharedKernel>(kernel))
             continue;
         const std::vector<std::size_t>& corners = part.solid(is).corners;
@@ -336,7 +336,7 @@ private:
             return found->second ? &*found->second : nullptr;
         std::optional<Solid> entry;
         std::variant<SolidPart::SharedKernel, std::string> kernel =
-            m_part->kernelOf(solid, EntityLayout::Kind::Static, false);
+            m_part->kernelOf(solid, EntityLayout::Kind::Static, SolidPart::SolidKernelRequest{});
         if (std::holds_alternative<SolidPart::SharedKernel>(kernel))
             entry = Solid{std::get<SolidPart::SharedKernel>(std::move(kernel)),
                           m_part->localUnknowns(solid, EntityLayout::Kind::Static)};
