@@ -7,6 +7,7 @@ Solve finite element models through typed tables and return numerical results.
 ## Start here
 
 - [Getting started](docs/getting-started.md): build requirements and a first working example.
+- [Native Python package](docs/python.md) shows how to run analyses and evaluate optimization gradients.
 - [Project overview](README.md): capabilities, repository layout and build commands.
 - [API reference](docs/api.rst): the current JavaScript types and C++ entry points, included directly from source.
 - [WebAssembly threads](docs/threading.md): shared-memory builds, runtime settings and browser Workers.
@@ -47,6 +48,7 @@ The reader and solver have public documentation sites and exchange model data th
 :caption: User guide
 
 docs/getting-started
+docs/python
 docs/threading
 docs/static-inputs
 docs/testing
