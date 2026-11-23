@@ -38,7 +38,8 @@ void append(std::vector<T>& target, const std::vector<T>& source)
     target.insert(target.end(), source.begin(), source.end());
 }
 
-design::DesignProblem makeProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, const OptimizationInput& input)
+design::DesignProblem makeProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, const OptimizationInput& input,
+                                  std::map<std::string, base::ImportedTable> nativeTables)
 {
     Readers tables;
     const std::vector<base::TableContract> contracts = {design::designVariablesContract(),
@@ -54,13 +55,24 @@ design::DesignProblem makeProblem(std::shared_ptr<const input::ModelSnapshot> sn
                                                         design::designConstraintSetsContract(),
                                                         design::designSubcasesContract(),
                                                         design::designScreeningContract()};
-    for (const auto& [name, bytes] : input.tables)
+    const auto contractFor = [&](const std::string& name) -> const base::TableContract&
     {
         const auto contract =
             std::find_if(contracts.begin(), contracts.end(), [&](const auto& entry) { return entry.table == name; });
         if (contract == contracts.end())
             throw std::invalid_argument("unknown optimization table: " + name);
-        tables.emplace(name, base::ContractReader(base::importTablePackage(bytes), *contract));
+        return *contract;
+    };
+    for (const auto& [name, bytes] : input.tables)
+    {
+        const auto& contract = contractFor(name);
+        tables.emplace(name, base::ContractReader(base::importTablePackage(bytes), contract));
+    }
+    for (auto& [name, imported] : nativeTables)
+    {
+        if (tables.contains(name))
+            throw std::invalid_argument("duplicate optimization table: " + name);
+        tables.emplace(name, base::ContractReader(std::move(imported), contractFor(name)));
     }
     std::vector<design::ExpressionProgram> equations;
     const auto* symbols = table(tables, "designEquationSymbols");
@@ -157,10 +169,16 @@ bool needsFullShapeColumns(const design::DesignEvaluation& evaluation,
 
 OptimizationProblem::OptimizationProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, OptimizationInput input,
                                          OptimizationSettings settings)
+    : OptimizationProblem(std::move(snapshot), std::move(input), std::move(settings), {})
+{
+}
+
+OptimizationProblem::OptimizationProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, OptimizationInput input,
+                                         OptimizationSettings settings, std::map<std::string, base::ImportedTable> tables)
     : m_input(std::move(input)),
       m_settings(std::move(settings)),
       m_pool(acquireThreadPool(m_settings.threads)),
-      m_problem(makeProblem(std::move(snapshot), m_input))
+      m_problem(makeProblem(std::move(snapshot), m_input, std::move(tables)))
 {
     if (m_settings.blockItems == 0 || m_settings.maximumOutputBytes == 0)
         throw std::invalid_argument("blockItems and maximumOutputBytes must be positive");

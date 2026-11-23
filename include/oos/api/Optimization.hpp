@@ -43,6 +43,8 @@ class OptimizationProblem : public std::enable_shared_from_this<OptimizationProb
 public:
     OptimizationProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, OptimizationInput input,
                         OptimizationSettings settings);
+    OptimizationProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, OptimizationInput input,
+                        OptimizationSettings settings, std::map<std::string, base::ImportedTable> nativeTables);
     [[nodiscard]] const design::DesignProblem& problem() const noexcept { return m_problem; }
     [[nodiscard]] const OptimizationSettings& settings() const noexcept { return m_settings; }
     [[nodiscard]] design::CallableRegistry callables() const;

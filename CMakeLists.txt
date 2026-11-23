@@ -53,6 +53,11 @@ endif()
 
 add_subdirectory(src)
 
+option(OOS_BUILD_PYTHON "Build the native CPython extension" OFF)
+if(OOS_BUILD_PYTHON)
+    add_subdirectory(python)
+endif()
+
 if(OOS_BUILD_NATIVE_CHECKS AND NOT EMSCRIPTEN)
     add_subdirectory(checks)
 endif()
