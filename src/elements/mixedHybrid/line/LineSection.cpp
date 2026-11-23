@@ -75,11 +75,10 @@ LineSectionPoint LineSection::at(double fraction) const
     point.stiffness[3][3] += shearModulus * j;
     if (bending)
     {
-        std::array<double, 2> shear{RIGID_SHEAR_STIFFNESS_FACTOR * ea, RIGID_SHEAR_STIFFNESS_FACTOR * ea};
-        if (shearFactors)
-            shear = {(*shearFactors)[0] * shearModulus * a, (*shearFactors)[1] * shearModulus * a};
-        point.stiffness[1][1] += shear[0];
-        point.stiffness[2][2] += shear[1];
+        for (std::size_t plane = 0; plane < 2; ++plane)
+            point.stiffness[1 + plane][1 + plane] = hasShearFlexibility(plane)
+                                                        ? (*shearFactors)[plane] * shearModulus * a
+                                                        : RIGID_SHEAR_STIFFNESS_FACTOR * ea;
         // K_y bends in the plane (x, z) with I2, K_z in the plane (x, y) with I1.
         point.centroidalBending = {youngModulus * inertia2, youngModulus * inertia1, -youngModulus * product};
         point.stiffness[4][4] += point.centroidalBending[0];

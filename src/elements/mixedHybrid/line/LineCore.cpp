@@ -133,9 +133,14 @@ std::variant<SectionLaw, std::string> sectionLaw(const LineElement& line, const 
     const auto point = section.at(kin.fraction);
     law.neutral = point.neutralAxis;
     const auto& k = point.stiffness;
-    for (std::size_t i = 0; i < 4; ++i)
-        if (k[i][i] > 0.0 && (i == 0 || i == 3 || shear))
-            law.inverse[i] = 1.0 / k[i][i];
+    if (k[0][0] > 0.0)
+        law.inverse[0] = 1.0 / k[0][0];
+    if (k[3][3] > 0.0)
+        law.inverse[3] = 1.0 / k[3][3];
+    if (shear)
+        for (std::size_t plane = 0; plane < 2; ++plane)
+            if (section.hasShearFlexibility(plane) && k[1 + plane][1 + plane] > 0.0)
+                law.inverse[1 + plane] = 1.0 / k[1 + plane][1 + plane];
     const auto [yy, zz, yz] = point.centroidalBending;
     const double det = yy * zz - yz * yz;
     if (det > 0.0)

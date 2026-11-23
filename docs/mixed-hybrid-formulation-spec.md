@@ -186,7 +186,10 @@ Document 34, section 8.1.
 - The moments of the line are a vector polynomial of degree k, eliminated on the edge. At each end, the rotation Λ of
   the lines at the grid point is the hybrid unknown; these are the rotation components of the grid point
   (section 5.4).
-- Shear flexibility enters through the complementary energy of V = t × dM/ds. The axial strain stays primal.
+- Shear flexibility enters through the complementary energy of V = t × dM/ds. In each bending plane a
+  positive shear factor gives compliance 1/(kGA). An omitted or zero factor gives exactly zero shear
+  compliance. The section still carries shear force in equilibrium and retains its rotary inertia in
+  dynamics. The axial strain stays primal.
 - The edge moment is transported to the section axis using the full force resultant. For an offset **o**, the
   section moment is **M** − **o** × (**N** + **V**), where **N** is the axial force vector. The neutral-axis offset
   remains part of the axial and bending section law. The axis length per unit edge length is μ = |t + do/ds|.

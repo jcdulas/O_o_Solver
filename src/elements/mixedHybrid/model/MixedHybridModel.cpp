@@ -78,14 +78,9 @@ std::variant<LineSection, std::string> beamSection(const BeamData& beam)
     const BeamStation& b = stations.stations[stations.count - 1];
     const double e = beam.material.youngModulus;
     const double g = beam.material.shearModulus;
-    // A plane without shear flexibility (factor <= 0) takes the rigid shear of the kernel: k G A = factor E A.
     std::optional<std::array<double, 2>> shearFactors;
     if (stations.shearFactor1 > 0.0 || stations.shearFactor2 > 0.0)
-    {
-        const double rigid = g > 0.0 ? RIGID_SHEAR_STIFFNESS_FACTOR * e / g : 0.0;
-        shearFactors = std::array<double, 2>{stations.shearFactor1 > 0.0 ? stations.shearFactor1 : rigid,
-                                             stations.shearFactor2 > 0.0 ? stations.shearFactor2 : rigid};
-    }
+        shearFactors = std::array<double, 2>{stations.shearFactor1, stations.shearFactor2};
     const std::array<std::array<double, 5>, 2> ends{
         {{a.area, a.inertia1, a.inertia2, a.productOfInertia, a.torsionalConstant},
          {b.area, b.inertia1, b.inertia2, b.productOfInertia, b.torsionalConstant}}};

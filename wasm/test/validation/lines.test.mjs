@@ -831,6 +831,28 @@ function beamEigenvalue(k, inertia, shearFactor) {
   return (2 * qc) / (-qb + Math.sqrt(qb * qb - 4 * qa * qc));
 }
 
+test("VM50 mixed Auto first bending mode matches the pin-ended Rayleigh beam", () => {
+  const count = 8, length = 80, area = 4, inertia = 4 / 3, young = 3e7, density = 0.000728;
+  const model = ["Parameter;MixedHybridDegree;Auto", "Parameter;CoupledMass;1", eigenMethod(2),
+    barProp(1, { area, i1: inertia, i2: inertia, j: 2.2496 }), `IsoMat;1;${young};;0.3;${density}`];
+  for (let i = 0; i <= count; ++i) {
+    const id = i + 1;
+    model.push(`Node;${id};;${i * length / count};0.;0.`,
+      `SinglePointConstrList;1;${i === 0 || i === count ? "12345" : "345"};${id}`);
+    if (i < count) model.push(`Bar2;${id};1;${id};${id + 1};0.;;1.;0.`);
+  }
+  const run = runModel(deck(103, [...MODES_CASE, "DisplacementOutput;All"], model), MIXED, "modes");
+  const first = run.nodalTables.filter(t => t.kind === "eigenvectors").sort((a, b) => a.step - b.step)[0];
+  const shape = Array.from(first.ids, id => Math.sin(Math.PI * (id - 1) / count));
+  const uy = shape.map((_, i) => first.values[6 * i + 1]);
+  const mac = dot(shape, uy) ** 2 / (dot(shape, shape) * dot(uy, uy));
+  assert.ok(mac > 0.999999, `first transverse mode shape, MAC = ${mac}`);
+  const k = Math.PI / length;
+  const exact = young * inertia * k ** 4 / (density * (area + inertia * k ** 2));
+  const ratio = Math.sqrt(run.eigenvalues[0].rows[0].eigenvalue / exact);
+  assert.ok(Math.abs(ratio - 1) < 2e-9, `first Rayleigh frequency ratio = ${ratio}`);
+});
+
 for (const card of ["Bar2", "Beam2"])
   for (const { name, length, shearFactor } of [
     { name: "a slender beam without shear flexibility (Euler-Bernoulli with rotary inertia)", length: 1.0,

@@ -185,13 +185,12 @@ CHECK_CASE("line: skew cantilever of one element under end loads, against the Ti
     const double b = 0.02;
     const double h = 0.05;
     const auto [a, i1, i2, j] = rectangle(b, h);
-    const std::array<double, 2> k{0.85, 0.6};
-    for (const bool withShear : {true, false})
+    for (const std::array<double, 2> k :
+         {std::array{0.85, 0.6}, std::array{0.0, 0.6}, std::array{0.85, 0.0}, std::array{0.0, 0.0}})
     {
-        const LineSection section = rectangularBar(b, h, withShear ? std::optional(k) : std::nullopt);
-        // Without shear factors the shear stiffness is 1e4 E A.
-        const double ga1 = withShear ? k[0] * G * a : mh::RIGID_SHEAR_STIFFNESS_FACTOR * E * a;
-        const double ga2 = withShear ? k[1] * G * a : mh::RIGID_SHEAR_STIFFNESS_FACTOR * E * a;
+        const LineSection section = rectangularBar(b, h, k[0] > 0.0 || k[1] > 0.0 ? std::optional(k) : std::nullopt);
+        const double shearY = k[0] > 0.0 ? LENGTH / (k[0] * G * a) : 0.0;
+        const double shearZ = k[1] > 0.0 ? LENGTH / (k[1] * G * a) : 0.0;
         for (const bool forward : {true, false})
         {
             const Vec3 tipPoint = mh::add3(ORIGIN, mh::scl3(DIRECTION, LENGTH));
@@ -203,7 +202,7 @@ CHECK_CASE("line: skew cantilever of one element under end loads, against the Ti
             if (!built)
                 continue;
             const mh::SectionAxes& axes = built->data.basis;
-            const std::string tag = std::string(withShear ? "with shear, " : "rigid shear, ") +
+            const std::string tag = "k1=" + std::to_string(k[0]) + ", k2=" + std::to_string(k[1]) + ", " +
                                     (forward ? "from the lower grid: " : "from the upper grid: ");
             const double l = LENGTH;
             struct Case
@@ -219,11 +218,11 @@ CHECK_CASE("line: skew cantilever of one element under end loads, against the Ti
                 {"force along y",
                  axes[1],
                  zero,
-                 {mh::scl3(axes[1], l * l * l / (3.0 * E * i1) + l / ga1), mh::scl3(axes[2], l * l / (2.0 * E * i1))}},
+                 {mh::scl3(axes[1], l * l * l / (3.0 * E * i1) + shearY), mh::scl3(axes[2], l * l / (2.0 * E * i1))}},
                 {"force along z",
                  axes[2],
                  zero,
-                 {mh::scl3(axes[2], l * l * l / (3.0 * E * i2) + l / ga2), mh::scl3(axes[1], -l * l / (2.0 * E * i2))}},
+                 {mh::scl3(axes[2], l * l * l / (3.0 * E * i2) + shearZ), mh::scl3(axes[1], -l * l / (2.0 * E * i2))}},
                 {"torque", zero, axes[0], {zero, mh::scl3(axes[0], l / (G * j))}},
                 {"moment about y",
                  zero,

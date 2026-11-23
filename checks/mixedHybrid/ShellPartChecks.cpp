@@ -839,6 +839,9 @@ struct StiffenedStrip
             mappedMesh(4, 2, [](double s, double y) { return mh::SpaceVector{2.0 * s, 0.4 * (y - 0.5), 0.0}; }),
             isotropicSection(e, 0.3, 0.01, 2700.0, 2.3e-5), false));
         mh::LineSection bar = mh::LineSection::bar(e, e / 2.6, 2e-4, 4e-8, 1e-8, 0.0, 5e-9, 2700.0);
+        // The archived reference strip used finite shear stiffness 10^4 E A in both planes.
+        const double referenceShearFactor = 1.0e4 * e / bar.shearModulus;
+        bar.shearFactors = std::array{referenceShearFactor, referenceShearFactor};
         bar.thermalExpansion = 2.3e-5;
         for (std::size_t i = 0; i < 4; ++i)
             input.lines.push_back({static_cast<std::int32_t>(101 + i),

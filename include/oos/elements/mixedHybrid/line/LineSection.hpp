@@ -28,9 +28,8 @@ namespace oos::elements::mixedHybrid
 //
 // Thread-safety: plain value types; the functions are pure.
 
-// The shear stiffness of a section given without shear flexibility, as a multiple of E A (the convention of the
-// shell sections): large enough that the shear strain is negligible (results to 1e-8), finite so that the
-// complementary energy of the shear force stays defined.
+// Finite stiffness used by the strain-to-force section evaluator for a rigid shear plane.
+// The mixed element uses zero complementary compliance in that plane.
 inline constexpr double RIGID_SHEAR_STIFFNESS_FACTOR = 1.0e4;
 
 // The law of a section at one point of a line.
@@ -66,9 +65,12 @@ struct LineSection
     std::array<double, 2> i2{};
     std::array<double, 2> i12{};
     std::array<double, 2> torsionConstant{};
-    // The shear factors k1, k2 of the planes (x, y) and (x, z): shear stiffnesses k G A. Empty: no shear flexibility
-    // (RIGID_SHEAR_STIFFNESS_FACTOR · E A).
+    // Positive k1, k2 give k G A in the (x, y) and (x, z) planes. An omitted or zero factor means rigid shear.
     std::optional<std::array<double, 2>> shearFactors;
+    [[nodiscard]] bool hasShearFlexibility(std::size_t plane) const
+    {
+        return shearFactors && (*shearFactors)[plane] > 0.0;
+    }
     // Mass per unit length that is not that of the material.
     double nonStructuralMass = 0.0;
     std::array<double, 2> stationNonStructuralMass{};

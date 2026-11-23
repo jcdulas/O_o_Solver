@@ -1,6 +1,6 @@
 # Structural benchmarks across formulations and solvers
 
-How much does the choice of formulation change a result on the same mesh? On the Scordelis–Lo roof with an 8 × 8 grid split into distorted triangles, the classical formulation gives a free-edge deflection of **0.260842 ft** and mixed Auto gives **0.301329 ft**, against the conventional **0.3024 ft**. The corresponding errors are **13.74%** and **0.35%**. On a pin-ended vibrating beam, both formulations are within **0.03%** of the published first frequency with just four elements.
+How much does the choice of formulation change a result on the same mesh? On the Scordelis–Lo roof with an 8 × 8 grid split into distorted triangles, the classical formulation gives a free-edge deflection of **0.260842 ft** and mixed Auto gives **0.301329 ft**, against the conventional **0.3024 ft**. The corresponding errors are **13.74%** and **0.35%**. On a pin-ended vibrating beam, the analytical first frequency is **28.75826 Hz** with section rotary inertia. With four elements, mixed Auto gives **28.75826 Hz** and Classic gives **28.76644 Hz**.
 
 The comparison covers ten physical problems, from curved-shell bending to buckling. Each of the 41 input meshes was run twice, with the default classical formulation and with `MixedHybridFormulation` in Auto. Both use the same nodes, connectivity, materials, supports and loads. The commercial results come from the linked verification manuals or the cited authors' calculations. Element type, mesh density and how the result was sampled matter when comparing the columns.
 
@@ -53,10 +53,24 @@ With the same trapezoidal corner geometry, adding mid-edge nodes reduces the cla
 
 | Benchmark and measurement | O_o mesh | Reference | Classic | Mixed Auto | Published commercial result |
 | --- | --- | ---: | ---: | ---: | --- |
-| Pin-ended beam, first bending frequency (Hz) | 4 BAR2 | 28.766 | 28.76644 | 28.75826 | 28.761, Ansys BEAM189, 4 quadratic beam elements [VM50][modes] |
+| Pin-ended beam, first bending frequency (Hz) | 4 BAR2 | 28.758260893 (Rayleigh) | 28.76644 | 28.75826 | 28.761, Ansys BEAM189, 4 quadratic beam elements (published target 28.766) [VM50][modes] |
 | Pin-ended column, first buckling load (lbf) | 10 BAR2 on half-length | 38.553142 | 38.553175 | 38.553142 | 38.553, Ansys BEAM188, 10 cubic beam elements on half-length [VM127][buckling] |
 
-The vibration model uses an 80 in span, a 2 × 2 in square section and consistent mass. Its target is the rounded Euler–Bernoulli frequency printed by Ansys. The classical frequency changes from 28.76644 Hz with four elements to 28.75834 Hz with sixteen. The mixed frequency is 28.75826 Hz to the shown precision on both meshes. The four-element classical result happens to lie closer to the analytical target. [Ansys VM50][modes] · [VM50 input][modes-input]
+**First bending frequency.** The local beam is simply supported, with span $L=80$ in, square section $A=4$ in² and $I=4/3$ in⁴, $E=30\times10^6$ psi and $\rho=0.000728$ lbf·s²/in⁴. Both formulations use consistent mass with section rotary inertia and specify rigid transverse shear. For the first half-wave, $k=\pi/L$, the matching analytical frequency is the Rayleigh value
+
+$$
+f_1=\frac{k^2}{2\pi}\sqrt{\frac{EI}{\rho(A+Ik^2)}}=28.7582608934\ \mathrm{Hz}.
+$$
+
+Omitting the rotary inertia term $Ik^2$ gives 28.7656514 Hz, which rounds to the 28.766 Hz target printed in VM50. Ansys reports 28.761 Hz from four quadratic BEAM189 elements. The classical four-element O_o result lies close to the printed target because its discretization error offsets the effect of rotary inertia. With refinement it approaches the Rayleigh frequency. [Ansys VM50][modes] · [VM50 input][modes-input]
+
+| BAR2 elements on the span | Classic (Hz) | Classic absolute error (Hz) | Mixed Auto (Hz) | Mixed absolute error (Hz) |
+| ---: | ---: | ---: | ---: | ---: |
+| 4 | 28.766442726 | 8.18 × 10⁻³ | 28.758261055 | 1.61 × 10⁻⁷ |
+| 8 | 28.758920687 | 6.60 × 10⁻⁴ | 28.758260894 | 6.35 × 10⁻¹⁰ |
+| 16 | 28.758337820 | 7.69 × 10⁻⁵ | 28.758260894 | 8.70 × 10⁻¹¹ |
+
+For both formulations on all three meshes the first mode's nodal transverse displacements match the analytical half-sine (modal assurance criterion above 0.999999). In the mixed section law, a rigid shear plane now has exactly zero shear compliance. The former finite stiffness of $10^4EA$ left a frequency error of about $7.4\times10^{-7}$ Hz on the two finer meshes. These errors measure numerical agreement for the specified uniform beam.
 
 The buckling model uses the equivalent fixed-free half of a 200 in pin-ended column with a 0.5 in square section. The Euler critical load is $\pi^2 EI/L^2$, with $L=200$ in. The compressive reference load is 1 lbf, so the first positive load multiplier equals the critical load numerically in lbf. [Ansys VM127][buckling] · [VM127 input][buckling-input]
 
@@ -81,8 +95,8 @@ For each measurement and formulation, the table gives the computed value, its ab
 | Thick cylinder, expansion | 4 × 8 × 1, 8 × 16 × 1 | 0.00786671 (0.00057%), 8 × 16 × 1 | 0.007866666 (0.000013%), 8 × 16 × 1 |
 | Thick cylinder, hoop stress | Same two meshes | 50,190.97 (0.382%), 8 × 16 × 1 | 49,999.78 (0.00045%), 8 × 16 × 1 |
 | Heated bar, stress | 6 × 1 × 1, 12 × 1 × 1 | −6,125 (<0.000001%), both | −6,125 (<0.000001%), both |
-| First bending frequency | 4, 8, 16 | 28.76644 (0.0015%), 4 | 28.75826 (0.027%), 4 |
-| First buckling load | 5, 10, 20 | 38.553144 (0.0000053%), 20 | 38.553142 (<0.000001%), 5 |
+| First bending frequency (Rayleigh) | 4, 8, 16 | 28.758337820 (0.000267%), 16 | 28.758260894 (<0.000001%), 16 |
+| First buckling load | 5, 10, 20 | 38.553144 (0.0000053%), 20 | 38.553142 (<0.000001%), 10 |
 
 ## Reproduce the comparison
 
