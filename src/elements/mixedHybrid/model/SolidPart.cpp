@@ -325,7 +325,14 @@ void SolidPart::buildGeometry()
 
 void SolidPart::readSkin(const EdgeProjection& projection)
 {
-    const std::span<const SolidPoint> x = m_input.gridPositions;
+    // Skin projections store offsets. Work in a translated frame so that projecting
+    // an exactly flat face far from the global origin cannot introduce curvature.
+    std::vector<SolidPoint> x = m_input.gridPositions;
+    if (m_byElementId.empty())
+        return;
+    const auto origin = x[m_input.solids[m_byElementId.front()].corners.front()];
+    for (auto& point : x)
+        point = sub3(point, origin);
     // the solids as the reading of the skin takes them, in increasing element ID
     std::vector<SolidCell> cells;
     for (const std::size_t is : m_byElementId)

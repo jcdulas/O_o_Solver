@@ -7,7 +7,7 @@
 // Run: node --test wasm/test/validation/solids.test.mjs
 
 import assert from "node:assert/strict";
-import { CRITERIA, MIXED, real, runModel, nodal, assertRatio, prepared, surfaceRecords, test }
+import { CLASSIC, CRITERIA, MIXED, real, runModel, nodal, assertRatio, prepared, surfaceRecords, test }
   from "./support.mjs";
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -1701,4 +1701,111 @@ test("output: principal values, von Mises stress, pressure and directions follow
     `rows whose principal values are not largest, smallest, middle: ${unordered}`);
   for (const [what, error] of Object.entries(worst)) assertSmall(error, scale, CRITERIA.invariant, what);
   assert.equal(unordered, 0, "principal values in the order largest, smallest, middle");
+});
+
+// Local folds, inertia moments and nodal temperature fields on high-order solids.
+function loadedHex(mesh) {
+  const sharpEdges = mesh.edges();
+  const free = mesh.elements[0].corners[5];
+  return deck(101, staticCase(), [...mesh.records({ sharpEdges }), ...isotropic(STEEL),
+    ...mesh.elements[0].corners.filter(id => id !== free).map(id => `SinglePointConstr;1;${id};123;0.`),
+    `SinglePointConstr;1;${free};12;0.`, `PointForceLoad;2;${free};;1.;0.;0.;1.`]);
+}
+
+// End faces restrained in x, with three further restraints to remove the rigid motions.
+function restrainedThermalReaction(mesh, options, temperatures, selections) {
+  const cases = ["SinglePointConstrForceOutput;All", "SubcaseStart;1", "SinglePointConstrSelection;1", ...selections];
+  const records = [...mesh.records(), ...isotropic({ young: 1e6, poisson: 0, expansion: 1e-5 }),
+    ...mesh.where(x => x === 0 || x === 1).map(id => `SinglePointConstr;1;${id};1;0.`),
+    `SinglePointConstr;1;${mesh.at(0, 0, 0)};23;0.`, `SinglePointConstr;1;${mesh.at(0, 1, 0)};3;0.`, ...temperatures];
+  const run = runModel(deck(101, cases, records), options);
+  return mesh.where(x => x === 1).reduce((sum, id) => sum + nodal(run, "singlePointConstrForces", id)[0], 0);
+}
+
+for (const [label, options] of [["classic", CLASSIC], ["mixed", MIXED]]) {
+  test(`${label} hexahedra refuse a corner fold beyond the last integration point`, () => {
+    for (const quadratic of [false, true]) {
+      for (const a of [0.32, 0.334]) {
+        // det J = 1 - a(uv + vw + wu), positive throughout for .32 and negative at (1,1,1) for .334.
+        const x = CELL_CORNERS.map(([u, v, w]) => [u, v, w].map(t => t - a * u * v * w));
+        const mesh = createMesh({ quadratic }).addElement("SolidHexa", x);
+        const solve = () => runModel(loadedHex(mesh), options);
+        if (a > 1 / 3) assert.throws(solve, /fold|flat|Jacobian/);
+        else assert.ok(nodal(solve(), "displacements", mesh.elements[0].corners[5])[2] > 0);
+      }
+    }
+  });
+
+  test(`${label} quadratic hexahedra detect a vanishing or reversed edge tangent`, () => {
+    for (const h of [0.74, 0.75, 0.76]) {
+      const mesh = createMesh({ quadratic: true }).addElement("SolidHexa", CELL_CORNERS);
+      for (const point of mesh.points.values()) if (point[2] === 0.5) point[2] = h;
+      const solve = () => runModel(loadedHex(mesh), options);
+      if (h >= 0.75) assert.throws(solve, /fold|flat|Jacobian|tangent|curv/i);
+      else assert.ok(nodal(solve(), "displacements", mesh.elements[0].corners[5])[2] > 0);
+    }
+  });
+
+  test(`${label} pyramid gravity preserves the mass and its first moment`, () => {
+    for (const quadratic of [false, true]) {
+      for (const coupled of [-1, 1]) {
+        const mesh = createMesh({ quadratic }).addElement("SolidPyramid",
+          [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0.5, 0.5, 1]]);
+        const records = [...mesh.records(), ...isotropic({ ...STEEL, density: 1 }), `Parameter;CoupledMass;${coupled}`,
+          ...mesh.where((x, y, z) => z === 0).map(id => `SinglePointConstr;1;${id};123;0.`), "GravityLoad;2;;1.;1.;0.;0."];
+        const run = runModel(deck(101, staticCase(), records), options);
+        const [fx, , , , my] = resultant(run, mesh, "singlePointConstrForces");
+        assert.ok(Math.abs(fx + 1 / 3) < 1e-10);
+        assert.ok(Math.abs(my / fx - 0.25) < 1e-10);
+      }
+    }
+  });
+
+  test(`${label} quadratic solids use mid-side temperatures in thermal reactions`, () => {
+    for (const shape of [...SHAPES, "Transition"]) {
+      const mesh = createMesh({ surfaces: boxSurfaces(1, 1, 1), quadratic: true }).addBlock({ n: [1, 1, 1], shape });
+      const temperatures = [...mesh.points].map(([id, [x]]) => `NodeTemperatureLoad;8;${id};${real(400 * x * (1 - x))}`);
+      const rx = restrainedThermalReaction(mesh, options, temperatures, ["TemperatureSelection;8;TemperatureLoadPart"]);
+      assert.ok(Math.abs(rx + 2000 / 3) < 1e-6, `${shape} reaction on x=1: ${rx}`);
+    }
+  });
+
+  test(`${label} solid uniform traction remains uniform far from the origin`, () => {
+    const mesh = patchMesh({ shape: "SolidHexa", n: [2, 1, 1] }, { quadratic: false, map: blockMap });
+    const faces = skinFaces(mesh).filter(f => f.x.every(p => p[0] === 0) || f.x.every(p => p[0] === BLOCK.a));
+    const original = deck(101, staticCase(), [...mesh.records(), ...isotropic({ ...STEEL, young: 1e6, poisson: 0 }),
+      ...blockSupports(mesh), ...faces.map(f => facePressure(2, f, -10000))]);
+    const shifted = original.split("\n").map(line => {
+      const fields = line.split(";");
+      if (fields[0] === "Node") [1e8, -5e7, 2.5e7].forEach((d, c) => { fields[3 + c] = real(Number(fields[3 + c]) + d); });
+      return fields.join(";");
+    }).join("\n");
+    for (const text of [original, shifted]) {
+      const run = runModel(text, options);
+      for (const row of rowsOf(run, "SolidHexa"))
+        sixOf(row).forEach((v, i) => assert.ok(Math.abs(v - (i === 0 ? 10000 : 0)) < 1e-4));
+    }
+  });
+}
+
+test("mixed hexahedron with a single mid-side temperature and a reference temperature", () => {
+  const mesh = createMesh({ surfaces: boxSurfaces(1, 1, 1),
+    quadratic: (a, b) => a[1] === 0 && b[1] === 0 && a[2] === 0 && b[2] === 0 }).addBlock({ n: [1, 1, 1] });
+  const rx = restrainedThermalReaction(mesh, MIXED,
+    ["DefaultTemperatureLoad;7;30.", "DefaultTemperatureLoad;8;30.", `NodeTemperatureLoad;8;${mesh.at(0.5, 0, 0)};130.`],
+    ["TemperatureSelection;7;InitialTemperature", "TemperatureSelection;8;TemperatureLoadPart"]);
+  // The mean of this quadratic edge function is 1/6 on the unit cube.
+  assert.ok(Math.abs(rx + 1000 / 6) < 1e-6, `reaction on x=1: ${rx}`);
+});
+
+test("mixed solids diagnose directional expansion when only a mid-side node is heated", () => {
+  const mesh = createMesh({ surfaces: boxSurfaces(1, 1, 1), quadratic: true }).addBlock({ n: [1, 1, 1] });
+  const [law] = anisotropicRecords(ANISOTROPIC);
+  const records = [...mesh.records(), "SolidProp;1;1", `${law};0.;1.e-5;0.;0.;0.;0.`,
+    ...mesh.where(x => x === 0).map(id => `SinglePointConstr;1;${id};123;0.`), "DefaultTemperatureLoad;8;0.",
+    `NodeTemperatureLoad;8;${mesh.at(0.5, 0, 0)};100.`];
+  const cases = ["DisplacementOutput;All", "SubcaseStart;1", "SinglePointConstrSelection;1",
+    "TemperatureSelection;8;TemperatureLoadPart"];
+  const model = deck(101, cases, records);
+  assert.throws(() => runModel(model, MIXED), /different coefficients/);
 });

@@ -424,19 +424,20 @@ private:
         const std::span<const std::size_t> corners = face.corners.cornerSpan();
         const auto functionsOf = [&](const std::array<double, 2>& c)
         { return geometry.functions(facePoint(shape, corners, c)); };
+        const auto localTarget = sub3(p, geometry.corners.front());
         const auto positionOf = [&](const std::vector<double>& functions)
         {
             SolidPoint x{};
             for (std::size_t j = 0; j < functions.size(); ++j)
                 for (std::size_t m = 0; m < COMPONENTS; ++m)
-                    x[m] += functions[j] * geometry.coordinate(j, m);
+                    x[m] += functions[j] * geometry.localCoordinate(j, m);
             return x;
         };
         std::array<double, 2> c = guess;
         std::vector<double> functions = functionsOf(c);
         for (std::size_t step = 0; step < CLOSEST_POINT_STEPS; ++step)
         {
-            const SolidPoint residual = sub3(positionOf(functions), p);
+            const SolidPoint residual = sub3(positionOf(functions), localTarget);
             if (norm3(residual) <= FUNCTION_ROUND_OFF * tolerance)
                 break; // on the face: the straight face is the face
             std::array<SolidPoint, 2> tangent;
@@ -460,7 +461,7 @@ private:
             if (std::fabs((*delta)[0]) + std::fabs((*delta)[1]) < CLOSEST_POINT_CONVERGED)
                 break;
         }
-        if (!isInside(face, c, FACE_COORDINATE_MARGIN) || norm3(sub3(positionOf(functions), p)) > tolerance)
+        if (!isInside(face, c, FACE_COORDINATE_MARGIN) || norm3(sub3(positionOf(functions), localTarget)) > tolerance)
             return std::nullopt;
         return functions;
     }

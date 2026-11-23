@@ -19,6 +19,8 @@ Solve finite element models through typed tables and return numerical results.
 
 ## Detailed guides
 
+- [Thin-plate bending with solid elements](docs/thin-plate-solid-bending.md) compares element degree, mesh
+  distortion and the number of layers against a three-dimensional elasticity solution.
 - [Element names](docs/naming.md): shared roots, implementation roles and compatibility.
 - [Table packages](docs/table-package.md): reader-to-solver data contract.
 - [Bar and beam derivatives](docs/beam-derivatives.md): native sizing rates and their solution paths.
@@ -47,6 +49,7 @@ docs/getting-started
 docs/threading
 docs/static-inputs
 docs/testing
+docs/thin-plate-solid-bending
 README
 docs/table-package
 docs/naming

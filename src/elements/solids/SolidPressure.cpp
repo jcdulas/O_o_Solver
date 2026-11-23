@@ -152,13 +152,14 @@ SolidFaceLoads solidPressureLoads(SolidShape shape, std::span<const base::Vec3> 
 
     // The outward side: away from the centroid of the element's corners.
     base::Vec3 centroid{};
+    const auto& origin = positions[face.nodes[0]];
     const std::size_t corners = solidCornerCount(shape);
     for (std::size_t c = 0; c < corners; ++c)
-        centroid = centroid + positions[c];
+        centroid = centroid + (positions[c] - origin);
     centroid = centroid / static_cast<double>(corners);
     base::Vec3 faceCentre{};
     for (std::size_t k = 0; k < face.cornerCount; ++k)
-        faceCentre = faceCentre + positions[face.nodes[k]];
+        faceCentre = faceCentre + (positions[face.nodes[k]] - origin);
     faceCentre = faceCentre / static_cast<double>(face.cornerCount);
 
     std::array<base::Vec3, 8> forces{};
@@ -170,8 +171,9 @@ SolidFaceLoads solidPressureLoads(SolidShape shape, std::span<const base::Vec3> 
         double pressure = 0.0;
         for (std::size_t i = 0; i < face.count; ++i)
         {
-            ta = ta + f.da[i] * positions[face.nodes[i]];
-            tb = tb + f.db[i] * positions[face.nodes[i]];
+            const auto offset = positions[face.nodes[i]] - origin;
+            ta = ta + f.da[i] * offset;
+            tb = tb + f.db[i] * offset;
         }
         for (std::size_t k = 0; k < face.cornerCount; ++k)
             pressure += f.corner[k] * cornerPressures[k];

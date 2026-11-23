@@ -70,34 +70,21 @@ LocalMap solidMapOf(const ElementBatchView& view, const MixedHybridModel& model,
     return localMapOf(view, model.solidDofs(solid, kind));
 }
 
-// The temperature change of each corner of a solid from the grid point temperatures of the load set less the initial
-// ones (or TREF of the material), as the card's other families read them; zero without a temperature load (a DEFORM
-// alone).
-Resolution<std::vector<double>> cornerChangesOf(const ElementBatchView& view, std::int64_t row, const MixedSolid& solid,
-                                                const ElementTemperatures& temperatures)
+// Thermal loads require a temperature at every corner. Mid-side values are optional.
+std::optional<base::Diagnostic> missingCornerTemperature(const ElementBatchView& view, std::int64_t row,
+                                                         const MixedSolid& solid, const ElementTemperatures& temperatures)
 {
-    using Result = Resolution<std::vector<double>>;
-    std::vector<double> changes(solid.cornerRows.size(), 0.0);
-    if (!temperatures.hasTemperatureLoad)
-        return Result::success(changes);
-    const double reference = solid.classicSection.referenceTemperature;
-    for (std::size_t a = 0; a < solid.cornerRows.size(); ++a)
-    {
-        const std::int32_t node = solid.cornerRows[a];
-        const std::optional<double> load = temperatures.load.atGridRow(node);
-        if (!load)
-            return Result::failure(elementProblem(
-                view, row, problem_code::INVALID_FIELD, "TemperatureSelection(LOAD)",
-                base::concatenate({"expected a temperature at grid point ",
-                                   std::to_string(view.snapshot().nodes().ids()[static_cast<std::size_t>(node)]),
-                                   " of the solid in the thermal load set, found none (no NodeTemperatureLoad, no "
-                                   "DefaultTemperatureLoad); give the grid point a NodeTemperatureLoad or the set a "
-                                   "DefaultTemperatureLoad"})));
-        const double initial =
-            temperatures.initial.isEmpty() ? reference : temperatures.initial.atGridRow(node).value_or(reference);
-        changes[a] = *load - initial;
-    }
-    return Result::success(changes);
+    if (temperatures.hasTemperatureLoad)
+        for (const auto node : solid.cornerRows)
+            if (!temperatures.load.atGridRow(node))
+                return elementProblem(
+                    view, row, problem_code::INVALID_FIELD, "TemperatureSelection(LOAD)",
+                    base::concatenate({"expected a temperature at grid point ",
+                                       std::to_string(view.snapshot().nodes().ids()[static_cast<std::size_t>(node)]),
+                                       " of the solid in the thermal load set, found none (no NodeTemperatureLoad, no "
+                                       "DefaultTemperatureLoad); give the grid point a NodeTemperatureLoad or the set a "
+                                       "DefaultTemperatureLoad"}));
+    return std::nullopt;
 }
 
 } // namespace
@@ -274,13 +261,13 @@ void MixedHybridSolidFamily::checkThermalLoads(const ElementBatchView& view, con
         const MixedSolid* solid = model.solidOf(view.card(), row);
         if (solid == nullptr)
             continue;
-        Resolution<std::vector<double>> changes = cornerChangesOf(view, row, *solid, temperatures);
-        if (!changes)
+        if (auto problem = missingCornerTemperature(view, row, *solid, temperatures))
         {
-            sink.report(std::move(changes.problem));
+            sink.report(std::move(*problem));
             continue;
         }
-        if (!solid->isotropicExpansion && MixedHybridModel::takesThermalStrain(*solid, *changes.value))
+        if (!solid->isotropicExpansion &&
+            MixedHybridModel::takesThermalStrain(*solid, model.solidNodalChanges(*solid, &temperatures)))
         {
             base::Diagnostic diagnostic;
             diagnostic.code = "unsupported-load";
@@ -306,7 +293,7 @@ void MixedHybridSolidFamily::computeThermalLoads(const ElementBatchView& view, E
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const MixedSolid& solid = requiredSolid(model, view, row);
-        const std::vector<double> changes = model.solidCornerChanges(solid, &temperatures);
+        const std::vector<double> changes = model.solidNodalChanges(solid, &temperatures);
         if (!MixedHybridModel::takesThermalStrain(solid, changes))
             continue;
         const VolumeKernel kernel = model.solidThermalKernel(solid, kind, changes);
@@ -389,10 +376,6 @@ void MixedHybridSolidFamily::recover(const ElementBatchView& view, ElementRange 
         const SolidPointStresses points = SolidPart::pointStresses(*stresses.kernel, stresses.beta);
         // The places: the centre, then the corners; the temperature change there for the strains (the functions of
         // the corners at the centre of the card's other families).
-        const SolidShape shape = solid.cornerRows.size() == 4   ? SolidShape::Tetra4
-                                 : solid.cornerRows.size() == 5 ? SolidShape::Pyram5
-                                 : solid.cornerRows.size() == 6 ? SolidShape::Penta6
-                                                                : SolidShape::Hexa8;
         const Mat6 compliance =
             output == ElementOutput::Strains ? complianceOf(solid.classicSection.elasticity) : Mat6{};
         const auto appendPlace = [&](std::int32_t nodeId, const VoigtVector& basic, double change)
@@ -417,16 +400,15 @@ void MixedHybridSolidFamily::recover(const ElementBatchView& view, ElementRange 
             block.append(row, view.elementId(row), place, solidStrainRow(strain));
         };
         double centreChange = 0.0;
-        if (!stresses.cornerChanges.empty())
+        if (output == ElementOutput::Strains && !stresses.nodalChanges.empty())
         {
-            const SolidShapeValues centre = solidShapeAt(shape, solidCentre(shape));
-            for (std::size_t a = 0; a < stresses.cornerChanges.size(); ++a)
-                centreChange += centre.n[a] * stresses.cornerChanges[a];
+            const auto& geometry = stresses.kernel->geometry();
+            centreChange = model.solidTemperatureField(solid, stresses.nodalChanges)(geometry.at(shapeCentre(geometry.shape)));
         }
         appendPlace(0, points.centre, centreChange);
         for (std::size_t a = 0; a < points.corners.size(); ++a)
             appendPlace(ids[static_cast<std::size_t>(solid.cornerRows[a])], points.corners[a],
-                        stresses.cornerChanges.empty() ? 0.0 : stresses.cornerChanges[a]);
+                        stresses.nodalChanges.empty() ? 0.0 : stresses.nodalChanges[a]);
     }
 }
 

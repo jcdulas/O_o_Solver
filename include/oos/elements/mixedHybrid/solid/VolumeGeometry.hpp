@@ -91,6 +91,12 @@ struct VolumeGeometry
     // Reference: volume::VolumeGeometry::coordinate
     [[nodiscard]] double coordinate(std::size_t j, std::size_t m) const;
 
+    // Only the corner functions carry a constant translation of the map.
+    [[nodiscard]] double localCoordinate(std::size_t j, std::size_t m) const
+    {
+        return j < corners.size() ? corners[j][m] - corners.front()[m] : coordinate(j, m);
+    }
+
     // Edge `edge` as the parabola through the mid-side node at `midSideNode`: the coefficient 4 (X_m − (X_a + X_b) / 2)
     // on its first function s (1 − s) (which is 1/4 at s = 1/2), the other coefficients of the edge zero. A face all of
     // whose edges have one then keeps no curve of its own (its coefficients stay zero): its surface is that of the
@@ -130,11 +136,13 @@ struct VolumeGeometry
         {
             for (std::size_t m = 0; m < 3; ++m)
             {
-                const double c = coordinate(j, m);
+                const double c = localCoordinate(j, m);
                 if (c != 0.0)
                     out[m] = out[m] + scale(values[j], c);
             }
         }
+        for (std::size_t m = 0; m < 3; ++m)
+            out[m] = out[m] + constantOf<T>(corners.front()[m]);
         return out;
     }
 

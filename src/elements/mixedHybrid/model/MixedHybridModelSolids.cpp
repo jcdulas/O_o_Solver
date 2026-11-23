@@ -99,23 +99,23 @@ SolidShape linearShapeOf(const MixedSolid& solid)
     }
 }
 
-// The functions of the corners of the straight element at the parent point nearest to the position x: Newton's method
-// on X(p) = Σ N_i(p) X_i from the centre, J Δp = x − X(p), J = Σ X_i ∂N_i/∂p.
-SolidShapeValues cornerFunctionsAt(SolidShape shape, std::span<const base::Vec3> corners, const base::Vec3& x)
+// Invert the isoparametric map in element-local coordinates to interpolate a nodal field.
+SolidShapeValues nodalFunctionsAt(SolidShape shape, std::span<const base::Vec3> nodes, const base::Vec3& x)
 {
     ParentPoint point = solidCentre(shape);
     for (int iteration = 0; iteration < PARENT_POINT_ITERATIONS; ++iteration)
     {
         const SolidShapeValues values = solidShapeAt(shape, point);
-        base::Vec3 residual = x;
+        base::Vec3 residual = x - nodes.front();
         base::Mat3 jacobian{};
-        for (std::size_t i = 0; i < corners.size(); ++i)
+        for (std::size_t i = 0; i < nodes.size(); ++i)
             for (std::size_t c = 0; c < 3; ++c)
             {
-                residual[c] -= values.n[i] * corners[i][c];
-                jacobian(c, 0) += values.dXi[i] * corners[i][c];
-                jacobian(c, 1) += values.dEta[i] * corners[i][c];
-                jacobian(c, 2) += values.dZeta[i] * corners[i][c];
+                const double local = nodes[i][c] - nodes.front()[c];
+                residual[c] -= values.n[i] * local;
+                jacobian(c, 0) += values.dXi[i] * local;
+                jacobian(c, 1) += values.dEta[i] * local;
+                jacobian(c, 2) += values.dZeta[i] * local;
             }
         if (base::determinant(jacobian) == 0.0)
             break;
@@ -633,29 +633,57 @@ void MixedHybridModel::solidSupports(const std::map<std::int32_t, BasicSupport>&
     sink.report(std::move(diagnostic));
 }
 
-std::vector<double> MixedHybridModel::solidCornerChanges(const MixedSolid& solid,
+std::vector<double> MixedHybridModel::solidNodalChanges(const MixedSolid& solid,
                                                          const ElementTemperatures* temperatures) const
 {
     std::vector<double> changes(solid.cornerRows.size(), 0.0);
     if (temperatures == nullptr || !temperatures->hasTemperatureLoad)
         return changes;
     const double reference = solid.classicSection.referenceTemperature;
+    std::vector<double> cornerLoad, cornerInitial;
     for (std::size_t a = 0; a < solid.cornerRows.size(); ++a)
     {
-        const std::int32_t node = solid.cornerRows[a];
-        const std::optional<double> load = temperatures->load.atGridRow(node);
-        if (!load)
+        const auto row = solid.cornerRows[a];
+        cornerLoad.push_back(temperatures->load.atGridRow(row).value_or(reference));
+        cornerInitial.push_back(temperatures->initial.atGridRow(row).value_or(reference));
+        changes[a] = cornerLoad.back() - cornerInitial.back();
+    }
+    const auto hasMidTemperature = [&](std::int32_t row)
+    {
+        return row >= 0 && (temperatures->load.atGridRow(row) || temperatures->initial.atGridRow(row));
+    };
+    if (!std::any_of(solid.midRows.begin(), solid.midRows.end(), hasMidTemperature))
+        return changes;
+    const auto shape = linearShapeOf(solid);
+    const auto edges = solidEdges(shape);
+    std::vector<base::Vec3> corners;
+    for (auto row : solid.cornerRows)
+        corners.push_back(m_gridPositions[m_gridIndexOfRow.at(row)]);
+    for (std::size_t e = 0; e < solid.midRows.size(); ++e)
+    {
+        const auto row = solid.midRows[e];
+        const auto& edge = edges[e];
+        if (row < 0)
+        {
+            changes.push_back(0.5 * (changes[edge.first] + changes[edge.second]));
             continue;
-        const double initial =
-            temperatures->initial.isEmpty() ? reference : temperatures->initial.atGridRow(node).value_or(reference);
-        changes[a] = *load - initial;
+        }
+        const auto functions = nodalFunctionsAt(shape, corners, m_gridPositions[m_gridIndexOfRow.at(row)]);
+        double load = 0.0, initial = 0.0;
+        for (std::size_t i = 0; i < corners.size(); ++i)
+        {
+            load += functions.n[i] * cornerLoad[i];
+            initial += functions.n[i] * cornerInitial[i];
+        }
+        changes.push_back(temperatures->load.atGridRow(row).value_or(load) -
+                          temperatures->initial.atGridRow(row).value_or(initial));
     }
     return changes;
 }
 
 bool MixedHybridModel::takesThermalStrain(const MixedSolid& solid, std::span<const double> changes)
 {
-    if (solid.part.material.thermalExpansion == 0.0)
+    if (solid.isotropicExpansion && solid.part.material.thermalExpansion == 0.0)
         return false;
     return std::any_of(changes.begin(), changes.end(), [](double change) { return change != 0.0; });
 }
@@ -681,7 +709,7 @@ VolumeKernel::PressureField MixedHybridModel::solidFacePressure(const MixedSolid
     const SolidShape shape = linearShapeOf(solid);
     return [shape, corners, pressures, isOnFace](const SolidPoint& position)
     {
-        const SolidShapeValues functions = cornerFunctionsAt(shape, corners, {position[0], position[1], position[2]});
+        const SolidShapeValues functions = nodalFunctionsAt(shape, corners, {position[0], position[1], position[2]});
         // On the face the functions of its corners sum to 1; a point the skin reads off the straight face keeps their
         // shares.
         double pressure = 0.0;
@@ -697,24 +725,46 @@ VolumeKernel::PressureField MixedHybridModel::solidFacePressure(const MixedSolid
     };
 }
 
+SolidPart::TemperatureField MixedHybridModel::solidTemperatureField(const MixedSolid& solid,
+                                                                    std::span<const double> changes) const
+{
+    const auto grids = m_solidPart->gridPositions();
+    std::vector<base::Vec3> nodes;
+    for (const auto grid : solid.part.corners)
+        nodes.push_back({grids[grid][0], grids[grid][1], grids[grid][2]});
+    SolidShape shape = linearShapeOf(solid);
+    if (changes.size() > nodes.size())
+    {
+        const auto edges = solidEdges(shape);
+        for (std::size_t e = 0; e < edges.size(); ++e)
+        {
+            const auto grid = solid.part.midSideGrids[e];
+            if (solid.midRows[e] < 0)
+                nodes.push_back(0.5 * (nodes[edges[e].first] + nodes[edges[e].second]));
+            else
+                nodes.push_back({grids[grid][0], grids[grid][1], grids[grid][2]});
+        }
+        switch (shape)
+        {
+        case SolidShape::Tetra4: shape = SolidShape::Tetra10; break;
+        case SolidShape::Penta6: shape = SolidShape::Penta15; break;
+        case SolidShape::Pyram5: shape = SolidShape::Pyram13; break;
+        default: shape = SolidShape::Hexa20; break;
+        }
+    }
+    return [shape, nodes = std::move(nodes), values = Vector(changes.begin(), changes.end())](const SolidPoint& p)
+    {
+        const auto functions = nodalFunctionsAt(shape, nodes, {p[0], p[1], p[2]});
+        double change = 0.0;
+        for (std::size_t i = 0; i < values.size(); ++i)
+            change += functions.n[i] * values[i];
+        return change;
+    };
+}
+
 SolidLoad MixedHybridModel::solidThermalLoad(const MixedSolid& solid, std::span<const double> changes) const
 {
-    std::vector<base::Vec3> corners;
-    const std::span<const SolidPoint> grids = m_solidPart->gridPositions();
-    for (const std::size_t grid : solid.part.corners)
-        corners.push_back({grids[grid][0], grids[grid][1], grids[grid][2]});
-    const SolidShape shape = linearShapeOf(solid);
-    const std::vector<double> values(changes.begin(), changes.end());
-    return m_solidPart->thermalLoad(solid.partIndex,
-                                    [shape, corners, values](const SolidPoint& position)
-                                    {
-                                        const SolidShapeValues functions = cornerFunctionsAt(
-                                            shape, corners, {position[0], position[1], position[2]});
-                                        double change = 0.0;
-                                        for (std::size_t i = 0; i < values.size(); ++i)
-                                            change += functions.n[i] * values[i];
-                                        return change;
-                                    });
+    return m_solidPart->thermalLoad(solid.partIndex, solidTemperatureField(solid, changes));
 }
 
 void MixedHybridModel::addBodyForceStresses(const MixedSolid& solid, const BodyAcceleration* acceleration,
@@ -769,7 +819,7 @@ MixedHybridModel::SolidCaseStresses MixedHybridModel::solidStresses(const MixedS
             x[i] += frame(b, s) * displacements.valueAt(ElementDof::grid(dof.row, 1 + static_cast<int>(s)));
     }
     SolidCaseStresses out;
-    std::vector<double> changes = solidCornerChanges(solid, displacements.temperatures);
+    std::vector<double> changes = solidNodalChanges(solid, displacements.temperatures);
     // The loads whose particular stresses the stresses take (spec section 10.3): the thermal strain of the case, with
     // which the kernel is built (the kernel the part keeps has no load), and the body force of its accelerations,
     // which every kernel has.
@@ -778,7 +828,7 @@ MixedHybridModel::SolidCaseStresses MixedHybridModel::solidStresses(const MixedS
         out.kernel = std::make_shared<const VolumeKernel>(solidThermalKernel(solid, kind, changes));
         const std::array<double, 1> factors{1.0};
         out.beta = SolidPart::stressCoefficients(*out.kernel, x, factors);
-        out.cornerChanges = std::move(changes);
+        out.nodalChanges = std::move(changes);
     }
     else
     {

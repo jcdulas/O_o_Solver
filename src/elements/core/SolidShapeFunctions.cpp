@@ -161,6 +161,24 @@ void addNode(SolidShapeValues& values, std::size_t node, const SolidShapeValues&
     // Base mid-side nodes G6-G9 are the hexahedron's G9-G12; the edges to the apex G10-G13 its G13-G16.
     for (std::size_t i = 0; i < 8; ++i)
         addNode(v, 5 + i, hexa, 8 + i);
+    // On a triangular side a base edge has the T6 function 4 L_a L_b. Both barycentric
+    // coordinates shrink with height, whereas the collapsed Hex20 edge shrinks only once.
+    // Transfer the excess equally to its endpoints to preserve every linear field.
+    const double height = 0.5 * (1.0 + p.zeta);
+    for (std::size_t e = 0; e < 4; ++e)
+    {
+        const auto [a, b, mid] = PYRAM_EDGES[e];
+        const auto transfer = [a, b, mid](auto& values, double excess)
+        {
+            values[mid] -= excess;
+            values[a] += 0.5 * excess;
+            values[b] += 0.5 * excess;
+        };
+        transfer(v.dZeta, height * v.dZeta[mid] + 0.5 * v.n[mid]);
+        transfer(v.dXi, height * v.dXi[mid]);
+        transfer(v.dEta, height * v.dEta[mid]);
+        transfer(v.n, height * v.n[mid]);
+    }
     return v;
 }
 

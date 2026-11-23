@@ -191,7 +191,8 @@ int solidJacobianSign(SolidShape shape, std::span<const base::Vec3> positions, c
         visit(point.point, point.weight);
     if (withCorners)
         for (const ParentPoint& corner : solidCornerPoints(shape))
-            visit(corner, 0.0);
+            if ((shape != SolidShape::Pyram5 && shape != SolidShape::Pyram13) || corner.zeta != 1.0)
+                visit(corner, 0.0);
     const double floor = relativeTolerance * sum / weights;
     if (smallest > floor)
         return 1;

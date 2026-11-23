@@ -198,25 +198,25 @@ public:
     // The DOFs of the local unknowns of a solid in an analysis of the given kind (SolidPart::localUnknowns: the grid
     // translations in the basic system, the entity DOFs, the interior fields of a modal analysis).
     [[nodiscard]] LocalDofs solidDofs(const MixedSolid& solid, EntityLayout::Kind kind) const;
-    // The temperature change of each corner of a solid in a case (the load temperature of its grid point less the
-    // initial one, or TREF of its material: as the card's other families read them; 0 where the load set has none,
-    // which check() reports), all 0 without temperatures or a temperature load.
-    [[nodiscard]] std::vector<double> solidCornerChanges(const MixedSolid& solid,
+    // Corner temperature changes, followed by edge values when any mid-side grid has thermal data.
+    // Missing edge data then inherit the corresponding corner field.
+    [[nodiscard]] std::vector<double> solidNodalChanges(const MixedSolid& solid,
                                                          const ElementTemperatures* temperatures) const;
-    // Whether a solid takes a thermal strain from its corner changes (an expansion and a change that is not zero).
+    // Whether a solid takes a thermal strain from its nodal changes (an expansion and a change that is not zero).
     [[nodiscard]] static bool takesThermalStrain(const MixedSolid& solid, std::span<const double> changes);
     // The pressure over a face of a solid given at the grids of the face (`faceGrids`, grid indices, with
     // `cornerPressures`): at a position, the pressures of the corners interpolated by the functions of the corners of
-    // the straight element at the point nearest to it (as the temperatures are), so that a pressure linear in the
+    // the straight element at the point nearest to it, so that a pressure linear in the
     // position is read as such whatever the curves the skin reads between the grids.
     [[nodiscard]] VolumeKernel::PressureField solidFacePressure(const MixedSolid& solid,
                                                                 std::span<const std::size_t> faceGrids,
                                                                 std::span<const double> cornerPressures) const;
-    // The kernel of a solid with the free expansion of its corner changes as its only load: the changes interpolated
-    // by the functions of its corners at the point of its straight element nearest to each point of the kernel.
+    // The kernel with the thermal expansion of the case as its only load.
     [[nodiscard]] VolumeKernel solidThermalKernel(const MixedSolid& solid, EntityLayout::Kind kind,
                                                   std::span<const double> changes) const;
-    // The thermal load of a solid for the temperature changes of its corners (solidCornerChanges).
+    // The same nodal temperature field drives the thermal load and strain recovery.
+    [[nodiscard]] SolidPart::TemperatureField solidTemperatureField(const MixedSolid& solid,
+                                                                  std::span<const double> changes) const;
     [[nodiscard]] SolidLoad solidThermalLoad(const MixedSolid& solid, std::span<const double> changes) const;
     // Adds to the stress coefficients `beta` of a solid the particular stresses of the body force ρ a(x) of the
     // acceleration field of a case (NodalDisplacements::bodyAcceleration; nothing without a field or without
@@ -224,13 +224,13 @@ public:
     static void addBodyForceStresses(const MixedSolid& solid, const BodyAcceleration* acceleration,
                                      const VolumeKernel& kernel, Vector& beta);
     // The stress coefficients of a solid for the displacements of a case, with the kernel they are of (the kept one,
-    // or one with the free expansion of the case's temperatures as its load) and the corner changes (empty without a
+    // or one with the free expansion of the case's temperatures as its load) and the nodal changes (empty without a
     // thermal strain).
     struct SolidCaseStresses
     {
         std::shared_ptr<const VolumeKernel> kernel;
         Vector beta;
-        std::vector<double> cornerChanges;
+        std::vector<double> nodalChanges;
     };
     [[nodiscard]] SolidCaseStresses solidStresses(const MixedSolid& solid, EntityLayout::Kind kind,
                                                   const NodalDisplacements& displacements) const;

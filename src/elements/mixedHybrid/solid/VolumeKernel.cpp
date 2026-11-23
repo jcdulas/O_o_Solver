@@ -135,7 +135,7 @@ SolidResult<RulePoints> rulePoints(const VolumeGeometry& geometry, std::span<con
         for (std::size_t j = 0; j < functions[0].columns(); ++j)
             for (std::size_t m = 0; m < COMPONENTS; ++m)
             {
-                const double c = geometry.coordinate(j, m);
+                const double c = geometry.localCoordinate(j, m);
                 if (c == 0.0)
                     continue;
                 jacobian.position[m] += functions[0](g, j) * c;
@@ -143,18 +143,30 @@ SolidResult<RulePoints> rulePoints(const VolumeGeometry& geometry, std::span<con
                     jacobian.derivatives(m, k) += functions[1 + k](g, j) * c;
             }
         const double det = base::determinant(jacobian.derivatives);
-        if (!(std::fabs(det) > 0.0))
+        if (!std::isfinite(det) || det == 0.0)
             return SolidResult<RulePoints>::refused("flat " + name);
         if (first == 0.0)
             first = det;
-        if (det * first < 0.0)
+        if (std::signbit(det) != std::signbit(first))
             return SolidResult<RulePoints>::refused(
                 name + ": the element folds (its corners in a wrong order, or its edges curved too far)");
         points.reference.push_back(rule[g].point);
         points.weights.push_back(rule[g].weight * std::fabs(det));
-        points.positions.push_back(jacobian.position);
+        points.positions.push_back(add3(geometry.corners.front(), jacobian.position));
         points.inverseJacobians.push_back(base::inverse(jacobian.derivatives));
         points.volume += rule[g].weight * std::fabs(det);
+    }
+    // The volume rule does not reach the boundary. Test its vertices as well, including
+    // quadratic maps whose end tangent vanishes or reverses beyond the last Gauss point.
+    for (const auto& vertex : shapeVertices(geometry.shape))
+    {
+        // The collapsed pyramid has no unique derivative at its apex.
+        if (geometry.shape == VolumeShape::Pyramid && vertex[2] == 1.0)
+            continue;
+        const double det = base::determinant(jacobianAt(geometry, vertex).derivatives);
+        if (!std::isfinite(det) || std::abs(det) <= 1e-12 * std::abs(first) ||
+            std::signbit(det) != std::signbit(first))
+            return SolidResult<RulePoints>::refused(name + ": the element is flat or folds at a corner");
     }
     return points;
 }

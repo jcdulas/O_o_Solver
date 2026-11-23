@@ -63,6 +63,9 @@ optimization workloads; the small derivative fixtures verify formulas and intera
 
 ## Validation of the mixed hybrid formulation
 
+The [thin-plate solid benchmark](thin-plate-solid-bending.md) reports measured deflection and surface stress errors
+for tetrahedra and hexahedra, with model files for replaying the degree and mesh refinements.
+
 The benchmarks of `MixedHybridFormulation` against closed forms and classical values
 ([specification](mixed-hybrid-formulation-spec.md), sections 13.3 and 13.6) are a separate suite without a time
 limit, in [wasm/test/validation](../wasm/test/validation):

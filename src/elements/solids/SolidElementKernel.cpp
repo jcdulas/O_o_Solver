@@ -21,9 +21,84 @@ namespace oos::elements
 namespace
 {
 
-// An element whose |det J| falls below this fraction of its mean somewhere (at the mass rule's points, and at the
-// corners of a linear element other than a pyramid) is degenerate: flat, folded or with coincident corners.
+// Relative degeneracy tolerance at the mass rule points and all nonsingular reference corners.
 constexpr double SOLID_JACOBIAN_TOLERANCE = 1.0e-6;
+
+// Start with the HRZ diagonal and preserve the consistent matrix's mass and first moments.
+// The affine correction is the weighted least-squares change of the nodal masses. Damping
+// keeps every mass positive on distorted elements. If positive lumping cannot reproduce the
+// centroid, keep the consistent matrix, which still gives the correct work under gravity.
+void lumpSolidMass(SolidMatrix& mass, std::span<const base::Vec3> nodes)
+{
+    const auto n = nodes.size();
+    std::array<double, MAX_SOLID_NODES> weights{}, rowSums{};
+    double total = 0.0, trace = 0.0;
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        for (std::size_t j = 0; j < n; ++j)
+            rowSums[i] += mass(i, j);
+        total += rowSums[i];
+        trace += mass(i, i);
+    }
+    if (!(total > 0.0 && trace > 0.0))
+        return;
+    std::array<base::Vec3, MAX_SOLID_NODES> x{};
+    base::Vec3 size{}, target{};
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        x[i] = nodes[i] - nodes[0];
+        for (std::size_t c = 0; c < 3; ++c)
+            size[c] = std::max(size[c], std::abs(x[i][c]));
+    }
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        for (std::size_t c = 0; c < 3; ++c)
+            x[i][c] /= size[c];
+        target = target + (rowSums[i] / total) * x[i];
+        weights[i] = mass(i, i) / trace;
+    }
+    for (std::size_t iteration = 0; iteration < 32; ++iteration)
+    {
+        base::Vec3 centre{};
+        for (std::size_t i = 0; i < n; ++i)
+            centre = centre + weights[i] * x[i];
+        const auto residual = target - centre;
+        if (base::norm(residual) <= 1e-13)
+        {
+            mass.reset(n);
+            for (std::size_t i = 0; i < n; ++i)
+                mass(i, i) = weights[i] * total;
+            return;
+        }
+        base::Mat3 covariance{};
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const auto delta = x[i] - centre;
+            for (std::size_t r = 0; r < 3; ++r)
+                for (std::size_t c = 0; c < 3; ++c)
+                    covariance(r, c) += weights[i] * delta[r] * delta[c];
+        }
+        if (!(base::determinant(covariance) > 0.0))
+            return;
+        const auto direction = base::inverse(covariance) * residual;
+        std::array<double, MAX_SOLID_NODES> correction{};
+        double step = 1.0;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            correction[i] = base::dot(direction, x[i] - centre);
+            if (correction[i] < -0.9)
+                step = std::min(step, -0.9 / correction[i]);
+        }
+        double sum = 0.0;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            weights[i] *= 1.0 + step * correction[i];
+            sum += weights[i];
+        }
+        for (std::size_t i = 0; i < n; ++i)
+            weights[i] /= sum;
+    }
+}
 
 // The response of one element by its formulation, the thermal modes cleared first (a formulation without internal
 // modes leaves them so; the response is reused across the elements of a range, whose SolidProps may differ).
@@ -220,11 +295,10 @@ Resolution<SolidElementData> SolidElementKernel::resolve(const ElementBatchView&
     data.section = *section.value;
     const base::Mat3 axesT = data.section.axes.transposed();
     for (std::size_t a = 0; a < data.nodes.count; ++a)
-        data.materialPositions[a] = axesT * (data.nodes.positions[a] - data.section.origin);
+        data.materialPositions[a] = axesT * (data.nodes.positions[a] - data.nodes.positions[0]);
 
     const SolidShape shape = data.nodes.shape;
-    const bool withCorners = !isQuadraticSolid(shape) && shape != SolidShape::Pyram5;
-    if (solidJacobianSign(shape, data.positionsInMaterialSystem(), solidMassRule(shape), withCorners,
+    if (solidJacobianSign(shape, data.positionsInMaterialSystem(), solidMassRule(shape), true,
                           SOLID_JACOBIAN_TOLERANCE) == 0)
         return Result::failure(elementProblem(
             view, row, problem_code::DEGENERATE_GEOMETRY, "node1",
@@ -270,24 +344,7 @@ void SolidElementKernel::computeMass(const ElementBatchView& view, ElementRange 
         buildScalarMass(data.nodes.shape, data.positionsInMaterialSystem(), data.section.density,
                         solidMassRule(data.nodes.shape), *scalar);
         if (options.formulation == MassFormulation::Lumped)
-        {
-            // HRZ: m_a = M_aa · (Σ_bc M_bc) / Σ_b M_bb.
-            double total = 0.0;
-            double diagonal = 0.0;
-            for (std::size_t a = 0; a < n; ++a)
-            {
-                diagonal += (*scalar)(a, a);
-                for (std::size_t b = 0; b < n; ++b)
-                    total += (*scalar)(a, b);
-            }
-            const double scale = diagonal > 0.0 ? total / diagonal : 0.0;
-            for (std::size_t a = 0; a < n; ++a)
-                for (std::size_t b = 0; b < n; ++b)
-                    if (a != b)
-                        (*scalar)(a, b) = 0.0;
-            for (std::size_t a = 0; a < n; ++a)
-                (*scalar)(a, a) *= scale;
-        }
+            lumpSolidMass(*scalar, data.positionsInMaterialSystem());
         mass->reset(3 * n);
         for (std::size_t a = 0; a < n; ++a)
             for (std::size_t b = 0; b < n; ++b)

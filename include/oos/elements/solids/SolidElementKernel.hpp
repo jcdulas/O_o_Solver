@@ -17,7 +17,7 @@ namespace oos::elements
 {
 
 // Everything a facet needs about one solid element: its grid points, its section, and its node positions in its
-// material system (x_m = axesᵀ·(x − origin), SolidProp CORDM), where its response is formed.
+// material axes (x_m = axesᵀ·(x − x₀), SolidProp CORDM), where its response is formed.
 struct SolidElementData
 {
     SolidNodes nodes;
@@ -38,10 +38,9 @@ using SolidFormulation = void (*)(const SolidElementData&, SolidResponseParts, S
 // element is formed in its material system and carried to the displacement systems of its grid points through T_a =
 // axesᵀ·R_a (u_material = T_a·u_CD at node a): K_CD(a, b) = T_aᵀ·K(a, b)·T_b, loads F_CD = R_aᵀ·F_basic.
 //
-// Mass: the consistent mass ∫ ρ NᵀN dV, or (PARAM CoupledMass ≤ 0, the default) the lumped mass of the HRZ method
-// (Hinton, Rock & Zienkiewicz, Earthquake Eng. Struct. Dyn. 4, 1976: the diagonal of the consistent mass scaled to
-// the element's mass ρV; for the linear tetrahedron and pentahedron and for a parallelepiped SolidHexa this is ρV shared
-// equally between the nodes). The NSM cards do not apply to solids (an NSM entry names no solid property):
+// The default lumped mass starts from the HRZ diagonal and matches the consistent mass and its first moments.
+// The consistent matrix is retained if the positive diagonal correction does not converge. CoupledMass > 0
+// selects consistent mass directly. The NSM cards do not apply to solids.
 // MassOptions' added mass is ignored.
 //
 // Thermal loads (linear statics: the thermal strain ε_T = a·(T − T0), a the expansion of
