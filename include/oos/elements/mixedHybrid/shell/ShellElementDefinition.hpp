@@ -35,7 +35,8 @@ struct ShellElementDefinition
 {
     // The coefficients x_i of the map P_X on the displacement basis (one per function, its own orientation of the
     // edges).
-    std::span<const SpaceVector> mapCoefficients;
+    std::span<const SpaceVector> mapCoefficients; // Coefficients of X - mapOrigin.
+    SpaceVector mapOrigin{};
     // The denominator W of the rational map (the constant 1 for a polynomial map).
     const Polynomial2* weight = nullptr;
     // The displacement functions N_i / W at the surface points [q · h1Count + i] (elementJets).

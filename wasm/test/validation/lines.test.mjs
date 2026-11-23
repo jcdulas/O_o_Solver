@@ -117,6 +117,13 @@ function barProp(id, { area = SECTION.area, i1 = SECTION.i1, i2 = SECTION.i2, j 
     `${k2 === "" ? "" : real(k2)}`;
 }
 
+// A uniform BeamProp with the same section and stress recovery points as barProp.
+function beamProp(id, shearFactor = 0) {
+  const points = POINTS.map(([y, z]) => fields([y, z])).join(";");
+  return `BeamProp;${id};1;${real(SECTION.area)};${real(SECTION.i1)};${real(SECTION.i2)};;${real(SECTION.j)};;` +
+    `${points};;${real(shearFactor)};${real(shearFactor)}`;
+}
+
 // A straight line of `count` elements from the local point `from` to the local point `to` in the skew frame, its
 // grid points numbered from `first`; the orientation vector is the local vector `orientation`. With
 // `displacementFrame` (a displacement system along the axes of the skew frame) the grid points take it, and the
@@ -190,9 +197,7 @@ for (const card of ["Bar2", "Beam2"])
           for (let k = 0; k < lines.length; ++k)
             if (lines[k].startsWith(`${card};2;`)) lines[k] = `${card};2;1;2;3;;9`;
         }
-        lines.push(card === "Bar2" ? barProp(1)
-          : `BeamProp;1;1;${real(SECTION.area)};${real(SECTION.i1)};${real(SECTION.i2)};;${real(SECTION.j)};;` +
-            `${POINTS.map(([py, pz]) => `${real(py)};${real(pz)}`).join(";")};;0.;0.`,
+        lines.push(card === "Bar2" ? barProp(1) : beamProp(1),
         MATERIAL, "SinglePointConstrList;1;123456;1", force(2, 3, [fx, fy, fz], frame),
         moment(2, 3, [mx, 0, 0], frame));
         const run = runModel(deck(101, STATIC_CASE, lines), LINES);
@@ -414,6 +419,69 @@ for (const card of ["Rod2", "Tube2"])
   });
 
 // ---------------------------------------------------------------------------------------------------------------------
+// Use the same hollow circular section for each card so its axial and torsional compliance is known independently.
+const outside = 0.04, inside = 0.034;
+const tubeArea = Math.PI * (outside ** 2 - inside ** 2) / 4;
+const tubeInertia = Math.PI * (outside ** 4 - inside ** 4) / 64;
+const tubeJ = 2 * tubeInertia;
+const areaAndInertias = [tubeArea, tubeInertia, tubeInertia].map(real).join(";");
+const autoLines = [
+  ["Rod2", ["Rod2;10;2;1;2", `RodProp;2;1;${real(tubeArea)};${real(tubeJ)}`]],
+  ["Rod2InlineSection", [`Rod2InlineSection;10;1;2;1;${real(tubeArea)};${real(tubeJ)}`]],
+  ["Tube2", ["Tube2;10;2;1;2", "TubeProp;2;1;0.04;0.003"]],
+  ["Bar2", ["Bar2;10;2;1;2;0.;;0.;1.", `BarProp;2;1;${areaAndInertias};${real(tubeJ)}`]],
+  ["Beam2", ["Beam2;10;2;1;2;0.;;0.;1.", `BeamProp;2;1;${areaAndInertias};;${real(tubeJ)}`]],
+];
+
+for (const [card, line] of autoLines) {
+  test(`Auto: axial and torsional compliance of an isolated ${card}`, () => {
+    const length = 1.2, pull = 4000, torque = 25;
+    const model = ["Parameter;MixedHybridDegree;Auto", "Node;1;;0.;0.;0.", `Node;2;;${real(length)};0.;0.`,
+      ...line, MATERIAL, "SinglePointConstrList;1;123456;1", "SinglePointConstrList;1;2356;2",
+      `PointForceLoad;2;2;;${real(pull)};1.;0.;0.`, `PointMomentLoad;2;2;;${real(torque)};1.;0.;0.`];
+    const run = runModel(deck(101, STATIC_CASE, model), MIXED);
+    const tip = nodal(run, "displacements", 2);
+    const check = measurements();
+    check.ratio("axial displacement", tip[0], pull * length / (E * tubeArea), CRITERIA.exact);
+    check.ratio("twist", tip[3], torque * length / (G * tubeJ), CRITERIA.exact);
+    check.ratio("axial reaction", nodal(run, "singlePointConstrForces", 1)[0], -pull, CRITERIA.exact);
+    check.ratio("torque reaction", nodal(run, "singlePointConstrForces", 1)[3], -torque, CRITERIA.exact);
+    check.done();
+  });
+
+  test(`Auto: a ${card} stiffener on four irregular ShellTria3 under uniform extension and pure bending`, () => {
+    const length = 1.2, width = 0.35, thickness = 0.004;
+    const strain = 0.001 / length, curvature = 0.001 / length;
+    const model = ["Parameter;MixedHybridDegree;Auto", "Node;1;;0.;0.;0.", `Node;2;;${real(length)};0.;0.`,
+      `Node;3;;${real(length)};${real(width)};0.`, `Node;4;;0.;${real(width)};0.`, "Node;5;;0.47;0.19;0.",
+      "ShellTria3;1;1;1;2;5", "ShellTria3;2;1;2;3;5", "ShellTria3;3;1;3;4;5", "ShellTria3;4;1;4;1;5",
+      ...surfaceRecords({ smoothEdges: [[1, 5], [2, 5], [3, 5], [4, 5]] }),
+      `ShellProp;1;1;${real(thickness)};1;;1`, `IsoMat;1;${real(E)};;0.`, ...line,
+      "SinglePointConstrList;1;123456;1;4", "SinglePointConstrList;3;123456;1;4"];
+    for (const id of [2, 3])
+      model.push(`SinglePointConstr;1;${id};1;${real(length * strain)}`,
+        `SinglePointConstr;3;${id};5;${real(-length * curvature)}`);
+    const cases = ["DisplacementOutput;All", "SinglePointConstrForceOutput;All", "ElemForceOutput;All",
+      "SubcaseStart;1", "SinglePointConstrSelection;1", "SubcaseStart;2", "SinglePointConstrSelection;3"];
+    const run = runModel(deck(101, cases, model), MIXED);
+    const check = measurements();
+    const pull = [2, 3].reduce((sum, id) => sum + nodal(run, "singlePointConstrForces", id)[0], 0);
+    check.ratio("total end reaction", pull, E * (tubeArea + thickness * width) * strain, CRITERIA.exact);
+    const forces = rowsOf(run, card, "forces");
+    assert.ok(forces.length > 0 && forces.every(row => row.id === 10));
+    for (const row of forces)
+      check.ratio("axial force of the stiffener", row.axialForce ?? row.axial, E * tubeArea * strain, CRITERIA.exact);
+    check.ratio("displacement at the interior grid", nodal(run, "displacements", 5)[0], 0.47 * strain, CRITERIA.exact);
+    const moment = [2, 3].reduce((sum, id) => sum + nodal(run, "singlePointConstrForces", id, 2)[4], 0);
+    const lineInertia = card === "Bar2" || card === "Beam2" ? tubeInertia : 0;
+    check.ratio("total bending moment", moment, -E * (width * thickness ** 3 / 12 + lineInertia) * curvature,
+      CRITERIA.exact);
+    check.ratio("deflection at the interior grid", nodal(run, "displacements", 5, 2)[2], 0.47 ** 2 * curvature / 2,
+      CRITERIA.exact);
+    check.done();
+  });
+}
+
 // 4. Sections that vary, neutral axis, end offsets, pin flags
 
 // The integral of f over [a, b] by a composite five-point Gauss rule on 64 intervals.
@@ -501,11 +569,12 @@ test("a cantilever Beam2 whose neutral axis is off its shear centre: an end forc
 
 // A cantilever of one Bar2 of length L whose axis is offset by e along its orientation vector at both ends (WA, WB,
 // in the displacement system of the grid points).
-function offsetCantilever(loads, length, e) {
+function offsetCantilever(loads, length, e, card = "Bar2") {
   const [a, b] = [SKEW.place([0, 0, 0]), SKEW.place([length, 0, 0])];
   const w = fields(SKEW.turn([0, e, 0]));
   return deck(101, STATIC_CASE, [`Node;1;;${fields(a)}`, `Node;2;;${fields(b)}`,
-    `Bar2;1;1;1;2;${fields(SKEW.turn([0, 1, 0])).replace(";", ";;")};;;;${w};${w}`, barProp(1), MATERIAL,
+    `${card};1;1;1;2;${fields(SKEW.turn([0, 1, 0])).replace(";", ";;")};;;;${w};${w}`,
+    card === "Bar2" ? barProp(1) : beamProp(1), MATERIAL,
     "SinglePointConstrList;1;123456;1", ...loads]);
 }
 
@@ -530,25 +599,34 @@ test("a cantilever Bar2 with end offsets, loaded in the plane of the offsets: th
   check.done();
 });
 
-test("a cantilever Bar2 with end offsets, loaded across the plane of the offsets (known limit)", () => {
-  // KNOWN LIMIT (spec section 3.6: the offset of the axis is in the section law, not a rigid arm; the torsion and the
-  // shear stay about the edge). A force F across plane 1 at the end grid point: the ClassicFormulation bar is twisted
-  // by the torque F e of its rigid arm, w = F L³ / (3 E I2) + F e² L / (G J) and θx = F e L / (G J); the bar of the
-  // formulation is not, w = F L³ / (3 E I2) and θx = 0. Both are checked as the spec states them.
-  const [length, e, f] = [1.2, 0.02, 35.0];
-  const text = offsetCantilever([force(2, 2, [0, 0, f])], length, e);
+for (const card of ["Bar2", "Beam2"])
+  test(`a transverse end force twists an eccentric ${card} about its shear centre`, () => {
+    const length = 1.2, forceZ = 35;
+    const check = measurements();
+    for (const offset of [-0.02, 0.02]) {
+      const text = offsetCantilever([force(2, 2, [0, 0, forceZ])], length, offset, card);
+      const run = runModel(text + "Parameter;MixedHybridDegree;Auto\n", MIXED);
+      const tip = localDisplacement(run, 2);
+      const torque = -offset * forceZ;
+      const twist = torque * length / (G * SECTION.j);
+      check.ratio("signed section rotation", tip[3], twist, CRITERIA.exact);
+      check.ratio("transverse displacement at the grid", tip[2],
+        forceZ * length ** 3 / (3 * E * SECTION.i2) - offset * twist, CRITERIA.exact);
+      const forces = rowsOf(run, card, "forces");
+      for (const row of forces)
+        check.ratio("torque about the shear centre", row.totalTorque ?? row.torque, torque, CRITERIA.exact);
+    }
+    check.done();
+  });
+
+test("a transverse distributed load through the shear centre of an offset beam bends it without twist", () => {
+  const length = 1.2, offset = 0.02, q = 120;
+  const load = `BeamDistributedLoad;2;1;ForceZAlongLength;FractionalLength;0.;${real(q)};1.;${real(q)}`;
+  const run = runModel(offsetCantilever([load], length, offset, "Beam2"), MIXED);
+  const tip = localDisplacement(run, 2);
   const check = measurements();
-  const bending = (f * length ** 3) / (3 * E * SECTION.i2);
-  const twist = (f * e * length) / (G * SECTION.j);
-  const classic = localDisplacement(runModel(text, CLASSIC), 2);
-  check.ratio("ClassicFormulation: deflection with the twist of the arm", classic[2], bending + twist * e,
-    CRITERIA.exact);
-  check.ratio("ClassicFormulation: twist (magnitude)", Math.abs(classic[3]), twist, CRITERIA.exact);
-  const mixed = localDisplacement(runModel(text, LINES), 2);
-  check.ratio("MixedHybridFormulation: deflection without the twist of the arm", mixed[2], bending, CRITERIA.exact);
-  check.small("MixedHybridFormulation: twist", mixed[3], twist, CRITERIA.exact);
-  console.log(`    info ratio deflection of MixedHybridFormulation over ClassicFormulation: ` +
-    `${(mixed[2] / classic[2]).toFixed(6)}`);
+  check.ratio("tip deflection", tip[2], q * length ** 4 / (8 * E * SECTION.i2), CRITERIA.exact);
+  check.small("tip twist", tip[3], q * offset * length ** 2 / (2 * G * SECTION.j), CRITERIA.exact);
   check.done();
 });
 
@@ -745,17 +823,6 @@ const SKEW_FRAME = `RectFrame2;5;;${fields(SKEW.place([0, 0, 0]))};${fields(SKEW
 //   (κ G A k² − ρ A ω²)(E I k² + κ G A − ρ I ω²) − (κ G A)² k² = 0;
 // without shear flexibility (κ G A infinite) it is Rayleigh's ω² = E I k⁴ / (ρ (A + I k²)).
 //
-// The line element of the formulation is not this beam in its mass: its rotation is the slope of its axis (spec
-// section 3.2: θ = ψ t + t × du/ds, the shear flexibility in the complementary energy of the shear force), so that
-// the rotary inertia of the section works on the slope and not on the rotation of the section. Its own frequency is
-//   ω² = E I k⁴ / ((1 + E I k² / (κ G A)) ρ (A + I k²))   (lineEigenvalue),
-// the static stiffness of Timoshenko's beam with the rotary inertia on the slope: the same without shear
-// flexibility, lower with it by a part that grows as (I k² / A)(E / κ G) (the reference measures 0.99999, 0.99980 and
-// 0.99905 on the first three modes of its beam: its document 34, section 11.5).
-function lineEigenvalue(k, inertia, shearFactor) {
-  const flexibility = shearFactor === 0 ? 0 : (E * inertia * k * k) / (shearFactor * G * SECTION.area);
-  return (E * inertia * k ** 4) / ((1 + flexibility) * RHO * (SECTION.area + inertia * k * k));
-}
 function beamEigenvalue(k, inertia, shearFactor) {
   if (shearFactor === 0) return (E * inertia * k ** 4) / (RHO * (SECTION.area + inertia * k * k));
   const s = shearFactor * G * SECTION.area;
@@ -764,57 +831,54 @@ function beamEigenvalue(k, inertia, shearFactor) {
   return (2 * qc) / (-qb + Math.sqrt(qb * qb - 4 * qa * qc));
 }
 
-for (const { name, length, shearFactor } of [
-  { name: "a slender beam without shear flexibility (Euler-Bernoulli with rotary inertia)", length: 1.0,
-    shearFactor: 0 },
-  { name: "a short beam with shear factors (Timoshenko)", length: 0.3, shearFactor: 0.85 }])
-  test(`modes of ${name} of 16 Bar2 on simple supports: bending in both planes, torsion, stretching`, () => {
-    // The beam is held at its first end (three translations and the twist) and across its axis at its second end.
-    // Bending with n half-waves in each plane: beamEigenvalue(n π / L). Torsion, the twist held at one end:
-    // ω = (2 n − 1) π / (2 L) √(G J / (ρ Ip)), Ip = I1 + I2. Stretching, one end held: ω = (2 n − 1) π / (2 L) √(E / ρ)
-    // (R. D. Blevins, Formulas for Natural Frequency and Mode Shape, 1979, chapter 8). The modes are compared in
-    // the order of their frequencies; the bending modes counted have at least four elements per half-wave.
-    const count = 16;
-    const lines = [SKEW_FRAME, ...straightLine({ from: [0, 0, 0], to: [length, 0, 0], count, displacementFrame: 5 }),
-      barProp(1, shearFactor === 0 ? {} : { k1: shearFactor, k2: shearFactor }), MATERIAL,
-      "SinglePointConstrList;1;1234;1", `SinglePointConstrList;1;23;${count + 1}`, eigenMethod(14)];
-    const run = runModel(deck(103, MODES_CASE, lines), LINES, "modes");
-    const values = run.eigenvalues[0].rows.map((row) => row.eigenvalue);
-    const expected = [];
-    for (let n = 1; n <= 6; ++n) {
-      const k = (n * Math.PI) / length;
-      for (const [plane, inertia] of [[1, SECTION.i1], [2, SECTION.i2]])
-        expected.push({ name: `bending in plane ${plane}, ${n} half-waves`,
-          value: beamEigenvalue(k, inertia, shearFactor), own: lineEigenvalue(k, inertia, shearFactor),
-          counted: n <= 4 });
-    }
-    for (let n = 1; n <= 2; ++n) {
-      const k = ((2 * n - 1) * Math.PI) / (2 * length);
-      const torsion = (k * k * G * SECTION.j) / (RHO * (SECTION.i1 + SECTION.i2));
-      const stretching = (k * k * E) / RHO;
-      expected.push({ name: `torsion ${n}`, value: torsion, own: torsion, counted: true },
-        { name: `stretching ${n}`, value: stretching, own: stretching, counted: true });
-    }
-    expected.sort((p, q) => p.value - q.value);
-    const check = measurements();
-    for (let mode = 0; mode < 10; ++mode) {
-      const { name: modeName, value, own, counted } = expected[mode];
-      const ratio = Math.sqrt(values[mode] / value);
-      // KNOWN LIMIT of the short beam (the rotary inertia on the slope, above): the modes whose frequency of the
-      // formulation is more than the criterion below Timoshenko's are counted against the formulation's own
-      // closed form, and their ratio to Timoshenko's is printed (0.9973 to 0.9886 here).
-      const isOwn = Math.abs(Math.sqrt(own / value) - 1) > CRITERIA.frequency / 2;
-      if (!counted || isOwn) console.log(`    info ratio frequency ${mode + 1}, ${modeName}: ${ratio.toFixed(6)}`);
-      if (counted && !isOwn) check.ratio(`frequency ${mode + 1}, ${modeName}`, ratio, 1, CRITERIA.frequency);
-      if (counted && isOwn)
-        check.ratio(`frequency ${mode + 1}, ${modeName}, over the formulation's own closed form (known limit)`,
-          Math.sqrt(values[mode] / own), 1, CRITERIA.frequency);
-    }
-    for (const row of run.eigenvalues[0].rows.slice(0, 10))
-      check.ratio(`generalised mass of mode ${row.mode}`, row.generalizedMass, 1, 1e-8);
-    check.truth(`no warning: ${warningsOf(run)}`, warningsOf(run).length === 0);
-    check.done();
-  });
+for (const card of ["Bar2", "Beam2"])
+  for (const { name, length, shearFactor } of [
+    { name: "a slender beam without shear flexibility (Euler-Bernoulli with rotary inertia)", length: 1.0,
+      shearFactor: 0 },
+    { name: "a short beam with shear factors (Timoshenko)", length: 0.3, shearFactor: 0.85 }])
+    test(`modes of ${name} of 16 ${card} on simple supports: bending in both planes, torsion, stretching`, () => {
+      // The beam is held at its first end (three translations and the twist) and across its axis at its second end.
+      // Bending with n half-waves in each plane: beamEigenvalue(n π / L). Torsion, the twist held at one end:
+      // ω = (2 n − 1) π / (2 L) √(G J / (ρ Ip)), Ip = I1 + I2. Stretching, one end held: ω = (2 n − 1) π / (2 L) √(E / ρ)
+      // (R. D. Blevins, Formulas for Natural Frequency and Mode Shape, 1979, chapter 8). The modes are compared in
+      // the order of their frequencies; the bending modes counted have at least four elements per half-wave.
+      const count = 16;
+      const lines = ["Parameter;MixedHybridDegree;Auto", SKEW_FRAME,
+        ...straightLine({ card, from: [0, 0, 0], to: [length, 0, 0], count, displacementFrame: 5 }),
+        card === "Bar2" ? barProp(1, { k1: shearFactor, k2: shearFactor }) : beamProp(1, shearFactor), MATERIAL,
+        "SinglePointConstrList;1;1234;1", `SinglePointConstrList;1;23;${count + 1}`, eigenMethod(14)];
+      const run = runModel(deck(103, MODES_CASE, lines), LINES, "modes");
+      const values = run.eigenvalues[0].rows.map((row) => row.eigenvalue);
+      const expected = [];
+      for (let n = 1; n <= 6; ++n) {
+        const k = (n * Math.PI) / length;
+        for (const [plane, inertia] of [[1, SECTION.i1], [2, SECTION.i2]])
+          expected.push({ name: `bending in plane ${plane}, ${n} half-waves`,
+            value: beamEigenvalue(k, inertia, shearFactor),
+            counted: n <= 4 });
+      }
+      for (let n = 1; n <= 2; ++n) {
+        const k = ((2 * n - 1) * Math.PI) / (2 * length);
+        const torsion = (k * k * G * SECTION.j) / (RHO * (SECTION.i1 + SECTION.i2));
+        const stretching = (k * k * E) / RHO;
+        expected.push({ name: `torsion ${n}`, value: torsion, counted: true },
+          { name: `stretching ${n}`, value: stretching, counted: true });
+      }
+      expected.sort((p, q) => p.value - q.value);
+      const check = measurements();
+      // On this 16-element mesh the short beam resolves the first ten frequencies to 0.01%.
+      const tolerance = shearFactor > 0 ? 1e-4 : CRITERIA.frequency;
+      for (let mode = 0; mode < 10; ++mode) {
+        const { name: modeName, value, counted } = expected[mode];
+        const ratio = Math.sqrt(values[mode] / value);
+        if (counted) check.ratio(`frequency ${mode + 1}, ${modeName}`, ratio, 1, tolerance);
+        else console.log(`    info ratio frequency ${mode + 1}, ${modeName}: ${ratio.toFixed(6)}`);
+      }
+      for (const row of run.eigenvalues[0].rows.slice(0, 10))
+        check.ratio(`generalised mass of mode ${row.mode}`, row.generalizedMass, 1, 1e-8);
+      check.truth(`no warning: ${warningsOf(run)}`, warningsOf(run).length === 0);
+      check.done();
+    });
 
 test("a free beam of 16 Bar2: six rigid-body modes and the free-free bending frequencies", () => {
   // Free-free bending: ω = λ² √(E I / (ρ A)) / L² with λ = 4.73004 (Blevins, Formulas for Natural Frequency and Mode
@@ -1023,3 +1087,60 @@ test("a Bar2 from a grid point of a SolidHexa to a pinned support: the end on th
   console.log(`    info diagnostics: ${warningsOf(run).join(" | ").slice(0, 300)}`);
   check.done();
 });
+
+test("classic Beam2 rotary inertia converges on the third Timoshenko bending mode", () => {
+  const length = 0.3, count = 32, shearFactor = 0.85;
+  const model = [SKEW_FRAME, ...straightLine({ card: "Beam2", from: [0, 0, 0], to: [length, 0, 0], count,
+    displacementFrame: 5 }), beamProp(1, shearFactor), MATERIAL, "SinglePointConstrList;1;1234;1",
+    `SinglePointConstrList;1;23;${count + 1}`, eigenMethod(14)];
+  const run = runModel(deck(103, [...MODES_CASE, "DisplacementOutput;All"], model), CLASSIC, "modes");
+  const tables = run.nodalTables.filter((table) => table.kind === "eigenvectors").sort((a, b) => a.step - b.step);
+  const mode = tables.findIndex((table) => {
+    const target = Array.from(table.ids, (id) => Math.sin(3 * Math.PI * (id - 1) / count));
+    const inPlane = target.map((_, i) => table.values[6 * i + 1]);
+    const across = target.map((_, i) => table.values[6 * i + 2]);
+    const projection = target.reduce((sum, phi, i) => sum + phi * inPlane[i], 0);
+    return Math.abs(projection) > 0.999 * Math.hypot(...target) * Math.hypot(...inPlane, ...across);
+  });
+  assert.ok(mode >= 0, "three half-waves in bending plane 1");
+  const reference = beamEigenvalue(3 * Math.PI / length, SECTION.i1, shearFactor);
+  assert.ok(Math.abs(Math.sqrt(run.eigenvalues[0].rows[mode].eigenvalue / reference) - 1) < 0.001);
+});
+
+for (const [label, formulation] of [["classic", CLASSIC], ["mixed Auto", MIXED]]) {
+  test(`${label} Beam2 under gravity preserves the first moments of a tapered eccentric mass`, () => {
+    for (const coupled of [-1, 1]) for (const [a, b] of [[0, 12], [12, 0]]) {
+      const model = ["Parameter;MixedHybridDegree;Auto", `Parameter;CoupledMass;${coupled}`,
+        "ModelParams;OffsetDefinition;ElemOffsetZ", MATERIAL, "Node;1;;0.;0.;0.", "Node;2;;1.;0.;0.",
+        "Beam2;1;1;1;2;0.;;1.;0.", "SinglePointConstrList;1;123456;1", "GravityLoad;2;;1.;0.;0.;1.",
+        `BeamProp;1;1;0.0006;4.5e-8;2.0e-8;;4.7e-8;${a}.;No;1.;0.0006;4.5e-8;2.0e-8;;4.7e-8;${b}.;;0.;0.;;;;;;;0.;0.;0.04;0.`];
+      const r = nodal(runModel(deck(101, STATIC_CASE, model), formulation), "singlePointConstrForces", 1);
+      const firstMoment = a/6 + b/3;
+      assert.ok(Math.abs(r[2] + RHO*0.0006 + (a+b)/2) < 1e-8);
+      assert.ok(Math.abs(r[3] + 0.04*firstMoment) < 1e-8);
+      assert.ok(Math.abs(r[4] - (RHO*0.0006/2 + firstMoment)) < 1e-8);
+    }
+  });
+
+  test(`${label} Beam2 extends along its offset physical axis`, () => {
+    const length = 1.2, force = 4000;
+    const model = ["Parameter;MixedHybridDegree;Auto", "Node;1;;0.;-0.06;0.", "Node;2;;1.2;0.;0.",
+      "Beam2;1;1;1;2;0.;;0.;1.;;;;0.;0.06;0.;0.;0.;0.", beamProp(1), MATERIAL,
+      "SinglePointConstrList;1;123456;1", "PointForceLoad;2;2;;4000.;1.;0.;0."];
+    const tip = nodal(runModel(deck(101, STATIC_CASE, model), formulation), "displacements", 2);
+    const extension = force * length / (E*SECTION.area);
+    assert.ok(Math.abs(tip[0]/extension - 1) < 1e-8);
+    assert.ok(Math.hypot(...tip.slice(1)) < 1e-8*extension);
+  });
+
+  test(`${label} Beam2 under gravity transmits zero moment through its end hinge`, () => {
+    const model = ["Parameter;MixedHybridDegree;Auto", "Parameter;CoupledMass;1", MATERIAL, beamProp(1),
+      "Node;1;;0.;0.;0.", "Node;2;;1.;0.;0.", "Beam2;1;1;1;2;0.;;1.;0.;;;6",
+      "SinglePointConstrList;1;123456;1", "SinglePointConstrList;1;23456;2", "GravityLoad;2;;1.;0.;1.;0."];
+    const run = runModel(deck(101, STATIC_CASE, model), formulation);
+    const a = nodal(run, "singlePointConstrForces", 1), b = nodal(run, "singlePointConstrForces", 2);
+    assert.ok(Math.abs(b[5]) < 1e-8);
+    // qL^2/8 is the Euler limit of the finite shear stiffness used by the mixed section.
+    assert.ok(Math.abs(a[5] / (-RHO * SECTION.area / 8) - 1) < CRITERIA.exact);
+  });
+}

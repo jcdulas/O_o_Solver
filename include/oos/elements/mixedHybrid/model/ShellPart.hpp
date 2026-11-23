@@ -844,6 +844,7 @@ private:
 
     bool m_usable = false;
     std::vector<ShellPartProblem> m_problems;
+    SpaceVector m_mapOrigin{};
     MeshReadingInput m_reading;
     Topology m_topology;
     // The shells without their tables and matrices.

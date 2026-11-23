@@ -36,7 +36,7 @@ namespace
 // call through a std::function that geometryFrom makes for each function at each point.
 template <typename JetAt>
 PointGeometry geometryWith(std::span<const SpaceVector> mapCoefficients, const JetAt& jet, const SurfaceFrame& axes,
-                           bool second)
+                           bool second, const SpaceVector& origin)
 {
     PointGeometry g;
     // d2[α][β] = ∂_αβ X
@@ -58,6 +58,7 @@ PointGeometry geometryWith(std::span<const SpaceVector> mapCoefficients, const J
             }
         }
     }
+    g.x = add3(origin, g.x);
     d2[1][0] = d2[0][1];
     const SpaceVector normal = cross3(g.a[0], g.a[1]);
     g.j = norm3(normal);
@@ -93,9 +94,9 @@ PointGeometry geometryWith(std::span<const SpaceVector> mapCoefficients, const J
 } // namespace
 
 PointGeometry geometryFrom(std::span<const SpaceVector> mapCoefficients, const JetOfFunction& jet,
-                           const SurfaceFrame& axes, bool second)
+                           const SurfaceFrame& axes, bool second, const SpaceVector& origin)
 {
-    return geometryWith(mapCoefficients, jet, axes, second);
+    return geometryWith(mapCoefficients, jet, axes, second, origin);
 }
 
 ReferenceJet rationalJet(const ReferenceJet& n, const ReferenceJet& w)
@@ -164,14 +165,14 @@ PointGeometry geometryAt(const ShellReferenceElement& re, const ShellElementDefi
 {
     const std::vector<ReferenceJet> jets = h1At(re, def, xi, eta);
     return geometryWith(
-        def.mapCoefficients, [&](std::size_t i) -> const ReferenceJet& { return jets[i]; }, def.axes, true);
+        def.mapCoefficients, [&](std::size_t i) -> const ReferenceJet& { return jets[i]; }, def.axes, true, def.mapOrigin);
 }
 
 PointGeometry volumeGeometry(const ShellElementDefinition& def, std::size_t h1Count, std::size_t q)
 {
     return geometryWith(
         def.mapCoefficients, [&](std::size_t i) -> const ReferenceJet& { return def.volumeJets[q * h1Count + i]; },
-        def.axes, true);
+        def.axes, true, def.mapOrigin);
 }
 
 PointGeometry edgeGeometry(const ShellElementDefinition& def, std::size_t h1Count, std::size_t k, std::size_t g)
@@ -183,7 +184,7 @@ PointGeometry edgeGeometry(const ShellElementDefinition& def, std::size_t h1Coun
             const EdgeJet& t = def.edgeJets[k][g * h1Count + i];
             return ReferenceJet{t[0], t[1], t[2], 0.0, 0.0, 0.0};
         },
-        def.axes, false);
+        def.axes, false, def.mapOrigin);
 }
 
 } // namespace oos::elements::mixedHybrid

@@ -250,10 +250,7 @@ CHECK_CASE("line: skew cantilever of one element under end loads, against the Ti
 
 CHECK_CASE("line: skew cantilever with an offset axis and a neutral axis, against the beam on the edge")
 {
-    // The axis offset from the grids (end offsets and eccentricity, constant) and the neutral axis off the reference
-    // axis: the line is the beam on its edge with the section law TᵀDT (document 34 of the reference crate, 8.1:
-    // Γ_axis = Γ_edge + (K × o) · x; the shear and the torsion stay those of the edge). Every end load, against the
-    // unit load method on that law (lineChecks::cantileverFlexibility).
+    // Compare the six tip load directions with the integrated flexibility of the section carried by a rigid arm.
     const double b = 0.02;
     const double h = 0.05;
     LineSection section = rectangularBar(b, h, std::array<double, 2>{0.85, 0.6});

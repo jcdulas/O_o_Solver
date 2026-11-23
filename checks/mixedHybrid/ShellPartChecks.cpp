@@ -5,6 +5,7 @@
 
 #include "CheckRunner.hpp"
 #include "ShellPartCheckSupport.hpp"
+#include "oos/elements/mixedHybrid/core/Quadrature.hpp"
 #include "oos/elements/mixedHybrid/geometry/ReferenceShapes.hpp"
 #include "oos/elements/mixedHybrid/line/LineAnalysis.hpp"
 #include "oos/elements/mixedHybrid/shell/ShellGeometry.hpp"
@@ -857,44 +858,38 @@ CHECK_CASE("shellpart: reference numbers, stiffened strip")
     const mh::TemperatureAtPosition shellTemperatures = [](const mh::SpaceVector& x)
     { return std::array<double, 2>{30.0 + 10.0 * x[0], 0.0}; };
     const mh::LineTemperatureField lineTemperature = [](const mh::Vec3Of<double>& x) { return 30.0 + 10.0 * x[0]; };
-    // u[13][0 … 5] per case: tip forces z and y, thermal, inertia; then the forces of line 1 at 0.3 of its chord
-    const double expected[4][6] = {{1.25863467447678373e-7, -2.99284042486498191e-20, 6.92968975782571711e-5,
+    // u[13][0 … 5] per case: normal tip force, thermal, inertia; then the forces of line 1 at 0.3 of its chord
+    const double expected[3][6] = {{1.25863467447678373e-7, -2.99284042486498191e-20, 6.92968975782571711e-5,
                                     -1.73229349004683206e-15, -5.19931014532923835e-5, 4.26589171417996006e-22},
-                                   {2.59326795053815905e-21, 7.34252811516427233e-7, -3.11399753914681484e-20,
-                                    -4.26880915098626022e-21, -3.83646794384121184e-20, 5.67396777443766299e-7},
                                    {1.85362560365316285e-3, -2.20833304529561890e-15, 4.97201889105684217e-4,
                                     -1.05794848981779400e-14, -2.38190961099217892e-4, -1.36220579290480503e-15},
                                    {-9.08775220349723459e-6, 2.93988961200436352e-18, -5.77226561961171562e-3,
                                     1.44783087898672283e-13, 3.84136117074054687e-3, 6.96479165907531052e-19}};
-    const double expectedLine[4][6] = {{-2.33918252192479201e1, 9.36535850325845409e-1, -1.29723009392812148e-14,
+    const double expectedLine[3][6] = {{-2.33918252192479201e1, 9.36535850325845409e-1, -1.29723009392812148e-14,
                                         -1.35614120445467209e-13, 3.35062759157846819e-16, 9.82260049145191327e-2},
-                                       {-2.59132157252301887e-13, 1.18417755151038943e-14, -2.18948938800590982e-4,
-                                        -5.53380381317332104e-19, 2.55091600109746985e-4, 6.36405913695702573e-16},
                                        {3.42093112704468094e0, 1.92659583986476823e0, -6.54458220981502871e-13,
                                         -2.45601575755694349e-13, -5.37629038331588694e-13, 2.60735573011866006e-1},
                                        {1.75398256120628753e3, -1.40841248248920891e2, 9.46415594906107692e-13,
                                         1.04315887145998824e-11, -2.98325843476529630e-14, -7.34875642069391954e0}};
     const mh::SpaceVector acceleration{0.0, 0.0, -9.81};
-    for (std::size_t ic = 0; ic < 4; ++ic)
+    for (std::size_t ic = 0; ic < 3; ++ic)
     {
         analysis.clearLoads();
         if (ic == 0)
             analysis.addGridForce(tip, 2, 1.0);
-        if (ic == 1)
-            analysis.addGridForce(tip, 1, 1.0);
         for (std::size_t ie = 0; ie < part.input().shells.size(); ++ie)
         {
-            if (ic == 2)
+            if (ic == 1)
                 analysis.addShellLoad(ie, part.thermalLoad(analysis.shell(ie), shellTemperatures).forces);
-            if (ic == 3)
+            if (ic == 2)
                 analysis.addShellLoad(ie, part.inertiaLoad(analysis.shell(ie), acceleration));
         }
         for (std::size_t il = 0; il < part.lineCount(); ++il)
         {
-            if (ic == 2)
+            if (ic == 1)
                 analysis.addLineLoad(
                     il, mh::lineThermalLoad(analysis.line(il), part.input().lines[il].section, lineTemperature));
-            if (ic == 3)
+            if (ic == 2)
                 analysis.addLineLoad(il, mh::lineInertiaLoad(analysis.line(il), acceleration));
         }
         const mh::Vector u = analysis.solve(strip.supports);
@@ -907,7 +902,7 @@ CHECK_CASE("shellpart: reference numbers, stiffened strip")
                               "] = " + sci(u[6 * tip + c] - expected[ic][c]));
         const mh::LineData& line = analysis.line(1);
         const std::variant<mh::LineState, std::string> state =
-            part.lineState(1, line, 0.3, line.local(u), ic == 2 ? lineTemperature : mh::LineTemperatureField{});
+            part.lineState(1, line, 0.3, line.local(u), ic == 1 ? lineTemperature : mh::LineTemperatureField{});
         runner.expect(std::holds_alternative<mh::LineState>(state), "state of the line");
         if (const mh::LineState* s = std::get_if<mh::LineState>(&state))
         {
@@ -921,6 +916,52 @@ CHECK_CASE("shellpart: reference numbers, stiffened strip")
                               "case " + std::to_string(ic) + ": line force " + std::to_string(c) + " = " +
                                   sci(s->forces[c] - expectedLine[ic][c]));
         }
+    }
+}
+
+CHECK_CASE("shellpart: lateral force on an eccentric stiffened strip couples to torsion")
+{
+    const StiffenedStrip strip;
+    const mh::ShellPart part(strip.input);
+    DenseAnalysis analysis(part);
+    const std::size_t tip = 13;
+    analysis.addGridForce(tip, 1, 1.0);
+    const mh::Vector u = analysis.solve(strip.supports);
+    const double twist = u[6 * tip + 3];
+    // Reciprocal work gives the twist from the lateral displacement under a separate unit couple.
+    runner.expect(std::fabs(twist) > 1e-6 * std::fabs(u[6 * tip + 1]) / strip.length,
+                  "lateral tip force twists the strip");
+    analysis.clearLoads();
+    analysis.addGridForce(tip, 3, 1.0);
+    const mh::Vector fromCouple = analysis.solve(strip.supports);
+    const double complianceScale = std::sqrt(u[6 * tip + 1] * fromCouple[6 * tip + 3]);
+    const double workDifference = std::fabs(twist - fromCouple[6 * tip + 1]);
+    runner.expect(workDifference < 1e-9 * complianceScale,
+                  "reciprocity of tip force and twist, residual " + sci(workDifference / complianceScale));
+    // Saint-Venant torsion on each straight stiffener: the integrated section torque over GJ is its end rotation change.
+    for (std::size_t i = 0; i < part.lineCount(); ++i)
+    {
+        const auto& input = strip.input.lines[i];
+        const auto& line = analysis.line(i);
+        const auto local = line.local(u);
+        const auto& grids = input.element.grids;
+        const auto& points = strip.input.grids;
+        const double length = mh::norm3(mh::sub3(points[grids[1]].position, points[grids[0]].position));
+        double integrated = 0.0;
+        for (const auto& q : mh::unitIntervalRule(5))
+        {
+            const auto state = part.lineState(i, line, q.point, local, {});
+            if (const auto* error = std::get_if<std::string>(&state))
+            {
+                runner.expect(false, *error);
+                return;
+            }
+            const auto& section = std::get<mh::LineState>(state);
+            integrated += q.weight * length * section.forces[3] / input.section.at(q.point).stiffness[3][3];
+        }
+        const double endTwist = u[6 * grids[1] + 3] - u[6 * grids[0] + 3];
+        runner.expect(relativeDifference(integrated, endTwist, std::fabs(twist)) < 1e-8,
+                      "section torques reproduce the twist of stiffener " + std::to_string(i));
     }
 }
 

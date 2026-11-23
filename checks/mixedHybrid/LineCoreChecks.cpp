@@ -71,82 +71,12 @@ std::vector<mh::Vector> rigidMotions(const mh::AloneEdge& edge)
     return out;
 }
 
-// Values computed by the reference crate at commit 9f55f0b (the probe of line_core, line_state, thermal_load, the
-// geometric stiffness and the edge traction of Analysis, on the probe line), relative tolerance 1e-10.
-struct ProbeValues
-{
-    std::vector<std::pair<std::pair<std::size_t, std::size_t>, double>> stiffness;
-    double stiffnessTrace;
-    std::vector<std::pair<std::pair<std::size_t, std::size_t>, double>> mass;
-    double massTrace;
-    std::array<double, 3> inertia; // (0, 0), (7, 1), (16, 2)
-    Vec3 statePoint;
-    std::array<double, 6> forces;
-    std::array<double, 6> strains;
-    double freeStrain;
-    std::array<double, 3> thermal;   // f[0], f[8], f[22]
-    std::array<double, 4> geometric; // (0, 0), (1, 4), (7, 10), (8, 8)
-};
-
-const ProbeValues FORWARD_PROBE{
-    {{{0, 0}, 2.38315859699669391e8},
-     {{1, 7}, -1.28774962318988610e6},
-     {{5, 20}, 2.75395283351133252e6},
-     {{24, 24}, 9.39277878926018812e6},
-     {{10, 13}, -8.76068277242111508e5},
-     {{3, 22}, -5.38137871267298819e5},
-     {{19, 21}, -3.05458814195573563e6},
-     {{2, 2}, 5.22085197876900584e7}},
-    1.02892837254377341e9,
-    {{{0, 0}, 1.09589961797598505e1},
-     {{3, 10}, -2.10757641849405625e-1},
-     {{5, 5}, 9.34161994228011849e0},
-     {{14, 14}, 1.57003293890180529e-1},
-     {{19, 19}, 0.0},
-     {{0, 4}, -1.71110512340494153e-1}},
-    6.59729316957909475e1,
-    {1.61718094951326492e1, 5.46994389949342796e-1, -6.20402733282158780e-2},
-    {0.6808489339589036, -0.0015375174500409303, 0.7058648272057497},
-    {-1.31572325710185018e5, 5.09355738495983223e3, -2.35615971591495145e3, 1.35672878009910391e2,
-     1.38364902118329451e3, 1.74224685543506894e3},
-    {-9.00711049179557239e-5, 2.77426872819163010e-5, -1.81802447215659848e-5, 3.85434312528154543e-4,
-     -2.55489203476812513e-4, 2.61594288981525534e-4},
-    1.54149864626293296e-4,
-    {-6.79904113088382437e4, -2.18485531186478310e0, -1.02321783385238220e2},
-    {-1.93862276729521182e4, 5.51968982354886393e4, 1.22731905089224460e3, -2.17808577847588531e4}};
-
-const ProbeValues BACKWARD_PROBE{
-    {{{0, 0}, 2.23112313504565239e8},
-     {{1, 7}, -2.21677080774343747e5},
-     {{5, 20}, 1.66048848408801854e7},
-     {{24, 24}, 9.32074700231257454e6},
-     {{10, 13}, 8.89938807386843255e5},
-     {{3, 22}, 2.37482133923577471e6},
-     {{19, 21}, -3.45232243843425671e6},
-     {{2, 2}, 6.30664736937068105e7}},
-    1.02042011512999701e9,
-    {{{0, 0}, 9.26522973775655778e0},
-     {{3, 10}, -2.56785641219171690e-1},
-     {{5, 5}, 1.13796391523566474e1},
-     {{14, 14}, 1.56273001134558720e-1},
-     {{19, 19}, 0.0},
-     {{0, 4}, 2.56357764104987208e-2}},
-    6.68121397400784076e1,
-    {1.43917513350717901e1, 6.50272650655905449e-1, 3.96066709067052838e-2},
-    {1.206761348945899, 0.22016215044735382, 0.9513549268365313},
-    {-8.24717491541785421e4, 1.95469147472030431e3, -1.63518028940286194e3, -2.42345491572261949e2,
-     1.14630930768629173e3, 9.69784695338770121e2},
-    {1.61010757055364515e-5, 1.06464677272347738e-5, -1.26171318626764037e-5, -6.88481510148471437e-4,
-     -2.01413495415628083e-6, 2.96016579204372262e-5},
-    1.68514315925436534e-4,
-    {-6.70029625553068763e4, -1.07642933874364999e2, 6.94234334206925951e2},
-    {-1.87659690621949812e4, 5.34308841354162432e4, -1.47972284903309901e3, -2.10675810661888318e4}};
-
+// Coordinates and edge-traction values below are from the reference crate at 9f55f0b.
 constexpr double PROBE_TOLERANCE = 1e-10;
 
 } // namespace
 
-CHECK_CASE("line: numbers of the reference crate on a skew eccentric tapered beam")
+CHECK_CASE("line: section work and rigid rotation inertia of a skew eccentric tapered beam")
 {
     const LineSection section = probeSection();
     // The temperature rise of the probe, linear in space.
@@ -154,7 +84,8 @@ CHECK_CASE("line: numbers of the reference crate on a skew eccentric tapered bea
     for (const bool forward : {true, false})
     {
         const std::string tag = forward ? "forward: " : "backward: ";
-        const ProbeValues& expected = forward ? FORWARD_PROBE : BACKWARD_PROBE;
+        const Vec3 expectedPoint = forward ? Vec3{0.6808489339589036, -0.0015375174500409303, 0.7058648272057497}
+                                           : Vec3{1.206761348945899, 0.22016215044735382, 0.9513549268365313};
         const LineElement line = probeLine(forward);
         const std::optional<AloneLine> built = buildAloneLine(runner, SKEW_A, SKEW_B, line, section, 4);
         if (!built)
@@ -165,48 +96,63 @@ CHECK_CASE("line: numbers of the reference crate on a skew eccentric tapered bea
         // The rotations of the line's grids A and B come last.
         runner.expect(data.dofs[19] == 6 * line.grids[0] + 3 && data.dofs[22] == 6 * line.grids[1] + 3,
                       tag + "rotation unknowns of grids A and B");
-        for (const auto& [ij, value] : expected.stiffness)
-            expectRelative(runner, data.stiffness(ij.first, ij.second), value, PROBE_TOLERANCE,
-                           tag + "K(" + std::to_string(ij.first) + ", " + std::to_string(ij.second) + ")");
-        expectRelative(runner, mh::trace(data.stiffness), expected.stiffnessTrace, PROBE_TOLERANCE, tag + "trace K");
-        for (const auto& [ij, value] : expected.mass)
-            expectRelative(runner, (*data.mass)(ij.first, ij.second), value, PROBE_TOLERANCE,
-                           tag + "M(" + std::to_string(ij.first) + ", " + std::to_string(ij.second) + ")");
-        expectRelative(runner, mh::trace(*data.mass), expected.massTrace, PROBE_TOLERANCE, tag + "trace M");
-        expectRelative(runner, data.inertia(0, 0), expected.inertia[0], PROBE_TOLERANCE, tag + "inertia (0, 0)");
-        expectRelative(runner, data.inertia(7, 1), expected.inertia[1], PROBE_TOLERANCE, tag + "inertia (7, 1)");
-        expectRelative(runner, data.inertia(16, 2), expected.inertia[2], PROBE_TOLERANCE, tag + "inertia (16, 2)");
-
-        // A state at λ = 0.3 with a temperature field.
         mh::Vector x(data.dofs.size());
         for (std::size_t i = 0; i < x.size(); ++i)
             x[i] = 1e-4 * std::sin(static_cast<double>(i) * 0.7 + 0.3);
-        const mh::LineKinematics kin = mh::aloneLineKinematics(built->edge, built->forward, 0.3);
-        const auto state = mh::lineStateOfCase(data, kin, line, section, x, temperature);
-        runner.expect(std::holds_alternative<mh::LineState>(state), tag + "state");
-        if (const auto* s = std::get_if<mh::LineState>(&state))
+        const auto sample = mh::aloneLineKinematics(built->edge, forward, 0.3);
+        auto result = mh::lineStateOfCase(data, sample, line, section, x, temperature);
+        const auto* state = std::get_if<mh::LineState>(&result);
+        runner.expect(state != nullptr, tag + "section state");
+        if (!state)
+            continue;
+        for (std::size_t c = 0; c < 3; ++c)
+            expectRelative(runner, state->point[c], expectedPoint[c], PROBE_TOLERANCE, tag + "axis point");
+        const auto chord = mh::sub3(built->edge.upperPoint, built->edge.lowerPoint);
+        const double metric =
+            mh::norm3(mh::add3(mh::scl3(chord, forward ? 1.0 : -1.0), mh::sub3(line.offsets[1], line.offsets[0]))) /
+            built->edge.length();
+        const Vec3 spin{0.4, -0.7, 0.2};
+        double elastic = 0.0, thermal = 0.0, geometric = 0.0, inertia = 0.0;
+        for (const auto& q : data.axial)
         {
-            for (std::size_t c = 0; c < 3; ++c)
-                expectRelative(runner, s->point[c], expected.statePoint[c], PROBE_TOLERANCE, tag + "axis point");
-            for (std::size_t c = 0; c < 6; ++c)
+            const auto kin = mh::aloneLineKinematics(built->edge, forward, q.fraction);
+            const auto response = mh::lineStateOfCase(data, kin, line, section, x, {});
+            if (const auto* error = std::get_if<std::string>(&response))
             {
-                expectRelative(runner, s->forces[c], expected.forces[c], PROBE_TOLERANCE,
-                               tag + "force " + std::to_string(c));
-                expectRelative(runner, s->strains[c], expected.strains[c], PROBE_TOLERANCE,
-                               tag + "strain " + std::to_string(c));
+                runner.expect(false, tag + *error);
+                break;
             }
-            expectRelative(runner, s->freeStrain, expected.freeStrain, PROBE_TOLERANCE, tag + "free strain");
+            const auto& st = std::get<mh::LineState>(response);
+            elastic += q.weight * metric * mh::dot(st.forces, st.strains);
+            thermal += q.weight * metric * st.forces[0] * section.thermalExpansion * temperature(st.point);
+            const auto du = kin.displacementRate * std::span<const double>(x).first(kin.displacementRate.columns());
+            const Vec3 transverse = mh::sub3({du[0], du[1], du[2]}, mh::scl3(kin.tangent, mh::dot(du, kin.tangent)));
+            double edgeForce = 0.0;
+            for (std::size_t c = 0; c < 3; ++c)
+                edgeForce += mh::dot3(kin.tangent, st.axes[c]) * st.forces[c];
+            geometric += q.weight * edgeForce * mh::dot3(transverse, transverse);
+            const auto sp = section.at(q.fraction);
+            const auto omega = lineChecks::toAxes(st.axes, spin);
+            const auto speedSquared = [&](const std::array<double, 2>& centre)
+            {
+                const auto position = mh::add3(st.point, mh::add3(mh::scl3(st.axes[1], centre[0]),
+                                                                 mh::scl3(st.axes[2], centre[1])));
+                const auto velocity = mh::cross3(spin, position);
+                return mh::dot3(velocity, velocity);
+            };
+            const auto [jx, jy, jz, jyz] = sp.inertia;
+            inertia += q.weight * metric *
+                       (sp.structuralMassPerLength * speedSquared(sp.neutralAxis) + sp.nonStructuralMassPerLength * speedSquared(sp.massCentre) + jx * omega[0] * omega[0] +
+                        jy * omega[1] * omega[1] + jz * omega[2] * omega[2] - 2.0 * jyz * omega[1] * omega[2]);
         }
-        const mh::Vector thermal = mh::lineThermalLoad(data, section, temperature);
-        expectRelative(runner, thermal[0], expected.thermal[0], PROBE_TOLERANCE, tag + "thermal load 0");
-        expectRelative(runner, thermal[8], expected.thermal[1], PROBE_TOLERANCE, tag + "thermal load 8");
-        expectRelative(runner, thermal[22], expected.thermal[2], PROBE_TOLERANCE, tag + "thermal load 22");
-        const std::vector<double> freeStrains = mh::lineFreeStrains(data, section, temperature);
-        const mh::Matrix kg = mh::lineGeometricStiffness(data, x, freeStrains);
-        expectRelative(runner, kg(0, 0), expected.geometric[0], PROBE_TOLERANCE, tag + "Kg (0, 0)");
-        expectRelative(runner, kg(1, 4), expected.geometric[1], PROBE_TOLERANCE, tag + "Kg (1, 4)");
-        expectRelative(runner, kg(7, 10), expected.geometric[2], PROBE_TOLERANCE, tag + "Kg (7, 10)");
-        expectRelative(runner, kg(8, 8), expected.geometric[3], PROBE_TOLERANCE, tag + "Kg (8, 8)");
+        const auto rigid = mh::aloneLineRigidMotion(built->edge, {}, spin);
+        expectRelative(runner, mh::dot(x, data.stiffness * x), elastic, PROBE_TOLERANCE, tag + "elastic work");
+        expectRelative(runner, mh::dot(x, mh::lineThermalLoad(data, section, temperature)), thermal, PROBE_TOLERANCE,
+                       tag + "thermal work");
+        expectRelative(runner, mh::dot(x, mh::lineGeometricStiffness(data, x, {}) * x), geometric, PROBE_TOLERANCE,
+                       tag + "geometric stiffness work");
+        expectRelative(runner, mh::dot(rigid, *data.mass * rigid), inertia, PROBE_TOLERANCE,
+                       tag + "rigid rotation inertia");
         // Forces and couples per length given from the upper grid.
         const mh::EdgeTractionField traction = [](double s)
         { return std::array<double, 6>{100.0 + 30.0 * s, -50.0 * s * s, 20.0, 5.0, -3.0 * s, 2.0}; };

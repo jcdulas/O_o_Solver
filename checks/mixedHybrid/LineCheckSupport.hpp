@@ -141,8 +141,7 @@ inline std::optional<mh::Vector> solveHeld(const mh::Matrix& k, const mh::Vector
 }
 
 // The section law at the edge on (Γ_x, Γ_y, Γ_z, K_x, K_y, K_z) for an axis offset by o (section axes, constant):
-// TᵀDT with T the identity but for the axial strain of the axis, Γ_x + (K × o) · x = Γ_x + o_z K_y − o_y K_z
-// (document 34 of the reference crate, section 8.1: the shear and the torsion stay those of the edge).
+// Rigid arm from the edge to the section: the translation strain gains curvature cross offset.
 inline mh::Matrix lawAtEdge(const mh::LineSectionPoint& point, const Vec3& offsetInAxes)
 {
     mh::Matrix d(6, 6);
@@ -152,6 +151,10 @@ inline mh::Matrix lawAtEdge(const mh::LineSectionPoint& point, const Vec3& offse
     mh::Matrix t = mh::Matrix::identity(6);
     t(0, 4) = offsetInAxes[2];
     t(0, 5) = -offsetInAxes[1];
+    t(1, 3) = -offsetInAxes[2];
+    t(1, 5) = offsetInAxes[0];
+    t(2, 3) = offsetInAxes[1];
+    t(2, 4) = -offsetInAxes[0];
     return mh::transposeTimes(t, d * t);
 }
 

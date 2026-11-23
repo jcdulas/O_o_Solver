@@ -51,6 +51,7 @@ ShellElementDefinition ShellElementData::definition() const
 {
     ShellElementDefinition def;
     def.mapCoefficients = mapCoefficients;
+    def.mapOrigin = mapOrigin;
     def.weight = &weight;
     def.volumeJets = volumeJets;
     def.edgeJets = edgeJets;
@@ -258,7 +259,7 @@ std::array<Vector, 6> rigidMotionUnknowns(const ShellReferenceElement& re, const
         Vector& v = out[3 + c];
         for (std::size_t i = 0; i < n1; ++i)
         {
-            const SpaceVector w = cross3(omega, def.mapCoefficients[i]);
+            const SpaceVector w = cross3(omega, add3(def.mapCoefficients[i], scl3(def.mapOrigin, constant(i, 0))));
             for (std::size_t d = 0; d < 3; ++d)
                 v[3 * i + d] = w[d];
         }

@@ -67,7 +67,7 @@ using JetOfFunction = std::function<ReferenceJet(std::size_t)>;
 // f1 = x − (z + ν)(ν · x) / (1 + z · ν), φ = atan2((e1 × f1) · ν, e1 · f1).
 // Reference: tdnns/element.rs::geo_from
 [[nodiscard]] PointGeometry geometryFrom(std::span<const SpaceVector> mapCoefficients, const JetOfFunction& jet,
-                                         const SurfaceFrame& axes, bool second);
+                                         const SurfaceFrame& axes, bool second, const SpaceVector& origin = {});
 
 // The jet of f = N / W from those of N and W:
 //   f = N / W,  f_α = (N_α − f W_α) / W,  f_αβ = (N_αβ − f_α W_β − f_β W_α − f W_αβ) / W.

@@ -25,7 +25,7 @@ LineKinematics shellLineKinematics(const ShellReferenceElement& re, const ShellE
     const std::size_t nx = shellUnknownCount(re);
     const auto [xp, tv] = referenceEdgePointAndDirection(nv, localEdge, tau);
     const std::vector<ReferenceJet> jets = h1At(re, def, xp[0], xp[1]);
-    const PointGeometry g = geometryFrom(def.mapCoefficients, [&](std::size_t i) { return jets[i]; }, def.axes, true);
+    const PointGeometry g = geometryFrom(def.mapCoefficients, [&](std::size_t i) { return jets[i]; }, def.axes, true, def.mapOrigin);
     // X_τ = a_α t̂^α, its length and the unit tangent in the element's direction
     const SpaceVector xt = add3(scl3(g.a[0], tv[0]), scl3(g.a[1], tv[1]));
     const double len = norm3(xt);

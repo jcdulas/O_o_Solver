@@ -601,6 +601,23 @@ function scordelisLo({ n, shape = "ShellQuad4", distortion = 0, alternate = fals
 }
 const ROOF_SAG = 0.3024;
 
+for (const shape of ["ShellTria3", "ShellQuad4"])
+  test(`Scordelis-Lo on distorted ${shape} is invariant under a change of origin`, () => {
+    const roof = scordelisLo({ n: 8, shape, distortion: 0.2 });
+    const solve = (shift) => {
+      const text = roof.text.split("\n").map((line) => {
+        const fields = line.split(";");
+        if (fields[0] === "Node")
+          shift.forEach((delta, j) => { fields[3+j] = (Number(fields[3+j]) + delta).toPrecision(16); });
+        return fields.join(";");
+      }).join("\n");
+      return -nodal(runModel(text + "Parameter;MixedHybridDegree;Auto\n", MIXED), "displacements", roof.freeEdgeMiddle)[2];
+    };
+    const sag = solve([0, 0, 0]);
+    assert.ok(Math.abs(sag / ROOF_SAG - 1) < CRITERIA.displacement);
+    assert.ok(Math.abs(solve([100000, -50000, 25000]) / sag - 1) < 1e-7);
+  });
+
 test("Scordelis-Lo roof, equal-mesh cubic, Auto and quartic resultants", (t) => {
   const n = 8;
   const roof = scordelisLo({ n });

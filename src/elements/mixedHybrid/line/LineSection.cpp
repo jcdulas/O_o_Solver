@@ -81,12 +81,17 @@ LineSectionPoint LineSection::at(double fraction) const
         point.stiffness[1][1] += shear[0];
         point.stiffness[2][2] += shear[1];
         // K_y bends in the plane (x, z) with I2, K_z in the plane (x, y) with I1.
-        point.stiffness[4][4] += youngModulus * inertia2;
-        point.stiffness[5][5] += youngModulus * inertia1;
-        point.stiffness[4][5] -= youngModulus * product;
-        point.stiffness[5][4] -= youngModulus * product;
+        point.centroidalBending = {youngModulus * inertia2, youngModulus * inertia1, -youngModulus * product};
+        point.stiffness[4][4] += point.centroidalBending[0];
+        point.stiffness[5][5] += point.centroidalBending[1];
+        point.stiffness[4][5] += point.centroidalBending[2];
+        point.stiffness[5][4] += point.centroidalBending[2];
     }
-    point.massPerLength = density * a + nonStructuralMass;
+    point.structuralMassPerLength = density * a;
+    point.nonStructuralMassPerLength = nonStructuralMass + linearBetween(stationNonStructuralMass, fraction);
+    point.massPerLength = point.structuralMassPerLength + point.nonStructuralMassPerLength;
+    for (std::size_t c = 0; c < 2; ++c)
+        point.massCentre[c] = (1.0 - fraction) * massCentre[0][c] + fraction * massCentre[1][c];
     point.inertia = {density * (inertia1 + inertia2), density * inertia2, density * inertia1, density * product};
     return point;
 }

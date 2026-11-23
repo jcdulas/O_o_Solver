@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <numeric>
 #include <string_view>
 #include <utility>
 
@@ -51,8 +52,31 @@ ShellPart::ShellPart(ShellPartInput input) : m_input(std::move(input))
         return;
     // The reading of the mesh: the shells alone (the edges of the lines alone are the integrator's; they come after
     // those of the shells in the reference's topology and change nothing of these).
+    // Differentiate the rational map in part coordinates to avoid cancellation far from the global origin.
+    if (!m_input.shells.empty())
+    {
+        SpaceVector low = m_input.grids[m_input.shells.front().corners.at(0)].position;
+        SpaceVector high = low;
+        for (const auto& shell : m_input.shells)
+            for (const auto grid : shell.corners.view())
+                for (std::size_t c = 0; c < 3; ++c)
+                {
+                    low[c] = std::min(low[c], m_input.grids[grid].position[c]);
+                    high[c] = std::max(high[c], m_input.grids[grid].position[c]);
+                }
+        // A coordinate already within one part width of zero is well scaled. Preserve its original bits.
+        // Else shift to the centre. In either case local coordinates are bounded by 1.5 part widths.
+        const auto extent = sub3(high, low);
+        const double width = *std::max_element(extent.begin(), extent.end());
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            const double centre = std::midpoint(low[c], high[c]);
+            if (std::abs(centre) > width)
+                m_mapOrigin[c] = centre;
+        }
+    }
     for (const ShellPartGrid& grid : m_input.grids)
-        m_reading.grids.push_back(grid.position);
+        m_reading.grids.push_back(sub3(grid.position, m_mapOrigin));
     for (const ShellPartShell& shell : m_input.shells)
         m_reading.shells.push_back(shell.corners);
     m_reading.rawEdges = m_input.rawEdges;
@@ -69,6 +93,9 @@ ShellPart::ShellPart(ShellPartInput input) : m_input(std::move(input))
     describeShells();
     buildEntities();
     buildShells(surfaces);
+    // meshReading() and the geometry report expose the input coordinates.
+    for (std::size_t i = 0; i < m_input.grids.size(); ++i)
+        m_reading.grids[i] = m_input.grids[i].position;
     placeLines();
     m_usable = true;
     if (m_input.checkElements)
@@ -221,9 +248,9 @@ void ShellPart::applyMidsideGrids()
             const std::size_t a = shell.corners.at(k);
             const std::size_t b = shell.corners.at(k + 1);
             const std::size_t e = m_topology.indexOf(a, b);
-            const SpaceVector& xa = m_input.grids[a].position;
-            const SpaceVector& xb = m_input.grids[b].position;
-            const SpaceVector& xm = m_input.grids[static_cast<std::size_t>(shell.midside[k])].position;
+            const SpaceVector& xa = m_reading.grids[a];
+            const SpaceVector& xb = m_reading.grids[b];
+            const SpaceVector& xm = m_reading.grids[static_cast<std::size_t>(shell.midside[k])];
             // the parabola through X_a, X_m, X_b: the conic of weight 1 whose control point is 2 X_m − (X_a + X_b)/2,
             // whose bulge (half the offset of the control point from the middle of the chord) is X_m − (X_a + X_b)/2
             const SpaceVector bulge = sub3(xm, scl3(add3(xa, xb), 0.5));
@@ -391,9 +418,10 @@ void ShellPart::buildShells(std::span<const ElementSurface> surfaces)
         std::vector<std::vector<SpaceVector>> canonicalMoments;
         for (std::size_t kk = 0; kk < nv; ++kk)
         {
-            corners.push_back(m_input.grids[el.nodes[kk]].position);
+            corners.push_back(m_reading.grids[el.nodes[kk]]);
             canonicalMoments.push_back(edgeGeometry[el.edges[kk]]);
         }
+        el.mapOrigin = m_mapOrigin;
         el.weight = weights[ie];
         el.mapCoefficients = mapCoefficients(re, projectionOf(el), corners, canonicalMoments, el.edgeSigns,
                                              surfaceOf(surfaces[ie].patch), weights[ie]);
@@ -518,12 +546,12 @@ void ShellPart::placeEntities(std::span<const ElementSurface> surfaces)
         const std::size_t ie = m_topology.edgeElements[e].front();
         const std::size_t kk = localEdgeOf(ie, e);
         const ReferencePoint middle = referenceEdgePointAndDirection(m_input.shells[ie].corners.count, kk, 0.5).first;
-        m_entities[edgeEntity(e)].position = surfaces[ie].patch.evaluate(middle[0], middle[1]);
+        m_entities[edgeEntity(e)].position = add3(m_mapOrigin, surfaces[ie].patch.evaluate(middle[0], middle[1]));
     }
     for (std::size_t ie = 0; ie < m_input.shells.size(); ++ie)
     {
         const ReferencePoint centre = referenceCentre(m_input.shells[ie].corners.count);
-        m_entities[interiorEntity(ie)].position = surfaces[ie].patch.evaluate(centre[0], centre[1]);
+        m_entities[interiorEntity(ie)].position = add3(m_mapOrigin, surfaces[ie].patch.evaluate(centre[0], centre[1]));
     }
 }
 

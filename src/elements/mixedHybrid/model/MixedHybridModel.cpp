@@ -91,7 +91,8 @@ std::variant<LineSection, std::string> beamSection(const BeamData& beam)
          {b.area, b.inertia1, b.inertia2, b.productOfInertia, b.torsionalConstant}}};
     LineSection section =
         LineSection::beam(e, g, beam.material.density, ends, shearFactors, {{a.neutralAxis, b.neutralAxis}});
-    section.nonStructuralMass = 0.5 * (a.nonStructuralMass + b.nonStructuralMass);
+    section.stationNonStructuralMass = {a.nonStructuralMass, b.nonStructuralMass};
+    section.massCentre = {a.massCentre, b.massCentre};
     section.thermalExpansion = beam.material.expansion;
     return section;
 }

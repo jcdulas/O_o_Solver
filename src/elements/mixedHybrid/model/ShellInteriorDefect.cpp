@@ -80,7 +80,7 @@ ShellInteriorDefect directorEquilibrium(const ShellPart& part, std::size_t shell
         const auto weight = element.weight.jet(xi, eta);
         const auto g = geometryFrom(
             element.mapCoefficients, [&](std::size_t i) { return rationalJet(re.h1[q * re.h1Count + i], weight); },
-            element.axes, true);
+            element.axes, true, element.mapOrigin);
         const auto section = sectionAtGeometry(element.section, element.offset, xi, eta, g);
         const auto cov = g.cov();
         const auto toVoigt = covariantToVoigt(cov);

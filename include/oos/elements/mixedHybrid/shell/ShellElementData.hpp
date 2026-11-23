@@ -53,7 +53,8 @@ struct ShellElementData
     // The grid points of the corners (numbers of the caller).
     std::vector<std::size_t> nodes;
     // The coefficients of the isoparametric map (the element's own orientation of the edges).
-    std::vector<SpaceVector> mapCoefficients;
+    std::vector<SpaceVector> mapCoefficients; // Coefficients of X - mapOrigin.
+    SpaceVector mapOrigin{};
     ShellSection section;
     double offset = 0.0;
     SurfaceFrame axes{};

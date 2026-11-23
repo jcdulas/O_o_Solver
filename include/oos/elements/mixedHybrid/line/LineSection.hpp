@@ -39,10 +39,14 @@ struct LineSectionPoint
 {
     // Stiffness on (Γ_x, Γ_y, Γ_z, K_x, K_y, K_z) at the reference axis (reference field: d).
     std::array<std::array<double, 6>, 6> stiffness{};
+    std::array<double, 3> centroidalBending{}; // Dyy, Dzz, Dyz about the neutral axis.
     // The neutral axis from the reference axis, components (y, z).
     std::array<double, 2> neutralAxis{};
     // Mass per unit length (with the non-structural mass).
     double massPerLength = 0.0;
+    double structuralMassPerLength = 0.0;
+    double nonStructuralMassPerLength = 0.0;
+    std::array<double, 2> massCentre{};
     // Rotary inertias per unit length: about x, about y, about z, and the product of y and z.
     std::array<double, 4> inertia{};
 };
@@ -67,6 +71,8 @@ struct LineSection
     std::optional<std::array<double, 2>> shearFactors;
     // Mass per unit length that is not that of the material.
     double nonStructuralMass = 0.0;
+    std::array<double, 2> stationNonStructuralMass{};
+    std::array<std::array<double, 2>, 2> massCentre{};
     // The neutral axis from the reference axis, components (y, z), at A and at B.
     std::array<std::array<double, 2>, 2> neutralAxis{};
     // The section bends and shears. False: a rod, axial force and torque only.

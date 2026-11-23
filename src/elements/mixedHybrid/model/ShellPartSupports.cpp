@@ -635,7 +635,7 @@ void ShellPart::affineField(const std::array<SpaceVector, 3>& gradient, const Sp
             const double constant = rigid.constants[i];
             const SpaceVector& x = el.mapCoefficients[i];
             for (std::size_t c = 0; c < 3; ++c)
-                local[3 * i + c] = translation[c] * constant + dot3(gradient[c], x);
+                local[3 * i + c] = (translation[c] + dot3(gradient[c], el.mapOrigin)) * constant + dot3(gradient[c], x);
         }
         for (std::size_t kk = 0; kk < el.cornerCount; ++kk)
             for (std::size_t l = 0; l < re.rotationCount(kk); ++l)
@@ -659,6 +659,7 @@ ShellDisplacementRows ShellPart::displacementRows(std::size_t shell, double xi, 
     const std::vector<ReferenceJet> h = h1At(re, el.definition(), xi, eta);
     std::array<std::map<std::size_t, double>, 3> rows;
     ShellDisplacementRows out;
+    out.point = el.mapOrigin;
     for (std::size_t i = 0; i < re.h1Count; ++i)
     {
         const double v = h[i][0];
@@ -690,6 +691,7 @@ std::vector<ShellDisplacementRows> ShellPart::displacementRowsAt(
         const std::vector<ReferenceJet> h = h1At(re, def, point[0], point[1]);
         std::array<std::map<std::size_t, double>, 3> rows;
         ShellDisplacementRows at;
+        at.point = el.mapOrigin;
         for (std::size_t i = 0; i < re.h1Count; ++i)
         {
             const double v = h[i][0];
@@ -717,6 +719,7 @@ ShellPart::PointRows ShellPart::pointRows(std::size_t shell, double xi, double e
     const Matrix rotation = rotationRowsOf(re, def, xi, eta);
     std::array<std::map<std::size_t, double>, 6> rows;
     PointRows out;
+    out.point = el.mapOrigin;
     for (std::size_t i = 0; i < re.h1Count; ++i)
     {
         const double v = h[i][0];
@@ -884,7 +887,7 @@ ShellPart::InteriorMoments ShellPart::interiorMoments(std::size_t shell) const
         SpaceVector point{};
         for (std::size_t i = 0; i < n1; ++i)
             point = add3(point, scl3(el.mapCoefficients[i], re.h1[q * n1 + i][0]));
-        out.points.push_back(scl3(point, 1.0 / mapWeights[q]));
+        out.points.push_back(add3(el.mapOrigin, scl3(point, 1.0 / mapWeights[q])));
         for (std::size_t j = 0; j < interiorCount; ++j)
         {
             const double f = re.weights[q] * re.h1[q * n1 + projection.interior[j]][0];

@@ -25,49 +25,6 @@ base::MatN<12> symmetricCongruence(const base::MatN<12>& k, const base::MatN<12>
     return result;
 }
 
-// The end DOFs of the points at (0, y, z) from the end points, in the element system, rigidly attached to the section
-// (it does not deform in its plane): u_p = u + θ × r = u − [r]×·θ, θ_p = θ, with r_A at end A and r_B at end B.
-base::MatN<12> sectionPointTransform(const std::array<double, 2>& atA, const std::array<double, 2>& atB)
-{
-    base::MatN<12> t = base::MatN<12>::identity();
-    const std::array<std::array<double, 2>, 2> points{atA, atB};
-    for (std::size_t end = 0; end < 2; ++end)
-    {
-        const double y = points[end][0];
-        const double z = points[end][1];
-        const std::size_t first = 6 * end;
-        // −[r]× for r = (0, y, z): rows (0, z, −y), (−z, 0, 0), (y, 0, 0).
-        t(first + 0, first + 4) = z;
-        t(first + 0, first + 5) = -y;
-        t(first + 1, first + 3) = -z;
-        t(first + 2, first + 3) = y;
-    }
-    return t;
-}
-
-// The mass of a Beam2 whose neutral axis or non-structural mass is off its axis, over the end DOFs: the structural
-// mass ρ·A(x) (and the torsional inertia of the section) on the neutral axis, the non-structural mass (the BeamProp NSM
-// and the NSM cards' share) at its centre of gravity (M1, M2), each carried rigidly to the axis of the shear centres by
-// the offsets of its two ends (a BeamProp may set the neutral axis, the shear centre and the centre of gravity of the
-// non-structural mass apart). Modelling choices: the structural mass at the neutral axis, the offsets those of the
-// end stations (a tapered offset between them is carried by the end offsets), the NSM of a BeamShapeProp at the shear
-// centre (its derived BeamProp has no M1, M2).
-base::MatN<12> offsetSectionMass(const BeamSection& section, double density, double addedMassPerLength, double length,
-                                 MassFormulation formulation, TorsionalInertia torsionalInertia)
-{
-    BeamSection structural = section;
-    for (std::size_t s = 0; s < structural.count; ++s)
-        structural.stations[s].nonStructuralMass = 0.0;
-    const BeamStation& endA = section.stations[0];
-    const BeamStation& endB = section.stations[section.count - 1];
-    base::MatN<12> mass = congruence(beamMass(structural, density, 0.0, length, formulation, torsionalInertia),
-                                     sectionPointTransform(endA.neutralAxis, endB.neutralAxis));
-    // The non-structural part: density 0 leaves NSM(x) + the NSM cards' share, and no torsional inertia.
-    mass += congruence(beamMass(section, 0.0, addedMassPerLength, length, formulation, torsionalInertia),
-                       sectionPointTransform(endA.massCentre, endB.massCentre));
-    return mass;
-}
-
 } // namespace
 
 bool hasStablePinFlags(const BeamData& beam)
@@ -112,12 +69,23 @@ base::MatN<12> beamStiffness(const BeamData& beam)
 base::MatN<12> beamGridMass(const BeamData& beam, double addedMassPerLength, MassFormulation formulation,
                             TorsionalInertia torsionalInertia, bool isMassOnOffsets)
 {
-    const BeamSection& section = beam.section;
-    const base::MatN<12> endMass = section.hasNeutralAxisOffset() || section.hasMassCentreOffset()
-                                       ? offsetSectionMass(section, beam.material.density, addedMassPerLength,
-                                                           beam.geometry.length, formulation, torsionalInertia)
-                                       : beamMass(section, beam.material.density, addedMassPerLength,
-                                                  beam.geometry.length, formulation, torsionalInertia);
+    auto endMass = beamMass(beam.section, beam.material.density, addedMassPerLength, beam.geometry.length,
+                            formulation, torsionalInertia);
+    if (beam.geometry.hasPinFlags())
+    {
+        const BeamFlexibility flexibility(beam.section, beam.material, beam.geometry.length);
+        const auto release = PinRelease::make(flexibility.stiffness(), beam.geometry.isReleased).value();
+        base::MatN<12> completion;
+        for (std::size_t j = 0; j < 12; ++j)
+        {
+            std::array<double, 12> unit{};
+            unit[j] = 1.0;
+            const auto displacement = release.completeDisplacements(unit, {});
+            for (std::size_t i = 0; i < 12; ++i)
+                completion(i, j) = displacement[i];
+        }
+        endMass = symmetricCongruence(endMass, completion);
+    }
     return symmetricCongruence(endMass,
                                isMassOnOffsets ? beam.geometry.endTransform() : beam.geometry.rotationTransform());
 }

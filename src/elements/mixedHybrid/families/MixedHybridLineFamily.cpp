@@ -64,6 +64,7 @@ LineSection unitDensity(const LineSection& section)
     LineSection unit = section;
     unit.density = 1.0;
     unit.nonStructuralMass = 0.0;
+    unit.stationNonStructuralMass = {};
     return unit;
 }
 
@@ -246,12 +247,12 @@ Vector freeStrainLoad(const MixedLine& line, const LineData& data, const BeamFre
 // curved shell edge the chord fraction is not the edge's parameter and the rule is that of the loaded chord), or at
 // its point for a concentrated load. The positions are distances from end A along the element (BeamLineLoad).
 Vector lineLoadVector(const MixedHybridModel& model, const MixedLine& line, const BeamData& beam,
-                      const BeamLineLoad& load, std::size_t unknownCount)
+                      const BeamLineLoad& load, const LineData& data)
 {
     const base::Mat3& axes = beam.geometry.axes;
     const base::Vec3 direction = axes * load.direction;
     const double length = beam.geometry.length;
-    Vector vector(unknownCount, 0.0);
+    Vector vector(data.dofs.size(), 0.0);
     const auto addAt = [&](double distance, double value, double weight)
     {
         const double fraction = distance / length;
@@ -266,12 +267,21 @@ Vector lineLoadVector(const MixedHybridModel& model, const MixedLine& line, cons
                                 a[2] + fraction * (b[2] - a[2])};
         const base::Vec3 moment = couple + base::cross(offset, force);
         for (std::size_t j = 0; j < kinematics.displacement.columns(); ++j)
-        {
-            double work = 0.0;
             for (std::size_t c = 0; c < 3; ++c)
-                work += force[c] * kinematics.displacement(c, j) + moment[c] * kinematics.rotation(c, j);
-            vector[j] += weight * work;
+                vector[j] += weight * force[c] * kinematics.displacement(c, j);
+        if (base::dot(moment, moment) == 0.0)
+            return;
+        if (fraction == 0.0 || fraction == 1.0)
+        {
+            const std::size_t first = data.dofs.size() - (fraction == 0.0 ? 6 : 3);
+            for (std::size_t c = 0; c < 3; ++c)
+                vector[first + c] += weight * moment[c];
+            return;
         }
+        const Matrix rows = data.sectionRotation(kinematics);
+        for (std::size_t j = 0; j < rows.columns(); ++j)
+            for (std::size_t c = 0; c < 3; ++c)
+                vector[j] += weight * moment[c] * rows(c, j);
     };
     if (load.isConcentrated)
     {
@@ -301,7 +311,7 @@ Vector lineLoadsOf(const MixedHybridModel& model, const MixedLine& line, const B
         total = freeStrainLoad(line, data, freeStrains);
     for (const BeamLineLoad& lineLoad : loads)
     {
-        const Vector one = lineLoadVector(model, line, *beam, lineLoad, n);
+        const Vector one = lineLoadVector(model, line, *beam, lineLoad, data);
         for (std::size_t i = 0; i < n; ++i)
             total[i] += one[i];
     }

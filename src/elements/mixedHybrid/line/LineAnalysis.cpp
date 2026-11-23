@@ -152,7 +152,7 @@ Vector lineAxialForces(const LineData& data, std::span<const double> x, std::spa
     {
         const LineAxialPoint& p = data.axial[q];
         const double freeStrain = freeStrains.empty() ? 0.0 : freeStrains[q];
-        forces[q] = p.axialStiffness * (dot(p.strainRow, x) - freeStrain) + dot(p.momentRow, coefficients);
+        forces[q] = p.axialStiffness * (dot(p.strainRow, x) - p.freeAxialScale * freeStrain) + dot(p.momentRow, coefficients);
     }
     return forces;
 }

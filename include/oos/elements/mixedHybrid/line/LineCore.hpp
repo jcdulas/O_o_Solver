@@ -27,12 +27,10 @@ namespace oos::elements::mixedHybrid
 // With moments of degree k, dM/ds tests the whole rotation and the line has no mode of zero energy but the rigid
 // ones. The shear force of the equilibrium of the line, V = t × dM/ds, carries the shear flexibility of the section
 // by its complementary energy ½ ∫ V · C_s V ds: the beam with shear, its rotation across the line eliminated. The
-// axial strain t · du/ds stays primal. An offset o of the axis (the end offsets, the eccentricity, the neutral axis)
-// couples it with the curvatures through the section law, Γ_axis = Γ_edge + (K × o) · x, treated in the partially
-// mixed form of the shells (document 34, section 3.2): with the law on (Γ_x, K) split as [[A, B], [Bᵀ, D]], the
-// membrane block is Ā = A − B D⁻¹ Bᵀ and the coupling Mᵀ D⁻¹ Bᵀ Γ_x. An axis away from a curved edge is longer than
-// the edge: its strains are those seen from the edge over μ = |t + do/ds| and its length μ ds, so that the law on
-// the strains of the edge is TᵀDT / μ, and the mass is μ times that of the edge. Eliminating M,
+// axial strain t · du/ds stays primal. With axis offset o the shear force transports the edge moment to
+// M − o × V before applying bending compliance. The partially mixed section law accounts for the axial force
+// lever arm and the coupling to curvature. The ratio of axis to edge length is μ = |t + do/ds|.
+// Eliminating M gives
 //   K = K_axial + (G + C)ᵀ M_σ⁻¹ (G + C) = K_axial + Yᵀ Y,   Y = L⁻¹ (G + C),   M_σ = L Lᵀ,
 // M_σ the compliance of the moments, G the pairing b, C the coupling. This is the Hellinger-Reissner principle of a
 // beam (E. Reissner, On a variational theorem in elasticity, Journal of Mathematics and Physics 29 (1950) 90-95) made
@@ -88,6 +86,8 @@ struct LineAxialPoint
     // μ (−o_z) and μ o_y.
     std::array<Vector, 2> freeCurvatureRows;
     std::array<double, 2> freeCurvatureAxial{};
+    double freeAxialScale = 1.0;
+    Vector freeAxialRow;
 };
 
 // A line element: its stiffness on the unknowns of its kinematics (with their signs) and the rotations of its two
@@ -120,6 +120,11 @@ struct LineData
     Matrix inertia;
     // The points of the axis at the points of the rule (where the loads are read).
     std::vector<Vec3Of<double>> axisPoints;
+
+    // Coefficients of integrated Legendre modes of section curvature between the two hybrid end rotations.
+    // Empty for the edge kinematics of a rod or a centred shear-rigid beam.
+    std::vector<Matrix> rotationBubbles;
+    [[nodiscard]] Matrix sectionRotation(const LineKinematics& kin) const;
 
     // The local unknowns from the model's: x_i = sign_i u[dof_i].
     // Reference: LineData::local

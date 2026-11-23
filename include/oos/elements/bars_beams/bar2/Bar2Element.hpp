@@ -36,8 +36,8 @@
 // parallel orientation vector, a zero length, a negative or inconsistent section (I1·I2 ≤ I12²), pin flags on DOFs
 // without stiffness.
 //
-// Modelling choices: the offset system of OFFT "O" has its x-axis from GA to GB; the mass has no rotary or torsional
-// inertia and ignores the pin flags; the loads are the exact fixed-end forces of the shear-flexible bar; the margin of
+// Modelling choices: the offset system of OFFT "O" has its x-axis from GA to GB; the mass carries bending rotary inertia and
+// follows the pin releases; the loads are the exact fixed-end forces of the shear-flexible bar; the margin of
 // the type-100 layout is the smaller of the tension and compression margins. The mass, the thermal and
 // BeamDistributedLoad loads of an offset bar are those of its length between the offset ends, at the grid points under
 // ModelParams OffsetDefinition ElemOffsetsOnly (the default; an offset bar refused in a buckling analysis), through the

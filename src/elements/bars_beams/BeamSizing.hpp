@@ -102,6 +102,7 @@ class Kernel
 {
 public:
     Kernel(const BeamData& beam, const Direction& first, const Direction& other);
+    [[nodiscard]] const Matrix<12>& completion() const { return m_completion; }
     [[nodiscard]] Matrix<12> stiffness() const;
     [[nodiscard]] Matrix<12> differential(std::span<const double> grid, const FreeStrains& freeStrains = {}) const;
     [[nodiscard]] std::array<MixedScalar, 12> loads(const FreeStrains& freeStrains,

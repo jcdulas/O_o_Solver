@@ -1,4 +1,5 @@
 #include "BeamSizing.hpp"
+#include "BeamMassIntegration.hpp"
 
 #include "oos/base/errors/SingularityError.hpp"
 #include "oos/elements/bars_beams/BeamDifferential.hpp"
@@ -138,24 +139,6 @@ Matrix<12> releasedInverse(const Matrix<12>& raw, std::span<const std::size_t> r
     return inverse;
 }
 
-Matrix<12> pointTransform(const Station& a, const Station& b, bool structural)
-{
-    Matrix<12> result;
-    const std::array<Station, 2> ends{a, b};
-    for (std::size_t end = 0; end < 2; ++end)
-    {
-        const auto& point = structural ? ends[end].neutral : ends[end].centre;
-        const auto at = 6 * end;
-        for (std::size_t k = 0; k < 6; ++k)
-            result(at + k, at + k) = 1.0;
-        result(at, at + 4) = point[1];
-        result(at, at + 5) = -point[0];
-        result(at + 1, at + 3) = -point[1];
-        result(at + 2, at + 3) = point[0];
-    }
-    return result;
-}
-
 } // namespace
 
 Kernel::Kernel(const BeamData& beam, const Direction& first, const Direction& other)
@@ -256,34 +239,16 @@ Matrix<12> massOf(const BeamData& beam, const Direction& first, const Direction&
                   double addedMass, MassFormulation formulation, TorsionalInertia torsion, bool onOffsets)
 {
     const auto length = beam.geometry.length;
-    const auto withoutNsm = [](BeamSection section)
-    {
-        for (std::size_t k = 0; k < section.count; ++k)
-            section.stations[k].nonStructuralMass = 0.0;
-        return section;
-    };
-    // BeamMass is affine in the station properties at fixed density. Unit-density structural matrices and
-    // zero-density NSM matrices give their coefficients exactly, without subtracting nearby sections.
-    const auto structural = beamMass(withoutNsm(beam.section), 1.0, 0.0, length, formulation, torsion);
-    const auto p = beamMass(withoutNsm(first.section), 1.0, 0.0, length, formulation, torsion);
-    const auto q = beamMass(withoutNsm(other.section), 1.0, 0.0, length, formulation, torsion);
-    const auto nsm = beamMass(beam.section, 0.0, addedMass, length, formulation, torsion);
-    const auto nsmP = beamMass(first.section, 0.0, 0.0, length, formulation, torsion);
-    const auto nsmQ = beamMass(other.section, 0.0, 0.0, length, formulation, torsion);
     const MixedScalar density{beam.material.density, first.material.density, other.material.density};
-    Matrix<12> structuralRates, nsmRates;
-    for (std::size_t k = 0; k < structural.values.size(); ++k)
+    Matrix<12> result;
+    beam_mass::integrate(beam.section, length, [&](double xi, double weight)
     {
-        structuralRates.values[k] = density * MixedScalar(structural.values[k], p.values[k], q.values[k]);
-        nsmRates.values[k] = {nsm.values[k], nsmP.values[k], nsmQ.values[k]};
-    }
-    const auto last = beam.section.count - 1;
-    const auto a = stationOf(beam.section.stations[0], first.section.stations[0], other.section.stations[0]);
-    const auto b = stationOf(beam.section.stations[last], first.section.stations[last], other.section.stations[last]);
-    auto result = congruence(structuralRates, pointTransform(a, b, true));
-    const auto added = congruence(nsmRates, pointTransform(a, b, false));
-    for (std::size_t k = 0; k < result.values.size(); ++k)
-        result.values[k] += added.values[k];
+        const auto s = stationOf(beam.section.at(xi), first.section.at(xi), other.section.at(xi));
+        beam_mass::addStation(result, xi, length, weight, formulation, torsion, density, s.area, s.nsm + addedMass,
+                              s.inertia1, s.inertia2, s.productInertia, s.neutral, s.centre);
+    });
+    if (beam.geometry.hasPinFlags())
+        result = congruence(result, Kernel(beam, first, other).completion());
     return congruence(result, constant(onOffsets ? beam.geometry.endTransform() : beam.geometry.rotationTransform()));
 }
 

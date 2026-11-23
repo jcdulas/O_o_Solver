@@ -2,6 +2,7 @@
 
 #include "oos/base/errors/InternalError.hpp"
 #include "oos/elements/mixedHybrid/core/DenseDecompositions.hpp"
+#include "oos/elements/mixedHybrid/core/PolynomialBases.hpp"
 
 #include <cmath>
 #include <utility>
@@ -16,11 +17,6 @@ namespace
 // rate of turn of its tangent and normal (the derivative of an eccentric offset, offsetAndMetric).
 constexpr double AXES_DIFFERENCE_STEP = 1e-5;
 
-// The indices of (Γ_x, K_x, K_y, K_z) among the six strains of a section.
-constexpr std::array<std::size_t, 4> AXIAL_AND_BENDING{0, 3, 4, 5};
-
-using Rows3 = std::array<std::array<double, 3>, 3>;
-
 // R v: the components of v along the section axes (R has the axes as its rows).
 Vec3Of<double> inSectionAxes(const SectionAxes& axes, const Vec3Of<double>& v)
 {
@@ -32,74 +28,15 @@ Vec3Of<double> columnOf(const Matrix& rows, std::size_t column)
     return {rows(0, column), rows(1, column), rows(2, column)};
 }
 
-Vec3Of<double> times(const Rows3& m, const Vec3Of<double>& v)
-{
-    return {m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2], m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
-            m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2]};
-}
-
-// aᵀ M b.
-double bilinear(const Vec3Of<double>& a, const Rows3& m, const Vec3Of<double>& b)
-{
-    Vec3Of<double> row{};
-    for (std::size_t j = 0; j < 3; ++j)
-        row[j] = a[0] * m[0][j] + a[1] * m[1][j] + a[2] * m[2][j];
-    return dot3(row, b);
-}
-
-// The inverse of a matrix of order 0 to 3 by its adjugate (Cramer's rule): A⁻¹ = adj(A) / det A, the determinant
-// expanded along the first row. Empty when the determinant is zero.
-std::optional<Matrix> adjugateInverse(const Matrix& a)
-{
-    const std::size_t n = a.rows();
-    OOS_ASSERT(n <= 3 && a.columns() == n);
-    Matrix out(n, n);
-    if (n == 1)
-    {
-        if (a(0, 0) == 0.0)
-            return std::nullopt;
-        out(0, 0) = 1.0 / a(0, 0);
-    }
-    else if (n == 2)
-    {
-        const double det = a(0, 0) * a(1, 1) - a(1, 0) * a(0, 1);
-        if (det == 0.0)
-            return std::nullopt;
-        out(0, 0) = a(1, 1) / det;
-        out(0, 1) = -a(0, 1) / det;
-        out(1, 0) = -a(1, 0) / det;
-        out(1, 1) = a(0, 0) / det;
-    }
-    else if (n == 3)
-    {
-        const double minor00 = a(1, 1) * a(2, 2) - a(2, 1) * a(1, 2);
-        const double minor01 = a(1, 0) * a(2, 2) - a(2, 0) * a(1, 2);
-        const double minor02 = a(1, 0) * a(2, 1) - a(2, 0) * a(1, 1);
-        const double det = a(0, 0) * minor00 - a(0, 1) * minor01 + a(0, 2) * minor02;
-        if (det == 0.0)
-            return std::nullopt;
-        out(0, 0) = minor00 / det;
-        out(0, 1) = (a(0, 2) * a(2, 1) - a(2, 2) * a(0, 1)) / det;
-        out(0, 2) = (a(0, 1) * a(1, 2) - a(1, 1) * a(0, 2)) / det;
-        out(1, 0) = -minor01 / det;
-        out(1, 1) = (a(0, 0) * a(2, 2) - a(2, 0) * a(0, 2)) / det;
-        out(1, 2) = (a(0, 2) * a(1, 0) - a(1, 2) * a(0, 0)) / det;
-        out(2, 0) = minor02 / det;
-        out(2, 1) = (a(0, 1) * a(2, 0) - a(2, 1) * a(0, 0)) / det;
-        out(2, 2) = (a(0, 0) * a(1, 1) - a(1, 0) * a(0, 1)) / det;
-    }
-    return out;
-}
-
 // The offset of the axis from the edge at a point of a line, and the metric of the axis: its length per unit length
 // of the edge, μ = |t + do/ds| (an eccentric ring, a stiffener on a curved edge). The offset is the end offsets
 // (global, linear along the line) plus the eccentricity along the section axes; the derivative of the latter follows
 // the turn of the section axes, taken by a central difference of sectionAxes along the edge.
 // Reference: src/tdnns/line.rs::offset_metric
-std::variant<std::pair<Vec3Of<double>, double>, std::string> offsetAndMetric(const LineElement& line,
-                                                                             const LineSection& section,
-                                                                             const LineKinematics& kin,
-                                                                             const SectionAxes& axes)
+std::variant<std::pair<Vec3Of<double>, Vec3Of<double>>, std::string> offsetAndMetric(const LineElement& line,
+                                                                                     const LineSection& section,
+                                                                                     const LineKinematics& kin,
+                                                                                     const SectionAxes& axes)
 {
     const double lam = kin.fraction;
     const Vec3Of<double> offset = add3(add3(scl3(line.offsets[0], 1.0 - lam), scl3(line.offsets[1], lam)),
@@ -127,70 +64,97 @@ std::variant<std::pair<Vec3Of<double>, double>, std::string> offsetAndMetric(con
         for (std::size_t i = 1; i < 3; ++i)
             offsetRate = add3(offsetRate, scl3(sub3(forward[i], backward[i]), 0.5 * line.eccentricity[i - 1] / h));
     }
-    return std::pair{offset, norm3(add3(kin.tangent, offsetRate))};
+    return std::pair{offset, add3(kin.tangent, offsetRate)};
 }
 
-// The section law of a line about its edge, on (Γ_x, K_x, K_y, K_z), with the offset `offset` of the axis in section
-// axes and the metric μ of the axis: the strains of the axis are (Γ_edge + (K × o) · x, K) / μ and its length is μ
-// times that of the edge, so that the law on the strains of the edge is TᵀDT / μ,
-//   T = [[1, 0, o_z, −o_y], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]   ((K × o) · x = K_y o_z − K_z o_y);
-// and the matrices of the partially mixed form: with TᵀDT / μ = [[a0, b], [bᵀ, D_m]],
-//   D⁻¹ (the components of D_m with a stiffness), D⁻¹ bᵀ, Ā = a0 − b D⁻¹ bᵀ.
-// Reference: src/tdnns/line.rs::Law
-struct SectionLaw
+// Forces and moments at the physical section, expressed in its axes. The equilibrium unknown is the
+// moment about the mesh edge. Transport its wrench before evaluating complementary energy.
+struct Wrench
 {
-    // The law at the axis, on (Γ_x, K_x, K_y, K_z).
-    std::array<std::array<double, 4>, 4> axisLaw{};
-    Vec3Of<double> offset{};
-    double metric = 1.0;
-    Vec3Of<double> coupling{};
-    Rows3 bendingInverse{};
-    Vec3Of<double> inverseCoupling{};
-    double membrane = 0.0;
-    // The components of the moment that have a stiffness.
-    std::array<bool, 3> active{};
-    // The shear stiffnesses of the planes (x, y) and (x, z), over μ.
-    std::array<double, 2> shearStiffness{};
+    Vec3Of<double> force{}, moment{};
 };
 
-// Reference: src/tdnns/line.rs::Law::new
-SectionLaw makeSectionLaw(const LineSectionPoint& point, const Vec3Of<double>& offset, double metric)
+Wrench addAxial(const Wrench& w, const Wrench& axial, double n)
 {
-    SectionLaw law;
-    law.offset = offset;
-    law.metric = metric;
-    for (std::size_t a = 0; a < 4; ++a)
-        for (std::size_t b = 0; b < 4; ++b)
-            law.axisLaw[a][b] = point.stiffness[AXIAL_AND_BENDING[a]][AXIAL_AND_BENDING[b]];
-    const std::array<std::array<double, 4>, 4> t{
-        {{1.0, 0.0, offset[2], -offset[1]}, {0.0, 1.0, 0.0, 0.0}, {0.0, 0.0, 1.0, 0.0}, {0.0, 0.0, 0.0, 1.0}}};
-    std::array<std::array<double, 4>, 4> law4{};
-    for (std::size_t a = 0; a < 4; ++a)
-        for (std::size_t b = 0; b < 4; ++b)
-            for (std::size_t c = 0; c < 4; ++c)
-                for (std::size_t e = 0; e < 4; ++e)
-                    law4[a][b] += t[c][a] * law.axisLaw[c][e] * t[e][b] / metric;
-    const double a0 = law4[0][0];
-    law.coupling = {law4[0][1], law4[0][2], law4[0][3]};
-    // Components without stiffness carry no moment: they are left out of the inverse.
-    std::vector<std::size_t> keep;
-    for (std::size_t c = 0; c < 3; ++c)
+    return {add3(w.force, scl3(axial.force, n)), add3(w.moment, scl3(axial.moment, n))};
+}
+
+struct SectionLaw
+{
+    SectionAxes axes{};
+    Vec3Of<double> offset{};
+    double metric = 0.0, membrane = 0.0;
+    Wrench axial{};
+    std::array<double, 6> inverse{};
+    double bendingCross = 0.0;
+    std::array<double, 2> neutral{};
+    std::array<bool, 3> active{};
+
+    Wrench wrench(const Vec3Of<double>& force, const Vec3Of<double>& moment) const
     {
-        law.active[c] = law4[1 + c][1 + c] > 0.0;
-        if (law.active[c])
-            keep.push_back(c);
+        return {inSectionAxes(axes, force), inSectionAxes(axes, sub3(moment, cross3(offset, force)))};
     }
-    Matrix kept(keep.size(), keep.size());
-    for (std::size_t i = 0; i < keep.size(); ++i)
-        for (std::size_t j = 0; j < keep.size(); ++j)
-            kept(i, j) = law4[1 + keep[i]][1 + keep[j]];
-    const Matrix keptInverse = adjugateInverse(kept).value_or(Matrix(keep.size(), keep.size()));
-    for (std::size_t i = 0; i < keep.size(); ++i)
-        for (std::size_t j = 0; j < keep.size(); ++j)
-            law.bendingInverse[keep[i]][keep[j]] = keptInverse(i, j);
-    law.inverseCoupling = times(law.bendingInverse, law.coupling);
-    law.membrane = a0 - dot3(law.coupling, law.inverseCoupling);
-    law.shearStiffness = {point.stiffness[1][1] / metric, point.stiffness[2][2] / metric};
+
+    Wrench strain(const Wrench& w) const
+    {
+        const double my = w.moment[1] - neutral[1] * w.force[0];
+        const double mz = w.moment[2] + neutral[0] * w.force[0];
+        const double ky = inverse[4] * my + bendingCross * mz;
+        const double kz = bendingCross * my + inverse[5] * mz;
+        return {{inverse[0] * w.force[0] - neutral[1] * ky + neutral[0] * kz, inverse[1] * w.force[1],
+                 inverse[2] * w.force[2]},
+                {inverse[3] * w.moment[0], ky, kz}};
+    }
+
+    double work(const Wrench& a, const Wrench& strainB) const
+    {
+        return metric * (dot3(a.force, strainB.force) + dot3(a.moment, strainB.moment));
+    }
+    double coupling(const Wrench& w) const { return -membrane * work(axial, strain(w)); }
+};
+
+std::variant<SectionLaw, std::string> sectionLaw(const LineElement& line, const LineSection& section,
+                                                 const LineKinematics& kin, const SectionAxes& edgeAxes, bool shear)
+{
+    const auto geometry = offsetAndMetric(line, section, kin, edgeAxes);
+    if (const auto* error = std::get_if<std::string>(&geometry))
+        return *error;
+    const auto& [offset, derivative] = std::get<std::pair<Vec3Of<double>, Vec3Of<double>>>(geometry);
+    SectionLaw law;
+    law.metric = norm3(derivative);
+    if (!(law.metric > 0.0))
+        return std::string("the offset beam axis has zero tangent");
+    const auto frame = sectionAxes(line, section, scl3(derivative, 1.0 / law.metric), kin.normal);
+    if (const auto* error = std::get_if<std::string>(&frame))
+        return *error;
+    law.axes = std::get<SectionAxes>(frame);
+    law.offset = offset;
+    law.axial = law.wrench(kin.tangent, {});
+    const auto point = section.at(kin.fraction);
+    law.neutral = point.neutralAxis;
+    const auto& k = point.stiffness;
+    for (std::size_t i = 0; i < 4; ++i)
+        if (k[i][i] > 0.0 && (i == 0 || i == 3 || shear))
+            law.inverse[i] = 1.0 / k[i][i];
+    const auto [yy, zz, yz] = point.centroidalBending;
+    const double det = yy * zz - yz * yz;
+    if (det > 0.0)
+    {
+        law.inverse[4] = zz / det;
+        law.inverse[5] = yy / det;
+        law.bendingCross = -yz / det;
+    }
+    else
+    {
+        if (yy > 0.0)
+            law.inverse[4] = 1.0 / yy;
+        if (zz > 0.0)
+            law.inverse[5] = 1.0 / zz;
+    }
+    law.active = {k[3][3] > 0.0, yy > 0.0, zz > 0.0};
+    const double compliance = law.work(law.axial, law.strain(law.axial));
+    if (compliance > 0.0)
+        law.membrane = 1.0 / compliance;
     return law;
 }
 
@@ -205,6 +169,34 @@ std::vector<std::pair<double, double>> momentPolynomials(std::size_t degree, dou
         out.emplace_back(v, dv * 2.0 * fractionRate);
     }
     return out;
+}
+
+// Curvature on the edge, in global axes, from the condensed moment coefficients and the axial strain.
+Matrix curvatureRows(const LineData& data, const LineKinematics& kin, const SectionLaw& law)
+{
+    const auto pl = momentPolynomials(data.momentDegree, kin.fraction, kin.fractionRate);
+    Matrix coefficients(3, data.moments.rows());
+    for (std::size_t l = 0; l <= data.momentDegree; ++l)
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            const auto v = scl3(cross3(kin.tangent, data.basis[c]), pl[l].second);
+            const auto w = law.wrench(v, scl3(data.basis[c], pl[l].first));
+            const auto curvature = law.strain(addAxial(w, law.axial, law.coupling(w))).moment;
+            for (std::size_t k = 0; k < 3; ++k)
+                coefficients(k, 3 * l + c) = curvature[k];
+        }
+    const Matrix local = coefficients * data.moments;
+    const auto axialCurvature = law.strain(law.axial).moment;
+    Matrix global(3, data.dofs.size());
+    for (std::size_t j = 0; j < global.columns(); ++j)
+    {
+        const double gx =
+            j < kin.displacementRate.columns() ? dot3(kin.tangent, columnOf(kin.displacementRate, j)) : 0.0;
+        for (std::size_t k = 0; k < 3; ++k)
+            for (std::size_t c = 0; c < 3; ++c)
+                global(c, j) += law.metric * law.axes[k][c] * (local(k, j) + axialCurvature[k] * law.membrane * gx);
+    }
+    return global;
 }
 
 // The moment coefficients that are kept: those of the components with a stiffness somewhere along the line.
@@ -246,7 +238,7 @@ Vector LineData::thermalMoments(std::span<const double> freeStrains) const
     {
         const double factor = axial[q].weight * freeStrains[q];
         for (std::size_t i = 0; i < g0.size(); ++i)
-            g0[i] += axial[q].momentRow[i] * factor;
+            g0[i] += axial[q].freeAxialRow[i] * factor;
     }
     return g0;
 }
@@ -257,7 +249,7 @@ Vector LineData::thermalLoad(std::span<const double> freeStrains) const
     for (std::size_t q = 0; q < axial.size() && q < freeStrains.size(); ++q)
     {
         const LineAxialPoint& p = axial[q];
-        const double factor = p.axialStiffness * p.weight * freeStrains[q];
+        const double factor = p.axialStiffness * p.weight * p.freeAxialScale * freeStrains[q];
         for (std::size_t i = 0; i < f.size(); ++i)
             f[i] += p.strainRow[i] * factor;
     }
@@ -275,7 +267,8 @@ std::vector<double> LineData::edgeFreeStrains(std::span<const double> freeStrain
     {
         const std::array<double, 2>& ofCurvature = axial[q].freeCurvatureAxial;
         const double given = q < freeStrains.size() ? freeStrains[q] : 0.0;
-        edge[q] = given + ofCurvature[0] * freeCurvatures[q].y + ofCurvature[1] * freeCurvatures[q].z;
+        edge[q] = axial[q].freeAxialScale * given + ofCurvature[0] * freeCurvatures[q].y +
+                  ofCurvature[1] * freeCurvatures[q].z;
     }
     return edge;
 }
@@ -284,7 +277,7 @@ Vector LineData::thermalMoments(std::span<const double> freeStrains,
                                 std::span<const LineFreeCurvature> freeCurvatures) const
 {
     // g0 = Σ w M_sᵀ (D⁻¹ Bᵀ Γ0 + K0): the term of the free axial strain of the edge, then that of the curvatures.
-    Vector g0 = thermalMoments(edgeFreeStrains(freeStrains, freeCurvatures));
+    Vector g0 = thermalMoments(freeStrains);
     for (std::size_t q = 0; q < axial.size(); ++q)
     {
         const LineAxialPoint& p = axial[q];
@@ -346,6 +339,8 @@ std::variant<LineData, std::string> lineCore(const LineSource& source, std::span
     Matrix inertia(nl, 3);
     std::vector<LineAxialPoint> axial;
     axial.reserve(points.size());
+    std::vector<SectionLaw> laws;
+    laws.reserve(points.size());
     std::vector<Vec3Of<double>> axisPoints;
     axisPoints.reserve(points.size());
     std::array<bool, 3> active{};
@@ -359,12 +354,11 @@ std::variant<LineData, std::string> lineCore(const LineSource& source, std::span
         const Vec3Of<double>& tl = axes[0];
         const double lam = kin.fraction;
         // The offset of the axis: element offsets (global, linear) and eccentricity (section axes).
-        auto offsetMetric = offsetAndMetric(line, section, kin, axes);
-        if (const std::string* problem = std::get_if<std::string>(&offsetMetric))
-            return *problem;
-        const auto [offset, mu] = std::get<std::pair<Vec3Of<double>, double>>(offsetMetric);
-        const LineSectionPoint sp = section.at(lam);
-        const SectionLaw law = makeSectionLaw(sp, inSectionAxes(axes, offset), mu);
+        const auto result = sectionLaw(line, section, kin, axes, shearOn);
+        if (const auto* error = std::get_if<std::string>(&result))
+            return *error;
+        const SectionLaw& law = std::get<SectionLaw>(result);
+        const double mu = law.metric;
         for (std::size_t c = 0; c < 3; ++c)
             active[c] = active[c] || law.active[c];
 
@@ -381,10 +375,21 @@ std::variant<LineData, std::string> lineCore(const LineSource& source, std::span
         // The moment basis E_c P_l(2λ − 1): its value and d/ds, in section axes (M_s), and the shear force of its
         // derivative, t × dM/ds (V_s).
         const std::vector<std::pair<double, double>> pl = momentPolynomials(pm, lam, kin.fractionRate);
-        const auto momentOf = [&](std::size_t c, std::size_t l)
-        { return scl3(inSectionAxes(axes, basis[c]), pl[l].first); };
-        const auto shearOf = [&](std::size_t c, std::size_t l)
-        { return scl3(inSectionAxes(axes, cross3(tl, basis[c])), pl[l].second); };
+        std::vector<Wrench> condensed(nm), strains(nm);
+        Vector momentRow(nm), freeAxialRow(nm);
+        std::array<Vector, 2> freeCurvatureRows{Vector(nm), Vector(nm)};
+        for (std::size_t c = 0; c < 3; ++c)
+            for (std::size_t l = 0; l <= pm; ++l)
+            {
+                const auto i = 3 * l + c;
+                const auto mode = law.wrench(scl3(cross3(tl, basis[c]), pl[l].second), scl3(basis[c], pl[l].first));
+                momentRow[i] = law.coupling(mode);
+                condensed[i] = addAxial(mode, law.axial, momentRow[i]);
+                strains[i] = law.strain(condensed[i]);
+                freeAxialRow[i] = mu * condensed[i].force[0];
+                freeCurvatureRows[0][i] = mu * condensed[i].moment[1];
+                freeCurvatureRows[1][i] = mu * condensed[i].moment[2];
+            }
         for (std::size_t c = 0; c < 3; ++c)
         {
             for (std::size_t l = 0; l <= pm; ++l)
@@ -398,59 +403,11 @@ std::variant<LineData, std::string> lineCore(const LineSource& source, std::span
                                      basis[c][2] * kin.rotation(2, col);
                     pairing(row, col) -= w * dv * e;
                 }
-                const Vec3Of<double> ms = momentOf(c, l);
-                // The coupling M_sᵀ D⁻¹ Bᵀ Γ_x.
-                const double cc = dot3(ms, law.inverseCoupling);
                 for (std::size_t col = 0; col < nxk; ++col)
-                    couplingRows(row, col) += w * cc * gx[col];
-                const Vec3Of<double> qs = shearOf(c, l);
-                for (std::size_t c2 = 0; c2 < 3; ++c2)
-                {
-                    for (std::size_t l2 = 0; l2 <= pm; ++l2)
-                    {
-                        double v = bilinear(ms, law.bendingInverse, momentOf(c2, l2));
-                        if (shearOn)
-                        {
-                            // The complementary energy of the shear force, V_s · C_s V_s.
-                            const Vec3Of<double> qs2 = shearOf(c2, l2);
-                            for (std::size_t i = 0; i < 2; ++i)
-                                if (law.shearStiffness[i] > 0.0)
-                                    v += qs[1 + i] * qs2[1 + i] / law.shearStiffness[i];
-                        }
-                        compliance(row, 3 * l2 + c2) += w * v;
-                    }
-                }
+                    couplingRows(row, col) += w * momentRow[row] * gx[col];
+                for (std::size_t j = 0; j < nm; ++j)
+                    compliance(row, j) += w * law.work(condensed[row], strains[j]);
             }
-        }
-
-        // The translation of the axis, u + θ × o.
-        Matrix axisDisplacement(3, nl);
-        for (std::size_t col = 0; col < nxk; ++col)
-        {
-            const Vec3Of<double> x = cross3(columnOf(kin.rotation, col), offset);
-            for (std::size_t r = 0; r < 3; ++r)
-                axisDisplacement(r, col) = kin.displacement(r, col) + x[r];
-        }
-        inertia += axisDisplacement.transposed() * (sp.massPerLength * mu * w);
-        if (mass)
-        {
-            *mass += transposeTimes(axisDisplacement, axisDisplacement) * (sp.massPerLength * mu * w);
-            // The rotary inertia of the section, in its axes.
-            Matrix rotationInAxes(3, nl);
-            for (std::size_t col = 0; col < nxk; ++col)
-            {
-                const Vec3Of<double> v = inSectionAxes(axes, columnOf(kin.rotation, col));
-                for (std::size_t r = 0; r < 3; ++r)
-                    rotationInAxes(r, col) = v[r];
-            }
-            const auto [jx, jy, jz, jyz] = sp.inertia;
-            Matrix rotary(3, 3);
-            rotary(0, 0) = jx;
-            rotary(1, 1) = jy;
-            rotary(1, 2) = -jyz;
-            rotary(2, 1) = -jyz;
-            rotary(2, 2) = jz;
-            *mass += transposeTimes(rotationInAxes, rotary) * rotationInAxes * (mu * w);
         }
 
         // The geometric stiffness: N (du⊥ · du⊥), du⊥ the part of du/ds across t.
@@ -462,23 +419,12 @@ std::variant<LineData, std::string> lineCore(const LineSource& source, std::span
             for (std::size_t r = 0; r < 3; ++r)
                 transverse(r, col) = across[r];
         }
-        // The moment part of the axial force: (D⁻¹ Bᵀ) · M_s on the moment coefficients.
-        Vector momentRow(nm, 0.0);
-        // The rows of a unit free curvature K_y and K_z of the axis: μ M_s · e_y and μ M_s · e_z.
-        std::array<Vector, 2> freeCurvatureRows{Vector(nm, 0.0), Vector(nm, 0.0)};
-        for (std::size_t c = 0; c < 3; ++c)
-            for (std::size_t l = 0; l <= pm; ++l)
-            {
-                const Vec3Of<double> ms = momentOf(c, l);
-                momentRow[3 * l + c] = dot3(ms, law.inverseCoupling);
-                freeCurvatureRows[0][3 * l + c] = mu * ms[1];
-                freeCurvatureRows[1][3 * l + c] = mu * ms[2];
-            }
-        // The axial strain of the edge in a unit free curvature of the axis, at the offset o from it.
-        const std::array<double, 2> freeCurvatureAxial{-mu * law.offset[2], mu * law.offset[1]};
+        const std::array<double, 2> freeCurvatureAxial{mu * law.axial.moment[1], mu * law.axial.moment[2]};
         axial.push_back({std::move(gx), law.membrane, std::move(transverse), w, std::move(momentRow), lam,
-                         std::move(freeCurvatureRows), freeCurvatureAxial});
-        axisPoints.push_back(add3(kin.point, offset));
+                         std::move(freeCurvatureRows), freeCurvatureAxial, mu * law.axial.force[0],
+                         std::move(freeAxialRow)});
+        laws.push_back(law);
+        axisPoints.push_back(add3(kin.point, law.offset));
     }
 
     // The end terms + M(B) · Λ_B − M(A) · Λ_A, with P_l(1) = 1 and P_l(−1) = (−1)^l.
@@ -543,17 +489,107 @@ std::variant<LineData, std::string> lineCore(const LineSource& source, std::span
         }
     }
     data.stiffness = symmetricPart(stiffness);
-    if (mass)
-        data.mass = symmetricPart(*mass);
     data.axial = std::move(axial);
     data.moments = std::move(moments);
     data.complianceInverse = std::move(complianceInverse);
     data.basis = basis;
     data.momentDegree = pm;
     data.shear = shear;
+    if (section.bending && ((shear && section.shearFactors) || norm3(line.offsets[0]) > 0.0 ||
+                            norm3(line.offsets[1]) > 0.0 || line.eccentricity[0] != 0.0 || line.eccentricity[1] != 0.0))
+    {
+        // Project d(theta)/d(lambda) onto Legendre modes. The mean is fixed by the two hybrid end rotations.
+        // Integrating mode l gives (P_(l+1) - P_(l-1)) / (2 (2l+1)), zero at either end.
+        data.rotationBubbles.assign(pm, Matrix(3, nl));
+        for (std::size_t q = 0; q < points.size(); ++q)
+        {
+            const LineKinematics& kin = points[q].kinematics;
+            const Matrix curvature = curvatureRows(data, kin, laws[q]);
+            for (std::size_t l = 1; l <= pm; ++l)
+                data.rotationBubbles[l - 1] +=
+                    curvature * (0.5 * points[q].weight * legendreValue(l, 2.0 * kin.fraction - 1.0));
+        }
+    }
+    for (std::size_t q = 0; q < points.size(); ++q)
+    {
+        const LineKinematics& kin = points[q].kinematics;
+        const SectionLaw& law = laws[q];
+        const SectionAxes& axes = law.axes;
+        const double mu = law.metric;
+        const auto& offset = law.offset;
+        const LineSectionPoint sp = section.at(kin.fraction);
+        const double w = points[q].weight;
+        const Matrix rotation = data.sectionRotation(kin);
+        const auto addMassAt = [&](double perLength, const std::array<double, 2>& centre)
+        {
+            if (perLength == 0.0)
+                return;
+            const auto arm = add3(offset, add3(scl3(axes[1], centre[0]), scl3(axes[2], centre[1])));
+            Matrix displacement(3, nl);
+            for (std::size_t col = 0; col < nl; ++col)
+            {
+                const auto spin = cross3(columnOf(rotation, col), arm);
+                for (std::size_t r = 0; r < 3; ++r)
+                    displacement(r, col) = (col < nxk ? kin.displacement(r, col) : 0.0) + spin[r];
+            }
+            inertia += displacement.transposed() * (perLength * mu * w);
+            if (mass)
+                *mass += transposeTimes(displacement, displacement) * (perLength * mu * w);
+        };
+        if (sp.neutralAxis == sp.massCentre)
+            addMassAt(sp.massPerLength, sp.neutralAxis);
+        else
+        {
+            addMassAt(sp.structuralMassPerLength, sp.neutralAxis);
+            addMassAt(sp.nonStructuralMassPerLength, sp.massCentre);
+        }
+        if (mass)
+        {
+            // The rotary inertia of the section, in its axes.
+            Matrix rotationInAxes(3, nl);
+            for (std::size_t col = 0; col < nl; ++col)
+            {
+                const Vec3Of<double> v = inSectionAxes(axes, columnOf(rotation, col));
+                for (std::size_t r = 0; r < 3; ++r)
+                    rotationInAxes(r, col) = v[r];
+            }
+            const auto [jx, jy, jz, jyz] = sp.inertia;
+            Matrix rotary(3, 3);
+            rotary(0, 0) = jx;
+            rotary(1, 1) = jy;
+            rotary(1, 2) = -jyz;
+            rotary(2, 1) = -jyz;
+            rotary(2, 2) = jz;
+            *mass += transposeTimes(rotationInAxes, rotary) * rotationInAxes * (mu * w);
+        }
+    }
+    if (mass)
+        data.mass = symmetricPart(*mass);
     data.inertia = std::move(inertia);
     data.axisPoints = std::move(axisPoints);
     return data;
+}
+
+Matrix LineData::sectionRotation(const LineKinematics& kin) const
+{
+    const std::size_t n = dofs.size();
+    Matrix rotation(3, n);
+    if (rotationBubbles.empty())
+    {
+        for (std::size_t c = 0; c < 3; ++c)
+            for (std::size_t j = 0; j < kin.rotation.columns(); ++j)
+                rotation(c, j) = kin.rotation(c, j);
+        return rotation;
+    }
+    for (std::size_t c = 0; c < 3; ++c)
+    {
+        rotation(c, n - 6 + c) = 1.0 - kin.fraction;
+        rotation(c, n - 3 + c) = kin.fraction;
+    }
+    const double u = 2.0 * kin.fraction - 1.0;
+    for (std::size_t l = 1; l <= rotationBubbles.size(); ++l)
+        rotation += rotationBubbles[l - 1] * (legendreValue(l + 1, u) - legendreValue(l - 1, u));
+    return rotation;
 }
 
 std::variant<LineState, std::string> lineState(const LineData& data, const LineKinematics& kinematics,
@@ -570,14 +606,10 @@ std::variant<LineState, std::string> lineState(const LineData& data, const LineK
     const SectionAxes axes = std::get<SectionAxes>(axesOrProblem);
     const Vec3Of<double>& tl = axes[0];
     const double lam = kin.fraction;
-    auto offsetMetric = offsetAndMetric(line, section, kin, axes);
-    if (const std::string* problem = std::get_if<std::string>(&offsetMetric))
-        return *problem;
-    const Vec3Of<double> offset = std::get<std::pair<Vec3Of<double>, double>>(offsetMetric).first;
-    const double metric = std::get<std::pair<Vec3Of<double>, double>>(offsetMetric).second;
-    const LineSectionPoint sp = section.at(lam);
-    const SectionLaw law = makeSectionLaw(sp, inSectionAxes(axes, offset), metric);
-
+    const auto result = sectionLaw(line, section, kin, axes, data.shear && section.bending);
+    if (const auto* error = std::get_if<std::string>(&result))
+        return *error;
+    const auto& law = std::get<SectionLaw>(result);
     // The axial strain of the edge, t · du/ds.
     double gamma = 0.0;
     for (std::size_t col = 0; col < nxk; ++col)
@@ -604,49 +636,23 @@ std::variant<LineState, std::string> lineState(const LineData& data, const LineK
             dm = add3(dm, scl3(data.basis[c], coefficient * dv * 2.0 * kin.fractionRate));
         }
     }
-    const Vec3Of<double>& os = law.offset;
-    const double mu = law.metric;
-    // The free strains of the edge: the free axial strain given, and under free curvatures K0a of the axis the
-    // curvatures μ K0a and the axial strain μ (−o_z K0a_y + o_y K0a_z) of the edge, at −o from the axis. The
-    // sums are left out without free curvatures: the same bits as before them.
-    const bool hasFreeCurvature = !freeCurvature.isZero();
-    const Vec3Of<double> freeKappaEdge{0.0, mu * freeCurvature.y, mu * freeCurvature.z};
-    const double freeEdge =
-        hasFreeCurvature ? freeStrain - freeKappaEdge[1] * os[2] + freeKappaEdge[2] * os[1] : freeStrain;
-    // The elastic curvatures of the edge, D⁻¹ (M_s − bᵀ (Γ_x − Γ0)), and its curvatures, with the free ones.
-    const Vec3Of<double> ms = inSectionAxes(axes, m);
-    const double elasticAxial = gamma - freeEdge;
-    const Vec3Of<double> kappaEdge = times(law.bendingInverse, sub3(ms, scl3(law.coupling, elasticAxial)));
-    const Vec3Of<double> totalKappaEdge = hasFreeCurvature ? add3(kappaEdge, freeKappaEdge) : kappaEdge;
-    // The strains of the axis: those seen from the edge over the metric.
-    const double gammaAxis = (gamma + totalKappaEdge[1] * os[2] - totalKappaEdge[2] * os[1]) / mu;
-    const Vec3Of<double> kappa{kappaEdge[0] / mu, kappaEdge[1] / mu, kappaEdge[2] / mu};
-    const Vec3Of<double> totalKappa{totalKappaEdge[0] / mu, totalKappaEdge[1] / mu, totalKappaEdge[2] / mu};
-    const double freeAxis = freeStrain / mu;
-    const std::array<double, 4> strains4{gammaAxis - freeAxis, kappa[0], kappa[1], kappa[2]};
-    std::array<double, 4> forces4{};
-    for (std::size_t a = 0; a < 4; ++a)
-    {
-        double sum = 0.0;
-        for (std::size_t b = 0; b < 4; ++b)
-            sum += law.axisLaw[a][b] * strains4[b];
-        forces4[a] = sum;
-    }
-    // The shear force V = t × dM/ds, in section axes, and its strain where the section has a shear flexibility.
-    const Vec3Of<double> vs = inSectionAxes(axes, cross3(tl, dm));
-    const auto shearStrain = [&](std::size_t i)
-    {
-        if (data.shear && section.bending && law.shearStiffness[i] > 0.0)
-            return vs[1 + i] / (law.shearStiffness[i] * mu);
-        return 0.0;
-    };
+    const auto w = law.wrench(cross3(tl, dm), m);
+    const double freeEdge = law.metric * (law.axial.force[0] * freeStrain + law.axial.moment[1] * freeCurvature.y +
+                                          law.axial.moment[2] * freeCurvature.z);
+    const auto total = addAxial(w, law.axial, law.membrane * (gamma - freeEdge) + law.coupling(w));
+    const auto elastic = law.strain(total);
     LineState state;
-    state.point = add3(kin.point, offset);
-    state.axes = axes;
-    state.forces = {forces4[0], vs[1], vs[2], forces4[1], forces4[2], forces4[3]};
-    state.strains = {gammaAxis, shearStrain(0), shearStrain(1), totalKappa[0], totalKappa[1], totalKappa[2]};
+    state.point = add3(kin.point, law.offset);
+    state.axes = law.axes;
+    state.forces = {total.force[0], total.force[1], total.force[2], total.moment[0], total.moment[1], total.moment[2]};
+    state.strains = {elastic.force[0] + freeStrain,
+                     elastic.force[1],
+                     elastic.force[2],
+                     elastic.moment[0],
+                     elastic.moment[1] + freeCurvature.y,
+                     elastic.moment[2] + freeCurvature.z};
     state.temperature = temperature;
-    state.freeStrain = freeAxis;
+    state.freeStrain = freeStrain;
     state.freeCurvature = freeCurvature;
     return state;
 }

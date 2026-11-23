@@ -187,9 +187,16 @@ Document 34, section 8.1.
   the lines at the grid point is the hybrid unknown; these are the rotation components of the grid point
   (section 5.4).
 - Shear flexibility enters through the complementary energy of V = t × dM/ds. The axial strain stays primal.
-- Offsets of the axis (end offsets, neutral axis) enter the section law. On a curved edge the law is TᵀDT / μ, with
-  μ = |t + do/ds|, and the mass is μ times that of the edge.
-- Mass: the translation of the axis and the rotary inertia of the section. Geometric stiffness: from the axial force.
+- The edge moment is transported to the section axis using the full force resultant. For an offset **o**, the
+  section moment is **M** − **o** × (**N** + **V**), where **N** is the axial force vector. The neutral-axis offset
+  remains part of the axial and bending section law. The axis length per unit edge length is μ = |t + do/ds|.
+  The section axes follow the tangent of the displaced axis. Axial, shear, bending and torsional compliance
+  use the force and moment resolved in that frame. Material mass follows the neutral axis, and the
+  station-dependent non-structural mass follows its own centre of gravity.
+- For a shear-flexible or eccentric beam, the section rotation interpolates the hybrid end rotations and the
+  integral of the recovered section curvature between them. The same rotation drives rotary inertia, translation
+  of eccentric mass, and the virtual work of applied couples and offset line loads. The geometric stiffness uses
+  the recovered axial force.
 
 ### 3.3 Solids
 
@@ -319,9 +326,7 @@ These are properties of the formulation; the port reproduces them and does not t
     concentrated moment is 1 to 2.5 % softer or stiffer than a fine `ClassicFormulation` model, whose own answer
     depends on its mesh;
   - the fibre stresses of a curved membrane carry the term of order t / R of the curvature measure with the sign
-    opposite to the thick-wall solution (0.5 % at R / t = 100);
-  - the rotary inertia of a line acts on the slope of its axis, not on the rotation of its section: the higher
-    bending frequencies of a short shear-flexible beam are 0.3 to 1.1 % below Timoshenko's.
+    opposite to the thick-wall solution (0.5 % at R / t = 100).
 - What the mesh alone does not say is no limit of the formulation once the model file declares it (section 4.4).
   Measured by the same suite, on model files that carry the declaration as a preprocessor writes it:
   - a corner of the outline of the shells where a triangle meets another element is read as an outline that goes on
@@ -346,10 +351,6 @@ These are properties of the formulation; the port reproduces them and does not t
   of the same resultant. `ClassicFormulation` elements, whose grid point forces are the consistent loads of a
   traction, do not show it. Loads meant as tractions are given as pressures or line loads; a displacement wanted at
   a load introduction is read a few elements away.
-- The offset of the axis of a line element is in its section law (the axial strain of the axis coupled to the
-  curvatures), not a rigid arm: the torsion and the shear stay about the edge. A transverse force across the offset
-  twists a `ClassicFormulation` bar through its rigid arm and not a bar of this formulation; in the plane of the
-  offset the two agree exactly.
 
 ## 4. Input
 
@@ -1343,7 +1344,7 @@ shows what the fold angle alone decides, which is what a preprocessor shows befo
 | Entity numbering | The order of unknowns changes only the round-off. |
 | Element order on an edge ("the first shell of the edge") | Ascending element ID here, the order of the model in the reference. |
 | Cards, properties and extensions not in the reference (section 15, decisions 8, 11, 12) | The owner's choice: every element switches together. |
-| A BeamDistributedLoad on a line on a shell edge works on the kinematics of the line (θ = a_T t + t × du/ds, the offset o × f included); a couple about the shell normal is taken, on −μ · du/ds | The load is consistent with the energy of the line; the reference's edge traction puts the couple about μ on −β · t, which differs by the shear γ · t (zero for a Kirchhoff shell, small for a thin one). |
+| A BeamDistributedLoad on a shell edge uses the section rotation for a couple and the work of a force on the displaced section axis. | The reference applies shell edge tractions directly to the trace fields. |
 | The forces of a bar or beam on a shell edge are the section forces of the line kernel along it; the Bar2 row reads its shear forces, axial force and torque at its middle | The shell loads the line along the edge: no end forces describe the forces between the ends. A line alone keeps the end forces of its equilibrium (`r = K x − f`), exact at the ends. |
 | PointsPressureLoad on a face of a shell or a solid of the formulation goes through the pressure facet (section 7), of the sign of the order of its grid points | The consistent load of the element instead of forces at the grid points. |
 | The state of an edge (smooth, sharp, raw) is decided by the model's `ShellNormalAngle` where nothing declares it; a sharp edge of shells keeps its own line; edges can be declared smooth, sharp for one side of a junction, and mesh lines continued or ended (section 4.4) | The owner's decisions of 20 November 2026 (section 15): the reference has raw edges and elements and the sharp edges of the skin alone, every other edge being smooth; its reading rounds every fold that is not declared and takes the outline round the corners its rules do not see. The preprocessor decides and declares; the solver keeps one default. |
