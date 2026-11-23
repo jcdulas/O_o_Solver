@@ -1,6 +1,7 @@
 # O_o_Solver
 
 **[Sphinx documentation](https://jcdulas.github.io/O_o_Solver/)** ·
+**[Benchmark comparison — Classic, Mixed Auto and commercial solvers](https://github.com/jcdulas/O_o_Solver/blob/ba64056fbf8d239e960cd755c84373732e29db2d/docs/structural-benchmark-comparison.md)** ·
 [Derivative coverage](https://jcdulas.github.io/O_o_Solver/docs/derivatives.html) ·
 [API reference](https://jcdulas.github.io/O_o_Solver/docs/api.html)
 
