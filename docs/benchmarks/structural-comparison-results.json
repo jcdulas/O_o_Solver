@@ -457,7 +457,7 @@
         ],
         "component": 1,
         "scale": 1,
-        "classic": 0.10574410286616519,
+        "classic": 0.10599568688344713,
         "mixed": 0.10755444497719832
       }
     ]
@@ -485,7 +485,7 @@
         ],
         "component": 1,
         "scale": 1,
-        "classic": 0.10619139252379715,
+        "classic": 0.10622840111231181,
         "mixed": 0.1077827615169319
       }
     ]
@@ -508,7 +508,7 @@
         ],
         "component": 1,
         "scale": 1,
-        "classic": 0.0051178072729059654,
+        "classic": 0.005124121686310236,
         "mixed": 0.10754853155392483
       }
     ]
@@ -536,7 +536,7 @@
         ],
         "component": 1,
         "scale": 1,
-        "classic": 0.07560985159771255,
+        "classic": 0.07566393869160197,
         "mixed": 0.10778223490760791
       }
     ]
@@ -704,7 +704,7 @@
         "card": "SolidHexa",
         "column": "oxx",
         "node": 13,
-        "classic": -6124.999999999998,
+        "classic": -6125.000000000003,
         "mixed": -6125.000000000164
       }
     ]
@@ -722,7 +722,7 @@
         "card": "SolidHexa",
         "column": "oxx",
         "node": 25,
-        "classic": -6124.9999999999945,
+        "classic": -6125.000000000002,
         "mixed": -6125.000000000224
       }
     ]
@@ -787,6 +787,57 @@
         "scale": -1,
         "classic": 5.077525552431781e-06,
         "mixed": 0.00016897810916630742
+      }
+    ]
+  },
+  {
+    "id": "solid-beam-trapezoid-hex20",
+    "mesh": "6x1x1",
+    "file": "solid-beam-trapezoid-hex20-6x1x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.1081,
+        "field": "displacement",
+        "nodes": [
+          69,
+          70,
+          72,
+          71
+        ],
+        "component": 1,
+        "scale": 1,
+        "classic": 0.0957380282155228,
+        "mixed": 0.10754473524009972
+      }
+    ]
+  },
+  {
+    "id": "solid-beam-trapezoid-hex20",
+    "mesh": "12x2x2",
+    "file": "solid-beam-trapezoid-hex20-12x2x2.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.1081,
+        "field": "displacement",
+        "nodes": [
+          141,
+          142,
+          144,
+          143,
+          235,
+          236,
+          325,
+          324,
+          378
+        ],
+        "component": 1,
+        "scale": 1,
+        "classic": 0.10678789633510807,
+        "mixed": 0.10778055737106837
       }
     ]
   }

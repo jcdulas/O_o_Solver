@@ -2,7 +2,7 @@
 
 How much does the choice of formulation change a result on the same mesh? On the Scordelis–Lo roof with an 8 × 8 grid split into distorted triangles, the classical formulation gives a free-edge deflection of **0.260842 ft** and mixed Auto gives **0.301329 ft**, against the conventional **0.3024 ft**. The corresponding errors are **13.74%** and **0.35%**. On a pin-ended vibrating beam, both formulations are within **0.03%** of the published first frequency with just four elements.
 
-The comparison covers ten physical problems, from curved-shell bending to buckling. Each of the 39 input meshes was run twice, with the default classical formulation and with `MixedHybridFormulation` in Auto. Both use the same nodes, connectivity, materials, supports and loads. The commercial results come from the linked verification manuals or the cited authors' calculations. Element type, mesh density and how the result was sampled matter when comparing the columns.
+The comparison covers ten physical problems, from curved-shell bending to buckling. Each of the 41 input meshes was run twice, with the default classical formulation and with `MixedHybridFormulation` in Auto. Both use the same nodes, connectivity, materials, supports and loads. The commercial results come from the linked verification manuals or the cited authors' calculations. Element type, mesh density and how the result was sampled matter when comparing the columns.
 
 ## Shells and plates
 
@@ -31,14 +31,17 @@ The entries are displacement magnitudes in the load direction. The cylinder and 
 
 | Benchmark and measurement | O_o mesh | Reference | Classic | Mixed Auto | Published commercial result |
 | --- | --- | ---: | ---: | ---: | --- |
-| Straight cantilever, in-plane tip motion (in) | Regular HEX8, 6 × 1 × 1 | 0.1081 | 0.105744 | 0.107554 | 0.10572, OptiStruct HEX8, rectangular [OS-V 0720][straight] |
-| Same cantilever and load (in) | Trapezoidal HEX8, 6 × 1 × 1 | 0.1081 | 0.00511781 | 0.107549 | 0.00508, OptiStruct HEX8, trapezoidal [OS-V 0720][straight] |
+| Straight cantilever, in-plane tip motion (in) | Regular HEX8, 6 × 1 × 1 | 0.1081 | 0.105996 | 0.107554 | 0.10572, OptiStruct HEX8, rectangular [OS-V 0720][straight] |
+| Same cantilever and load (in) | Trapezoidal HEX8, 6 × 1 × 1 | 0.1081 | 0.00512412 | 0.107549 | 0.00508, OptiStruct HEX8, trapezoidal [OS-V 0720][straight] |
+| Same trapezoidal cantilever (in) | HEX20, 6 × 1 × 1 | 0.1081 | 0.0957380 | 0.107545 | 0.09751, OptiStruct HEX20, trapezoidal [OS-V 0720][straight] |
 | Square plate, centre deflection (m) | TET4, 8 × 8 × 1 full plate | 1.69055 × 10⁻⁴ | 1.36551 × 10⁻⁶ | 1.67591 × 10⁻⁴ | Related plate-element result above. [ADINA A.27][adina] gives no TET4 value. |
 | Thick cylinder, bore expansion (in) | HEX20, 4 × 8 × 1 | 0.00786667 | 0.00786734 | 0.00786665 | 0.0078667, Ansys PLANE183 [VM25][vessel] |
 | Thick cylinder, bore hoop stress (psi) | Same HEX20 mesh | 50,000 | 50,589.25 | 50,000.30 | 49,908.05, Ansys PLANE183 [VM25][vessel] |
 | Heated bar after gap closure, axial stress (psi) | HEX8, 6 × 1 × 1 | −6,125 | −6,125 | −6,125 | −6,122.4, Ansys Mechanical [VM-WB-MECH-065][thermal] |
 
-**Distortion in bending.** The 6 in cantilever has a 0.2 × 0.1 in section, a fixed root and a 1 lbf shear load distributed to the end-face nodes. The local output is the mean tip-node displacement along the load. Altair gives a beam-theory target of 0.1081 in and HEX8 ratios of 0.978 and 0.047. Changing only the six bricks from rectangular to trapezoidal takes the local classical error from **2.18% to 95.27%**. Mixed Auto gives **0.50% and 0.51%**, respectively. Subdividing each distorted brick into eight brings the classical error to **30.06%** and the mixed error to **0.29%**. [OptiStruct verification, tables 1 and 3][straight]
+**Distortion in bending.** The 6 in cantilever has a 0.2 × 0.1 in section, a fixed root and a 1 lbf shear load distributed to the end-face nodes. The local output is the mean displacement of the tip corner nodes along the load. Both element orders receive the consistent nodal forces of a uniform end traction. Altair gives a beam-theory target of 0.1081 in and HEX8 ratios of 0.978 and 0.047. Changing only the six bricks from rectangular to trapezoidal takes the local classical error from **1.95% to 95.26%**. Mixed Auto gives **0.50% and 0.51%**, respectively. Subdividing each distorted brick into eight brings the classical error to **30.01%** and the mixed error to **0.29%**. [OptiStruct verification, tables 1 and 3][straight]
+
+With the same trapezoidal corner geometry, adding mid-edge nodes reduces the classical error to **11.44%** on six HEX20s and **1.21%** on the refined mesh. OptiStruct publishes a ratio of 0.902 on the coarse HEX20 mesh, or 9.8% error. [OptiStruct verification, table 3][straight]
 
 **One-layer tetrahedra.** The solid plate has the dimensions and material of the ADINA case. Diaphragm supports act through the thickness, pressure acts on the top face, and the probe averages the top and bottom centre displacements. Here 8 × 8 means **full-plate** cells, giving 4 × 4 × 1 cells and 96 tetrahedra on the modeled quarter. The reference scales the three-dimensional Fourier solution for the 1 m plate by 0.8 for the length scale and by 1/3 for the change in modulus. On the regular 8 × 8 × 1 mesh the classical and mixed deflection errors are **99.19%** and **0.87%**. The companion study also reports surface stresses, distorted grids and additional layers. [Thin-plate bending with solid elements](thin-plate-solid-bending.md)
 
@@ -71,8 +74,9 @@ For each measurement and formulation, the table gives the computed value, its ab
 | Twisted cantilever, in plane | 12 × 2, 24 × 4 | 0.00539060 (0.616%), 24 × 4 | 0.00540080 (0.428%), 24 × 4 |
 | Twisted cantilever, out of plane | 12 × 2, 24 × 4 | 0.00174325 (0.613%), 24 × 4 | 0.00175330 (0.040%), 24 × 4 |
 | Square plate, QUAD4, quarter | 4², 8², 16² | 1.69307 × 10⁻⁴ (0.241%), 16² | 1.69081 × 10⁻⁴ (0.107%), 4² |
-| Regular HEX8 cantilever | 6 × 1 × 1, 12 × 2 × 2 | 0.106191 (1.77%), 12 × 2 × 2 | 0.107783 (0.293%), 12 × 2 × 2 |
-| Trapezoidal HEX8 cantilever | 6 × 1 × 1, 12 × 2 × 2 | 0.0756099 (30.06%), 12 × 2 × 2 | 0.107782 (0.294%), 12 × 2 × 2 |
+| Regular HEX8 cantilever | 6 × 1 × 1, 12 × 2 × 2 | 0.106228 (1.73%), 12 × 2 × 2 | 0.107783 (0.293%), 12 × 2 × 2 |
+| Trapezoidal HEX8 cantilever | 6 × 1 × 1, 12 × 2 × 2 | 0.0756639 (30.01%), 12 × 2 × 2 | 0.107782 (0.294%), 12 × 2 × 2 |
+| Trapezoidal HEX20 cantilever | 6 × 1 × 1, 12 × 2 × 2 | 0.106788 (1.21%), 12 × 2 × 2 | 0.107781 (0.296%), 12 × 2 × 2 |
 | Square plate, TET4, full plate | 4², 8², 16², one layer each | 5.07753 × 10⁻⁶ (97.00%), 16² | 1.68978 × 10⁻⁴ (0.046%), 16² |
 | Thick cylinder, expansion | 4 × 8 × 1, 8 × 16 × 1 | 0.00786671 (0.00057%), 8 × 16 × 1 | 0.007866666 (0.000013%), 8 × 16 × 1 |
 | Thick cylinder, hoop stress | Same two meshes | 50,190.97 (0.382%), 8 × 16 × 1 | 49,999.78 (0.00045%), 8 × 16 × 1 |
@@ -82,7 +86,7 @@ For each measurement and formulation, the table gives the computed value, its ab
 
 ## Reproduce the comparison
 
-The archive contains all **39 model files**. The results file identifies each mesh, the reference, and the exact nodes, stress component or eigenvalue used for all **82 measurements** from **78 solves**. It retains the values before rounding. The two formulations used the same single-thread WebAssembly build, with solver checkout `a59e770` and reader checkout `518ba32`.
+The archive contains all **41 model files**. The results file identifies each mesh, the reference, and the exact nodes, stress component or eigenvalue used for all **86 measurements** from **82 solves**. It retains the values before rounding. The two formulations used the same single-thread WebAssembly build, with the classical EAS-21 HEX8 and reader checkout `518ba32`.
 
 {download}`Model files <benchmarks/structural-comparison-inputs.zip>` ·
 {download}`Full numerical results <benchmarks/structural-comparison-results.json>` ·

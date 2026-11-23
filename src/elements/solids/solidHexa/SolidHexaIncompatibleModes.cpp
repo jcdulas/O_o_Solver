@@ -19,28 +19,27 @@ namespace
 constexpr SolidShape SHAPE = SolidShape::Hexa8;
 constexpr std::size_t CORNERS = 8;
 constexpr std::size_t DOFS = 3 * CORNERS;
-// The internal parameters: α(k, i), the mode (1 − ξ_k²) of displacement component i, at 3k + i.
-constexpr std::size_t MODES = 9;
+// Three normal and four shear modes for each cyclic pair of parent axes (EAS-21).
+constexpr std::size_t MODES_PER_AXIS = 7;
+constexpr std::size_t MODES = 3 * MODES_PER_AXIS;
 // The 2 × 2 × 2 Gauss rule of the element.
 constexpr std::size_t GAUSS_POINTS_PER_AXIS = 2;
 constexpr std::size_t GAUSS_POINTS = 8;
 
 using Mat6x24 = base::MatN<6, DOFS>;
-using Mat6x9 = base::MatN<6, MODES>;
+using ModeStrains = base::MatN<6, MODES>;
 using Mat6x8 = base::MatN<6, CORNERS>;
-using Mat9 = base::MatN<MODES, MODES>;
-using Mat9x24 = base::MatN<MODES, DOFS>;
-using Mat9x8 = base::MatN<MODES, CORNERS>;
+using ModeMatrix = base::MatN<MODES, MODES>;
+using ModeDisplacements = base::MatN<MODES, DOFS>;
+using ModeTemperatures = base::MatN<MODES, CORNERS>;
 using Mat24 = base::MatN<DOFS, DOFS>;
 using Mat24x8 = base::MatN<DOFS, CORNERS>;
 
-// The Voigt strain of the gradient e_i ⊗ g (row i of the displacement gradient equal to g).
-[[nodiscard]] Voigt6 voigtOfComponentGradient(std::size_t i, const base::Vec3& g)
+// Engineering strain of the symmetric product of two parent-coordinate gradients.
+[[nodiscard]] Voigt6 strainDirection(const base::Vec3& a, const base::Vec3& b)
 {
-    base::Mat3 gradient;
-    for (std::size_t j = 0; j < 3; ++j)
-        gradient(i, j) = g[j];
-    return voigtStrainOf(gradient);
+    return {a[0] * b[0], a[1] * b[1], a[2] * b[2], a[0] * b[1] + a[1] * b[0],
+            a[1] * b[2] + a[2] * b[1], a[0] * b[2] + a[2] * b[0]};
 }
 
 // What one Gauss point contributes: B (compatible strains), G (strains of the modes), N (to interpolate ΔT) and
@@ -49,7 +48,7 @@ struct GaussPoint
 {
     ParentPoint point;
     Mat6x24 compatible;
-    Mat6x9 modes;
+    ModeStrains modes;
     std::array<double, CORNERS> shape{};
     double weight = 0.0;
 };
@@ -63,10 +62,17 @@ struct GaussPoint
     const base::Mat3 centreInverse = base::inverse(centre.jacobian);
     std::array<base::Vec3, 3> parentGradients{};
     for (std::size_t k = 0; k < 3; ++k)
-        parentGradients[k] = {centreInverse(0, k), centreInverse(1, k), centreInverse(2, k)};
+        parentGradients[k] = base::normalized({centreInverse(0, k), centreInverse(1, k), centreInverse(2, k)});
+    // Column scaling cancels in the condensation. Unit directions avoid powers of the element aspect ratio.
+    std::array<Voigt6, 3> normal{}, shear{};
+    for (std::size_t k = 0; k < 3; ++k)
+    {
+        normal[k] = strainDirection(parentGradients[k], parentGradients[k]);
+        shear[k] = strainDirection(parentGradients[k], parentGradients[(k + 1) % 3]);
+    }
 
     std::array<GaussPoint, GAUSS_POINTS> points{};
-    SolidOperator b;
+    SolidOperator compatible;
     std::size_t g = 0;
     for (const SolidQuadraturePoint& quadrature : hexahedronRule(GAUSS_POINTS_PER_AXIS).all())
     {
@@ -76,21 +82,23 @@ struct GaussPoint
         point.weight = std::abs(gradients.determinant) * quadrature.weight;
         for (std::size_t a = 0; a < CORNERS; ++a)
             point.shape[a] = gradients.shape.n[a];
-        fillStrainOperator(gradients, b);
+        fillStrainOperator(gradients, compatible);
         for (std::size_t r = 0; r < 6; ++r)
             for (std::size_t j = 0; j < DOFS; ++j)
-                point.compatible(r, j) = b(r, j);
+                point.compatible(r, j) = compatible(r, j);
         const double ratio = centre.determinant / gradients.determinant;
         const std::array<double, 3> parent{quadrature.point.xi, quadrature.point.eta, quadrature.point.zeta};
         for (std::size_t k = 0; k < 3; ++k)
         {
-            // ∂(1 − ξ_k²)/∂ξ_k = −2ξ_k.
-            const base::Vec3 modeGradient = (ratio * -2.0 * parent[k]) * parentGradients[k];
-            for (std::size_t i = 0; i < 3; ++i)
+            const double a = parent[k];
+            const double b = parent[(k + 1) % 3];
+            const double c = parent[(k + 2) % 3];
+            const std::array<double, MODES_PER_AXIS> polynomial{a, a * b, a * c, a, b, a * c, b * c};
+            for (std::size_t m = 0; m < MODES_PER_AXIS; ++m)
             {
-                const Voigt6 strain = voigtOfComponentGradient(i, modeGradient);
+                const Voigt6& direction = m < 3 ? normal[k] : shear[k];
                 for (std::size_t r = 0; r < 6; ++r)
-                    point.modes(r, 3 * k + i) = strain[r];
+                    point.modes(r, MODES_PER_AXIS * k + m) = ratio * polynomial[m] * direction[r];
             }
         }
     }
@@ -101,19 +109,19 @@ struct GaussPoint
 // thermal strain per unit change of each node.
 struct Condensation
 {
-    Mat24 stiffness;    // K_uu − K_uα·K_αα⁻¹·K_αu
-    Mat9x24 modesOfU;   // K_αα⁻¹·K_αu
-    Mat9x8 modesOfT;    // K_αα⁻¹·F_α, f_α = F_α·ΔT
-    Mat24x8 thermalLoad; // −K_uα·K_αα⁻¹·F_α
+    Mat24 stiffness;            // K_uu − K_uα·K_αα⁻¹·K_αu
+    ModeDisplacements modesOfU; // K_αα⁻¹·K_αu
+    ModeTemperatures modesOfT;  // K_αα⁻¹·F_α, f_α = F_α·ΔT
+    Mat24x8 thermalLoad;        // −K_uα·K_αα⁻¹·F_α
 };
 
 [[nodiscard]] Condensation condense(const std::array<GaussPoint, GAUSS_POINTS>& points, const Mat6& d,
                                     const Voigt6& expansion)
 {
     Mat24 kuu;
-    Mat9x24 kau;
-    Mat9 kaa;
-    Mat9x8 fa;
+    ModeDisplacements kau;
+    ModeMatrix kaa;
+    ModeTemperatures fa;
     std::array<double, 6> thermalStress{}; // D·a
     for (std::size_t r = 0; r < 6; ++r)
         for (std::size_t s = 0; s < 6; ++s)
@@ -121,7 +129,7 @@ struct Condensation
     for (const GaussPoint& point : points)
     {
         const Mat6x24 db = d * point.compatible;
-        const Mat6x9 dg = d * point.modes;
+        const ModeStrains dg = d * point.modes;
         kuu += point.weight * (point.compatible.transposed() * db);
         kau += point.weight * (point.modes.transposed() * db);
         kaa += point.weight * (point.modes.transposed() * dg);
@@ -134,7 +142,7 @@ struct Condensation
                 fa(m, a) += point.weight * work * point.shape[a];
         }
     }
-    const Mat9 kaaInverse = inverted(kaa);
+    const ModeMatrix kaaInverse = inverted(kaa);
     Condensation c;
     c.modesOfU = kaaInverse * kau;
     c.modesOfT = kaaInverse * fa;

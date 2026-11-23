@@ -242,21 +242,16 @@ formulation (`<Card>Stiffness.cpp`). The default of each shape (SolidProp IN and
 
 | Shape | Default | Other SolidProp choices |
 |---|---|---|
-| SolidHexa, 8 nodes | `solidHexa/SolidHexaIncompatibleModes`: the trilinear element with the incompatible modes (1 − ξ²), (1 − η²), (1 − ζ²) of Wilson, Taylor, Doherty & Ghaboussi (1973), their derivatives through the centre Jacobian with Taylor, Beresford & Wilson's factor det J0 / det J (1976), condensed, 2 × 2 × 2 points (CalculiX C3D8I; Bathe §4.4.1); stresses at the corners extrapolated from the Gauss points | ISOP = FULL: the plain trilinear element, 2 × 2 × 2 (C3D8) |
+| SolidHexa, 8 nodes | EAS-21 of Andelfinger & Ramm (1993). The default trilinear brick has 21 internal strain coefficients, transformed with the centre Jacobian and det J0 / det J, integrated at 2 × 2 × 2 points and condensed locally. Corner stresses are extrapolated from these points | ISOP = FULL: the plain trilinear element, 2 × 2 × 2 (C3D8) |
 | SolidHexa, 20 nodes | the serendipity element, 3 × 3 × 3 (C3D20) | ISOP = REDUCED or IN = TWO: 2 × 2 × 2 (C3D20R), stresses extrapolated from the Gauss points |
 | SolidPenta, 6 and 15 nodes | the isoparametric wedge, 3 × 2 and degree-4 triangle × 3 points (C3D6, C3D15; Code_Aster PENTA6, PENTA15) | none (the 6-node wedge takes IN = BUBBLE, ISOP = REDUCED or FULL as the same element) |
 | SolidTetra, 4 and 10 nodes | the constant strain tetrahedron (one point); the quadratic tetrahedron, Keast's five points | none (4 nodes: IN = TWO, ISOP = FULL or REDUCED, STRESS = GAUSS name the same element) |
 | SolidPyramid, 5 and 13 nodes | collapsed coordinates, 2 × 2 × 2 and 3 × 3 × 3 integration. The 13-node functions match the 6-node triangle on each side and the 8-node quadrilateral on the base | none |
 
 The default solid mass uses the HRZ diagonal (Hinton, Rock & Zienkiewicz 1976) adjusted to preserve mass and centre of gravity.
-The consistent matrix is retained if the positive diagonal correction does not converge. CoupledMass > 0 selects the consistent matrix directly. Validated (a
-throwaway check on the element operators): the 7-element distorted patch of MacNeal & Harder (1985) exact to
-round-off for the 8-node defaults and ISOP = FULL and both 20-node rules; six zero eigenvalues for the 8-node elements
-on a distorted shape (twelve for the reduced 20-node element alone, as the rule gives); a cantilever L/h = 10 of
-10 × 1 × 1 incompatible-modes SolidHexa within 0.4 % of Euler-Bernoulli plus shear (ν = 0; the plain element 33 % stiff);
-pure bending exact for ν = 0, 0.3, 0.49; a free linear temperature gradient bending a beam without stress; on
-MacNeal-Harder's straight beam (six elements) 0.98 / 0.97 (in-plane / out-of-plane shear) for rectangles, 0.62 /
-0.53 for parallelograms, 0.05 / 0.03 for trapezoids (the known limit of incompatible modes on tapered shapes).
+The consistent matrix is retained if the positive diagonal correction does not converge. CoupledMass > 0 selects the consistent matrix directly. The 20-node validation includes the seven-element distorted patch with both integration rules. A single reduced 20-node brick has twelve zero eigenvalues. The earlier nine-mode HEX8 gave the six-element MacNeal–Harder cantilever tip displacement ratios 0.98 / 0.97 for rectangles, 0.62 / 0.53 for parallelograms and 0.05 / 0.03 for trapezoids (in-plane / out-of-plane bending).
+
+The [thin-plate benchmark](../../docs/thin-plate-solid-bending.md) measures the accuracy of the default HEX8 on regular and distorted grids and compares it with quadratic solids. The [structural benchmark comparison](../../docs/structural-benchmark-comparison.md) reports the strong loss of accuracy of tapered HEX8s on a coarse bending mesh. The solid validation suite also checks the six free rigid modes of a warped brick, bilinear bending strain and the reactions and corner stresses under a thermal strain gradient.
 
 ## Differential stiffness
 

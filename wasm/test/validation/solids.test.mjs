@@ -1788,6 +1788,60 @@ for (const [label, options] of [["classic", CLASSIC], ["mixed", MIXED]]) {
   });
 }
 
+test("classic HEX8 recovers bilinear bending strain without parasitic shear", () => {
+  const mesh = createMesh().addElement("SolidHexa", CELL_CORNERS.map(p => p.map(x => 2 * x - 1)));
+  const young = 1000;
+  const records = [...mesh.records(), ...isotropic({ young, poisson: 0 })];
+  // On the unit half-width cube prescribe ux = xyz. At nu = 0 the enhanced shear modes
+  // relax the xz and xy shear terms. The normal strain yz must still carry energy.
+  for (const [id, [x, y, z]] of mesh.points)
+    records.push(`SinglePointConstr;1;${id};1;${real(x * y * z)}`, `SinglePointConstr;1;${id};23;0.`);
+  const run = runModel(deck(101, staticCase([null]).map(s =>
+    s === "StressOutput;All" ? "StressOutput;All;CornerResults" : s), records), CLASSIC);
+  const rows = rowsOf(run, "SolidHexa").filter(row => row.nodeId > 0);
+  assert.equal(rows.length, 8);
+  for (const row of rows) {
+    const [, y, z] = mesh.points.get(row.nodeId);
+    sixOf(row).forEach((s, i) => assert.ok(Math.abs(s - (i === 0 ? young * y * z : 0)) < 1e-8));
+  }
+  let work = 0;
+  for (const [id, [x, y, z]] of mesh.points)
+    work += x * y * z * nodal(run, "singlePointConstrForces", id)[0];
+  assertRatio(work, 8 * young / 9, 1e-10, "integral of E(yz)^2 over the cube");
+});
+
+test("classic HEX8 has six rigid modes on a warped brick", (t) => {
+  const corners = CELL_CORNERS.map(([x, y, z]) => [x + 0.2 * y * z, y + 0.3 * x * z, z + 0.15 * x * y]);
+  const mesh = createMesh().addElement("SolidHexa", corners);
+  const records = [...mesh.records(), ...isotropic(STEEL), "LanczosEigenMethod;3;;;8"];
+  const run = runModel(deck(103, ["SubcaseStart;1", "EigenMethodSelection;3"], records), CLASSIC, "modes");
+  const values = run.eigenvalues[0].rows.map(row => row.eigenvalue);
+  assertSixRigidModes(t, values);
+  assert.ok(values[6] > 0.05 * values[7]);
+});
+
+test("classic HEX8 condenses bilinear thermal strain into both stresses and reactions", () => {
+  const mesh = createMesh().addElement("SolidHexa", CELL_CORNERS.map(p => p.map(x => 2 * x - 1)));
+  const young = 1000, expansion = 1e-3;
+  const records = [...mesh.records(), ...isotropic({ young, poisson: 0, expansion })];
+  for (const [id, [, y, z]] of mesh.points)
+    records.push(`SinglePointConstr;1;${id};123;0.`, `NodeTemperatureLoad;8;${id};${real(y * z)}`);
+  const cases = ["StressOutput;All;CornerResults", "SinglePointConstrForceOutput;All", "SubcaseStart;1",
+    "SinglePointConstrSelection;1", "TemperatureSelection;8;TemperatureLoadPart"];
+  const run = runModel(deck(101, cases, records), CLASSIC);
+  // At nu = 0 the yy and zz enhancements admit yz, whereas xx retains the thermal stress.
+  const rows = rowsOf(run, "SolidHexa").filter(row => row.nodeId > 0);
+  assert.equal(rows.length, 8);
+  for (const row of rows) {
+    const [, y, z] = mesh.points.get(row.nodeId);
+    sixOf(row).forEach((s, i) => assert.ok(Math.abs(s - (i === 0 ? -young * expansion * y * z : 0)) < 1e-9));
+  }
+  let work = 0;
+  for (const [id, [x, y, z]] of mesh.points)
+    work += x * y * z * nodal(run, "singlePointConstrForces", id)[0];
+  assertRatio(work, -8 * young * expansion / 9, 1e-10, "thermal reaction work for virtual ux = xyz");
+});
+
 test("mixed hexahedron with a single mid-side temperature and a reference temperature", () => {
   const mesh = createMesh({ surfaces: boxSurfaces(1, 1, 1),
     quadratic: (a, b) => a[1] === 0 && b[1] === 0 && a[2] === 0 && b[2] === 0 }).addBlock({ n: [1, 1, 1] });

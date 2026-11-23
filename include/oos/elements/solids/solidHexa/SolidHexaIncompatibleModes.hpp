@@ -9,35 +9,17 @@
 namespace oos::elements
 {
 
-// The eight-node SolidHexa of the default integration (SolidProp IN and ISOP blank): the trilinear hexahedron enriched
-// by incompatible modes, the element of Wilson, Taylor, Doherty & Ghaboussi (Incompatible displacement models, in
-// Numerical and Computer Methods in Structural Mechanics, Academic Press, 1973) with the correction of Taylor,
-// Beresford & Wilson (A non-conforming element for stress analysis, IJNME 10, 1976), as the open-source solver
-// CalculiX gives it (its element C3D8I); Bathe, Finite Element Procedures, §4.4.1 (incompatible displacement models).
-// Positions, the elasticity D and the expansion a are in the material system; the response (SolidResponse) is over the
-// 24 translations of G1-G8 in that system.
+// Default HEX8 with the EAS-21 strain interpolation of Andelfinger & Ramm (IJNME, 1993,
+// doi:10.1002/nme.1620360805). The 24 nodal translations give the compatible trilinear field.
+// For each cyclic permutation (a,b,c) of the parent coordinates, enhance the aa strain by
+// a, ab, ac and the ab shear by a, b, ac, bc. Map these tensors with the centre inverse Jacobian
+// and scale them by det J0 / det J. Each mode then integrates to zero against a constant stress,
+// including on distorted bricks. The 2 x 2 x 2 rule samples all modes independently.
 //
-// Formulation:
-// - the displacement is the trilinear field plus three quadratic modes per component, u_inc = Σ_k (1 − ξ_k²)·α_k
-//   (ξ_k = ξ, η, ζ; α_k a vector: 9 internal parameters), which the nodes do not see (incompatible between elements);
-// - the strain of the modes, G·α, takes the parent derivative −2ξ_k of each mode through the inverse Jacobian at the
-//   centre J0⁻¹ and the factor det J0 / det J (Taylor's correction):
-//   ∇u_inc = Σ_k α_k ⊗ (det J0 / det J)·J0⁻¹·(−2ξ_k e_k). Then ∫ G dV = det J0·J0⁻¹·∫ ∂(1 − ξ_k²)/∂ξ_k dξ = 0 on
-//   any shape, so a constant stress does no work on the modes: the element passes the patch test on distorted meshes
-//   (the uncorrected modes pass it on parallelepipeds only);
-// - K_uu, K_uα, K_αα integrated by 2 × 2 × 2 Gauss points, the modes condensed at element level:
-//   K = K_uu − K_uα·K_αα⁻¹·K_αu, α = −K_αα⁻¹·K_αu·u (+ the thermal part below).
-// On a parallelepiped the modes give the exact linear bending strain of each direction: no shear locking, and the
-// Poisson coupling of bending is free (a rectangular element under pure bending is exact).
-//
-// Recovery: the total strain ε = B·u + G·α. At the centre G vanishes (ξ_k = 0) and ε = B(0)·u; at the corners the
-// strains of the eight Gauss points are extrapolated by their trilinear functions (Hinton & Campbell, IJNME 8, 1974;
-// CalculiX also extrapolates the Gauss point values of its elements to the nodes), which avoids evaluating
-// det J0 / det J at a corner of a distorted element. σ = D·ε.
-//
-// Thermal strain ε_T = a·ΔT, ΔT interpolated from the nodes: f_α = ∫ Gᵀ·D·a·ΔT dV, condensed into the nodal loads
-// (SolidResponse::thermalLoad, −K_uα·K_αα⁻¹·f_α) and into the strains (thermalStrain, G·K_αα⁻¹·f_α), so that a free
-// linear temperature gradient bends a rectangular element without stress.
+// Eliminate the 21 local coefficients from the elastic energy including thermal eigenstrain.
+// The same solution supplies the nodal thermal loads and the total strain at the Gauss points.
+// At the centre all enhanced modes vanish. Corner strains extrapolate the Gauss values.
+// Positions, elasticity, thermal expansion and the returned operators use the material frame.
 void buildSolidHexaIncompatibleModesResponse(std::span<const base::Vec3> positions, const Mat6& elasticity,
                                             const Voigt6& expansion, SolidResponseParts parts, SolidResponse& response);
 
