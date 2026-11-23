@@ -63,6 +63,9 @@ optimization workloads; the small derivative fixtures verify formulas and intera
 
 ## Validation of the mixed hybrid formulation
 
+The [structural benchmark comparison](structural-benchmark-comparison.md) reports both formulations on the same meshes,
+the closest results observed under refinement, and commercial solver values with their sources. The input files and replay are included.
+
 The [thin-plate solid benchmark](thin-plate-solid-bending.md) reports measured deflection and surface stress errors
 for tetrahedra and hexahedra, with model files for replaying the degree and mesh refinements.
 

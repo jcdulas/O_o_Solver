@@ -19,6 +19,7 @@ Solve finite element models through typed tables and return numerical results.
 
 ## Detailed guides
 
+- [Structural benchmark comparison](docs/structural-benchmark-comparison.md) compares both formulations across shells, solids, vibration and buckling with analytical targets and published commercial results.
 - [Thin-plate bending with solid elements](docs/thin-plate-solid-bending.md) compares element degree, mesh
   distortion and the number of layers against a three-dimensional elasticity solution.
 - [Element names](docs/naming.md): shared roots, implementation roles and compatibility.
@@ -49,6 +50,7 @@ docs/getting-started
 docs/threading
 docs/static-inputs
 docs/testing
+docs/structural-benchmark-comparison
 docs/thin-plate-solid-bending
 README
 docs/table-package

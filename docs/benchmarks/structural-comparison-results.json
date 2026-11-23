@@ -1,0 +1,793 @@
+[
+  {
+    "id": "roof-quad",
+    "mesh": "4x4",
+    "file": "roof-quad-4x4.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "sag",
+        "target": 0.3024,
+        "field": "displacement",
+        "nodes": [
+          21
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 0.32016057948943416,
+        "mixed": 0.30112888479245853
+      }
+    ]
+  },
+  {
+    "id": "roof-tria",
+    "mesh": "4x4",
+    "file": "roof-tria-4x4.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "sag",
+        "target": 0.3024,
+        "field": "displacement",
+        "nodes": [
+          21
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 0.2004650574008131,
+        "mixed": 0.3010242552796715
+      }
+    ]
+  },
+  {
+    "id": "roof-tria-distorted",
+    "mesh": "4x4",
+    "file": "roof-tria-distorted-4x4.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "sag",
+        "target": 0.3024,
+        "field": "displacement",
+        "nodes": [
+          21
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 0.20770939862031504,
+        "mixed": 0.3010049448797921
+      }
+    ]
+  },
+  {
+    "id": "roof-quad",
+    "mesh": "8x8",
+    "file": "roof-quad-8x8.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "sag",
+        "target": 0.3024,
+        "field": "displacement",
+        "nodes": [
+          73
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 0.3061104986247878,
+        "mixed": 0.3015084537500164
+      }
+    ]
+  },
+  {
+    "id": "roof-tria",
+    "mesh": "8x8",
+    "file": "roof-tria-8x8.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "sag",
+        "target": 0.3024,
+        "field": "displacement",
+        "nodes": [
+          73
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 0.25922202649800496,
+        "mixed": 0.30134301215434367
+      }
+    ]
+  },
+  {
+    "id": "roof-tria-distorted",
+    "mesh": "8x8",
+    "file": "roof-tria-distorted-8x8.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "sag",
+        "target": 0.3024,
+        "field": "displacement",
+        "nodes": [
+          73
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 0.2608419262309537,
+        "mixed": 0.30132894007800143
+      }
+    ]
+  },
+  {
+    "id": "roof-quad",
+    "mesh": "16x16",
+    "file": "roof-quad-16x16.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "sag",
+        "target": 0.3024,
+        "field": "displacement",
+        "nodes": [
+          273
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 0.3029219863323026,
+        "mixed": 0.30186378012372983
+      }
+    ]
+  },
+  {
+    "id": "roof-tria",
+    "mesh": "16x16",
+    "file": "roof-tria-16x16.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "sag",
+        "target": 0.3024,
+        "field": "displacement",
+        "nodes": [
+          273
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 0.2893929798831896,
+        "mixed": 0.30163948117963024
+      }
+    ]
+  },
+  {
+    "id": "roof-tria-distorted",
+    "mesh": "16x16",
+    "file": "roof-tria-distorted-16x16.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "sag",
+        "target": 0.3024,
+        "field": "displacement",
+        "nodes": [
+          273
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 0.28857949420816353,
+        "mixed": 0.30165786969476877
+      }
+    ]
+  },
+  {
+    "id": "pinched-cylinder",
+    "mesh": "5x5",
+    "file": "pinched-cylinder-5x5.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "radial",
+        "target": 1.8248e-05,
+        "field": "displacement",
+        "nodes": [
+          1
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 1.2923974501605353e-05,
+        "mixed": 1.8643578111486712e-05
+      }
+    ]
+  },
+  {
+    "id": "pinched-cylinder",
+    "mesh": "10x10",
+    "file": "pinched-cylinder-10x10.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "radial",
+        "target": 1.8248e-05,
+        "field": "displacement",
+        "nodes": [
+          1
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 1.7399619856965907e-05,
+        "mixed": 1.854685119084126e-05
+      }
+    ]
+  },
+  {
+    "id": "pinched-cylinder",
+    "mesh": "20x20",
+    "file": "pinched-cylinder-20x20.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "radial",
+        "target": 1.8248e-05,
+        "field": "displacement",
+        "nodes": [
+          1
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 1.8617263666313363e-05,
+        "mixed": 1.8549041558890916e-05
+      }
+    ]
+  },
+  {
+    "id": "hemisphere",
+    "mesh": "4x4",
+    "file": "hemisphere-4x4.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "radial",
+        "target": 0.094,
+        "field": "displacement",
+        "nodes": [
+          1
+        ],
+        "component": 0,
+        "scale": 1,
+        "classic": 0.09642576392026825,
+        "mixed": 0.09342220194490816
+      }
+    ]
+  },
+  {
+    "id": "hemisphere",
+    "mesh": "8x8",
+    "file": "hemisphere-8x8.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "radial",
+        "target": 0.094,
+        "field": "displacement",
+        "nodes": [
+          1
+        ],
+        "component": 0,
+        "scale": 1,
+        "classic": 0.09467282609014335,
+        "mixed": 0.0935749218987161
+      }
+    ]
+  },
+  {
+    "id": "hemisphere",
+    "mesh": "16x16",
+    "file": "hemisphere-16x16.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "radial",
+        "target": 0.094,
+        "field": "displacement",
+        "nodes": [
+          1
+        ],
+        "component": 0,
+        "scale": 1,
+        "classic": 0.09377189016835219,
+        "mixed": 0.09360676791673635
+      }
+    ]
+  },
+  {
+    "id": "twist-in",
+    "mesh": "12x2",
+    "file": "twist-in-12x2.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.005424,
+        "field": "displacement",
+        "nodes": [
+          26
+        ],
+        "component": 2,
+        "scale": 1,
+        "classic": 0.005377511126222856,
+        "mixed": 0.005400728829025517
+      }
+    ]
+  },
+  {
+    "id": "twist-out",
+    "mesh": "12x2",
+    "file": "twist-out-12x2.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.001754,
+        "field": "displacement",
+        "nodes": [
+          26
+        ],
+        "component": 1,
+        "scale": 1,
+        "classic": 0.0017293936686894155,
+        "mixed": 0.0017532476898397163
+      }
+    ]
+  },
+  {
+    "id": "twist-in",
+    "mesh": "24x4",
+    "file": "twist-in-24x4.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.005424,
+        "field": "displacement",
+        "nodes": [
+          75
+        ],
+        "component": 2,
+        "scale": 1,
+        "classic": 0.005390598357703166,
+        "mixed": 0.005400800002902367
+      }
+    ]
+  },
+  {
+    "id": "twist-out",
+    "mesh": "24x4",
+    "file": "twist-out-24x4.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.001754,
+        "field": "displacement",
+        "nodes": [
+          75
+        ],
+        "component": 1,
+        "scale": 1,
+        "classic": 0.0017432464448189687,
+        "mixed": 0.001753303586062255
+      }
+    ]
+  },
+  {
+    "id": "square-plate",
+    "mesh": "4x4",
+    "file": "square-plate-4x4.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "centre",
+        "target": 0.0001689,
+        "field": "displacement",
+        "nodes": [
+          25
+        ],
+        "component": 2,
+        "scale": 1,
+        "classic": 0.00017190259557637344,
+        "mixed": 0.00016908140032008092
+      }
+    ]
+  },
+  {
+    "id": "square-plate",
+    "mesh": "8x8",
+    "file": "square-plate-8x8.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "centre",
+        "target": 0.0001689,
+        "field": "displacement",
+        "nodes": [
+          81
+        ],
+        "component": 2,
+        "scale": 1,
+        "classic": 0.00016995926974281244,
+        "mixed": 0.00016908143388014418
+      }
+    ]
+  },
+  {
+    "id": "square-plate",
+    "mesh": "16x16",
+    "file": "square-plate-16x16.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "centre",
+        "target": 0.0001689,
+        "field": "displacement",
+        "nodes": [
+          289
+        ],
+        "component": 2,
+        "scale": 1,
+        "classic": 0.00016930674756317186,
+        "mixed": 0.00016908143445040647
+      }
+    ]
+  },
+  {
+    "id": "solid-beam-regular",
+    "mesh": "6x1x1",
+    "file": "solid-beam-regular-6x1x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.1081,
+        "field": "displacement",
+        "nodes": [
+          25,
+          26,
+          27,
+          28
+        ],
+        "component": 1,
+        "scale": 1,
+        "classic": 0.10574410286616519,
+        "mixed": 0.10755444497719832
+      }
+    ]
+  },
+  {
+    "id": "solid-beam-regular",
+    "mesh": "12x2x2",
+    "file": "solid-beam-regular-12x2x2.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.1081,
+        "field": "displacement",
+        "nodes": [
+          49,
+          50,
+          51,
+          52,
+          77,
+          78,
+          103,
+          104,
+          117
+        ],
+        "component": 1,
+        "scale": 1,
+        "classic": 0.10619139252379715,
+        "mixed": 0.1077827615169319
+      }
+    ]
+  },
+  {
+    "id": "solid-beam-trapezoid",
+    "mesh": "6x1x1",
+    "file": "solid-beam-trapezoid-6x1x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.1081,
+        "field": "displacement",
+        "nodes": [
+          25,
+          26,
+          27,
+          28
+        ],
+        "component": 1,
+        "scale": 1,
+        "classic": 0.0051178072729059654,
+        "mixed": 0.10754853155392483
+      }
+    ]
+  },
+  {
+    "id": "solid-beam-trapezoid",
+    "mesh": "12x2x2",
+    "file": "solid-beam-trapezoid-12x2x2.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "tip",
+        "target": 0.1081,
+        "field": "displacement",
+        "nodes": [
+          49,
+          50,
+          51,
+          52,
+          77,
+          78,
+          103,
+          104,
+          117
+        ],
+        "component": 1,
+        "scale": 1,
+        "classic": 0.07560985159771255,
+        "mixed": 0.10778223490760791
+      }
+    ]
+  },
+  {
+    "id": "thick-cylinder",
+    "mesh": "4x8x1",
+    "file": "thick-cylinder-4x8x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "bore",
+        "target": 0.0078666666666667,
+        "field": "displacement",
+        "nodes": [
+          1
+        ],
+        "component": 0,
+        "scale": 1,
+        "classic": 0.007867338694159754,
+        "mixed": 0.00786664972285935
+      },
+      {
+        "name": "hoop",
+        "target": 50000,
+        "field": "cornerStress",
+        "card": "SolidHexa",
+        "column": "oyy",
+        "node": 1,
+        "classic": 50589.24812078658,
+        "mixed": 50000.296602285925
+      }
+    ]
+  },
+  {
+    "id": "thick-cylinder",
+    "mesh": "8x16x1",
+    "file": "thick-cylinder-8x16x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "bore",
+        "target": 0.0078666666666667,
+        "field": "displacement",
+        "nodes": [
+          1
+        ],
+        "component": 0,
+        "scale": 1,
+        "classic": 0.007866711678217534,
+        "mixed": 0.007866665615219592
+      },
+      {
+        "name": "hoop",
+        "target": 50000,
+        "field": "cornerStress",
+        "card": "SolidHexa",
+        "column": "oyy",
+        "node": 1,
+        "classic": 50190.97422067115,
+        "mixed": 49999.775829526174
+      }
+    ]
+  },
+  {
+    "id": "frequency",
+    "mesh": "4",
+    "file": "frequency-4.oos",
+    "analysis": "modes",
+    "probes": [
+      {
+        "name": "first",
+        "target": 28.766,
+        "field": "frequency",
+        "classic": 28.766442725841948,
+        "mixed": 28.758260315468142
+      }
+    ]
+  },
+  {
+    "id": "frequency",
+    "mesh": "8",
+    "file": "frequency-8.oos",
+    "analysis": "modes",
+    "probes": [
+      {
+        "name": "first",
+        "target": 28.766,
+        "field": "frequency",
+        "classic": 28.758920687142048,
+        "mixed": 28.7582601549133
+      }
+    ]
+  },
+  {
+    "id": "frequency",
+    "mesh": "16",
+    "file": "frequency-16.oos",
+    "analysis": "modes",
+    "probes": [
+      {
+        "name": "first",
+        "target": 28.766,
+        "field": "frequency",
+        "classic": 28.75833781978359,
+        "mixed": 28.75826015425895
+      }
+    ]
+  },
+  {
+    "id": "buckling",
+    "mesh": "5",
+    "file": "buckling-5.oos",
+    "analysis": "buckling",
+    "probes": [
+      {
+        "name": "first",
+        "target": 38.553142191755306,
+        "field": "buckling",
+        "classic": 38.55366110185207,
+        "mixed": 38.55314217207489
+      }
+    ]
+  },
+  {
+    "id": "buckling",
+    "mesh": "10",
+    "file": "buckling-10.oos",
+    "analysis": "buckling",
+    "probes": [
+      {
+        "name": "first",
+        "target": 38.553142191755306,
+        "field": "buckling",
+        "classic": 38.55317474890505,
+        "mixed": 38.55314217178272
+      }
+    ]
+  },
+  {
+    "id": "buckling",
+    "mesh": "20",
+    "file": "buckling-20.oos",
+    "analysis": "buckling",
+    "probes": [
+      {
+        "name": "first",
+        "target": 38.553142191755306,
+        "field": "buckling",
+        "classic": 38.553144228434796,
+        "mixed": 38.55314216852615
+      }
+    ]
+  },
+  {
+    "id": "thermal-bar",
+    "mesh": "6x1x1",
+    "file": "thermal-bar-6x1x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "axial",
+        "target": -6125,
+        "field": "cornerStress",
+        "card": "SolidHexa",
+        "column": "oxx",
+        "node": 13,
+        "classic": -6124.999999999998,
+        "mixed": -6125.000000000164
+      }
+    ]
+  },
+  {
+    "id": "thermal-bar",
+    "mesh": "12x1x1",
+    "file": "thermal-bar-12x1x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "axial",
+        "target": -6125,
+        "field": "cornerStress",
+        "card": "SolidHexa",
+        "column": "oxx",
+        "node": 25,
+        "classic": -6124.9999999999945,
+        "mixed": -6125.000000000224
+      }
+    ]
+  },
+  {
+    "id": "square-tet4",
+    "mesh": "4x4x1",
+    "file": "square-tet4-4x4x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "centre",
+        "target": 0.00016905516926133389,
+        "field": "displacement",
+        "nodes": [
+          17,
+          18
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 3.625227811584609e-07,
+        "mixed": 0.00014763063769284145
+      }
+    ]
+  },
+  {
+    "id": "square-tet4",
+    "mesh": "8x8x1",
+    "file": "square-tet4-8x8x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "centre",
+        "target": 0.00016905516926133389,
+        "field": "displacement",
+        "nodes": [
+          49,
+          50
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 1.3655111778711356e-06,
+        "mixed": 0.00016759112104322365
+      }
+    ]
+  },
+  {
+    "id": "square-tet4",
+    "mesh": "16x16x1",
+    "file": "square-tet4-16x16x1.oos",
+    "analysis": "statics",
+    "probes": [
+      {
+        "name": "centre",
+        "target": 0.00016905516926133389,
+        "field": "displacement",
+        "nodes": [
+          161,
+          162
+        ],
+        "component": 2,
+        "scale": -1,
+        "classic": 5.077525552431781e-06,
+        "mixed": 0.00016897810916630742
+      }
+    ]
+  }
+]
