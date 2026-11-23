@@ -5,6 +5,11 @@ through the public entry points and shows where the implementation responsibilit
 
 ## Reader and solver boundary
 
+In JavaScript, Reader and Solver are separate WASM modules. In Python, `oo_reader` and
+`oo_solver` run in one CPython process. `model_from_reader(deck)` imports Arrow buffers
+through release callbacks, and result arrays retain their native owner. The diagram below
+shows the WebAssembly transport.
+
 ![Two independent module memories exchange table-package bytes and result arrays through JavaScript.](images/reader-solver-boundary.svg)
 
 *The application coordinates the two modules. Their C++ libraries and WebAssembly memories stay independent.*

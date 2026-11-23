@@ -1,5 +1,7 @@
 # Optimization controlled by an external application
 
+The examples assume a loaded Reader model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_reader.read_model`. See [Getting started](getting-started.md) for package setup.
+
 An application owns the optimizer, trial points, acceptance rule and convergence test. Reader owns the editable
 model; Solver owns analysis snapshots and evaluates SOL 101, 103, 105 and 144. There are two entry points:
 
@@ -13,6 +15,8 @@ The two routes share Reader and Solver packages. Neither route chooses a design 
 
 ## Inspect support before building an optimizer
 
+**JavaScript / WebAssembly**
+
 ```js
 const catalogue = solver.capabilities();
 // catalogue.analyses lists 101, 103, 105 and 144, with derivative restrictions.
@@ -23,6 +27,18 @@ try {
   if (!prepared.canPrepare) throw new Error(prepared.error ?? JSON.stringify(prepared.analyses));
 } finally { model.delete(); }
 const readerSupport = oor.designCapabilities(deck); // editable cards and Reader design diagnostics
+```
+
+**Python / native C++**
+
+The capability catalogue and preflight report belong to the JavaScript API. For a deck with design cards, Python validates the declarations and exposes the independent variables.
+
+```python
+from oo_solver import optimization_from_reader
+
+deck.validate_design()
+problem = optimization_from_reader(deck)
+print(problem.variables)
 ```
 
 `checkOptimization` checks construction and analysis support without solving. It cannot promise convergence or a
@@ -51,6 +67,8 @@ derivatives against representative points, especially around contact changes, bu
 
 ## Define a study with arbitrary Reader edits
 
+**JavaScript / WebAssembly**
+
 ```js
 const study = solver.createStudy(oor, deck, {
   version: 1,
@@ -78,6 +96,21 @@ try {
 } finally { study.delete(); }
 ```
 
+**Python / native C++**
+
+For an externally supplied area and load, evaluate the same tip response on a trial copy. Gradients through `optimization_from_reader` require corresponding design cards.
+
+```python
+from oo_solver import model_from_reader
+
+trial = deck.copy()
+trial.set_card_value("RodProp", 1, "area", 2.0)
+trial.set_card_value("PointForceLoad", 2, "magnitude", 10.0)
+run = model_from_reader(trial).run("statics", subcases=[1])
+u = next(t for t in run["nodal_tables"] if t["kind"] == "displacements")
+tip = u["values"][u["ids"].tolist().index(2), 0]
+```
+
 Card targets accept a persistent `key`, an `id`, a named field or a one-based raw slot, and a part descriptor. Case
 targets set a command in a subcase or section; solution targets set the solution number. Parameters can combine
 variables linearly or call a named synchronous hook. Variable kinds include `continuous`, `integer` and `choice`;
@@ -91,6 +124,8 @@ components, subcases, modes and reductions control the scalar/vector output; eve
 [`StudyResponse`](../wasm/js/study.d.ts) for the complete contract. Hooks are registered separately from the
 serializable definition:
 
+**JavaScript / WebAssembly**
+
 ```js
 const hooks = { responses: {
   stressCost: ({ runs }) => Math.max(...runs[0].elementTables
@@ -98,6 +133,15 @@ const hooks = { responses: {
 } };
 // A response with { source: "callback", callback: "stressCost", id: 20 } calls this hook.
 ```
+
+**Python / native C++**
+
+```python
+stress_cost = max(t["values"].max() for t in run["element_tables"]
+                  if t["kind"] == "stress" and t["values"].size)
+```
+
+Request stress output in the model so the reduction has data.
 
 For gradients, `point.gradients()` returns a row-major response/constraint/objective Jacobian with stable `keys`.
 `jvp`, `vjp`, `hessianVector` and `hessian` compute full analysis products; the Hessian is a nested numerical
@@ -109,6 +153,8 @@ should inspect the mode identity and treat nonsmooth points explicitly.
 
 An auxiliary SOL 101 displacement field can generate a compact batched native shape basis once:
 
+**JavaScript / WebAssembly**
+
 ```js
 const basis = solver.shapeBasisFromReader(oor, auxiliaryDeck,
   { variableId: 7, cases: [{ subcase: 1, coefficient: 1 }], gridIds: [2, 3] });
@@ -118,6 +164,10 @@ const problem = solver.optimizationFromReader(oor, deck, {
 });
 ```
 
+**Python / native C++**
+
+The helper that derives a shape basis from an auxiliary solve is exposed in JavaScript. In Python, supply the shape variables and relations in the deck before calling `optimization_from_reader(deck)`.
+
 The basis converts displacement components into the basic frame. The auxiliary solve and Reader geometry lookup run
 once; later native evaluations consume the typed grid/direction arrays.
 
@@ -126,6 +176,8 @@ once; later native evaluations consume the typed grid/direction arrays.
 `study.evaluateMany(points)` yields between sequential points and accepts an `AbortSignal`. A synchronous WASM
 solve cannot be interrupted on its own thread. Use `createOptimizationWorkerPool` when evaluations must run in
 parallel or a hung solve must be stopped:
+
+**JavaScript / WebAssembly**
 
 ```js
 const pool = await createOptimizationWorkerPool({
@@ -137,6 +189,24 @@ try {
   const trial = await pool.evaluate(x, { gradients: true, timeoutMs: 30000, signal });
   console.log(trial.values.objective, trial.gradients.values);
 } finally { pool.close(); }
+```
+
+**Python / native C++**
+
+For independent model files, schedule each solve in its own process. The worker-pool timeout and cancellation protocol above belongs to JavaScript.
+
+```python
+from concurrent.futures import ProcessPoolExecutor
+from oo_reader import read_model
+from oo_solver import model_from_reader
+
+def first_hz(path):
+    run = model_from_reader(read_model(path)).run("modes")
+    return float(run["eigenvalues"][0]["rows"]["cycles"][0])
+
+if __name__ == "__main__":
+    with ProcessPoolExecutor(max_workers=2) as pool:
+        print(list(pool.map(first_hz, ["wing-a.oos", "wing-b.oos"])))
 ```
 
 Each worker loads its own Reader and Solver memories. `evaluateMany` queues points with backpressure; results are
@@ -153,6 +223,8 @@ values and bounds, and named aerodynamic arrays. The model and result datasets a
 selectively. The application owns the optimizer state and passes a serializable value.
 The study document also preserves analysis diagnostics and modal tracking confidence, without duplicating mode shapes.
 
+**JavaScript / WebAssembly**
+
 ```js
 const archive = oor.openResults("/work/accepted.ooh5");
 const accepted = archive.model();
@@ -161,6 +233,18 @@ try {
   try { console.log(state.iteration, diagnostics, trackedModes); }
   finally { study.delete(); }
 } finally { accepted.delete(); archive.delete(); }
+```
+
+**Python / native C++**
+
+Python reopens the accepted model from the same archive. The serialized JavaScript study state and mode-tracking helpers are specific to the WASM wrapper.
+
+```python
+from oo_reader import read_model
+from oo_solver import optimization_from_reader
+
+accepted = read_model("accepted.ooh5")
+problem = optimization_from_reader(accepted)  # uses design cards in the model
 ```
 
 The study definition is stored as the Reader document `oos.optimization.study`. Reader preserves such documents

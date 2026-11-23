@@ -17,6 +17,8 @@ separately as declarations processed by the optimization API. Support for a card
 the element, constraint and load checks run afterwards. This is not a certification of arbitrary control commands
 or parameter combinations outside the transferred contract.
 
+**JavaScript / WebAssembly**
+
 ~~~javascript
 const model = solver.modelFromReader(oor, deck);
 try {
@@ -30,6 +32,17 @@ try {
   model.delete();
 }
 ~~~
+
+**Python / native C++**
+
+The support report is a JavaScript preflight. In Python, run the analysis and inspect its diagnostics.
+
+```python
+from oo_solver import model_from_reader
+
+result = model_from_reader(deck).run("statics")
+print(result["diagnostics"])
+```
 
 ## Selecting added mass
 

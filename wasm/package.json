@@ -1,7 +1,7 @@
 {
   "name": "oos-solver",
   "version": "0.2.0",
-  "description": "Finite element analyses and externally driven optimization for statics, modes, buckling and static aeroelasticity, in WebAssembly.",
+  "description": "Solve finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities. JavaScript/WebAssembly interface to the O_o C++ library, also available for Python.",
   "license": "MIT",
   "type": "module",
   "main": "index.js",

@@ -3,6 +3,7 @@
 ## Read online
 
 The public site is **[O_o_Solver documentation](https://jcdulas.github.io/O_o_Solver/)**.
+Start with the [paired JavaScript and Python examples](getting-started.md) or look up an operation in the [API reference](api.rst).
 The [architecture guide](architecture.md) explains the modules and data flow with diagrams.
 The [source index](../index.md) and the Markdown guides can also be read directly on GitHub.
 

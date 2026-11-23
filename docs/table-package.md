@@ -5,6 +5,8 @@ leaves the O_o_Reader WebAssembly module for this one, which cannot read the oth
 JavaScript, `QueryTable.toPackage()` gives a `Uint8Array`, and the other module rebuilds the Arrow C Data Interface
 structures over those bytes.
 
+In native Python, `model_from_reader(deck)` consumes Arrow C Data Interface capsules in the same process. The binary package described here carries the equivalent table between WASM memories. See the [two examples](getting-started.md).
+
 The plain JavaScript columns of `QueryTable.column()` are made for people and charts: numbers as `Float64Array`,
 texts as arrays. A package keeps what a program needs: the Arrow format of every column (`int32`, `float64`,
 dictionary-encoded texts, lists, fixed-size lists, booleans, nulls), its validity bitmap, and the schema metadata

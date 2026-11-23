@@ -3,6 +3,8 @@
 Vibration responses can select a mode explicitly. The calculation lives in C++ in `design/sensitivity/ModalItems`,
 `design/aids/ModalHessian` and `linalg/eigen/BorderedEigenSystem`. Native and WebAssembly consumers use the same code.
 
+**JavaScript / WebAssembly**
+
 ```js
 const declarations = {
   variables: [{ id: 1, initialValue: 0.2, lower: 0.1, upper: 0.4 }],
@@ -21,6 +23,18 @@ const product = point.hessianVector({ responses: { 11: [1] } }, [1]);
 // product.report.usesModalTangents identifies a closed second-order calculation.
 point.delete();
 problem.delete();
+```
+
+**Python / native C++**
+
+Define modal displacement response 10 and its mode selector in the deck. Python exposes the first derivative; the second-order examples use JavaScript.
+
+```python
+from oo_solver import optimization_from_reader
+
+problem = optimization_from_reader(deck, analysis="modes")
+point = problem.evaluate(problem.initial_values)
+displacement_gradient = point.gradients()["responses"][10]
 ```
 
 `mode` is numbered from 1. `Displacement`, `Stress`, `Strain`, `Force`, `CompositeStress` and `CompositeStrain`

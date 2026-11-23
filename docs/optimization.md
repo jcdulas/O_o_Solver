@@ -1,20 +1,23 @@
-# Optimization driven by JavaScript
+# Optimization from JavaScript and Python
+
+The examples assume a loaded Reader model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_reader.read_model`. See [Getting started](getting-started.md) for package setup.
 
 For model edits and result fields beyond native design declarations, see
 [external optimization](external-optimization.md). It covers all four solution sequences, generic Reader card and
 case-control parameters, numerical derivatives, parallel workers and accepted-point archives.
 
-The application owns the optimization algorithm. WebAssembly evaluates design points, responses and derivatives;
-JavaScript chooses the next point, convergence rules, multipliers and line search. No optimizer is started implicitly.
+The application chooses the next point, convergence rules and line search. JavaScript calls the WebAssembly solver and Python calls the native solver to evaluate the same model-defined design variables, responses and first derivatives.
 
 The [derivative coverage guide](derivatives.md) summarizes first- and second-order paths for all four solutions,
 their numerical fallbacks and the report fields that identify the calculation actually used.
 
-Reader and Solver have independent memories. Reader exports owned table packages, Solver keeps an immutable model
+In WebAssembly, Reader and Solver have independent memories. Reader exports owned table packages, Solver keeps an immutable model
 snapshot, and each evaluation keeps its own analysis factors and memory budget. Evaluating a trial point does not edit
 the Reader model. Apply the accepted point explicitly when the iteration ends.
 
 ## Create and evaluate a problem
+
+**JavaScript / WebAssembly**
 
 ```javascript
 const problem = solver.optimizationFromReader(oor, deck, {
@@ -40,6 +43,18 @@ try {
   point.delete();
   problem.delete();
 }
+```
+
+**Python / native C++**
+
+Declare responses 101 and 102, the objective and the constraint in the input deck.
+
+```python
+from oo_solver import optimization_from_reader
+
+problem = optimization_from_reader(deck)
+point = problem.evaluate(problem.initial_values)
+print(point.objective, point.constraints, point.gradients()["objective"])
 ```
 
 The model must contain its design variables and relations. Declarations supplied by JavaScript are appended to those
@@ -91,6 +106,8 @@ For large problems prefer products or callbacks. `onBlock` receives an owned cop
 collection of the full product. `streamGradients` also copies each block, so the consumer decides whether to keep it.
 The analysis and retained derivative factors share `memoryBytes`, separately from copies retained by JavaScript.
 
+**JavaScript / WebAssembly**
+
 ```javascript
 const weights = { rows: 1, responses: { 102: new Float64Array([1]) } };
 const jtW = point.vjp(weights); // one weighted gradient
@@ -103,6 +120,15 @@ const denseHessian = point.hessian(weights);
 const lagrangian = point.lagrangianWeights(objectiveFactor, constraintMultipliers);
 const lagrangianProduct = point.hessianVector(lagrangian, direction);
 ```
+
+**Python / native C++**
+
+```python
+jt_w = point.vjp({102: [1.0]})
+j_v = point.jvp(direction)
+```
+
+The Hessian and Lagrangian methods shown above are specific to the JavaScript interface.
 
 A dense weight array has `rows × response.itemCount` entries. The sparse alternative for one response is
 `{rowStart, items, values}`: `rowStart` has `rows + 1` entries, starts at zero and ends at the entry count;
@@ -190,10 +216,20 @@ is substituted. Check derivatives at representative points before relying on a r
 
 For variables defined in the Reader model, pass their explicit IDs in solver order:
 
+**JavaScript / WebAssembly**
+
 ```javascript
 const ids = Array.from(info.independentIndices, index => info.variables[index].id);
 oor.applyDesignPoint(deck, ids, acceptedX);
 const finalModelText = deck.toModelText();
+```
+
+**Python / native C++**
+
+```python
+ids = [v["id"] for v in problem.variables]
+accepted = deck.with_design_point(ids, accepted_x)
+accepted.write_model("accepted.oos")
 ```
 
 Reader applies links, field changes and supported grid moves atomically. It rejects variable bound violations and,

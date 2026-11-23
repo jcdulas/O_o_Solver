@@ -1,59 +1,69 @@
 # O_o_Solver
 
-[Native Python package (`oo-solver`), build and publishing](docs/python.md)
+Solve finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities with the same C++20 library from **JavaScript (WebAssembly)** or **Python (native C++)**.
 
 **[Sphinx documentation](https://jcdulas.github.io/O_o_Solver/)** ·
 **[Benchmark comparison — Classic, Mixed Auto and commercial solvers](docs/structural-benchmark-comparison.md)** ·
 [Derivative coverage](https://jcdulas.github.io/O_o_Solver/docs/derivatives.html) ·
 [API reference](https://jcdulas.github.io/O_o_Solver/docs/api.html)
 
-A linear finite element solver written in C++20 and compiled to WebAssembly for the web. It solves models supplied
-as typed table packages by O_o_Reader: linear statics (SOL 101), normal modes (SOL 103), linear buckling (SOL 105),
-static aeroelastic trim (SOL 144) and design evaluations driven by JavaScript. A static analysis can condense the
-components of the model onto their boundaries (the condensed path), with the results of the full path.
+## Install
 
-O_o_Reader loads native `.oos` models or `.ooh5` model archives, and the solver takes the reader's tables:
+| Interface | Install |
+| --- | --- |
+| JavaScript / WebAssembly | Extract the [Reader ZIP](https://github.com/jcdulas/O_o_Reader/releases/download/v0.2.0/O_o_Reader-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.0/O_o_Solver-wasm.zip) into `reader/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
+| Python / native C++ | Run `python -m pip install oo-solver`. [PyPI](https://pypi.org/project/oo-solver/) provides wheels for CPython 3.10–3.14 on Windows x64 and Linux x86-64. pip installs `oo-reader` as a dependency. |
 
-```js
-import { loadOorReader } from "oor-reader";
-import { loadOosSolver } from "oos-solver";
+## Run linear statics
 
-const oor = await loadOorReader();
+Download [axial.oos](https://raw.githubusercontent.com/jcdulas/O_o_Solver/main/docs/examples/axial.oos) next to your script. The rod has length 3, area 2 and Young's modulus 1000. An axial force of 10 at node 2 gives a displacement of **0.015** from `FL/(EA)`, in the length units of the model. Save the JavaScript example as `example.mjs` and run `node example.mjs`, or save the Python example as `example.py` and run `python example.py`.
+
+**JavaScript / WebAssembly**
+
+```javascript
+import { readFile } from "node:fs/promises";
+import { loadOorReader } from "./reader/index.js";
+import { loadOosSolver } from "./solver/index.js";
+
+const reader = await loadOorReader();
 const solver = await loadOosSolver();
-
-oor.writeFile("/work/plate.oos", modelText);
-const deck = oor.readModel("/work/plate.oos");
-const model = solver.modelFromReader(oor, deck);   // the reader's tables, handed over as table packages
-solver.elementFormulations();                      // [{ card: "ShellQuad4", formulations }], the default first
-
-model.checkSupport("statics");                     // { supported, refusals, ignored, isComplete }
-const run = solver.run(model, "statics");          // or "modes", "buckling"
-run.nodalTables[0];                                // { kind: "displacements", subcase, ids, values (rows x 6), ... }
-run.elementTables;                                 // stress, strain, forces, by element type ("ShellQuad4")
-run.eigenvalues;                                   // modes and buckling: one table per subcase
-run.diagnostics;                                   // warnings, with the card and field they are about
-
-// The condensed path: the reader's component tables, then each component condensed onto its boundary.
-const parts = solver.modelFromReader(oor, deck, { condensation: true });
-solver.run(parts, "statics", { condensation: "all" }).condensation; // { condensedUnits, fullUnits, interfaceDofs }
-solver.run(parts, "modes", { condensation: { units: "all", modeCount: 40 } }); // Craig-Bampton; "buckling" too
-const cache = solver.condensationCache();          // units condensed once for the runs given it
-solver.run(parts, "statics", { condensation: { units: "all", cache, memoryMode: "low_memory" } });
-
-solver.run(model, "statics", { streamed: true });  // the full path without a factor of the whole model
-solver.run(model, "statics", { externalUnits: [{ zone, labels, stiffness }] }); // zones replaced by matrices
-solver.runSuperelements(residual, [{ id: 1, model: part, boundary: [[101, 101]] }], "statics");
+reader.writeFile("/work/axial.oos", await readFile("axial.oos", "utf8"));
+const deck = reader.readModel("/work/axial.oos");
+const model = solver.modelFromReader(reader, deck);
+try {
+  const run = solver.run(model, "statics");
+  const u = run.nodalTables.find(t => t.kind === "displacements");
+  const row = u.ids.indexOf(2);
+  console.log(u.values[6 * row]); // axial displacement at node 2
+} finally {
+  model.delete();
+  deck.delete();
+}
 ```
 
-The interface and its diagnostics use the same neutral names as the model: card types such as `ShellQuad4`,
-table kinds such as `singlePointConstrForces`, and field names such as `bendingMomentA1`.
+**Python / native C++**
 
-The whole interface: [wasm/js/index.d.ts](wasm/js/index.d.ts). How a table crosses from the reader's module to the
-solver's: [docs/table-package.md](docs/table-package.md).
+```python
+from oo_reader import read_model
+from oo_solver import model_from_reader
+
+deck = read_model("axial.oos")
+model = model_from_reader(deck)
+run = model.run("statics")
+u = next(t for t in run["nodal_tables"] if t["kind"] == "displacements")
+row = u["ids"].tolist().index(2)
+print(u["values"][row, 0])  # axial displacement at node 2
+```
+
+JavaScript returns the six displacement components in a flat typed array. Python returns a read-only NumPy array with one row per node and one column per component. Both examples locate the row by node ID.
+
+Both interfaces accept `statics` (SOL 101), `modes` (SOL 103), `buckling` (SOL 105) and `aeroelastic` (SOL 144). They use the same classic and mixed element kernels.
+
+JavaScript also exposes condensation, streamed solutions, external units and superelements. The [API reference](docs/api.rst) describes these advanced analysis settings and the native Python entry points.
 
 ## Documentation
 
-[JavaScript optimization](docs/optimization.md): native design interfaces and derivatives.
+[Optimization with JavaScript and Python](docs/optimization.md): native design interfaces and derivatives.
 [External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, full-analysis derivatives,
 workers and accepted-point archives.
 [Bar and beam derivatives](docs/beam-derivatives.md): analytic section, material, mass and recovery rates.
@@ -86,12 +96,14 @@ card. A choice applies to all elements of one card type. The model sets it with
 
 A program can override that choice with
 `solver.modelFromReader(oor, model, { elementFormulations: { ShellQuad4: "ClassicFormulation" } })`.
+In Python, set a per-card choice in the input model before calling `model_from_reader(deck)`.
 Card names must match `solver.elementFormulations()` exactly. Unknown cards and unavailable formulations
 are reported before a calculation. Details: [src/elements/README.md](src/elements/README.md).
 
 `MixedHybridFormulation` is chosen for the whole model, never for one card: every shell, line and solid card takes it
 together, with `Parameter;ElementFormulation;MixedHybridFormulation` or
 `solver.modelFromReader(oor, model, { elementFormulation: "MixedHybridFormulation", formulationGeometry: {...} })`.
+In Python use `model_from_reader(deck, formulation="MixedHybridFormulation")` and put geometry declarations in the deck.
 Its shells and solids read their geometry from the mesh. The model's `ShellNormalAngle` decides where the surface
 folds, and the declarations correct it edge by edge (`formulationGeometry`, or the `SurfaceEdge`, `SurfaceFacet` and
 `SurfaceLine` cards of the deck: smooth, sharp and raw edges, raw elements, mesh lines); a declaration is mandatory,
@@ -104,6 +116,7 @@ See [docs/mixed-hybrid-formulation-spec.md](docs/mixed-hybrid-formulation-spec.m
 | Folder | What |
 | --- | --- |
 | `include/oos/<module>/`, `src/<module>/` | the library, in modules that each use only the ones before them: `base` → `linalg` → `input` → `elements` → `assembly` → `reduction` → `aero` → `output` → `solutions` → `design` → `api` |
+| `python/` | Native Python extension, public package and installed-wheel tests |
 | `wasm/` | the WebAssembly module: the embind interface (`src/Bindings.cpp`), the JavaScript wrapper (`js/`), its Node.js test (`test/`) |
 | `cmake/` | compiler warnings and the dense kernel families |
 | `docs/` | the table package format |
@@ -111,6 +124,8 @@ See [docs/mixed-hybrid-formulation-spec.md](docs/mixed-hybrid-formulation-spec.m
 Each module has a `README.md` in `src/<module>/` that says what it holds and where to start reading.
 
 ## Build
+
+For the JavaScript distribution, use the WebAssembly build below. For a Python wheel, see the [native build and installation guide](docs/python.md#build-and-publish).
 
 For the shared-memory build, use the `wasm-threads` preset and [threading guide](docs/threading.md).
 

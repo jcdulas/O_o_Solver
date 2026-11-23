@@ -77,6 +77,8 @@ A closed modal, buckling or trim product can have `hasHessianBlocks: false`: tha
 static element-block path. The corresponding tangent flag and `perturbedLinearisations: 0` identify the coupled
 analytic path. Factorization and solve counts measure linear algebra work, not design perturbations.
 
+**JavaScript / WebAssembly**
+
 ```js
 // model contains a Bar2 with BarProp 7 and a tip node 42 in a static subcase.
 const problem = solver.createOptimization(model, {
@@ -95,6 +97,18 @@ try {
     console.log(product.report.hessianBlocksReason);
   } finally { point.delete(); }
 } finally { problem.delete(); }
+```
+
+**Python / native C++**
+
+Define the area relation and tip response 10 in the deck. Python exposes the first derivative; the second-order examples use JavaScript.
+
+```python
+from oo_solver import optimization_from_reader
+
+problem = optimization_from_reader(deck, analysis="statics")
+point = problem.evaluate(problem.initial_values)
+displacement_gradient = point.gradients()["responses"][10]
 ```
 
 The [API reference](api.rst) includes the current TypeScript declarations, including mode selectors and report flags.

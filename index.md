@@ -1,17 +1,17 @@
 # O_o_Solver documentation
 
-Solve finite element models through typed tables and return numerical results.
+Solve finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities with the same C++20 library from **JavaScript (WebAssembly)** or **Python (native C++)**.
 
-**[Read the public HTML site](https://jcdulas.github.io/O_o_Solver/)**
+**[Published documentation](https://jcdulas.github.io/O_o_Solver/)** · [JavaScript / WASM releases](https://github.com/jcdulas/O_o_Solver/releases) · [Python wheels on PyPI](https://pypi.org/project/oo-solver/)
 
 ## Start here
 
-- [Getting started](docs/getting-started.md): build requirements and a first working example.
-- [Native Python package](docs/python.md) shows how to run analyses and evaluate optimization gradients.
+- [Getting started](docs/getting-started.md): install either package and run the same example in JavaScript and Python.
+- [JavaScript and Python analysis examples](docs/python.md) cover modal frequencies and optimization gradients.
 - [Project overview](README.md): capabilities, repository layout and build commands.
-- [API reference](docs/api.rst): the current JavaScript types and C++ entry points, included directly from source.
+- [API reference](docs/api.rst): JavaScript and Python operations, TypeScript declarations and C++ headers.
 - [WebAssembly threads](docs/threading.md): shared-memory builds, runtime settings and browser Workers.
-- [JavaScript optimization](docs/optimization.md): design points, derivatives and model updates.
+- [Optimization with JavaScript and Python](docs/optimization.md): design points, derivatives and model updates.
 - [External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, workers and archives.
 - [Derivative coverage](docs/derivatives.md): analytic paths, numerical fallbacks and diagnostic reports.
 - [Architecture with diagrams](docs/architecture.md): module dependencies, data ownership and execution flow.

@@ -34,6 +34,8 @@ checks with `OOS_BUILD_WASM_TESTS=ON` when configuring without the preset.
 
 ## JavaScript interface
 
+**JavaScript / WebAssembly**
+
 ```javascript
 import { loadOosSolver, supportsWasmThreads } from "./build/wasm-threads/dist/index.js";
 
@@ -43,6 +45,15 @@ console.log(solver.threading());
 
 const results = solver.run(model, "statics", { threads: 4 });
 const problem = solver.createOptimization(model, declarations, { threads: 4 });
+```
+
+**Python / native C++**
+
+```python
+from oo_solver import model_from_reader, optimization_from_reader
+
+result = model_from_reader(deck).run("statics", threads=4)
+problem = optimization_from_reader(deck, threads=4)
 ```
 
 `threads` counts the caller and its C++ workers: 4 means the calling worker plus 3 C++ workers. Without an explicit
@@ -68,6 +79,8 @@ Load the threaded package **inside a dedicated module Worker**. The loader refus
 for numerical work could block the interface. The calling Worker runs the synchronous facade; its C++ workers share
 one linear memory. Calls made from the display thread should use messages and asynchronous responses.
 
+**JavaScript / WebAssembly**
+
 ```javascript
 const worker = new Worker(new URL("./wasm/examples/threaded-worker.js", import.meta.url), { type: "module" });
 worker.onmessage = ({ data }) => {
@@ -76,6 +89,10 @@ worker.onmessage = ({ data }) => {
   else console.log(data.result);
 };
 ```
+
+**Python / native C++**
+
+Browser Workers belong to the JavaScript host. In CPython, a call such as `model.run("statics", threads=4)` releases the GIL during the C++ solve.
 
 The [worker example](../wasm/examples/threaded-worker.js) reads and solves a model, then deletes its handles. Its
 relative imports expect the two repositories beside each other. For an optimization, create the problem and register

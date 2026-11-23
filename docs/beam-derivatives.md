@@ -57,6 +57,8 @@ Derived isotropic defaults, such as a blank G computed from E and Poisson ratio,
 chain rule. A material's summary-table copy and its card-table entry are recognized as the same independent field;
 they no longer disable an otherwise available analytic derivative.
 
+**JavaScript / WebAssembly**
+
 ```js
 const declarations = {
   variables: [{ id: 1, initialValue: 0.3, lower: 0.2, upper: 0.5 }],
@@ -71,6 +73,18 @@ const gradient = point.gradients();
 const curvature = point.hessianVector({ responses: { 10: [1] } }, [1]);
 point.delete();
 problem.delete();
+```
+
+**Python / native C++**
+
+Define the beam station relation and response 10 in the deck. Python exposes the first derivative; the second-order examples use JavaScript.
+
+```python
+from oo_solver import optimization_from_reader
+
+problem = optimization_from_reader(deck, analysis="statics")
+point = problem.evaluate(problem.initial_values)
+displacement_gradient = point.gradients()["responses"][10]
 ```
 
 ## Formulation and implementation

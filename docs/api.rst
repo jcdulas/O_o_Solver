@@ -1,12 +1,28 @@
 API reference
 =============
 
-These declarations are read from the same source files as the packages and C++ facade. A documentation build
-therefore reflects the checked-out revision rather than a separately maintained copy of the signatures.
+The table maps the most common operations across both packages. For Python signatures, see :ref:`native-python-api`.
+The TypeScript declarations and C++ headers below are included directly from the source tree.
 
 For a runnable example, start with :doc:`getting-started`. The module guides explain implementation details.
 For analytic coverage, fallback behavior and report flags, see :doc:`derivatives`. Element implementers can use
 the live C++ contexts and facets in :doc:`element-derivative-api`.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Operation
+     - JavaScript / WebAssembly
+     - Python / native C++
+   * - Import a model
+     - ``solver.modelFromReader(reader, deck)``
+     - ``oo_solver.model_from_reader(deck)``
+   * - Run statics
+     - ``solver.run(model, "statics")``
+     - ``model.run("statics")``
+   * - Evaluate a design
+     - ``problem.evaluate(x)``
+     - ``problem.evaluate(x)``
 
 JavaScript and TypeScript
 -------------------------
@@ -38,6 +54,25 @@ External studies and workers
 .. literalinclude:: ../wasm/js/study-workers.d.ts
    :language: typescript
    :linenos:
+
+.. _native-python-api:
+
+Python
+------
+
+Import ``model_from_reader(deck, *, formulation=None)`` and
+``optimization_from_reader(deck, *, analysis="statics", formulation=None, threads=1)`` from ``oo_solver``.
+
+* ``Model.run(analysis="statics", *, threads=1, subcases=[])`` returns a dictionary with
+  read-only NumPy result arrays. Analyses are ``statics``, ``modes``, ``buckling`` and ``aeroelastic``.
+* ``OptimizationProblem.variables`` and ``initial_values`` give the independent variables in vector order.
+  ``problem.evaluate(x)`` returns a retained ``DesignPoint``.
+* ``point.objective``, ``point.constraints`` and ``point.responses`` describe that evaluation.
+  ``point.gradients()``, ``point.jvp(direction)`` and ``point.vjp(weights)`` reuse it.
+
+See :doc:`python` for paired examples and installation details. The public
+`Python module <https://github.com/jcdulas/O_o_Solver/blob/main/python/oo_solver/__init__.py>`_ and
+`native bindings <https://github.com/jcdulas/O_o_Solver/blob/main/python/bindings.cpp>`_ define the available calls.
 
 C++ entry points
 ----------------

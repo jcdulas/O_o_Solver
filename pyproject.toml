@@ -5,12 +5,16 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "oo-solver"
 version = "0.2.0"
-description = "Native O_o finite element solver with NumPy result arrays"
+description = "Solve finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities. Native Python interface to the O_o C++ library, also available for JavaScript/WebAssembly."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = ["oo-reader>=0.2.0,<0.3", "numpy>=1.23"]
+
+[project.urls]
+Documentation = "https://jcdulas.github.io/O_o_Solver/"
+Repository = "https://github.com/jcdulas/O_o_Solver"
 
 [tool.scikit-build]
 minimum-version = "0.11"

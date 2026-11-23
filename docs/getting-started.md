@@ -1,84 +1,71 @@
 # Getting started
 
-O_o_Solver receives typed model tables from O_o_Reader. Its JavaScript entry points expose linear statics,
-normal modes, linear buckling and [JavaScript-driven optimization](optimization.md). The C++ library has additional entry points described in the
-[solution guide](../src/solutions/README.md) and [design guide](../src/design/README.md).
+Solve finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities with the same C++20 library from **JavaScript (WebAssembly)** or **Python (native C++)**.
 
-## Build the packages
+(build-the-packages)=
+## Install the packages
 
-Build [O_o_Reader](https://github.com/jcdulas/O_o_Reader/blob/main/README.md) first, then follow the solver's
-[build instructions](../README.md#build). Keep the two checkouts next to each other for the example below.
-The default packages are written to `build/wasm/dist/` in each repository. The solver also provides a
-[shared-memory variant](threading.md) in `build/wasm-threads/dist/`.
-
-Use Node.js 24 or later, or a browser supporting Memory64. The reader and solver exchange tables through the
-[table package contract](table-package.md); use compatible builds of the two projects.
+| Interface | Install |
+| --- | --- |
+| JavaScript / WebAssembly | Extract the [Reader ZIP](https://github.com/jcdulas/O_o_Reader/releases/download/v0.2.0/O_o_Reader-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.0/O_o_Solver-wasm.zip) into `reader/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
+| Python / native C++ | Run `python -m pip install oo-solver`. [PyPI](https://pypi.org/project/oo-solver/) provides wheels for CPython 3.10–3.14 on Windows x64 and Linux x86-64. pip installs `oo-reader` as a dependency. |
 
 ## Run linear statics
 
-See [static input checks and added mass](static-inputs.md) for support diagnostics and per-subcase mass selections.
+Download [axial.oos](https://raw.githubusercontent.com/jcdulas/O_o_Solver/main/docs/examples/axial.oos) next to your script. The rod has length 3, area 2 and Young's modulus 1000. An axial force of 10 at node 2 gives a displacement of **0.015** from `FL/(EA)`, in the length units of the model. Save the JavaScript example as `example.mjs` and run `node example.mjs`, or save the Python example as `example.py` and run `python example.py`.
 
-This two-node bar is fixed at its first node and loaded axially at its second node. Save the script as
-`solve-model.mjs` in the solver repository root:
+**JavaScript / WebAssembly**
 
-~~~javascript
-import { loadOorReader } from "../O_o_Reader/build/wasm/dist/index.js";
-import { loadOosSolver } from "./build/wasm/dist/index.js";
+```javascript
+import { readFile } from "node:fs/promises";
+import { loadOorReader } from "./reader/index.js";
+import { loadOosSolver } from "./solver/index.js";
 
-const oor = await loadOorReader();
+const reader = await loadOorReader();
 const solver = await loadOosSolver();
-const text = [
-  "[executive]", "SolutionSequence;101",
-  "[case]", "SubcaseStart;1", "SinglePointConstrSelection;1",
-  "StaticLoadSelection;2", "DisplacementOutput;All",
-  "[model]", "Node;1;;0.;0.;0.", "Node;2;;2.;0.;0.",
-  "Bar2;1;1;1;2;0.;;1.;0.",
-  "BarProp;1;1;0.01;1.e-6;2.e-6;1.e-6",
-  "IsoMat;1;7.e10;;0.3",
-  "SinglePointConstrList;1;123456;1",
-  "PointForceLoad;2;2;;100.;1.;0.;0.",
-].join("\n") + "\n";
-
-oor.writeFile("/work/bar.oos", text);
-const deck = oor.readModel("/work/bar.oos");
-const model = solver.modelFromReader(oor, deck);
+reader.writeFile("/work/axial.oos", await readFile("axial.oos", "utf8"));
+const deck = reader.readModel("/work/axial.oos");
+const model = solver.modelFromReader(reader, deck);
 try {
-  const support = model.checkSupport("statics");
-  if (!support.isComplete) {
-    throw new Error(support.refusals.map((item) => item.text).join("\n"));
-  }
   const run = solver.run(model, "statics");
-  const displacements = run.nodalTables.find((table) => table.kind === "displacements");
-  if (!displacements) throw new Error("Missing displacement results.");
-  const row = Array.from(displacements.ids).indexOf(2);
-  if (row < 0) throw new Error("Missing results for node 2.");
-  const axialDisplacement = displacements.values[row * 6];
-  console.log("Axial displacement:", axialDisplacement);
-  const expected = 100 * 2 / (7e10 * 0.01);
-  if (!Number.isFinite(axialDisplacement) || Math.abs(axialDisplacement / expected - 1) > 1e-10) {
-    throw new Error("Unexpected axial displacement.");
-  }
+  const u = run.nodalTables.find(t => t.kind === "displacements");
+  const row = u.ids.indexOf(2);
+  console.log(u.values[6 * row]); // axial displacement at node 2
 } finally {
   model.delete();
   deck.delete();
 }
-~~~
+```
 
-Run `node solve-model.mjs`. The expected axial displacement is approximately `2.857142857e-7` in the consistent
-length units of the model. Numerical input uses a consistent unit system; the example does not perform unit conversion.
+**Python / native C++**
+
+```python
+from oo_reader import read_model
+from oo_solver import model_from_reader
+
+deck = read_model("axial.oos")
+model = model_from_reader(deck)
+run = model.run("statics")
+u = next(t for t in run["nodal_tables"] if t["kind"] == "displacements")
+row = u["ids"].tolist().index(2)
+print(u["values"][row, 0])  # axial displacement at node 2
+```
+
+JavaScript returns the six displacement components in a flat typed array. Python returns a read-only NumPy array with one row per node and one column per component. Both examples locate the row by node ID.
 
 ## Interpret support and results
 
-Call `checkSupport` for the requested analysis before solving. Inspect both `refusals` and `ignored`; a loaded model
+In JavaScript, call `model.checkSupport` for the requested analysis before solving. Inspect both `refusals` and `ignored`; a loaded model
 does not imply that every card or option participates in the calculation.
 
-Result arrays are row-major. A nodal displacement row contains six components; element tables describe their own
+In Python, `model.run("statics")["diagnostics"]` gives the analysis diagnostics. Result arrays are row-major. A nodal displacement row contains six components; element tables describe their own
 component order. Match rows by their `ids` rather than assuming the input order.
 See the [API declarations](api.rst) for shapes, ownership and result fields.
 
 ## Element formulations
 
-Use `solver.elementFormulations()` to discover supported card types and their formulation names.
+In Python, use `model_from_reader(deck, formulation="MixedHybridFormulation")` for a whole-model choice and set per-card parameters and surface declarations in the input deck.
+In JavaScript, use `solver.elementFormulations()` to discover supported card types and their formulation names.
 An `elementFormulations` choice passed to `modelFromReader` applies to all elements of that card type and takes
 precedence over the model parameter. The [element guide](../src/elements/README.md) describes the formulations,
 geometric conventions and current limits.
@@ -102,11 +89,19 @@ Parameter;MixedHybridDegree;Auto
 
 In a full static analysis, Auto checks the loaded solution and solves again only if additional cells need degree 4.
 For multiple load cases it uses one final layout. The diagnostic gives the number of solves and the result lists
-the selected elements in `selectedQuarticShells`. Modes, buckling, trim and static paths that require a fixed layout
+the selected elements in `selectedQuarticShells` (JavaScript) or `selected_quartic_shells` (Python). Modes, buckling, trim and static paths that require a fixed layout
 use the degrees selected from geometry.
 
-```js
+**JavaScript / WebAssembly**
+
+```javascript
 const result = solver.run(model, "statics");
+```
+
+**Python / native C++**
+
+```python
+result = model.run("statics")
 ```
 
 The [module guide](modules.md) covers assembly, linear algebra, reduction, output and design calculations.

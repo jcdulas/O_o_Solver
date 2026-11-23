@@ -6,9 +6,26 @@ the native CPU kernel selection and takes its model from the separately installa
 
 ## Analyses
 
-Install the matching wheels with pip. For a local directory containing both wheels, run
-`python -m pip install --find-links /path/to/wheels oo-solver`.
-The interpreter, operating system and architecture must match the wheel tags.
+Install from PyPI with `python -m pip install oo-solver`, which installs `oo-reader` too.
+Extract `frequency-8.oos` from the [benchmark inputs](https://github.com/jcdulas/O_o_Solver/raw/refs/heads/main/docs/benchmarks/structural-comparison-inputs.zip). Both examples give about **28.7583 Hz** for the first bending mode.
+The JavaScript snippets below use the Reader and Solver initialized in [Getting started](getting-started.md).
+Load the input file into the Reader's WASM file system as shown there.
+
+**JavaScript / WebAssembly**
+
+```javascript
+const deck = reader.readModel("/work/frequency-8.oos");
+const model = solver.modelFromReader(reader, deck, { elementFormulation: "MixedHybridFormulation" });
+try {
+  const modes = solver.run(model, "modes", { threads: 1 });
+  const firstHz = modes.eigenvalues[0].rows[0].cycles;
+  console.log(firstHz);
+} finally {
+  model.delete(); deck.delete();
+}
+```
+
+**Python / native C++**
 
 ```python
 from oo_reader import read_model
@@ -18,6 +35,7 @@ deck = read_model("frequency-8.oos")
 model = model_from_reader(deck, formulation="MixedHybridFormulation")
 modes = model.run("modes", threads=1)
 first_hz = modes["eigenvalues"][0]["rows"]["cycles"][0]
+print(first_hz)
 ```
 
 Build the snapshot once for repeated solves. The Reader exports immutable Arrow batches;
@@ -34,11 +52,31 @@ Further specialised outputs and settings are described by the WebAssembly API.
 
 ## External optimization
 
-Declare variables, relations, responses, constraints and the objective in the model.
+For the sizing example, use the [two-node rod](https://raw.githubusercontent.com/jcdulas/O_o_Solver/main/docs/examples/axial.oos) as `sizing.oos`. Response 10 is the axial displacement and variable 1 is its section area. Both examples return a displacement of 0.015 and a derivative of −0.0075 at area 2.
 The optimizer owns the proposed points. Each evaluation retains its native solution
 for subsequent derivative calls.
 
+**JavaScript / WebAssembly**
+
+```javascript
+const deck = reader.readModel("/work/sizing.oos");
+const problem = solver.optimizationFromReader(reader, deck);
+const point = problem.evaluate(problem.metadata().initialValues);
+try {
+  const tip = point.values().responses.find(r => r.id === 10).values[0];
+  const gradient = point.gradients().responses.find(r => r.id === 10).values[0];
+  console.log(tip, gradient);
+  const directionalChange = point.jvp([1]);
+  const weightedGradient = point.vjp({ responses: { 10: [1] } });
+} finally {
+  point.delete(); problem.delete(); deck.delete();
+}
+```
+
+**Python / native C++**
+
 ```python
+from oo_reader import read_model
 from oo_solver import optimization_from_reader
 
 problem = optimization_from_reader(read_model("sizing.oos"), analysis="statics")
@@ -48,6 +86,7 @@ tip = point.responses[10]              # response ID from this model
 jacobian = point.gradients()["responses"][10]
 directional_change = point.jvp([1.0] * len(x))
 weighted_gradient = point.vjp({10: [1.0]})  # for a single-item response
+print(tip[0], jacobian[0, 0])
 ```
 
 `problem.variables` lists the independent IDs, labels and bounds in design-vector order.

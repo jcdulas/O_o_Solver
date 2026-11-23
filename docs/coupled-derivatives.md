@@ -3,10 +3,24 @@
 The native C++ optimization API computes additional Hessian-vector products by differentiating the coupled solution
 equations. The WebAssembly API calls the same implementation. No nearby design point is evaluated on these paths.
 
+**JavaScript / WebAssembly**
+
 ```js
 const product = point.hessianVector({ responses: { 10: [1] } }, direction);
 console.log(product.report.usesBucklingTangents, product.report.usesTrimTangents);
 // An analytic coupled product reports perturbedLinearisations === 0.
+```
+
+**Python / native C++**
+
+The Hessian-vector product and its tangent report are exposed by JavaScript. For a buckling model with response 10, Python exposes its first-order sensitivity.
+
+```python
+from oo_solver import optimization_from_reader
+
+problem = optimization_from_reader(deck, analysis="buckling")
+point = problem.evaluate(problem.initial_values)
+load_factor_gradient = point.gradients()["responses"][10]
 ```
 
 Both paths require linear sizing relations and closed first, second and mixed element rates. They assemble actions
