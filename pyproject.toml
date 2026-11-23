@@ -3,18 +3,18 @@ requires = ["scikit-build-core>=0.11", "pybind11>=3.0"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "oos-solver"
+name = "oo-solver"
 version = "0.2.0"
 description = "Native O_o finite element solver with NumPy result arrays"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
-dependencies = ["oor-reader>=0.2.0,<0.3", "numpy>=1.23"]
+dependencies = ["oo-reader>=0.2.0,<0.3", "numpy>=1.23"]
 
 [tool.scikit-build]
 minimum-version = "0.11"
-wheel.packages = ["python/oos_solver"]
+wheel.packages = ["python/oo_solver"]
 build-dir = "build/python/{wheel_tag}"
 build.targets = ["_native"]
 

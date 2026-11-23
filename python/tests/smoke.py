@@ -5,8 +5,8 @@ import zipfile
 from pathlib import Path
 
 import numpy as np
-import oor_reader
-import oos_solver
+import oo_reader
+import oo_solver
 
 with tempfile.TemporaryDirectory() as temporary:
     directory = Path(temporary)
@@ -15,9 +15,9 @@ with tempfile.TemporaryDirectory() as temporary:
         vm50 = directory / "vm50.oos"
         name = next(n for n in inputs.namelist() if n.endswith("frequency-8.oos"))
         vm50.write_bytes(inputs.read(name))
-    deck = oor_reader.read_model(vm50)
+    deck = oo_reader.read_model(vm50)
     for formulation, expected in [("ClassicFormulation", 28.758920687), ("MixedHybridFormulation", 28.758260894)]:
-        model = oos_solver.model_from_reader(deck, formulation=formulation)
+        model = oo_solver.model_from_reader(deck, formulation=formulation)
         modes = model.run("modes")["eigenvalues"][0]["rows"]
         assert not modes.flags.writeable
         del model
@@ -45,9 +45,9 @@ DesignVar;1;AREA;2.;0.5;5.
 DesignPropRelation1;1;RodProp;1;area;;;;1;1.
 DesignResp1;10;TIP;Displacement;;;1;;2
 """, encoding="utf-8")
-    deck = oor_reader.read_model(bar)
-    problem = oos_solver.optimization_from_reader(deck)
-    model = oos_solver.model_from_reader(deck)
+    deck = oo_reader.read_model(bar)
+    problem = oo_solver.optimization_from_reader(deck)
+    model = oo_solver.model_from_reader(deck)
     del deck
     x = problem.initial_values
     point = problem.evaluate(x)

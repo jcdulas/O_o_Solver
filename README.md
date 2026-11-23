@@ -1,6 +1,6 @@
 # O_o_Solver
 
-[Native Python package (`oos-solver`), build and publishing](docs/python.md)
+[Native Python package (`oo-solver`), build and publishing](docs/python.md)
 
 **[Sphinx documentation](https://jcdulas.github.io/O_o_Solver/)** ·
 **[Benchmark comparison — Classic, Mixed Auto and commercial solvers](docs/structural-benchmark-comparison.md)** ·

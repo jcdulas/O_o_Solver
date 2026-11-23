@@ -1,18 +1,18 @@
 # Native Python package
 
-The `oos-solver` distribution runs the C++ solver in the CPython process. It uses
+The `oo-solver` distribution runs the C++ solver in the CPython process. It uses
 the native CPU kernel selection and takes its model from the separately installable
-`oor-reader` package. The Python and WebAssembly builds use the same analysis kernels.
+`oo-reader` package. The Python and WebAssembly builds use the same analysis kernels.
 
 ## Analyses
 
 Install the matching wheels with pip. For a local directory containing both wheels, run
-`python -m pip install --find-links /path/to/wheels oos-solver`.
+`python -m pip install --find-links /path/to/wheels oo-solver`.
 The interpreter, operating system and architecture must match the wheel tags.
 
 ```python
-from oor_reader import read_model
-from oos_solver import model_from_reader
+from oo_reader import read_model
+from oo_solver import model_from_reader
 
 deck = read_model("frequency-8.oos")
 model = model_from_reader(deck, formulation="MixedHybridFormulation")
@@ -39,7 +39,7 @@ The optimizer owns the proposed points. Each evaluation retains its native solut
 for subsequent derivative calls.
 
 ```python
-from oos_solver import optimization_from_reader
+from oo_solver import optimization_from_reader
 
 problem = optimization_from_reader(read_model("sizing.oos"), analysis="statics")
 x = problem.initial_values

@@ -1,5 +1,5 @@
-"""Native structural analyses and design evaluations using oor_reader decks."""
-from oor_reader import card_columns
+"""Native structural analyses and design evaluations using oo_reader decks."""
+from oo_reader import card_columns
 
 from ._native import DesignPoint, Model, OptimizationProblem, _Builder
 

@@ -4,7 +4,7 @@ execute_process(COMMAND "${Python_EXECUTABLE}" -m pybind11 --cmakedir OUTPUT_VAR
 find_package(pybind11 CONFIG REQUIRED HINTS "${pybind11_hint}")
 pybind11_add_module(_native MODULE NO_EXTRAS bindings.cpp)
 target_link_libraries(_native PRIVATE oos_api)
-install(TARGETS _native LIBRARY DESTINATION oos_solver RUNTIME DESTINATION oos_solver)
+install(TARGETS _native LIBRARY DESTINATION oo_solver RUNTIME DESTINATION oo_solver)
 
 # Wheel repair bundles native runtime libraries. Ship their distributor's notices with the extension.
 if(MINGW)
@@ -14,6 +14,6 @@ if(MINGW)
 endif()
 foreach(package IN LISTS runtime_packages)
     if(IS_DIRECTORY "${license_root}/${package}")
-        install(DIRECTORY "${license_root}/${package}" DESTINATION oos_solver/licenses)
+        install(DIRECTORY "${license_root}/${package}" DESTINATION oo_solver/licenses)
     endif()
 endforeach()
