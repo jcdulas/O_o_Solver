@@ -919,6 +919,10 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
   model.size = 3 * a;
   const r = refine;
   const [nx, ny, nz] = [3 * r, r, r];
+  // Keep node and element families disjoint as the reference mesh is refined.
+  const rows = 2 * r;
+  const nodeStride = Math.max(1000, (nx + 1) * (ny + 1) * (nz + 1) + 1);
+  const elementStride = Math.max(100, nx * rows);
   const B = (i, j, k) => 1 + i + (nx + 1) * (j + (ny + 1) * k);
   for (let k = 0; k <= nz; ++k)
     for (let j = 0; j <= ny; ++j)
@@ -928,7 +932,7 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
   model.mass += ALUMINIUM.density * 3 * a * b * c;
 
   // The solids, numbered from FIRST_SOLID.
-  const FIRST_SOLID = 5001;
+  const FIRST_SOLID = Math.max(5001, 7 * elementStride + 1);
   let solid = FIRST_SOLID - 1;
   const cellCorners = (i, j, k) => [B(i, j, k), B(i + 1, j, k), B(i + 1, j + 1, k), B(i, j + 1, k),
     B(i, j, k + 1), B(i + 1, j, k + 1), B(i + 1, j + 1, k + 1), B(i, j + 1, k + 1)];
@@ -975,14 +979,13 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
     }
 
   // The shells on the top face of the first two cells and the flange beyond the edge y = b, in the plane z = c.
-  const rows = 2 * r;
-  const FL = (i, m) => (m === 0 ? B(i, ny, nz) : 1000 + i + (nx + 1) * (m - 1));
+  const FL = (i, m) => (m === 0 ? B(i, ny, nz) : nodeStride + i + (nx + 1) * (m - 1));
   model.add("ShellProp", 22, 1, q(BRACKET.flangeThickness, 1), 1, "", 1);
   const quad = (id, property, corners) =>
     model.add("ShellQuad4", element(id), property, ...turned(corners, model.variant.cornerShift % 4).map(grid));
   const tria = (id, property, corners) =>
     model.add("ShellTria3", element(id), property, ...turned(corners, model.variant.cornerShift % 3).map(grid));
-  let cover = 100;
+  let cover = elementStride;
   const shellIds = [];
   if (has("cover")) {
     for (let j = 0; j < ny; ++j)
@@ -996,7 +999,8 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
       }
     model.mass += ALUMINIUM.density * BRACKET.flangeThickness * coverCells * a * b;
   }
-  const flangeElement = (i, m) => 201 + i + nx * m;
+  const firstFlange = 2 * elementStride + 1;
+  const flangeElement = (i, m) => firstFlange + i + nx * m;
   if (has("flange")) {
     for (let m = 1; m <= rows; ++m)
       for (let i = 0; i <= nx; ++i) model.node(FL(i, m), [(a * i) / r, b + (BRACKET.flange * m) / rows, c]);
@@ -1018,7 +1022,7 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
   if (has("bar")) {
     addBarProp(model, 25, 2, BRACKET.bar);
     for (let i = 0; i < nx; ++i)
-      model.add("Bar2", element(501 + i), 25, grid(B(i, 0, nz)), grid(B(i + 1, 0, nz)),
+      model.add("Bar2", element(5 * elementStride + 1 + i), 25, grid(B(i, 0, nz)), grid(B(i + 1, 0, nz)),
         direction([0, 0, 1], { gap: true }), BASIC_ORIENTATION);
     model.mass += STEEL.density * BRACKET.bar.area * 3 * a;
   }
@@ -1026,8 +1030,8 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
   // The second plate over the flange (steel), joined by two fasteners.
   const gap = (BRACKET.flangeThickness + BRACKET.plateThickness) / 2;
   const plate = { x0: 0.02, x1: 0.13, y0: b + 0.005, y1: b + 0.055, nx: 2 * r, ny: r };
-  const PL = (i, j) => 2000 + i + (plate.nx + 1) * j;
-  const plateElement = (i, j) => 301 + i + plate.nx * j;
+  const PL = (i, j) => 2 * nodeStride + i + (plate.nx + 1) * j;
+  const plateElement = (i, j) => 3 * elementStride + 1 + i + plate.nx * j;
   if (has("plate") && has("flange")) {
     model.add("ShellProp", 23, 2, q(BRACKET.plateThickness, 1), 2, "", 2);
     for (let j = 0; j <= plate.ny; ++j)
@@ -1046,14 +1050,15 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
       const below = flangeElement(Math.floor(x / (a / r)), Math.floor((y - b) / (BRACKET.flange / rows)));
       const above = plateElement(Math.floor((x - plate.x0) / ((plate.x1 - plate.x0) / plate.nx)),
         Math.floor((y - plate.y0) / ((plate.y1 - plate.y0) / plate.ny)));
-      model.node(2900 + k, [x, y, c + gap / 2]);
-      model.add("Fastener", element(601 + k), 26, "Elements", element(below), element(above), grid(2900 + k));
+      const point = 3 * nodeStride - 100 + k;
+      model.node(point, [x, y, c + gap / 2]);
+      model.add("Fastener", element(6 * elementStride + 1 + k), 26, "Elements", element(below), element(above), grid(point));
     });
   }
 
   // The third plate, glued under the first cell (the face z = 0 of the solids).
   const glued = { x0: 0.01, x1: 0.04, y0: 0.008, y1: 0.032, nx: 2 * r, ny: r };
-  const GL = (i, j) => 3000 + i + (glued.nx + 1) * j;
+  const GL = (i, j) => 3 * nodeStride + i + (glued.nx + 1) * j;
   if (has("glue")) {
     model.add("ShellProp", 24, 1, q(BRACKET.gluedThickness, 1), 1, "", 1);
     const gluedShells = [];
@@ -1064,8 +1069,9 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
     for (let j = 0; j < glued.ny; ++j)
       for (let i = 0; i < glued.nx; ++i) {
         // Ordered so that the normal of the plate points out of the block.
-        quad(401 + i + glued.nx * j, 24, [GL(i, j), GL(i, j + 1), GL(i + 1, j + 1), GL(i + 1, j)]);
-        gluedShells.push(401 + i + glued.nx * j);
+        const id = 4 * elementStride + 1 + i + glued.nx * j;
+        quad(id, 24, [GL(i, j), GL(i, j + 1), GL(i + 1, j + 1), GL(i + 1, j)]);
+        gluedShells.push(id);
       }
     shellIds.push(...gluedShells);
     model.mass += ALUMINIUM.density * BRACKET.gluedThickness * (glued.x1 - glued.x0) * (glued.y1 - glued.y0);
@@ -1106,7 +1112,7 @@ function bracketAssembly({ variant = {}, refine = 1, analysis = "statics", midSi
         grid(B(i, 0, k)), grid(B(i + 1, 0, k + 1)));
   if (has("flange"))
     model.add("ShellPressureLoad", 32, q(5.0e4, -2),
-      ...Array.from({ length: nx * rows }, (_, k) => element(201 + k)));
+      ...Array.from({ length: nx * rows }, (_, k) => element(firstFlange + k)));
   model.add("GravityLoad", 33, "", q(GRAVITY.magnitude * 100, 1), direction(GRAVITY.direction));
   model.add("DefaultTemperatureLoad", 34, q(60));
   // 7: as 1 with an enforced shortening of the end of the flange along x, the preload of the buckling analysis.
@@ -1333,7 +1339,7 @@ const ASSEMBLIES = {
     yardstick: { without: ["offset", "shellInertia"] }, refinements: [3, 6], bucklingRefinements: [6, 10],
     keys: ["tipA", "tipB", "spider", "apex", "frame"], rotationKeys: ["spider", "apex", "frame"] },
   bracket: { make: bracketAssembly, base: {}, paths: {}, exact: { midSide: "straight" }, streamed: ["glue"],
-    triplets: [1, 3], yardstick: { midSide: "none", coverCells: 3 }, refinements: [2, 4], bucklingRefinements: [2, 4],
+    triplets: [1, 3], yardstick: { midSide: "none", coverCells: 3 }, refinements: [2, 4], staticRefinements: [2, 4, 8], bucklingRefinements: [2, 4],
     keys: ["flangeTip", "blockTip", "blockTop", "plateCorner", "glued"], rotationKeys: [] },
   wing: { make: wingAssembly, base: {}, paths: { joints: "elastic" }, exact: null, streamed: [], triplets: [1, 3, 4],
     yardstick: { without: ["offset"] }, refinements: [3, 6], bucklingRefinements: [6, 10],
@@ -1774,11 +1780,15 @@ const yardstickNotes = [];
 const yardstickRows = [];
 
 // One quantity of the yardstick: the mixed value against the classic one on its finest mesh. It is asserted when the
-// classic value has settled between its two meshes (within `settled`); otherwise it is recorded as not conclusive.
-function yardstick(check, model, what, mixed, coarse, fine, tolerance = YARDSTICK, settled = 0.02) {
-  const [ratio, drift] = [mixed / fine, coarse / fine];
-  const conclusive = Math.abs(drift - 1) <= settled;
-  yardstickRows.push({ model, what, mixed, coarse, fine, ratio, drift, conclusive,
+// changes between successive classic meshes are all within `settled`. Point supports can give a false plateau on
+// the first two bracket meshes, so its statics use three levels.
+function yardstick(check, model, what, mixed, classic, tolerance = YARDSTICK, settled = 0.02) {
+  const [coarse, fine] = classic.slice(-2);
+  const ratio = mixed / fine;
+  const drift = coarse / fine;
+  const maxChange = Math.max(...classic.slice(1).map((value, i) => Math.abs(classic[i] / value - 1)));
+  const conclusive = maxChange <= settled;
+  yardstickRows.push({ model, what, mixed, coarse, fine, classic, ratio, drift, maxChange, conclusive,
     pass: Math.abs(ratio - 1) <= tolerance });
   if (conclusive)
     check(`5 ${what}: mixed / classic - 1`, Math.abs(ratio - 1), tolerance, `mixed ${mixed}, classic ${fine}`);
@@ -1794,19 +1804,19 @@ for (const [name, spec] of Object.entries(ASSEMBLIES))
     const make = (analysis, refine, modes) => spec.make({ ...spec.yardstick, analysis, refine, modes });
     const mixed = make("statics", 1);
     const mixedRun = runAssembly(mixed, MIXED_NAME, "statics", { subcases });
-    const classic = spec.refinements.map((refine) => make("statics", refine));
+    const classic = (spec.staticRefinements ?? spec.refinements).map((refine) => make("statics", refine));
     const classicRuns = classic.map((assembly) => runAssembly(assembly, "ClassicFormulation", "statics", { subcases }));
     checking(mixed.name, (check) => {
       for (const subcase of subcases) {
         const named = [...spec.keys, ...spec.rotationKeys];
-        const [mine, coarse, fine] = [keyMotions(mixed, mixedRun, subcase, named),
-          ...classic.map((assembly, k) => keyMotions(assembly, classicRuns[k], subcase, named))];
+        const mine = keyMotions(mixed, mixedRun, subcase, named);
+        const reference = classic.map((assembly, k) => keyMotions(assembly, classicRuns[k], subcase, named));
         for (const key of spec.keys)
           yardstick(check, mixed.name, `displacement of ${key}, subcase ${subcase}`, mine[key].translation,
-            coarse[key].translation, fine[key].translation);
+            reference.map((level) => level[key].translation));
         for (const key of spec.rotationKeys)
           yardstick(check, mixed.name, `rotation of ${key}, subcase ${subcase}`, mine[key].rotation,
-            coarse[key].rotation, fine[key].rotation);
+            reference.map((level) => level[key].rotation));
       }
       for (const [analysis, count] of [["modes", 4], ["buckling", 6]]) {
         const refinements = analysis === "modes" ? spec.refinements : spec.bucklingRefinements;
@@ -1817,11 +1827,11 @@ for (const [name, spec] of Object.entries(ASSEMBLIES))
         if (analysis === "modes") {
           const hertz = (value) => Math.sqrt(Math.abs(value)) / (2 * Math.PI);
           for (let k = 0; k < 3; ++k)
-            yardstick(check, mixed.name, `frequency ${k + 1}`, hertz(mine[k]), hertz(coarse[k]), hertz(fine[k]));
+            yardstick(check, mixed.name, `frequency ${k + 1}`, hertz(mine[k]), [hertz(coarse[k]), hertz(fine[k])]);
         } else {
           // The factor of the preload as it is applied: the smallest positive root.
           const first = (roots) => Math.min(...roots.filter((value) => value > 0));
-          yardstick(check, mixed.name, "first buckling factor", first(mine), first(coarse), first(fine));
+          yardstick(check, mixed.name, "first buckling factor", first(mine), [first(coarse), first(fine)]);
         }
       }
     });
@@ -2391,10 +2401,9 @@ test("summary of the checks (printed)", () => {
   for (const row of summary)
     lines.push(`${row.check} | ${row.model} | ${Number(row.value).toExponential(2)} | ${row.tolerance} | ` +
       `${row.pass ? "pass" : `FAIL ${row.what.slice(0, 160)}`}`);
-  lines.push("", "yardstick: quantity | model | mixed | classic coarse | classic fine | mixed / fine | conclusive");
+  lines.push("", "yardstick: quantity | model | mixed | classic (successive meshes) | mixed / fine | conclusive");
   for (const row of yardstickRows)
-    lines.push(`${row.what} | ${row.model} | ${row.mixed.toExponential(4)} | ${row.coarse.toExponential(4)} | ` +
-      `${row.fine.toExponential(4)} | ${row.ratio.toFixed(3)} | ${row.conclusive ? "yes" : "no"}`);
+    lines.push(`${row.what} | ${row.model} | ${row.mixed.toExponential(4)} | ${row.classic.map((v) => v.toExponential(4)).join(" -> ")} | ${row.ratio.toFixed(3)} | ${row.conclusive ? "yes" : "no"}`);
   lines.push(...yardstickNotes, "", "robustness: case | outcome | residual | diagnostic");
   for (const row of robustness) {
     const residual = row.residual === null || row.residual === undefined ? "" : row.residual.toExponential(1);

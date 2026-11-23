@@ -90,6 +90,12 @@ node --test wasm/test/validation/*.test.mjs
 | `glue` | The glued contact of shells in both formulations, on synthetic joints: two plates glued with a gap between their mid-surfaces follow a rigid motion; a strip in two parts glued end to end by its rotations is the strip in one piece and a web glued on a skin is the web meshed with it, in both formulations (the edges between glued grid points tied along their length in the MixedHybridFormulation); what the glue says of the rotations it cannot tie (the face of a solid); small joints against their closed forms (a cantilever and a simply supported beam of two glued layers, a lap splice in bending and in tension, a web glued on a rigid skin, a plate glued on a solid under a uniform strain, two blocks of solids glued end to end) |
 | `classic-stiffened-panel` | The `Bar2`, `Beam2` and `Rod2` of `ClassicFormulation` on shells that are not plane: a twisted stiffened panel (skin of `ShellQuad4` and `ShellTria3`, stringers, frames and edge caps as line elements with offsets along the normal of the skin) against the same panel with webs of shells, with a thin and a thick skin; the axis of a section given by its type and dimensions (the neutral axis of a `Bar2` on a `BarShapeProp`, the shear centre of a `Beam2` on a `BeamShapeProp`) |
 
+The static bracket comparison uses three classical meshes with 2, 4 and 8 subdivisions per solid-cell edge.
+Under pressure with three point supports, the plate-corner displacement is 0.25768, 0.25362 and 0.28996 mm,
+respectively. The coarse mixed mesh gives 0.21756 mm. The first two classical results agree within 2%, but
+the third breaks that apparent convergence. The 5% accuracy check applies when every successive reference
+pair agrees within 2%. The factor-of-1.5 check still applies when the final reference pair agrees within 20%.
+
 The cases that do not meet their criterion are listed with their reason in `known-limits.mjs` and reported as "todo":
 no criterion is loosened. The model files of the suite carry the declarations of their geometry as a preprocessor
 writes them (`SurfaceEdge`, `SurfaceFacet`, `SurfaceLine` records, or `Parameter;GeometryDeclarations;Given`: the

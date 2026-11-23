@@ -20,7 +20,8 @@ on:
       - 'wasm/package.json'
       - 'CMakeLists.txt'
       - '!**/*.md'
-      - '.github/workflows/webassembly.yml'
+      # A tag targeting older workflow files may require extra permissions. Supersede that build on main.
+      - '.github/workflows/**'
       - '.github/scripts/fetch-reader-package.sh'
   pull_request:
     paths:
