@@ -282,6 +282,7 @@ void FastenerPiercingTable::buildPatches(const NodeTable& nodes, std::span<const
     // The grid points of the tie of each row: those under its corners, or those of its patch.
     m_tieOffsets.assign(1, 0);
     m_tieGrids.clear();
+    const auto gridsByPatch = this->patchGrids();
     for (std::int64_t row = 0; row < rowCount(); ++row)
     {
         const auto first = static_cast<std::ptrdiff_t>(m_tieGrids.size());
@@ -294,7 +295,7 @@ void FastenerPiercingTable::buildPatches(const NodeTable& nodes, std::span<const
             for (const std::int32_t id : m_cornerFootprint.at(row, k).grids)
                 addGrid(id);
         if (m_cornerFootprint.count(row) == 0)
-            for (const std::int32_t id : this->patchGrids()[row])
+            for (const std::int32_t id : gridsByPatch[row])
                 addGrid(id);
         m_tieOffsets.push_back(static_cast<std::int64_t>(m_tieGrids.size()));
     }
