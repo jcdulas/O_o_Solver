@@ -1,7 +1,7 @@
 # `input`
 
-The model snapshot: everything the solver reads from a model of O_o_Reader, checked against the data contract and
-read in place without copy, in one immutable `ModelSnapshot`. The tables come from the O_o_Reader WebAssembly module as
+The model snapshot: everything the solver reads from a model of O_o_Model, checked against the data contract and
+read in place without copy, in one immutable `ModelSnapshot`. The tables come from the O_o_Model WebAssembly module as
 table packages (bytes that keep the Arrow layout), which `api::ModelInput` imports and hands to the `SnapshotBuilder`.
 
 Dependencies: `base` and `linalg` only.
@@ -14,18 +14,18 @@ have their full names in `paramsTable`, such as `WeightToMass` and `ShellQuad4Fo
 
 ## Folders
 
-- `contract/`: what the tables must look like. `ContractVersion` (the `data_contract_version` values of O_o_Reader
+- `contract/`: what the tables must look like. `ContractVersion` (the `data_contract_version` values of O_o_Model
   this build accepts, checked on the metadata of every table), `TableRole` (the tables that exist once per model, named
-  after the O_o_Reader query they come from, with a short description of the optional ones for error messages),
+  after the O_o_Model query they come from, with a short description of the optional ones for error messages),
   `TableContracts` (the columns read from each table, with their contract types; the element batch contract accepts
-  the grid points as a fixed list or a list, the two layouts O_o_Reader gives), `GroupContracts` (the tables of
+  the grid points as a fixed list or a list, the two layouts O_o_Model gives), `GroupContracts` (the tables of
   user-defined groups, read by the regrouping of the reduction module).
 - `tables/`: one typed view per table, each owning its `base::ContractReader`: `NodeTable` (grid points, positions in
   the basic system, borrowed CD rotations, scalar points), `ElementBatch` (one card type, with the row-index columns),
   `CardTable` (property and method cards), `MaterialTable`, `ConstraintTable` (SinglePointConstr and MultiPointConstr), `RigidTable`, `LoadTable`,
   `SubcaseTable`, `ParamTable` (the typed Parameter table `paramsTable`), `UnitTable` (components, revision stamps,
   boundaries, load case groups), `MassTable` (non-structural mass), `SectionTable` (BarShapeProp and BeamShapeProp section
-  properties), `FastenerPiercingTable` (the piercing points of Fastener and Weld: O_o_Reader's `fastenerPiercings`,
+  properties), `FastenerPiercingTable` (the piercing points of Fastener and Weld: O_o_Model's `fastenerPiercings`,
   with the grid points and shape functions of the shells pierced, in the layout the elements read; the patch of
   each point: for a point on a grid point or a side of the pierced element, the grid points of the shell elements all
   around it; and the footprint of each fastener on the shells, `PiercingFootprint`: the square of the area of its
@@ -73,7 +73,7 @@ contact pairs is refused by the assembly (`assembly::requireGlueContract`) rathe
   their owner alive.
 - A table the snapshot was taken without is absent, and its accessor throws `ContractError` naming it (and what it
   holds, `prerequisiteOf`). A table built by hand (in a test, for instance) carries no contract version and is vouched
-  for by its column contract alone, so it must use O_o_Reader's schemas: a test on such a table and a run on O_o_Reader
+  for by its column contract alone, so it must use O_o_Model's schemas: a test on such a table and a run on O_o_Model
   read the same contract.
 - Element batches are checked only for the columns every element has (ID, property, grid points, row indices); each
   element folder reads its own fields through the batch's reader with its own column contract.

@@ -2,7 +2,7 @@
 // section 13.3): benchmarks through the whole path (reader, modelFromReader, run) against closed-form or classical
 // values, with the criteria of section 13.6. These cases have no time limit: they are not part of the fast suite.
 //
-// Run: node --test wasm/test/validation/*.test.mjs   (Node.js 24; needs ../O_o_Reader/build/wasm/dist)
+// Run: node --test wasm/test/validation/*.test.mjs   (Node.js 24; needs ../O_o_Model/build/wasm/dist)
 
 import assert from "node:assert/strict";
 import { test as nodeTest } from "node:test";

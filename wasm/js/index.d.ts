@@ -5,7 +5,7 @@ export * from "./study-workers.js";
 
 // Types of the oos-solver package (index.js).
 //
-// Every name the interface gives or takes is an exact neutral name of O_o_Reader: card and result element types use
+// Every name the interface gives or takes is an exact neutral name of O_o_Model: card and result element types use
 // UpperCamelCase ("ShellQuad4"); table kinds ("singlePointConstrForces") and columns ("bendingMomentA1") use lowerCamelCase.
 // Messages (Diagnostic.message, Diagnostic.card, Diagnostic.field and errors) use the same neutral names.
 
@@ -165,7 +165,7 @@ export interface NodalTable {
 // One element table: one element type, one step; values row-major (rows x components).
 export interface ElementTable {
   kind: string; // "stress", "strain", "forces", "strainEnergy", "failureIndices"
-  // The result element type of O_o_Reader: the exact neutral card type ("ShellQuad4",
+  // The result element type of O_o_Model: the exact neutral card type ("ShellQuad4",
   // "ShellTria3"), or a layout of its own ("ShellQuad4Composite": the plies of a laminate).
   elementType: string;
   subcase: number;
@@ -273,17 +273,17 @@ export interface OptimizationPreparation {
 }
 
 export declare class OosSolver {
-  createStudy(reader: import("oor-reader").OorReader, deck: import("oor-reader").Deck,
+  createStudy(reader: import("oo-model").OoModel, deck: import("oo-model").Deck,
     definition: import("./study.js").StudyDefinition, settings?: import("./study.js").StudySettings,
     hooks?: import("./study.js").StudyHooks): import("./study.js").OptimizationStudy;
-  restoreStudy(reader: import("oor-reader").OorReader, deck: import("oor-reader").Deck,
+  restoreStudy(reader: import("oo-model").OoModel, deck: import("oo-model").Deck,
     hooks?: import("./study.js").StudyHooks): ReturnType<typeof import("./study.js").restoreStudy>;
-  shapeBasisFromReader(reader: import("oor-reader").OorReader, auxiliary: import("oor-reader").Deck,
+  shapeBasisFromReader(reader: import("oo-model").OoModel, auxiliary: import("oo-model").Deck,
     options: { variableId: number; cases?: { subcase: number; coefficient?: number }[]; gridIds?: number[] }):
     { variableId: number; gridIds: Int32Array; directions: Float64Array };
   version(): string;
   threading(): { enabled: boolean; maximumThreads: number; activeWorkers: number; defaultThreads: number };
-  // `oor` is a loaded OorReader (package oor-reader), `deck` one of its decks.
+  // `oor` is a loaded OoModel (package oo-model), `deck` one of its decks.
   // Every element card type the solver computes ("ShellQuad4") with its formulations, the default first.
   elementFormulations(): { card: string; formulations: string[] }[];
   capabilities(model?: Model | null): OptimizationCapabilities;

@@ -7,7 +7,7 @@
 // A case that fails here is a finding on the solver, kept as it is: the summary printed by the last case gives every
 // check with its largest difference.
 //
-// Run: node --test wasm/test/validation/assemblies.test.mjs   (Node.js 24; needs ../O_o_Reader/build/wasm/dist)
+// Run: node --test wasm/test/validation/assemblies.test.mjs   (Node.js 24; needs ../O_o_Model/build/wasm/dist)
 // OOS_ASSEMBLIES_DUMP=<folder> writes the model file of every failing comparison there, with its options.
 
 import assert from "node:assert/strict";

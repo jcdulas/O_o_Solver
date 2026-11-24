@@ -3,7 +3,7 @@ name: WebAssembly
 # Builds the default WebAssembly package (single-threaded, 64-bit WebAssembly), archives build/wasm/dist, runs the test
 # suites on it and, on the main branch, publishes it as the release that follows the branch and as the release kept
 # for its version. A package whose suites fail is not published.
-# The suites need the O_o_Reader package, which this repository does not build: they take the one that repository
+# The suites need the O_o_Model package, which this repository does not build: they take the one that repository
 # publishes for its main branch.
 
 on:
@@ -51,10 +51,10 @@ env:
   EMSCRIPTEN_VERSION: '6.0.13'
   # The Node.js that runs the suites: the module needs 64-bit WebAssembly.
   NODE_VERSION: '24'
-  # The O_o_Reader package the suites load: the release that follows the main branch of that repository.
-  READER_REPOSITORY: ${{ github.repository_owner }}/O_o_Reader
+  # The O_o_Model package the suites load: the release that follows the main branch of that repository.
+  READER_REPOSITORY: ${{ github.repository_owner }}/O_o_Model
   READER_TAG: wasm-latest
-  READER_ARCHIVE: O_o_Reader-wasm.zip
+  READER_ARCHIVE: O_o_Model-wasm.zip
   # The time limits of the fast suite are those of a developer's machine: a shared runner gets ten times each.
   OOS_TEST_TIME_FACTOR: '10'
 
@@ -122,7 +122,7 @@ jobs:
         with:
           name: O_o_Solver-wasm
           path: build/wasm/dist
-      - name: Fetch the O_o_Reader package
+      - name: Fetch the O_o_Model package
         run: bash .github/scripts/fetch-reader-package.sh
       - name: Run the input combination and derivative cases
         # Every case in its worker, with its watchdog; the timing report is written in build/test-results.
@@ -163,7 +163,7 @@ jobs:
         with:
           name: O_o_Solver-wasm
           path: build/wasm/dist
-      - name: Fetch the O_o_Reader package
+      - name: Fetch the O_o_Model package
         run: bash .github/scripts/fetch-reader-package.sh
       - name: Run the files of this part
         env:
@@ -212,7 +212,7 @@ jobs:
             echo
             echo "Extract $ARCHIVE and import index.js; the module needs a runtime with 64-bit WebAssembly"
             echo "(Node.js 24 or later, or a browser that supports it). The test suites of the repository passed on"
-            echo "this package, with the O_o_Reader package of the main branch of its repository."
+            echo "this package, with the O_o_Model package of the main branch of its repository."
           } > notes.md
           {
             echo "The latest build of the main branch, replaced at every change of its sources."

@@ -2,14 +2,14 @@
   {
     "id": "reader-solver-boundary",
     "title": "Two modules, an explicit data boundary",
-    "description": "JavaScript coordinates two independent WebAssembly memories. Reader query tables cross as byte packages. Solver results return as arrays and may be added to Reader result storage.",
+    "description": "JavaScript coordinates two independent WebAssembly memories. Model query tables cross as byte packages. Solver results return as arrays and may be added to Model result storage.",
     "size": [
       1120,
       840
     ],
     "nodes": [
       {
-        "title": "O_o_Reader",
+        "title": "O_o_Model",
         "box": [
           55,
           195,
@@ -17,7 +17,7 @@
           130
         ],
         "body": [
-          "Read .oos records",
+          "Build or import a model",
           "Build and query typed tables"
         ],
         "color": "blue",
@@ -65,7 +65,7 @@
           "Query, archive or export"
         ],
         "color": "teal",
-        "tag": "Reader result API"
+        "tag": "Model result API"
       },
       {
         "title": "Result arrays",
@@ -140,7 +140,7 @@
           415,
           560
         ],
-        "title": "Reader module",
+        "title": "Model module",
         "subtitle": "Owns model parsing and result storage",
         "color": "blue"
       },
@@ -556,7 +556,7 @@
         ],
         "body": [
           "IDs, components, values, diagnostics",
-          "Optional handoff to Reader result storage"
+          "Optional handoff to Model result storage"
         ],
         "color": "purple",
         "tag": "Public result API"

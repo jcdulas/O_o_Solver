@@ -1038,7 +1038,7 @@ The cache. The key of a unit (`reduction::CacheKey`) names its entity nodes by t
 what the formulation reads around the unit's elements (`FormulationModel::describeSurroundings`: the elements of two
 rings around its grid points, with their IDs, cards and the IDs and positions of their grid points, and the geometry
 declarations of the model): the normals and the curves the unit's elements read come from their neighbours, which may
-lie in other units, and the declarations come from the program, which O_o_Reader's stamps do not see. A change of the
+lie in other units, and the declarations come from the program, which O_o_Model's stamps do not see. A change of the
 declarations condenses every unit again. Exposed by `condensation: { cache }` with `solver.condensationCache()` (in
 memory).
 

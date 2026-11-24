@@ -6,7 +6,7 @@
 // form or a classical value. The criteria are the bounds each element meets, with a margin: the documents give the
 // measured values, and each case writes its own in the output of the test.
 //
-// Run: node --test wasm/test/validation/classic-shells.test.mjs   (Node.js 24; needs ../O_o_Reader/build/wasm/dist)
+// Run: node --test wasm/test/validation/classic-shells.test.mjs   (Node.js 24; needs ../O_o_Model/build/wasm/dist)
 
 import assert from "node:assert/strict";
 import { CLASSIC, real, runModel, nodal, test } from "./support.mjs";

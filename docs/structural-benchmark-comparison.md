@@ -106,7 +106,7 @@ The archive contains all **41 model files**. The results file identifies each me
 {download}`Full numerical results <benchmarks/structural-comparison-results.json>` ·
 {download}`Replay script <benchmarks/replay-structural-comparison.mjs>`
 
-With the Reader and Solver packages built and Node.js 24 available, run from the repository root. The replay evaluates every probe and compares it with the archived value using a tolerance of one millionth of the reference magnitude. [Build and validation instructions](testing.md)
+With the Model and Solver packages built and Node.js 24 available, run from the repository root. The replay evaluates every probe and compares it with the archived value using a tolerance of one millionth of the reference magnitude. [Build and validation instructions](testing.md)
 
 ```bash
 python -m zipfile -e docs/benchmarks/structural-comparison-inputs.zip build/structural-comparison-inputs

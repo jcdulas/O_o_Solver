@@ -13,7 +13,7 @@ folders in that order, which is the order in which the pieces depend on one anot
   linalg's node blocks (grid row r, component c → 6·r + c − 1; scalar points after the grids). The CD-to-basic
   rotations and the positions come from the snapshot.
 - `constraints/SpcSet`: the single-point constraints of a subcase — sg from Node PS, sb from the SinglePointConstr/SinglePointConstrList rows of the
-  selected SinglePointConstr set and the EnforcedMotionConstr rows of the selected LoadCombination set (singlePointConstrTable of O_o_Reader, SinglePointConstrUnion expanded), and the
+  selected SinglePointConstr set and the EnforcedMotionConstr rows of the selected LoadCombination set (singlePointConstrTable of O_o_Model, SinglePointConstrUnion expanded), and the
   nonzero enforced values (EnforcedMotionConstr overrides the SinglePointConstr value of the same DOF).
 - `constraints/MpcEquations`: the MultiPointConstr equations of the selected MultiPointConstr set (multiPointConstrTable, MultiPointConstrUnion expanded), first term
   dependent.
@@ -30,7 +30,7 @@ folders in that order, which is the order in which the pieces depend on one anot
   (`elements::resolveSideMotion`, FormulationModel::shellPointMotion).
 - `constraints/GlueConstraints`: the glue equations of glued contact, the node-to-surface tie of the open-source
   solver CalculiX (G. Dhondt, CalculiX CrunchiX User's Manual 2.21, section 7.132 *TIE). The two surfaces come from
-  O_o_Reader's contactNodePairs taken with the reader's own rule (rule="components"): the grid points of each
+  O_o_Model's contactNodePairs taken with the reader's own rule (rule="components"): the grid points of each
   secondary surface near its primary surface and the faces of that surface, nothing else of the rows.
   `constraints/GlueSearch` projects every candidate point on the primary faces near it; a point is tied to the face
   whose nearest point is nearest when its orthogonal distance is within the position tolerance (the pair's ErrorHandling, else
@@ -90,7 +90,7 @@ folders in that order, which is the order in which the pieces depend on one anot
   ranges on its threads: `ElementFamily::checkRows`).
 - `assemble/ElementConnectivity`: the nodes each element couples, from the DOFs of its stiffness (the mass for a mass
   element): the groups of the node graph. It takes one pass over the element matrices because the connectivity
-  columns O_o_Reader gives do not cover the springs, Bushing and Bar2. The stiffness matrices it computes are kept for
+  columns O_o_Model gives do not cover the springs, Bushing and Bar2. The stiffness matrices it computes are kept for
   the assembly of Kgg in an `assemble/ElementMatrixStore` within a share of the budget (on a 1 M DOF plate model,
   setup and assembly went from 1.57 s to 1.2 s), dropped beyond it (the assembly then computes them again).
 - `assemble/StiffnessAssembler`, `assemble/MassAssembler`: Kgg and Mgg through linalg's `SparseAssembler`
@@ -135,7 +135,7 @@ folders in that order, which is the order in which the pieces depend on one anot
   of the scaled cases, σ_min ≥ 1/‖R⁻¹‖_F) may prove that the pivoted QR would take every case, which then does not
   run (the proof and its margins in LoadBasis.hpp); the reconstruction check runs over the cases in parallel (each case
   alone, the same bits). `loads/FieldPrecision`: half a unit of the last written digit from the written numeric precision
-  O_o_Reader gives for the load cards (the finest precision of the cards of a load set and type, a LoadCombination set taking those
+  O_o_Model gives for the load cards (the finest precision of the cards of a load set and type, a LoadCombination set taking those
   of the sets it combines).
 - `relief/RigidBodyModes` (D of the grid point weight generator), `relief/GridPointWeight` (Parameter WeightReferenceNode: MO, S, the
   masses and centres of gravity, I(S) with the products of inertia printed as +Σ m·x·y, the opposite sign of the
@@ -186,7 +186,7 @@ These rules are stated in the code where they are applied and tested on hand-mad
 - The RigidInterpolation rotational weights are WTi·Lc², Lc the mean distance of the independent grid points to the reference point.
 - The UserDofSet table layout is this project's own.
 - GravityLoad is Mgg·r with r the rigid translation by the acceleration, WeightToMass applied to Mgg.
-- A blank BeamDistributedLoad P2 is taken as P1, as O_o_Reader gives it, also when X2 is given.
+- A blank BeamDistributedLoad P2 is taken as P1, as O_o_Model gives it, also when X2 is given.
 
 ## Differential stiffness
 

@@ -42,12 +42,12 @@ basis vectors once, then combined per load case.
 - **Bars under BeamDistributedLoad** are refused in a section (their forces are then given at the stations of the element, a layout
   the sections do not read); the cut loads exclude line and pressure loads as the grid point forces do (they are
   appliedLoad rows).
-- **Named tables**: O_o_Reader's `cutLoads` named result takes the cut loads (turned to basic, about the point in
+- **Named tables**: O_o_Model's `cutLoads` named result takes the cut loads (turned to basic, about the point in
   basic); its `sectionLoads` holds a force and a moment in basic, not the components of a section, so the kept
-  section loads are O_o_Reader's named result `sectionComponents` from its data contract 44 (the named matrix
+  section loads are O_o_Model's named result `sectionComponents` from its data contract 44 (the named matrix
   `SECTION_LOADS` before it: rows section ID and component number, columns subcases).
-- **The convention of O_o_Reader's groups**: the sections give the numbers O_o_Reader's `readBlock` gives for element
-  groups in a frame; an element whose normal opposes the section's has its y_s turned to the section's, as O_o_Reader
+- **The convention of O_o_Model's groups**: the sections give the numbers O_o_Model's `readBlock` gives for element
+  groups in a frame; an element whose normal opposes the section's has its y_s turned to the section's, as O_o_Model
   does.
 
 ## Zones of local models
@@ -55,7 +55,7 @@ basis vectors once, then combined per load case.
 The contour of a zone and its contour data: what an external local model (a plugin) takes from the analysis of the
 global model.
 
-- `ZoneDefinition`: a zone as the caller gives it: its members, O_o_Reader's boundary of the group (`zoneBoundaries`:
+- `ZoneDefinition`: a zone as the caller gives it: its members, O_o_Model's boundary of the group (`zoneBoundaries`:
   per point its components as text, whether it is a grid point of an element a fastener pierces, its causes) and its
   enclosed elements (`enclosedElements`), the policy for them (warn, include, exclude), the system of its data (0, a
   rectangular CID, or -1 the displacement systems) and the unit it was made from. `ZoneSubcaseConstraint`: the SinglePointConstr and
@@ -86,7 +86,7 @@ global model.
 
 ### Design choices
 
-- **The contour comes from O_o_Reader**, never from the deck: the components of each point are its `dof` (O_o_Reader
+- **The contour comes from O_o_Model**, never from the deck: the components of each point are its `dof` (O_o_Model
   gives a Rod2 the six components, its torsion acting on the rotations). O_o_Solver adds the constraints of some
   subcases only and applies the enclosed policy.
 - **The contour forces follow the grid point forces**: Σ_{e∈zone} (K_e·u_e − f_e,T) at the point (the element rows of

@@ -19,7 +19,7 @@ Where to start reading: the folder list above follows the order in which the pie
 - `ProgramTables`: the contract tables `designEquationSymbols` and `designEquationInstructions` read into programs.
 - `ExpressionEvaluator`: values and exact forward-mode derivatives at a batch of points; refusals as diagnostics.
 
-`O_o_Solver` never parses DesignEquation text: `O_o_Reader` does. The tests build the tables with small hand-written parsers of
+`O_o_Solver` never parses DesignEquation text: `O_o_Model` does. The tests build the tables with small hand-written parsers of
 the DesignEquation syntax (test code only).
 
 ### The expression program contract
@@ -101,7 +101,7 @@ refused with an error that gives the column.
   (DesignPropRelation1/2, DesignMatRelation1/2, DesignElemRelation1/2 and the relations given by the caller's functions: field values and their exact
   derivatives with respect to x through the chain rule), `DesignModel` (the three, the DesignEquation programs and the DesignConstants
   constants, checked at construction; `checkDesignModel` lists every problem as a diagnostic).
-- `DesignTables`: the design tables of O_o_Reader read into `DesignModelParts`.
+- `DesignTables`: the design tables of O_o_Model read into `DesignModelParts`.
 - `FieldTargets`: the designed fields bound to the columns of one snapshot ("properties/<TYPE>", "elements/<TYPE>",
   materialsTable and "materials/<TYPE>"), and the units (components) each changes.
 - `DesignPoint`: x → variable values, field values and derivatives, the `input::ColumnOverlay` of the snapshot, the
@@ -118,13 +118,13 @@ runs on the overlaid snapshot as on any other (`DesignProblem::evaluateStatics`)
 overlaid columns (8 bytes per row of each designed column) and the contract checks of the re-wrapped tables, never a
 copy of the model.
 
-What the overlay does not change: the summaries O_o_Reader computes from the whole model (the `mass` of
+What the overlay does not change: the summaries O_o_Model computes from the whole model (the `mass` of
 materialsTable and connectedComponents) and the revision stamps (the design stamp stands for them in the cache
-key); the tables O_o_Reader derives from cards, but for the ply stacks of a designed CompProp or CompPropGlobal
+key); the tables O_o_Model derives from cards, but for the ply stacks of a designed CompProp or CompPropGlobal
 (laminatePliesTable, laminateSummary) and the section properties of a designed BarShapeProp or BeamShapeProp (sectionsTable),
-which the design point overlays too (model/DerivedProperties: the ply stack by O_o_Reader's arithmetic, the sections by
+which the design point overlays too (model/DerivedProperties: the ply stack by O_o_Model's arithmetic, the sections by
 its own section library, so that the point gives the same bits as the model with the design written into it); the
-defaults O_o_Reader fills in when a card is read. The optional `sourceBlankFields` column records which one of
+defaults O_o_Model fills in when a card is read. The optional `sourceBlankFields` column records which one of
 `IsoMat` E, G or NU was blank in the source. `model/DerivedMaterials` recomputes that value from the other two at
 every designed point and field perturbation, and updates the material summary as well. Coupled material fields use
 the full sensitivity path rather than a closed form that assumes independent columns. Other card defaults, including
@@ -132,7 +132,7 @@ the Z1 and Z2 fibre positions of `ShellProp`, remain as they were when the sourc
 
 ### The design tables contract (as O_o_Solver reads it)
 
-The design tables of O_o_Reader, with the columns marked "proposed", which O_o_Solver asks for:
+The design tables of O_o_Model, with the columns marked "proposed", which O_o_Solver asks for:
 
 `designVariablesTable`: `id` int32 · `label` utf8 or dictionary<utf8> · `value` float64 (XINIT) · `lower` float64 ·
 `upper` float64 · `delta` float64 (DELXV, null when blank) · `ddval` int32 (proposed, optional; null when blank).
@@ -428,12 +428,12 @@ DESMAX.
   the results of the final cycle (with `designCycle`, the same bits as the cycle's analysis on the overlay). This costs
   one analysis more than taking the last cycle's analysis as the final one, which would need the run handle of an
   overlay analysis from the static solution entry point, outside this module; reversible by adding it.
-- **The optimisation tables**: O_o_Reader's named results `designVariables`, `designHistory`,
+- **The optimisation tables**: O_o_Model's named results `designVariables`, `designHistory`,
   `designVariableHistory`, `responseValues` (one row per response item and cycle: the bounds of the first
   constraint set on the item) and `sensitivities` (the retained items and the objective of each cycle, by independent
   variable), each with `designCycle`.
 - **Checkpoints**: a file written through a temporary file at the end of every cycle: the versions (checkpoint
-  format, O_o_Solver, O_o_Reader, data contract), the stamps of the model (a hash of the table of every card type, of
+  format, O_o_Solver, O_o_Model, data contract), the stamps of the model (a hash of the table of every card type, of
   the case section and of the SOL), of the design model (variables, relations, responses, constraints, DesignOptimParams,
   explicit group) and the names of the caller's callables, the recorded cycles (every float in its exact hexadecimal
   form) and the driver's state. A resumed run analyses its last cycle again (the same
@@ -441,7 +441,7 @@ DESMAX.
   naming each difference by card type or part. A progress callback is called at the start of every cycle (stage
   "design cycle"): a False answer stops the run there, the checkpoint of the previous cycle intact.
 - A SOL 200 run accepts the subcases with ANALYSIS = STATICS, MODES, BUCK and SAERO (below; the others refused as out
-  of scope) and DesignNodeMove; the design tables come from O_o_Reader or from the caller.
+  of scope) and DesignNodeMove; the design tables come from O_o_Model or from the caller.
 
 ## The `DesignProblem` for external optimisers
 
@@ -476,13 +476,13 @@ What an external optimiser or a partner solver drives through the caller.
   documented price of the parallel points.
 - **BeamProp station fields as design targets** (`model/FieldTargets`, `input::ColumnOverlay`): a column
   `list<fixed_list<float64>[n]>` (`station_section`: A, I1, I2, I12, J, NonStructMass of each station; `station_stress`: C1 to
-  SensitivityPerturbation) is a target, its item `station · n + component` as O_o_Reader's `designRelationsTable` flattens it, checked
+  SensitivityPerturbation) is a target, its item `station · n + component` as O_o_Model's `designRelationsTable` flattens it, checked
   against the stations of the row; the overlay copies the items and values of the column (the base's list offsets
   borrowed), so that the Beam2 reads the designed station as any other.
 
 ## Shape variables
 
-Shape optimisation by node positions along basis vectors. The deck's DesignNodeMove cards come from O_o_Reader's
+Shape optimisation by node positions along basis vectors. The deck's DesignNodeMove cards come from O_o_Model's
 `shapeVariablesTable` (`designVariable`, `nodeId`, `frameId`, `coefficient`, `directionX/Y/Z`, the vector N in the basic
 system along the directions of CID at the grid point); the caller may declare shape terms of its own, N in the basic
 system.
@@ -496,7 +496,7 @@ system.
   `basePositions`), the units each moves (componentNodes; every unit without it), and the refusals
   (`unsupported-design-target`) of the moves the overlay cannot make right: a grid point of an element a fastener
   pierces or the GA, GB, GS of a Fastener or Weld (fastenerPiercings), of a glued contact (contactNodePairs), or
-  whose CD is cylindrical or spherical (displacementRotations): tables O_o_Reader derives from the positions at read time.
+  whose CD is cylindrical or spherical (displacementRotations): tables O_o_Model derives from the positions at read time.
   `overlayOf` writes the field cells and the moved positions g = g0 + Σ_v s_v·T_v(g) into `xyzGlobal` of "nodes";
   `DesignPoint` and `FieldPerturbation` both build their overlays with it, so a sizing perturbation at a shaped point
   keeps the shape. `computeDesignStamps` hashes the moved positions into the stamps of their units.
@@ -520,15 +520,15 @@ system.
   analysis (SolverError: status "failed" in a loop) and adds the warnings to its results; `distortions(point)`.
 
 Writing a design back into the model moves the Node cards and makes x the XINIT of the shaped variables. A moved grid
-point that defines a RectFrame1/C/S or the direction of a PointForceLoad1/2 or PointMomentLoad1/2, which O_o_Reader resolves at read time,
+point that defines a RectFrame1/C/S or the direction of a PointForceLoad1/2 or PointMomentLoad1/2, which O_o_Model resolves at read time,
 is handled by `model/DerivedGeometry` (below).
 
 ### Decisions
 
 - **N as written**. The format gives g − g0 = Σ COEFF·(X − X0)·N, N determined from CID and the Ni, and does not ask
-  for a unit vector; O_o_Reader takes N as written in `shapeVariablesTable` and when it writes a design into the
+  for a unit vector; O_o_Model takes N as written in `shapeVariablesTable` and when it writes a design into the
   model. O_o_Solver does the same, so that the overlay of a point and the model with the design written into it are
-  the same geometry. To reverse: normalise N in `ShapeRelations` (one line) and in O_o_Reader.
+  the same geometry. To reverse: normalise N in `ShapeRelations` (one line) and in O_o_Model.
 - **The step of the shapes**: SHAPE_STEP_RELATIVE = 3e-4 of the smallest element reached, measured
   (`ShapeElements.hpp` gives the table): at the field step 1e-2 the truncation dominates (1.7e-5 on rods, 2.7e-4 on
   higher-order shells, a warped ShellQuad4's stress lost); below 3e-4 the rounding of thin higher-order shells grows.
@@ -537,9 +537,9 @@ is handled by `model/DerivedGeometry` (below).
   derivative the sensitivities do not form; they refuse it (OptimisationError naming it), its analysis being right.
   One moved whole (the same vector on all its grid points) is accepted. MultiPointConstr equations have constant coefficients:
   their sensitivities are correct.
-- **Derived tables** (refusals): fastener piercing points, glued contact and curvilinear CD stay as O_o_Reader read
+- **Derived tables** (refusals): fastener piercing points, glued contact and curvilinear CD stay as O_o_Model read
   them; a shape that moves such a grid point is refused at its declaration.
-- **Writing a design** makes x the XINIT of the shaped variables in the problem too, as O_o_Reader does for the deck's:
+- **Writing a design** makes x the XINIT of the shaped variables in the problem too, as O_o_Model does for the deck's:
   the positions and XINIT stay a pair.
 - **The ShellTria3 transverse shear frame** (the median of the shortest edge) jumps when two edges are equally short; a
   shape that moves a grid point of such a triangle makes the analysis itself discontinuous (measured: the deflection
@@ -566,7 +566,7 @@ What an optimiser or a partner solver uses besides the gradients. None changes t
   thermal loads differenced alone, one adjoint per item (none for a self-adjoint item), summed by element, property or
   unit.
 - **Weight and volume** — `MassProperties` on the perturbed snapshots, linear in the fields (exact): checked against
-  O_o_Reader's `designMassTable` (`massSensitivity`, `isExact`).
+  O_o_Model's `designMassTable` (`massSensitivity`, `isExact`).
 - **`ApproximationHints`** — the shares of the powers 0 to 3 of each field in the stiffness energy and the mass (the
   energies at four scales of the field fitted by a cubic, no solve), the exponents of each variable, and the
   intermediate variable y = x^p of each response (displacements −round(stiffness exponent), stresses and forces −1,
@@ -981,7 +981,7 @@ applied load.
 
 DesignNodeMove (shape: node positions along basis vectors), DesignBoundaryShape and DesignShapeBasis with auxiliary models.
 
-- **The basis vectors of DesignBoundaryShape and DesignShapeBasis** — O_o_Reader gives the cards (their containers: DVID, AUXMOD, the
+- **The basis vectors of DesignBoundaryShape and DesignShapeBasis** — O_o_Model gives the cards (their containers: DVID, AUXMOD, the
   (COLi, SFi) terms), the parts `BEGIN AUXMODEL = n` as models of their own and the subcases of the `AUXCASE` sections
   in `subcasesTable` (kind `auxiliary`, `auxmodel` the model they apply to). A **DesignBoundaryShape** solves its auxiliary model
   once, on its own snapshot: a copy of the part whose case section is the AUXCASE subcases of that model (their SinglePointConstr,
@@ -995,14 +995,14 @@ DesignNodeMove (shape: node positions along basis vectors), DesignBoundaryShape 
   `{column: {grid: move}}`). Several cards of one variable add, and add to its DesignNodeMove entries. Each vector becomes
   DesignNodeMove-like terms of the design model (N the move, COEFF 1), so that everything of the shape variables applies: the
   overlay of the positions, the element derivatives of the positions, the distortion checks.
-- **`model/DerivedGeometry`** — the directions and frames O_o_Reader computes from positions when it reads the model,
+- **`model/DerivedGeometry`** — the directions and frames O_o_Model computes from positions when it reads the model,
   derived again at every design point from the moved positions (G1 to G4 of loadsTable, G1 to G3 of coordsTable)
   and written into the overlay by `FieldTargets::overlayOf`, so that the analysis, the perturbations of the
   sensitivities and the distortion checks all read them: PointForceLoad1, PointMomentLoad1 (G1 → G2), PointForceLoad2, PointMomentLoad2
   ((G2 − G1) × (G4 − G3)), RectFrame1, CylindricalFrame1, SphericalFrame1 (origin G1, z along G1 → G2, G3 in the x-z plane), the systems
   defined in a moved one (carried rigidly: their definition points are in RID), and the vectors given in a moved
   rectangular system (PointForceLoad, PointMomentLoad, GravityLoad of loadsTable; the direction of a GravityLoad, AccelFieldLoad, AccelNodeLoad, RotationalForceLoad of
-  inertialLoadsTable). Each is checked at the base positions against O_o_Reader's value (`DERIVED_CHECK_TOLERANCE`).
+  inertialLoadsTable). Each is checked at the base positions against O_o_Model's value (`DERIVED_CHECK_TOLERANCE`).
   `ShapeElements` adds to the elements a basis reaches those that read a system it moves (the `frameId`, `offsetFrameId`,
   `matFrameId` of the element, the `frameId`, `matFrameId` of its property) and bounds its step by the smallest distance between the
   grid points that define what it changes; `StaticSensitivity` differences the concentrated loads of a basis that turns
@@ -1017,7 +1017,7 @@ a design into the model moves the grid points of the DesignBoundaryShape and Des
 The references of the tests: the analytic deflection of an auxiliary cantilever as the basis vector, the columns of a
 previous analysis as a DesignShapeBasis vector, the gradients with a turned PointForceLoad1, a moved RectFrame1 (two Bushing, a PointForceLoad, a PointMassInertia
 offset and a GravityLoad in it) against central differences of the analysis, the overlay of a design point equal to the
-model O_o_Reader reads after the design is written into it (to 1e-9), the two-bar truss of least weight with a DesignBoundaryShape
+model O_o_Model reads after the design is written into it (to 1e-9), the two-bar truss of least weight with a DesignBoundaryShape
 and with a DesignShapeBasis vector at its known optimum h = b, a SOL 200 deck with its auxiliary model; the derived directions,
 frames and refusals on hand-built tables.
 
@@ -1035,5 +1035,5 @@ frames and refusals on hand-built tables.
   in a moved system, a DesignNodeMove whose CID is moved, a PointForceLoad or PointMomentLoad in a curvilinear system at a moved grid point or in
   a moved curvilinear system, a GravityLoad, AccelFieldLoad, AccelNodeLoad, RotationalForceLoad in a moved curvilinear system, an aerodynamic model when a
   system moves; the fastener piercing points, glued contact and curvilinear CD rotations of moved grid points stay
-  refused. With an O_o_Reader that does not give the derived positions, every move of such a direction or frame is
+  refused. With an O_o_Model that does not give the derived positions, every move of such a direction or frame is
   refused.

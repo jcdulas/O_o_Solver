@@ -37,7 +37,7 @@
 // formulation has the mesh stated with the case (the MixedHybridFormulation the coarser one: it costs more for each
 // element).
 //
-// Run: node --test wasm/test/validation/fasteners.test.mjs   (Node.js 24; needs ../O_o_Reader/build/wasm/dist)
+// Run: node --test wasm/test/validation/fasteners.test.mjs   (Node.js 24; needs ../O_o_Model/build/wasm/dist)
 
 import assert from "node:assert/strict";
 import { CLASSIC, MIXED, nodal, oor, prepared, real, runModel, solver, test, withModel } from "./support.mjs";

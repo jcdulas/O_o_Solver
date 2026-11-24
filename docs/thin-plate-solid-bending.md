@@ -111,7 +111,7 @@ stress error and the two centre node IDs in bottom-to-top order.
 {download}`Download the model files <benchmarks/thin-plate-inputs.zip>` ·
 {download}`Download the numerical results <benchmarks/thin-plate-results.json>`
 
-With the Reader and Solver packages built as described in the [validation guide](testing.md), run these commands
+With the Model and Solver packages built as described in the [validation guide](testing.md), run these commands
 from the repository root. The replay selects the formulation and degree for each model, checks the quarter reaction
 and compares the errors with the recorded measurements. The reference script requires Python and NumPy.
 

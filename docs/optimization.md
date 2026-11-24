@@ -1,9 +1,9 @@
 # Optimization from JavaScript and Python
 
-The examples assume a loaded Reader model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_reader.read_model`. See [Getting started](getting-started.md) for package setup.
+The examples assume a loaded model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_model.read_model`. See [Getting started](getting-started.md) for package setup.
 
 For model edits and result fields beyond native design declarations, see
-[external optimization](external-optimization.md). It covers all four solution sequences, generic Reader card and
+[external optimization](external-optimization.md). It covers all four solution sequences, generic Model card and
 case-control parameters, numerical derivatives, parallel workers and accepted-point archives.
 
 The application chooses the next point, convergence rules and line search. JavaScript calls the WebAssembly solver and Python calls the native solver to evaluate the same model-defined design variables, responses and first derivatives.
@@ -11,9 +11,9 @@ The application chooses the next point, convergence rules and line search. JavaS
 The [derivative coverage guide](derivatives.md) summarizes first- and second-order paths for all four solutions,
 their numerical fallbacks and the report fields that identify the calculation actually used.
 
-In WebAssembly, Reader and Solver have independent memories. Reader exports owned table packages, Solver keeps an immutable model
+In WebAssembly, Model and Solver have independent memories. Model exports owned table packages, Solver keeps an immutable model
 snapshot, and each evaluation keeps its own analysis factors and memory budget. Evaluating a trial point does not edit
-the Reader model. Apply the accepted point explicitly when the iteration ends.
+the model. Apply the accepted point explicitly when the iteration ends.
 
 ## Create and evaluate a problem
 
@@ -64,7 +64,7 @@ linear or equation relations, links, constants, shape directions, responses, con
 Parsed equations can be supplied through the two equation table packages. The [API reference](api.rst) gives the full
 declaration types.
 
-Reader refuses design declarations that its export cannot represent, rather than silently dropping them.
+Model refuses design declarations that its export cannot represent, rather than silently dropping them.
 Model and declaration changes require a new problem. A problem can evaluate many points, and several evaluations may
 coexist. An evaluation retains its problem even if the JavaScript problem handle has been deleted.
 
@@ -214,7 +214,7 @@ is substituted. Check derivatives at representative points before relying on a r
 
 ## Save the accepted design
 
-For variables defined in the Reader model, pass their explicit IDs in solver order:
+For variables defined in the model, pass their explicit IDs in solver order:
 
 **JavaScript / WebAssembly**
 
@@ -232,17 +232,17 @@ accepted = deck.with_design_point(ids, accepted_x)
 accepted.write_model("accepted.oos")
 ```
 
-Reader applies links, field changes and supported grid moves atomically. It rejects variable bound violations and,
+Model applies links, field changes and supported grid moves atomically. It rejects variable bound violations and,
 by default, field bound violations. `setInitialValues` defaults to true, so the saved model starts at the accepted
 point. A second application of that point does not move the shape again. Use `limits: "clip"` or `"ignore"` only when
 the application explicitly needs that field-bound policy. Unsupported declarations refuse the operation.
 
-Variables declared only in JavaScript do not create Reader cards. Their final fields must be written with Reader's
+Variables declared only in JavaScript do not create Model cards. Their final fields must be written with Model's
 card-editing API, or their declarations must first be added to the model. Rebuild the solver problem after any such edit.
 
 ## Verification
 
 Build both modules and run `node --test --test-concurrency=1 wasm/test/*.test.mjs` with a Memory64-capable runtime. The optimization tests
 check an original axial bar against `u = P L / (E A)`, direct and adjoint gradients, mixed Hessian entries, dense and
-sparse products, streamed Jacobians, a nonlinear JavaScript callback, modal gradients, memory limits and atomic Reader
+sparse products, streamed Jacobians, a nonlinear JavaScript callback, modal gradients, memory limits and atomic Model
 updates. A JavaScript iteration also reaches the active displacement bound and saves the accepted design.

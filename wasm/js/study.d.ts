@@ -1,4 +1,4 @@
-import type { Deck, OorReader, PartDefinition, CardScalar, WriteReport } from "oor-reader";
+import type { Deck, OoModel, PartDefinition, CardScalar, WriteReport } from "oo-model";
 import type { Analysis, AnalysisResult, OosSolver } from "./index.js";
 import type { OptimizationValues, ResponseItem } from "./optimization.js";
 
@@ -37,7 +37,7 @@ export interface StudyDefinition {
   update?: string;
 }
 export interface StudyContext {
-  deck: Deck; reader: OorReader; solver: OosSolver; x: Float64Array; variables: Record<number, number>;
+  deck: Deck; reader: OoModel; solver: OosSolver; x: Float64Array; variables: Record<number, number>;
 }
 export interface StudyHooks {
   parameters?: Record<string, (context: StudyContext) => CardScalar>;
@@ -62,7 +62,7 @@ export interface StudyVector { values: Float64Array; keys: string[] }
 export interface StudyPoint { values: OptimizationValues; analyses?: AnalysisResult[] }
 
 export declare class OptimizationStudy {
-  constructor(solver: OosSolver, reader: OorReader, deck: Deck, definition: StudyDefinition,
+  constructor(solver: OosSolver, reader: OoModel, deck: Deck, definition: StudyDefinition,
     settings?: StudySettings, hooks?: StudyHooks);
   metadata(): { version: number; revision: number; variables: StudyVariable[]; initialValues: Float64Array;
     maximumOutputBytes: number; derivativeMethod: "finiteDifference"; analyses: StudyDefinition["analyses"] };
@@ -90,7 +90,7 @@ export declare class StudyEvaluation {
   save(path: string, options?: { state?: unknown; compressionLevel?: number; shuffle?: boolean }): WriteReport;
   delete(): void;
 }
-export declare function restoreStudy(solver: OosSolver, reader: OorReader, deck: Deck,
+export declare function restoreStudy(solver: OosSolver, reader: OoModel, deck: Deck,
   hooks?: StudyHooks): { study: OptimizationStudy; state: unknown; diagnostics: AnalysisResult["diagnostics"][];
     trackedModes: Omit<OptimizationValues["trackedModes"][number], "shape">[] };
 export declare const STUDY_DOCUMENT: string;

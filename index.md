@@ -33,11 +33,11 @@ Solve finite element models for statics, vibration, buckling and aeroelastic tri
 - [Elements](src/elements/README.md), [assembly](src/assembly/README.md) and [reduction](src/reduction/README.md).
 - [Analysis solutions](src/solutions/README.md), [output](src/output/README.md) and [design](src/design/README.md).
 
-## Reader and Solver
+## Model and Solver
 
 | Project | Responsibility |
 | --- | --- |
-| [O_o_Reader](https://github.com/jcdulas/O_o_Reader/blob/main/index.md) | Model records, model queries and result storage |
+| [O_o_Model](https://github.com/jcdulas/O_o_Model/blob/main/index.md) | Model records, model queries and result storage |
 | [O_o_Solver](https://github.com/jcdulas/O_o_Solver/blob/main/index.md) | Finite element analyses from reader tables |
 
 The reader and solver have public documentation sites and exchange model data through typed table packages.

@@ -5,7 +5,7 @@ the same implementation. A native derivative can combine analytic element formul
 element differences; its report identifies the path used for the requested point and responses.
 
 Start with [JavaScript optimization](optimization.md) to declare a problem. Use
-[external studies](external-optimization.md) for arbitrary Reader edits or result queries: that route obtains
+[external studies](external-optimization.md) for arbitrary Model edits or result queries: that route obtains
 derivatives by complete analysis differences.
 
 ## Coverage by solution

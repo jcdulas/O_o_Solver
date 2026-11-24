@@ -26,7 +26,7 @@
     "oos_solver_core*.mjs"
   ],
   "peerDependencies": {
-    "oor-reader": ">=0.2.0"
+    "oo-model": ">=0.2.0"
   },
   "engines": {
     "node": ">=24"

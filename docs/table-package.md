@@ -1,7 +1,7 @@
 # Table packages
 
-A **table package** is one block of bytes that holds a query table of O_o_Reader with its exact Arrow layout. It is how a table
-leaves the O_o_Reader WebAssembly module for this one, which cannot read the other module's memory: in
+A **table package** is one block of bytes that holds a query table of O_o_Model with its exact Arrow layout. It is how a table
+leaves the O_o_Model WebAssembly module for this one, which cannot read the other module's memory: in
 JavaScript, `QueryTable.toPackage()` gives a `Uint8Array`, and the other module rebuilds the Arrow C Data Interface
 structures over those bytes.
 
@@ -12,7 +12,7 @@ texts as arrays. A package keeps what a program needs: the Arrow format of every
 dictionary-encoded texts, lists, fixed-size lists, booleans, nulls), its validity bitmap, and the schema metadata
 (`oor_reader.data_contract_version`).
 
-Writer: O_o_Reader's `include/oor/query/table/TablePackage.hpp` (`packTable`). Reader: this project's
+Writer: O_o_Model's `include/oor/query/table/TablePackage.hpp` (`packTable`). Reader: this project's
 `include/oos/base/arrow/TablePackage.hpp` (`importTablePackage`).
 
 ## Layout

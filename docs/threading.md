@@ -2,7 +2,7 @@
 
 The solver has two Memory64 build variants. `wasm` runs on its calling thread. `wasm-threads` compiles the same C++
 algorithms with shared-memory workers and uses `base::ThreadPool` for assembly, factorisation, solves, recovery and
-derivatives. Reader remains a separate module; it does not need a threaded build.
+derivatives. Model remains a separate module; it does not need a threaded build.
 
 ## Build and test
 
@@ -26,7 +26,7 @@ OOS_SOLVER_DIST=build/wasm-threads/dist node --test --test-concurrency=1 wasm/te
 ```
 
 For a command prompt that sets environment variables separately, set `OOS_SOLVER_DIST` to the threaded distribution
-directory before running the test command. Reader defaults to `../O_o_Reader/build/wasm/dist`.
+directory before running the test command. Model defaults to `../O_o_Model/build/wasm/dist`.
 
 The checks run real tasks on distinct threads, nested batches, task exceptions and worker reuse. Numerical checks
 compare statics, modes, gradients and a Hessian-vector product with a one-thread reference. Build the optional C++

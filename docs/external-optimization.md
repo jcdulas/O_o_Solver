@@ -1,17 +1,17 @@
 # Optimization controlled by an external application
 
-The examples assume a loaded Reader model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_reader.read_model`. See [Getting started](getting-started.md) for package setup.
+The examples assume a loaded model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_model.read_model`. See [Getting started](getting-started.md) for package setup.
 
-An application owns the optimizer, trial points, acceptance rule and convergence test. Reader owns the editable
+An application owns the optimizer, trial points, acceptance rule and convergence test. Model owns the editable
 model; Solver owns analysis snapshots and evaluates SOL 101, 103, 105 and 144. There are two entry points:
 
 - `solver.optimizationFromReader` uses the native design model for declared sizing, shape and response types. Its
   analytic and adjoint derivatives are generally the fastest choice where supported.
-- `solver.createStudy` edits a copy of a Reader deck at each point. It can change card fields, case control and the
-  solution, then select any numeric result or named Reader query. It obtains derivatives by full analysis differences.
+- `solver.createStudy` edits a copy of a Model deck at each point. It can change card fields, case control and the
+  solution, then select any numeric result or named Model query. It obtains derivatives by full analysis differences.
   Use this for model changes or output fields outside the native design model.
 
-The two routes share Reader and Solver packages. Neither route chooses a design point for the application.
+The two routes share Model and Solver packages. Neither route chooses a design point for the application.
 
 ## Inspect support before building an optimizer
 
@@ -26,7 +26,7 @@ try {
   const prepared = solver.checkOptimization(model, declarations, settings);
   if (!prepared.canPrepare) throw new Error(prepared.error ?? JSON.stringify(prepared.analyses));
 } finally { model.delete(); }
-const readerSupport = oor.designCapabilities(deck); // editable cards and Reader design diagnostics
+const readerSupport = oor.designCapabilities(deck); // editable cards and Model design diagnostics
 ```
 
 **Python / native C++**
@@ -65,7 +65,7 @@ trim on the full structural path. This can increase memory use. Applied trim loa
 unavailable. The returned report identifies `finiteDifference` and the number of additional evaluations. Check
 derivatives against representative points, especially around contact changes, buckling mode crossings and trim limits.
 
-## Define a study with arbitrary Reader edits
+## Define a study with arbitrary Model edits
 
 **JavaScript / WebAssembly**
 
@@ -114,11 +114,11 @@ tip = u["values"][u["ids"].tolist().index(2), 0]
 Card targets accept a persistent `key`, an `id`, a named field or a one-based raw slot, and a part descriptor. Case
 targets set a command in a subcase or section; solution targets set the solution number. Parameters can combine
 variables linearly or call a named synchronous hook. Variable kinds include `continuous`, `integer` and `choice`;
-finite differences require continuous variables. Reader's `deck.copy()` gives each trial an independent copy-on-write
+finite differences require continuous variables. Model's `deck.copy()` gives each trial an independent copy-on-write
 model. The source deck stays untouched. Call `study.rebuild(newDeck, ...)` after accepting external edits.
 
 Responses select nodal, element, grid point force, eigenvalue, pressure, box force/moment, hinge moment, trim variable
-or stability derivative fields. They may also use a Reader named query, including queries over the generated result
+or stability derivative fields. They may also use a Model named query, including queries over the generated result
 tables, or a named synchronous callback. Row selectors,
 components, subcases, modes and reductions control the scalar/vector output; every response has a stable ID. See
 [`StudyResponse`](../wasm/js/study.d.ts) for the complete contract. Hooks are registered separately from the
@@ -168,7 +168,7 @@ const problem = solver.optimizationFromReader(oor, deck, {
 
 The helper that derives a shape basis from an auxiliary solve is exposed in JavaScript. In Python, supply the shape variables and relations in the deck before calling `optimization_from_reader(deck)`.
 
-The basis converts displacement components into the basic frame. The auxiliary solve and Reader geometry lookup run
+The basis converts displacement components into the basic frame. The auxiliary solve and Model geometry lookup run
 once; later native evaluations consume the typed grid/direction arrays.
 
 ## Parallel evaluations and interruption
@@ -181,7 +181,7 @@ parallel or a hung solve must be stopped:
 
 ```js
 const pool = await createOptimizationWorkerPool({
-  readerURL: new URL("../oor-reader/index.js", import.meta.url),
+  readerURL: new URL("../oo-model/index.js", import.meta.url),
   solverURL: new URL("../oos-solver/index.js", import.meta.url),
   model: modelBytes, mode: "study", definition, workers: 2,
 });
@@ -197,7 +197,7 @@ For independent model files, schedule each solve in its own process. The worker-
 
 ```python
 from concurrent.futures import ProcessPoolExecutor
-from oo_reader import read_model
+from oo_model import read_model
 from oo_solver import model_from_reader
 
 def first_hz(path):
@@ -209,7 +209,7 @@ if __name__ == "__main__":
         print(list(pool.map(first_hz, ["wing-a.oos", "wing-b.oos"])))
 ```
 
-Each worker loads its own Reader and Solver memories. `evaluateMany` queues points with backpressure; results are
+Each worker loads its own Model and Solver memories. `evaluateMany` queues points with backpressure; results are
 owned typed arrays. Cancellation or timeout terminates the busy worker and starts a replacement. Named hooks in a
 worker must be exported by a `hooksURL` module because functions cannot cross the worker boundary. A pool also
 supports `mode: "native"` with native optimization declarations and settings. Keep model and worker count within the
@@ -217,7 +217,7 @@ application's memory budget.
 
 ## Persist and resume an accepted point
 
-`point.save(path, { state })` writes a `.ooh5` with the accepted Reader model, a versioned study definition and
+`point.save(path, { state })` writes a `.ooh5` with the accepted Model model, a versioned study definition and
 optimizer state, structural result tables, eigenvalues, a typed `responseValues` table with the selected response
 values and bounds, and named aerodynamic arrays. The model and result datasets are typed and can be loaded
 selectively. The application owns the optimizer state and passes a serializable value.
@@ -240,14 +240,14 @@ try {
 Python reopens the accepted model from the same archive. The serialized JavaScript study state and mode-tracking helpers are specific to the WASM wrapper.
 
 ```python
-from oo_reader import read_model
+from oo_model import read_model
 from oo_solver import optimization_from_reader
 
 accepted = read_model("accepted.ooh5")
 problem = optimization_from_reader(accepted)  # uses design cards in the model
 ```
 
-The study definition is stored as the Reader document `oos.optimization.study`. Reader preserves such documents
+The study definition is stored as the Model document `oos.optimization.study`. Model preserves such documents
 in the model part of `.ooh5` and reports their omission when exporting model text. Named result arrays and their
 text labels are available through `results.named()` and `results.readNamed(index)`.
 

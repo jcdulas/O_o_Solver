@@ -1,9 +1,9 @@
-// End-to-end test of the WebAssembly package: a model file is read by the O_o_Reader module, its tables are handed to the
+// End-to-end test of the WebAssembly package: a model file is read by the O_o_Model module, its tables are handed to the
 // solver, and the results are compared with the analytic solutions of a cantilever plate.
 //
 //   node --test wasm/test/*.test.mjs
 //
-// The reader package is taken from OOR_READER_DIST, or from the sibling O_o_Reader build (../O_o_Reader/build/wasm/
+// The reader package is taken from OOR_READER_DIST, or from the sibling O_o_Model build (../O_o_Model/build/wasm/
 // dist); the solver package from OOS_SOLVER_DIST, or build/wasm/dist.
 
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ import { test } from "../helpers/register.mjs";
 import { oor, solver } from "../helpers/runtime.mjs";
 
 // A cantilever plate in the XY plane, clamped along x = 0, meshed with nx × ny four-node shells (or two three-node
-// shells per square), written as a model file (O_o_Reader docs/model-format.md). The model file and the interface name
+// shells per square), written as a model file (O_o_Model docs/model-format.md). The model file and the interface name
 // the cards and diagnostic fields by their exact neutral names.
 const PLATE = { length: 2.0, width: 0.4, thickness: 0.02, young: 7.0e10, poisson: 0.3, density: 2700.0 };
 const TIP_FORCE = -100.0; // the total vertical force at the free edge

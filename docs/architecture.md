@@ -3,9 +3,9 @@
 O_o_Solver turns validated model tables into finite element systems and result arrays. This guide follows the data
 through the public entry points and shows where the implementation responsibilities sit.
 
-## Reader and solver boundary
+## Model and solver boundary
 
-In JavaScript, Reader and Solver are separate WASM modules. In Python, `oo_reader` and
+In JavaScript, Model and Solver are separate WASM modules. In Python, `oo_model` and
 `oo_solver` run in one CPython process. `model_from_reader(deck)` imports Arrow buffers
 through release callbacks, and result arrays retain their native owner. The diagram below
 shows the WebAssembly transport.
@@ -14,7 +14,7 @@ shows the WebAssembly transport.
 
 *The application coordinates the two modules. Their C++ libraries and WebAssembly memories stay independent.*
 
-O_o_Reader parses `.oos` records and exposes query tables. `modelFromReader` obtains the tables the solver needs,
+The Model exposes query tables for decks built in memory and for decks loaded by its file adapters. `modelFromReader` obtains the tables the solver needs,
 serializes them as table packages, and imports them through `api::ModelInput`. The solver checks the data contract
 before constructing its model snapshot. The [table-package guide](table-package.md) describes the transport.
 
@@ -58,7 +58,7 @@ The [input guide](../src/input/README.md), [assembly guide](../src/assembly/READ
 [reduction guide](../src/reduction/README.md) and [solution guide](../src/solutions/README.md) cover these stages.
 The [optimization facade](optimization.md) retains these analyses at each design point, then computes responses,
 first derivatives and supported second derivatives. JavaScript drives the iteration through `OptimizationProblem`
-and `OptimizationEvaluation`; trial snapshots do not edit the Reader model. The C++ library also provides component
+and `OptimizationEvaluation`; trial snapshots do not edit the model. The C++ library also provides component
 workflows beyond these entry points.
 
 ## Element families and formulations

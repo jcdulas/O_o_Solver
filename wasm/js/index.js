@@ -1,9 +1,9 @@
 // oos-solver: the linear finite element solver of O_o (statics, normal modes, buckling), in the browser or in Node.js.
-// It reads its model from the O_o_Reader module: the reader reads the model file, the solver takes the reader's tables.
+// It reads its model from the O_o_Model module: the reader reads the model file, the solver takes the reader's tables.
 //
-//   import { loadOorReader } from "oor-reader";
+//   import { loadOoModel } from "oo-model";
 //   import { loadOosSolver } from "oos-solver";
-//   const oor = await loadOorReader();
+//   const oor = await loadOoModel();
 //   const solver = await loadOosSolver();
 //   oor.writeFile("/work/plate.oos", modelText);
 //   const deck = oor.readModel("/work/plate.oos");
@@ -171,7 +171,7 @@ export class OosSolver {
       analyses, capabilities: catalogue.analyses.filter(entry => kinds.includes(entry.analysis)) };
   }
 
-  // The model read by O_o_Reader (`oor` the loaded reader, `deck` its Deck), ready for the analyses.
+  // The model read by O_o_Model (`oor` the loaded reader, `deck` its Deck), ready for the analyses.
   // `options.elementFormulations` chooses the formulation of the elements of some card types
   // ({ ShellQuad4: "ClassicFormulation" }), before the model's ShellQuad4Formulation parameter. The keys are the neutral
   // card types that elementFormulations() lists, exactly: an unknown name throws an Error. A

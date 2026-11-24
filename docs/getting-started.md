@@ -7,8 +7,8 @@ Solve finite element models for statics, vibration, buckling and aeroelastic tri
 
 | Interface | Install |
 | --- | --- |
-| JavaScript / WebAssembly | Extract the [Reader ZIP](https://github.com/jcdulas/O_o_Reader/releases/download/v0.2.0/O_o_Reader-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.0/O_o_Solver-wasm.zip) into `reader/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
-| Python / native C++ | Run `python -m pip install oo-solver`. [PyPI](https://pypi.org/project/oo-solver/) provides wheels for CPython 3.10–3.14 on Windows x64 and Linux x86-64. pip installs `oo-reader` as a dependency. |
+| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/wasm-latest/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.0/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
+| Python / native C++ | With adjacent source checkouts and the [native build tools](https://github.com/jcdulas/O_o_Model/blob/main/docs/python.md#build-and-publish), run `python -m pip install ../O_o_Model .` from the Solver directory. |
 
 ## Run linear statics
 
@@ -18,10 +18,10 @@ Download [axial.oos](https://raw.githubusercontent.com/jcdulas/O_o_Solver/main/d
 
 ```javascript
 import { readFile } from "node:fs/promises";
-import { loadOorReader } from "./reader/index.js";
+import { loadOoModel } from "./model/index.js";
 import { loadOosSolver } from "./solver/index.js";
 
-const reader = await loadOorReader();
+const reader = await loadOoModel();
 const solver = await loadOosSolver();
 reader.writeFile("/work/axial.oos", await readFile("axial.oos", "utf8"));
 const deck = reader.readModel("/work/axial.oos");
@@ -40,7 +40,7 @@ try {
 **Python / native C++**
 
 ```python
-from oo_reader import read_model
+from oo_model import read_model
 from oo_solver import model_from_reader
 
 deck = read_model("axial.oos")
@@ -52,6 +52,22 @@ print(u["values"][row, 0])  # axial displacement at node 2
 ```
 
 JavaScript returns the six displacement components in a flat typed array. Python returns a read-only NumPy array with one row per node and one column per component. Both examples locate the row by node ID.
+
+## Solve a model built in memory
+
+The [JavaScript / WebAssembly example](examples/memory-plate.mjs) builds four nodes in a typed batch and passes the
+deck to `solver.modelFromReader(reader, deck)`. Import its `solvePlate` function and call it with your initialized
+Model and Solver. The [Python / native C++ example](examples/memory_plate.py) uses NumPy columns and
+`model_from_reader(deck)`. Run it with a Model build exposing `create_model`.
+
+Both return axial displacement by node ID for a unit square, thickness 0.01, Young's modulus 100000 and zero
+Poisson's ratio. A total tensile force of 1 is split between nodes 2 and 3. The uniform extension is
+`F L / (E t w) = 0.001`. The two examples work with a Model built without file adapters. With both native packages installed,
+run the same check against local JavaScript distributions from the Solver checkout:
+
+~~~sh
+python checks/verify_memory_plate.py path/to/model/index.js path/to/solver/index.js
+~~~
 
 ## Interpret support and results
 

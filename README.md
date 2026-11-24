@@ -11,8 +11,8 @@ Solve finite element models for statics, vibration, buckling and aeroelastic tri
 
 | Interface | Install |
 | --- | --- |
-| JavaScript / WebAssembly | Extract the [Reader ZIP](https://github.com/jcdulas/O_o_Reader/releases/download/v0.2.0/O_o_Reader-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.0/O_o_Solver-wasm.zip) into `reader/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
-| Python / native C++ | Run `python -m pip install oo-solver`. [PyPI](https://pypi.org/project/oo-solver/) provides wheels for CPython 3.10–3.14 on Windows x64 and Linux x86-64. pip installs `oo-reader` as a dependency. |
+| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/wasm-latest/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.0/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
+| Python / native C++ | With adjacent source checkouts and the [native build tools](https://github.com/jcdulas/O_o_Model/blob/main/docs/python.md#build-and-publish), run `python -m pip install ../O_o_Model .` from the Solver directory. |
 
 ## Run linear statics
 
@@ -22,10 +22,10 @@ Download [axial.oos](https://raw.githubusercontent.com/jcdulas/O_o_Solver/main/d
 
 ```javascript
 import { readFile } from "node:fs/promises";
-import { loadOorReader } from "./reader/index.js";
+import { loadOoModel } from "./model/index.js";
 import { loadOosSolver } from "./solver/index.js";
 
-const reader = await loadOorReader();
+const reader = await loadOoModel();
 const solver = await loadOosSolver();
 reader.writeFile("/work/axial.oos", await readFile("axial.oos", "utf8"));
 const deck = reader.readModel("/work/axial.oos");
@@ -44,7 +44,7 @@ try {
 **Python / native C++**
 
 ```python
-from oo_reader import read_model
+from oo_model import read_model
 from oo_solver import model_from_reader
 
 deck = read_model("axial.oos")
@@ -144,7 +144,7 @@ WebAssembly (64-bit WebAssembly, Memory64: Node.js 24 or a browser that supports
 ```bash
 emcmake cmake -S . -B build/wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOS_BUILD_WASM=ON -DOOS_WARNINGS_AS_ERRORS=OFF
 cmake --build build/wasm -j
-node --test --test-concurrency=1 wasm/test/*.test.mjs      # needs the O_o_Reader package built in ../O_o_Reader/build/wasm/dist
+node --test --test-concurrency=1 wasm/test/*.test.mjs      # needs the O_o_Model package built in ../O_o_Model/build/wasm/dist
 ```
 
 The [fast input combination tests](docs/testing.md) enforce a one-second ceiling per case. Use

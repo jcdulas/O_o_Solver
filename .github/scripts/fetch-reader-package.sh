@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Fetches the O_o_Reader package the test suites load and gives its folder to the next steps of the job as
+# Fetches the O_o_Model package the test suites load and gives its folder to the next steps of the job as
 # OOR_READER_DIST (wasm/test/helpers/runtime.mjs reads it).
 #
-# The package is the archive of a release of the O_o_Reader repository, named by READER_REPOSITORY (owner/name),
+# The package is the archive of a release of the O_o_Model repository, named by READER_REPOSITORY (owner/name),
 # READER_TAG and READER_ARCHIVE. That repository is public: the archive is read without credentials.
 set -euo pipefail
 
@@ -13,16 +13,20 @@ set -euo pipefail
 server="${GITHUB_SERVER_URL:-https://github.com}"
 work="${RUNNER_TEMP:-$(mktemp -d)}"
 archive="$work/$READER_ARCHIVE"
-folder="$work/oor-reader"
+folder="$work/oo-model"
 
-curl --fail --silent --show-error --location --retry 3 --output "$archive" \
-    "$server/$READER_REPOSITORY/releases/download/$READER_TAG/$READER_ARCHIVE"
+release_url="$server/$READER_REPOSITORY/releases/download/$READER_TAG"
+if ! curl --fail --silent --show-error --location --retry 3 --output "$archive" "$release_url/$READER_ARCHIVE"; then
+    # Releases built before the rename only have the original asset name.
+    test "$READER_ARCHIVE" = O_o_Model-wasm.zip
+    curl --fail --silent --show-error --location --retry 3 --output "$archive" "$release_url/O_o_Reader-wasm.zip"
+fi
 rm -rf "$folder"
 mkdir -p "$folder"
 unzip -q "$archive" -d "$folder"
 test -f "$folder/index.js"
 
-echo "O_o_Reader package: $(grep '"version"' "$folder/package.json" | tr -d ' ,') from $READER_REPOSITORY@$READER_TAG"
+echo "O_o_Model package: $(grep '"version"' "$folder/package.json" | tr -d ' ,') from $READER_REPOSITORY@$READER_TAG"
 if [ -n "${GITHUB_ENV:-}" ]; then
     echo "OOR_READER_DIST=$folder" >> "$GITHUB_ENV"
 else

@@ -1,7 +1,7 @@
 # `output`
 
-The results of an analysis in the layouts of the O_o_Reader data contract, so that the caller reads them with the same
-code as the results O_o_Reader reads from files: nodal and element tables, grid point forces, strain energies,
+The results of an analysis in the layouts of the O_o_Model data contract, so that the caller reads them with the same
+code as the results O_o_Model reads from files: nodal and element tables, grid point forces, strain energies,
 eigenvalues. The module also holds what is computed from those results: envelopes over the load cases, section and cut
 loads, monitor points of a trim, the checks of a subcase and the estimate of the output volume.
 

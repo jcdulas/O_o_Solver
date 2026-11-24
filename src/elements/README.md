@@ -18,7 +18,7 @@ The snapshot holds one `input::ElementBatch` per neutral card type (`ShellQuad4`
 For each batch the caller (the assemblers of `assembly`):
 
 1. builds one `SnapshotIndex` per snapshot (grid and scalar points, materials and coordinate systems by ID: the lookups
-   the row-index columns of `O_o_Reader` do not give; an overlay that changes no ID shares the lookups of the index of
+   the row-index columns of `O_o_Model` do not give; an overlay that changes no ID shares the lookups of the index of
    its base);
 2. finds the `ElementFamily` of the card in `ElementRegistry::forModel(snapshot)` (the card in the formulation the
    model chose: see "Formulations" below) and makes an `ElementBatchView`;
@@ -27,7 +27,7 @@ For each batch the caller (the assemblers of `assembly`):
 4. calls the facets on ranges of rows — `computeStiffness`, `computeMass` (`MassOptions`: lumped or coupled, the NonStructMass
    cards' share), `recover` (`ElementOutput::Forces`, `Stresses`, `Strains`, `StrainCurvatures`) — which fill an
    `ElementMatrixBlock` (per element its DOFs and its dense matrix, in the displacement systems of its grid points) or
-   an `ElementResultBlock` (per element one or more rows in the columns of the `O_o_Reader` data contract, each with
+   an `ElementResultBlock` (per element one or more rows in the columns of the `O_o_Model` data contract, each with
    its place: the corner grid point, 0 for the centre, and the layer);
 5. for the distributed loads, `checkPressureLoads` then `computePressureLoads` on a list of `ElementPressure` (the rows
    of `pressureTable` of a load set, with the batch rows of their elements), and `checkLineLoads` then
@@ -50,7 +50,7 @@ For each batch the caller (the assemblers of `assembly`):
 
 The grid points and properties are taken by ID: a row of `nodesRows` or `propIdRow` is used only when the node or
 property table holds the element's ID there (`core/ElementReferences::checkedGridRow`, `core/PropertyLookup`), since
-`O_o_Reader` may give these columns in the reading order of the cards while its tables are sorted by ID.
+`O_o_Model` may give these columns in the reading order of the cards while its tables are sorted by ID.
 
 The family is the only virtual interface, called once per range; inside a facet the batch's columns are read once and
 the loop over rows is plain code. `WeightToMass` is not applied by the elements: the mass assembler multiplies the assembled
@@ -291,7 +291,7 @@ the mass only, any field not named everything). The derivatives themselves are c
 field is moved by ±h and ±h/2 (a `ColumnOverlay` of the design point), and their differences are extrapolated
 (Richardson). Nothing in a family is written twice: whatever an element computes from its fields (a section, a
 laminate, an offset, a thermal strain, a fastener's interpolation), its derivative follows; `FieldUse` only spares the
-computations a field cannot change (a zero difference, exactly). The fields O_o_Reader derives at read time stay as read
+computations a field cannot change (a zero difference, exactly). The fields O_o_Model derives at read time stay as read
 (the G of a IsoMat from E and NU, the Z1 and Z2 of a ShellProp from T, the OD2 of a TubeProp from OD: a designed OD makes a
 tapered tube, refused), as for the analysis of a design point.
 
@@ -369,7 +369,7 @@ Shape variables (DesignNodeMove) need nothing more from a family either: `design
 whose grid points (those of the DOFs of their matrices, and the orientation point G0 or GO) a shape moves, and the same
 facets run on snapshots whose positions (`xyzGlobal`) are moved along the basis vector by ±h, ±h/2; a family whose
 computations read no position (the scalar springs and masses) gives exact zeros. What a family reads from a table
-O_o_Reader derives from the positions (the piercing points of Fastener and Weld, `fastenerPiercings`), and the
+O_o_Model derives from the positions (the piercing points of Fastener and Weld, `fastenerPiercings`), and the
 footprints the snapshot builds on them, cannot follow a move: such a shape is refused by `design/model/FieldTargets`.
 A designed FastenerProp or WeldProp D does not move the footprint either, which stays that of the D of the model
 (for a Weld D still sizes the beam).

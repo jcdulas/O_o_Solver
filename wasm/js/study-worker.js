@@ -25,7 +25,8 @@ listen(async request => {
     if (request.type === "initialize") {
       const config = request.config;
       const [readerModule, solverModule] = await Promise.all([import(config.readerURL), import(config.solverURL)]);
-      reader = await readerModule.loadOorReader();
+      const loadModel = readerModule.loadOoModel ?? readerModule.loadOorReader;
+      reader = await loadModel();
       solver = await solverModule.loadOosSolver({ threads: 1, ...config.solverOptions });
       reader.writeFile("/work/study.ooh5", config.model);
       deck = reader.readModel("/work/study.ooh5", { strict: true });

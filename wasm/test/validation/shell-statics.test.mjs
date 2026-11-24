@@ -10,7 +10,7 @@
 // meet, with the measured value in their comment. Cases marked OPEN fail their criterion and are kept failing: the
 // comment gives what was measured.
 //
-// Run: node --test wasm/test/validation/shell-statics.test.mjs   (Node.js 24; needs ../O_o_Reader/build/wasm/dist)
+// Run: node --test wasm/test/validation/shell-statics.test.mjs   (Node.js 24; needs ../O_o_Model/build/wasm/dist)
 
 import assert from "node:assert/strict";
 import { CRITERIA, MIXED, CLASSIC, real, runModel, withModel, solver, nodal, innerEdges, prepared, surfaceRecords, test }

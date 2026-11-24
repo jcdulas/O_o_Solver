@@ -10,7 +10,7 @@ which is the order in which the pieces depend on one another.
 
 ## `geometry/`
 
-- `AeroReference`: the AeroStaticParams (ACSID, RCSID, REFC, REFB, REFS, SYMXZ, SYMXY) read from O_o_Reader's
+- `AeroReference`: the AeroStaticParams (ACSID, RCSID, REFC, REFB, REFS, SYMXZ, SYMXY) read from O_o_Model's
   `aeroReferenceTable`, with the frames of ACSID and RCSID from `coordsTable`.
 - `AeroBoxes`: the boxes of the AeroLiftingPanel1 panels (`aeroBoxesTable`) in the aerodynamic frame: the quarter-chord line
   (the doublet line, at k = 0 the bound vortex) oriented along n × x, the control point at three quarters of the
@@ -43,7 +43,7 @@ which is the order in which the pieces depend on one another.
   substituted.
 - `ReferenceCoefficients`: the six coefficients of a resultant about the RCSID origin, the images of a half model
   added (shared with the rigid derivatives).
-- `TrimCorrections`: the direct matrix input of a trim: the DownwashMatrix and AeroPressureMatrix in effect of O_o_Reader's
+- `TrimCorrections`: the direct matrix input of a trim: the DownwashMatrix and AeroPressureMatrix in effect of O_o_Model's
   `directMatricesTable` applied to the boxes, a DirectMatrix by the positions of the j set and a DirectMatrixAeroJ by box ID and component
   3, one column for every subcase. DownwashMatrix is a normalwash added to the downwash of the trim variables; AeroPressureMatrix is a set of
   pressure coefficients used as they are. A AeroWeightingMatrix or AeroWeightingFactor is accepted as the identity only; the refusals are named.

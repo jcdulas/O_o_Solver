@@ -13,7 +13,7 @@ Folders: `common/`, `sol101/`, `sol103/`, `sol105/`, `sol144/`, `superelements/`
   comment lists the steps; `src/assembly/README.md` ("How a static solve uses them") the assembly pieces it calls.
   Subcases are grouped by constraint set (same MultiPointConstr set and same constrained DOFs, EnforcedMotionConstr included): one assembly and one
   factorisation per group, all the subcases of a group solved at once. A deck without SUBCASE is solved as subcase 1
-  (O_o_Reader gives its selections as the global section, subcase 0). A subcase with TEMPERATURE(LoadCombination) or AxialDeformationLoad
+  (O_o_Model gives its selections as the global section, subcase 0). A subcase with TEMPERATURE(LoadCombination) or AxialDeformationLoad
   gathers its initial strains (`assembly::TemperatureField`, with TEMPERATURE(INITIAL) when given and the element
   deformations of its AxialDeformationLoad; `sol101/StaticSubcases`: `initialStrainsOf`, one field per `InitialStrainKey`), adds the
   elements' thermal and deformation loads to Pg (so that the SinglePointConstr forces balance them) and hands them to the recovery
@@ -113,7 +113,7 @@ for full and streamed statics, for the mass of a real eigenvalue analysis and fo
   buckling subcase's constraints, K_d from `assembly::DifferentialStiffnessAssembler` on K's pattern reduced to the n
   set, the solve on `linalg::BucklingPencil`, the eigenvalue table (generalised stiffness s², "generalised mass"
   s²/λ), the tables of the shapes appended to the static result arrays. The preload of a buckling subcase: the column
-  `staticSubcaseSelection` of subcasesTable when O_o_Reader gives it; else the subcase itself when it has a LoadCombination or
+  `staticSubcaseSelection` of subcasesTable when O_o_Model gives it; else the subcase itself when it has a LoadCombination or
   TEMPERATURE(LoadCombination); else the static subcase just before it.
 
 The PARAMs read in addition: CoupledMass and WeightToMass for the mass of the modes, WeightReferenceNode for both.

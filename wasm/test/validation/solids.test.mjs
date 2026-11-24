@@ -1144,7 +1144,7 @@ const SINGLE_ELEMENTS = {
 // A pressure on every face of one element, of every face type (the triangles and quadrilaterals of the four shapes):
 // the state is hydrostatic, σ = −p I, u = −p (1 − 2 ν) x / E. A face loaded on the wrong side, or a wrong face,
 // breaks it. A triangle of a pyramid is named by the two corners of its edge on the base (this case found that
-// O_o_Reader took the first face holding the two grid points, which named no triangle of a pyramid for sure).
+// O_o_Model took the first face holding the two grid points, which named no triangle of a pyramid for sure).
 for (const shape of SHAPES)
   for (const quadratic of [false, true])
     for (const card of ["FacePressureLoad", "PointsPressureLoad"])

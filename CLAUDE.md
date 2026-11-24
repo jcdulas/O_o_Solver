@@ -1,7 +1,7 @@
 # CLAUDE.md: working on O_o_Solver
 
 O_o_Solver is a linear finite element solver in C++20, compiled to WebAssembly, that takes its models from the
-O_o_Reader module (table packages) and gives its results as plain arrays. Start with [README.md](README.md) and the
+O_o_Model module (table packages) and gives its results as plain arrays. Start with [README.md](README.md) and the
 `README.md` of each module in `src/<module>/`.
 
 ## Rules
@@ -18,7 +18,7 @@ O_o_Reader module (table packages) and gives its results as plain arrays. Start 
 4. **Layering**: `base` → `linalg` → `input` → `elements` → `assembly` → `reduction` → `aero` → `output` → `solutions`
    → `design` → `api`; a module uses only those before it. `wasm/src/Bindings.cpp` only converts between JavaScript and
    `oos::api`. Operating-system headers only in `src/base/platform`, SIMD intrinsics only in `src/linalg/kernels/`.
-5. **Coupling by data**: no O_o_Reader header nor library; its tables arrive as table packages
+5. **Coupling by data**: no O_o_Model header nor library; its tables arrive as table packages
    ([docs/table-package.md](docs/table-package.md)) and are read by the data contract (`src/input/contract/`).
 6. **WebAssembly threading**: the default build is single-threaded; `OOS_WASM_THREADS` enables shared-memory workers.
    All numerical threading goes through `base::ThreadPool`. JS callbacks stay on the module's calling thread.
@@ -36,7 +36,7 @@ O_o_Reader module (table packages) and gives its results as plain arrays. Start 
 cmake --preset release && cmake --build build/release -j          # native (MSYS2 UCRT64 on the PATH on Windows)
 emcmake cmake -S . -B build/wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOS_BUILD_WASM=ON -DOOS_WARNINGS_AS_ERRORS=OFF
 cmake --build build/wasm -j
-node --test wasm/test/*.test.mjs                               # needs ../O_o_Reader/build/wasm/dist
+node --test wasm/test/*.test.mjs                               # needs ../O_o_Model/build/wasm/dist
 ```
 
 ## Way of working

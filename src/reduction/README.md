@@ -12,13 +12,13 @@ Where to start reading: the folders in that order, which is the order in which t
 
 The objects a caller uses to decide what is condensed. In the order a plan uses them:
 
-- `units/CondensationUnit`, `units/UnitSet`: the units of O_o_Reader as they come, one per component by default
+- `units/CondensationUnit`, `units/UnitSet`: the units of O_o_Model as they come, one per component by default
   (`UnitSet::fromComponents`: connectedComponents, its elements, componentBoundaries), with its revision stamp and
-  O_o_Reader's boundary.
+  O_o_Model's boundary.
 - `units/Regrouping`: the caller's merges (units made of whole components, merged into one unit of the smallest ID)
   and element lists (new units after the largest ID; the units they take elements from keep the rest). `groups()` is
-  what O_o_Reader is asked for; `apply()` builds the units from its answer, O_o_Reader's group tables
-  (`input/contract/GroupContracts.hpp`): boundaries and stamps are computed by O_o_Reader, never here. The
+  what O_o_Model is asked for; `apply()` builds the units from its answer, O_o_Model's group tables
+  (`input/contract/GroupContracts.hpp`): boundaries and stamps are computed by O_o_Model, never here. The
   elements the caller declares connections (`DeclaredConnection`) leave every unit and ride with the `UnitSet`;
   `units/ConnectionSystem` adds them as connectors.
 - `units/DissectionUnits`: automatic units that follow the connectivity of the model rather than
@@ -29,10 +29,10 @@ The objects a caller uses to decide what is condensed. In the order a plan uses 
   siblings of one parent merged while the sum fits; each element of the components in the unit of its first
   eliminated node (an element of the interface alone in the unit with most of its nodes). The interface is the rest of
   the tree; its sizes and those of each depth are reported. The caller regroups the elements as element lists
-  (through O_o_Reader's group tables, so the units are cached by their elements); the fasteners
+  (through O_o_Model's group tables, so the units are cached by their elements); the fasteners
   whose two sides fall in one unit are then interior to it (`assembly::ElementConnectivity` keeps the element of each
   group and the elements of one node).
-- `units/ConnectionSystem`: from O_o_Reader's connection tables (`componentNodes`, `connectionList`,
+- `units/ConnectionSystem`: from O_o_Model's connection tables (`componentNodes`, `connectionList`,
   snapshot roles), the points of each unit, the connections a group does not hold, the 1D/0D-only units linked to two
   units or more moved to the connection system (until none moves), and the clusters (connections joined through points
   no unit holds), each with its stamp (`units/StampHasher`, FNV-1a in a fixed order).
@@ -75,7 +75,7 @@ is a relation of its own (`formulationRelationKey`, one per dependent node), eli
 points are not all one unit's. `UnitSystem` and `InterfaceProblem` leave the entity nodes out of the singularity
 processor and take the formulation's rigid fields on them (`UnitModel::entityRigidModes`).
 
-The group and connection tables come from O_o_Reader: the points of each component from `componentNodes`, the group
+The group and connection tables come from O_o_Model: the points of each component from `componentNodes`, the group
 summary and boundaries from `groupRevisions` and `componentBoundaries(groups=)` (keyed by `group`, the decimal text
 of the group ID), the clusters from `connectionClusters`, and the list of every connection with its stamp
 (`connectionList`) from `connectionClusters(detail="connections")` (the direct links between components with a null
@@ -88,8 +88,8 @@ After the cluster absorption, the spiders still in the connection system are abs
 be (fastener sides are absorbed like spiders), so that the boundary holds their reference points instead of their
 legs. In the order a plan uses them (`absorption/`):
 
-- `Spider`, `SpiderCatalog`: every RigidBodyStar and RigidInterpolation of O_o_Reader's `spiders` and every side of every Fastener and Weld of
-  the piercing table (`fastenerPiercings`), with O_o_Reader's topological decision (`isSpider`, `isEligible`, what
+- `Spider`, `SpiderCatalog`: every RigidBodyStar and RigidInterpolation of O_o_Model's `spiders` and every side of every Fastener and Weld of
+  the piercing table (`fastenerPiercings`), with O_o_Model's topological decision (`isSpider`, `isEligible`, what
   blocks it) and its stamp. `fastenerPiercings` has no eligibility columns: its sides are not absorbed
   (`noEligibility`) until the reader gives them.
 - `SpiderWeights` (a RigidInterpolation's weighting matrix from its rows of Gm), `FastenerPiercing` (a fastener side's from the
@@ -100,9 +100,9 @@ legs. In the order a plan uses them (`absorption/`):
   recovery (`expand`); never the flexibility form, never Lagrange multipliers.
 - `AbsorptionSafeguard`: the condition number of each change of basis; rank-deficient or above
   `SPIDER_ABSORPTION_MAX_CONDITION` (50, calibrated on shell models) keeps the spider on its legs.
-- `AbsorptionEligibility`: the order of the rules (O_o_Reader's topology, a leg on a contact between bodies, a leg
+- `AbsorptionEligibility`: the order of the rules (O_o_Model's topology, a leg on a contact between bodies, a leg
   retained, on a spline node, on a FreeBodySupport point, constrained in some subcases only or in every subcase, not requested,
-  the safeguard); `SharedConnectionNodes` (O_o_Reader's `connectionSharing`) names what touches a leg.
+  the safeguard); `SharedConnectionNodes` (O_o_Model's `connectionSharing`) names what touches a leg.
 - `SpiderAbsorption`: the decisions for a cluster absorption; per unit the references put on its boundary, the
   RigidBodyStar/RigidInterpolation that become its elements and its stamp with them; per connection the points the absorption takes off the
   interface; the RigidInterpolation references freed (the planner frees their DOFs in the plan graph). `AbsorptionReport`: the text

@@ -2,14 +2,14 @@
 
 The `oo-solver` distribution runs the C++ solver in the CPython process. It uses
 the native CPU kernel selection and takes its model from the separately installable
-`oo-reader` package. The Python and WebAssembly builds use the same analysis kernels.
+`oo-model` package. The Python and WebAssembly builds use the same analysis kernels.
 
 ## Analyses
 
-Install from PyPI with `python -m pip install oo-solver`, which installs `oo-reader` too.
+With adjacent source checkouts and the [native build tools](https://github.com/jcdulas/O_o_Model/blob/main/docs/python.md#build-and-publish), run `python -m pip install ../O_o_Model .` from the Solver directory. The [published Solver 0.2.0](https://pypi.org/project/oo-solver/0.2.0/) uses `oo-reader`.
 Extract `frequency-8.oos` from the [benchmark inputs](https://github.com/jcdulas/O_o_Solver/raw/refs/heads/main/docs/benchmarks/structural-comparison-inputs.zip). Both examples give about **28.7583 Hz** for the first bending mode.
-The JavaScript snippets below use the Reader and Solver initialized in [Getting started](getting-started.md).
-Load the input file into the Reader's WASM file system as shown there.
+The JavaScript snippets below use the Model and Solver initialized in [Getting started](getting-started.md).
+Load the input file into the Model's WASM file system as shown there.
 
 **JavaScript / WebAssembly**
 
@@ -28,7 +28,7 @@ try {
 **Python / native C++**
 
 ```python
-from oo_reader import read_model
+from oo_model import read_model
 from oo_solver import model_from_reader
 
 deck = read_model("frequency-8.oos")
@@ -38,7 +38,7 @@ first_hz = modes["eigenvalues"][0]["rows"]["cycles"][0]
 print(first_hz)
 ```
 
-Build the snapshot once for repeated solves. The Reader exports immutable Arrow batches;
+Build the snapshot once for repeated solves. The Model exports immutable Arrow batches;
 the Solver takes ownership of the Arrow buffers through their C release callbacks.
 The nodal and element tables contain read-only NumPy views over the native result storage.
 Retaining a view keeps its result allocation alive. Use `array.copy()` to keep a small
@@ -76,7 +76,7 @@ try {
 **Python / native C++**
 
 ```python
-from oo_reader import read_model
+from oo_model import read_model
 from oo_solver import optimization_from_reader
 
 problem = optimization_from_reader(read_model("sizing.oos"), analysis="statics")
@@ -100,12 +100,12 @@ gradient. These products avoid constructing the dense Jacobian.
 
 Build with Python 3.10 or later, a C++20 compiler, CMake 3.25 or later and Ninja.
 From a source checkout run `python -m pip wheel --no-deps . -w dist`.
-Install the Reader wheel before testing the Solver. Run
+Install the Model wheel before testing the Solver. Run
 `python python/tests/smoke.py` against the installed pair.
 
 The **Python wheels** workflow builds CPython 3.10–3.14 wheels for Linux x86-64
 and Windows x64, tests the installed distributions and creates the source archive.
 Configure a PyPI trusted publisher for this repository, workflow
 `python-wheels.yml` and environment `pypi`. Run the workflow with publishing enabled
-when releasing a new version. Release the matching Reader first so pip can install
+when releasing a new version. Release the matching Model first so pip can install
 the Solver dependency during verification. The default workflow run only builds artifacts.

@@ -1,19 +1,19 @@
 # Fast input combination tests
 
-Run the built Reader and Solver packages with a Memory64-capable Node.js runtime:
+Run the built Model and Solver packages with a Memory64-capable Node.js runtime:
 
 ```bash
 node wasm/test/run.mjs
 OOS_SOLVER_DIST=build/wasm-threads/dist node wasm/test/run.mjs
 ```
 
-On PowerShell, set `$env:OOS_SOLVER_DIST` before the second command. `OOR_READER_DIST` selects a different Reader
-package; its default is `../O_o_Reader/build/wasm/dist`. The ordinary `node --test --test-concurrency=1 wasm/test/*.test.mjs` entry point
+On PowerShell, set `$env:OOS_SOLVER_DIST` before the second command. `OOR_READER_DIST` selects a different Model
+package; its default is `../O_o_Model/build/wasm/dist`. The ordinary `node --test --test-concurrency=1 wasm/test/*.test.mjs` entry point
 also runs the complete suite.
 
 ## One second per case
 
-Reader, Solver and the optional threading probe initialize once in a reusable worker, before tests start. Each
+Model, Solver and the optional threading probe initialize once in a reusable worker, before tests start. Each
 input combination has a **900 ms watchdog in its parent process**, plus the test runner's **1,000 ms timeout**.
 The watchdog terminates the worker even when synchronous WASM blocks its event loop. Focused tests have a 1,000 ms
 timeout, and the full-suite command runs test files sequentially to avoid resource contention. Separate regression tests
@@ -114,7 +114,7 @@ Two workflows run on a push to `main` and on a pull request that change the sour
   artifact;
 - the validation suite, its files dealt to four runners by their rank in `wasm/test/validation`.
 
-Both load the O_o_Reader package of the `wasm-latest` release of the O_o_Reader repository
+Both load the O_o_Model package of the `wasm-latest` release of the O_o_Model repository
 (`.github/scripts/fetch-reader-package.sh`), so a change that needs a change of the reader passes once the reader's
 own change is on its main branch. The releases of the package are published only when both suites pass.
 
@@ -129,7 +129,7 @@ optimization, modes, formulations and worker lifetime. Inputs are generated dete
 models; no random sample replaces a declared combination.
 
 The [external study cases](../wasm/test/cases/studies.mjs) additionally exercise SOL 101/103/105/144, full-analysis
-and native gradients, auxiliary shape directions, coupled material constants, named Reader result queries and
+and native gradients, auxiliary shape directions, coupled material constants, named Model result queries and
 accepted-point archives. [Numerical derivative tests](../wasm/test/numerical-derivatives.test.mjs) cover bounds,
 discrete variables, output layout changes and memory limits. [Worker pool tests](../wasm/test/worker-pool.test.mjs)
 cover independent package memories, parallel points and termination/replacement of a worker blocked in synchronous

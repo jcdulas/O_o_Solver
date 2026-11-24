@@ -24,7 +24,7 @@ option(OOS_ASSERTIONS "Keep the invariant checks (OOS_ASSERT) in optimised build
 
 # WebAssembly uses the reference kernels. Shared-memory workers are enabled by OOS_WASM_THREADS.
 #
-# The WebAssembly build is 64-bit (Memory64, "wasm64"), like the O_o_Reader module it takes its tables from: pointers and
+# The WebAssembly build is 64-bit (Memory64, "wasm64"), like the O_o_Model module it takes its tables from: pointers and
 # sizes are 64-bit, so a model may use more than 4 GB of memory. C++ exceptions are the native WebAssembly ones: they
 # are how the solver reports errors.
 if(EMSCRIPTEN)

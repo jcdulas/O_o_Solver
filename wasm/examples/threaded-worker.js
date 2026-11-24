@@ -1,8 +1,8 @@
 // Load this as a module Worker. Keep the Reader, Solver and their handles inside that Worker.
-import { loadOorReader } from "../../../O_o_Reader/build/wasm/dist/index.js";
+import { loadOoModel } from "../../../O_o_Model/build/wasm/dist/index.js";
 import { loadOosSolver } from "../../build/wasm-threads/dist/index.js";
 
-const oor = await loadOorReader();
+const oor = await loadOoModel();
 const solver = await loadOosSolver({ threads: 4 });
 
 self.onmessage = ({ data }) => {

@@ -60,9 +60,9 @@ DisplacementOutput;All
 NonStructMass;20;RodProp;1;2.
 ~~~
 
-Reader exports the effective selection in the `nonStructMass` column of `subcasesTable`. Global selections are
+Model exports the effective selection in the `nonStructMass` column of `subcasesTable`. Global selections are
 inherited and each subcase can override them. An unselected set contributes nothing. `NonStructMassUnion`
-members are expanded by Reader; their contributions are added once by the solver.
+members are expanded by Model; their contributions are added once by the solver.
 
 The full static path and its streamed assembly include selected `NonStructMass` and `NonStructMass1` values
 in the mass matrix used by gravity, acceleration, rotational loads and inertia relief. The values add to the
