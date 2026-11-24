@@ -12,7 +12,7 @@ Solve finite element models for statics, vibration, buckling and aeroelastic tri
 | Interface | Install |
 | --- | --- |
 | JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/wasm-latest/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.0/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
-| Python / native C++ | With adjacent source checkouts and the [native build tools](https://github.com/jcdulas/O_o_Model/blob/main/docs/python.md#build-and-publish), run `python -m pip install ../O_o_Model .` from the Solver directory. |
+| Python / native C++ | Install the two native packages with `python -m pip install oo-model oo-solver`. |
 
 ## Run linear statics
 

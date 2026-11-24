@@ -6,7 +6,7 @@ the native CPU kernel selection and takes its model from the separately installa
 
 ## Analyses
 
-With adjacent source checkouts and the [native build tools](https://github.com/jcdulas/O_o_Model/blob/main/docs/python.md#build-and-publish), run `python -m pip install ../O_o_Model .` from the Solver directory. The [published Solver 0.2.0](https://pypi.org/project/oo-solver/0.2.0/) uses `oo-reader`.
+Install the two native packages with `python -m pip install oo-model oo-solver`. For a development build from adjacent checkouts, run `python -m pip install ../O_o_Model .` from the Solver directory. The [published Solver 0.2.0](https://pypi.org/project/oo-solver/0.2.0/) uses `oo-reader`.
 Extract `frequency-8.oos` from the [benchmark inputs](https://github.com/jcdulas/O_o_Solver/raw/refs/heads/main/docs/benchmarks/structural-comparison-inputs.zip). Both examples give about **28.7583 Hz** for the first bending mode.
 The JavaScript snippets below use the Model and Solver initialized in [Getting started](getting-started.md).
 Load the input file into the Model's WASM file system as shown there.
