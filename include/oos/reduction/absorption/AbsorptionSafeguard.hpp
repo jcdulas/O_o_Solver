@@ -22,7 +22,7 @@ namespace oos::reduction
 // - compact spiders, fastener sides and the generated assemblies with varied shapes measure 1 to 8.7.
 // 50 absorbs every shape of practice and keeps on its legs (exact, a few more boundary DOFs) only the shapes that make
 // the model itself ill-conditioned. Spiders on a plane membrane sharing legs (condition number 430, a reduced matrix
-// 50 000 times worse conditioned) are the case O_o_Reader's topological rule excludes.
+// 50 000 times worse conditioned) are the case O_o_Model's topological rule excludes.
 inline constexpr double SPIDER_ABSORPTION_MAX_CONDITION = 50.0;
 
 // What the model says about one spider's relation, measured once per snapshot (solutions::CondensationPlanner): the

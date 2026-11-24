@@ -9,12 +9,12 @@
 namespace oos::output
 {
 
-// One element result table in the layout of the O_o_Reader data contract (the result tables: the kinds "stress",
+// One element result table in the layout of the O_o_Model data contract (the result tables: the kinds "stress",
 // "strain", "forces" with an element type such as "ShellQuad4" or "Bar2LoadStations"): one static step, one row per
 // place of an element (a ShellQuad4 has its centre and its corners, one row per fibre or per layer at each), the values
-// in the columns the element family names (the component names of O_o_Reader's result tables, in the element frame).
+// in the columns the element family names (the component names of O_o_Model's result tables, in the element frame).
 //
-// The row labels are those of O_o_Reader's result tables: the element ID, the grid point of the place (0 for the
+// The row labels are those of O_o_Model's result tables: the element ID, the grid point of the place (0 for the
 // centre), the layer, and the position along a bar or beam when the table has stations (`hasPositions`).
 //
 // Thread-safety: immutable once built. Ownership: owns its arrays (budgeted).

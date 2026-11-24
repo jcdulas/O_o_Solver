@@ -91,7 +91,7 @@ ConstraintParts readConstraintTables(const base::ContractReader* constraints, co
         const NullableColumn<std::int32_t> desglb(*subcases, "globalDesignConstrSelection");
         const NullableColumn<std::int32_t> desobj(*subcases, "designObjectiveSelection");
         const TextColumn senses(*subcases, "objectiveSense");
-        // O_o_Reader gives each subcase row the value in force there, the one it inherits from the global section
+        // O_o_Model gives each subcase row the value in force there, the one it inherits from the global section
         // included (its designSubcasesTable, data contract 32): a subcase row that repeats the DESGLB or the DESOBJ
         // of the global row (subcase 0) inherits it and declares nothing of its own.
         std::optional<std::int32_t> globalDesglb;

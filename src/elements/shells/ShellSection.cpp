@@ -30,7 +30,7 @@ constexpr std::int32_t PLANE_STRAIN_BENDING_MAT_ID = -1;
     return reader.values<double>(name, base::NullPolicy::Allow);
 }
 
-// A material ID field read as O_o_Reader gives it: null or 0 is blank.
+// A material ID field read as O_o_Model gives it: null or 0 is blank.
 [[nodiscard]] std::int32_t matIdAt(std::span<const std::int32_t> column, const base::ValidityView& isGiven,
                                    std::size_t p)
 {
@@ -195,7 +195,7 @@ Resolution<ShellSection> resolveShellSection(const ElementBatchView& view, const
                                              std::int64_t row)
 {
     using Result = Resolution<ShellSection>;
-    // The property type O_o_Reader gives for the PID decides the table (propType); a PID it does not find is read as
+    // The property type O_o_Model gives for the PID decides the table (propType); a PID it does not find is read as
     // a missing ShellProp.
     const std::string_view type = columns.shellProps.valid.isValid(row) ? columns.shellProps.types[row] : "ShellProp";
     if (type == "CompProp" || type == "CompPropGlobal")
@@ -333,7 +333,7 @@ Resolution<ShellSection> resolveShellSection(const ElementBatchView& view, const
     section.nonStructuralMass = realOr(columns.nonStructMass, columns.isNonStructMassGiven, p, 0.0);
     section.hasThickness = columns.isTGiven.isValid(static_cast<std::int64_t>(p));
     section.thickness = section.hasThickness ? columns.t[p] : 0.0;
-    // A blank Z1 or Z2 is null, or NaN since O_o_Reader's contract 45 (before it, O_o_Reader resolved it from the
+    // A blank Z1 or Z2 is null, or NaN since O_o_Model's contract 45 (before it, O_o_Model resolved it from the
     // property's T, so that it was always given).
     section.hasFiberDistance1 =
         columns.isFiberDistance1Given.isValid(static_cast<std::int64_t>(p)) && !std::isnan(columns.fiberDistance1[p]);
@@ -374,7 +374,7 @@ Resolution<std::array<double, N>> resolveCornerThicknesses(const ElementBatchVie
                                               std::to_string(thicknessFlag), "; correct the card"})));
     for (std::size_t i = 0; i < N; ++i)
     {
-        // O_o_Reader writes a blank corner thickness as -1 (ShellQuad4Card::NO_THICKNESS).
+        // O_o_Model writes a blank corner thickness as -1 (ShellQuad4Card::NO_THICKNESS).
         const bool isBlank = i >= cornerThickness.size() || cornerThickness[i] < 0.0;
         const std::string field = std::string("cornerThickness").append(std::to_string(i + 1));
         if (isBlank && !section.hasThickness)
@@ -423,7 +423,7 @@ bool cornersFollowThickness(const ShellSection& section, std::int32_t thicknessF
         return false;
     if (thicknessFlag == 1)
         return true;
-    // O_o_Reader writes a blank corner thickness as -1 (resolveCornerThicknesses).
+    // O_o_Model writes a blank corner thickness as -1 (resolveCornerThicknesses).
     return std::all_of(cornerThickness.begin(), cornerThickness.end(), [](double value) { return value < 0.0; });
 }
 

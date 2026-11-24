@@ -21,7 +21,7 @@ namespace
 constexpr std::array<const char*, 2> NODE_PAIR_GLUE_COLUMNS{"primaryFace", "searchedFrom"};
 constexpr std::array<const char*, 1> PAIR_GLUE_COLUMNS{"glueOption"};
 
-// A text of a column that O_o_Reader may give as utf8 or as dictionary<utf8>; empty for a null.
+// A text of a column that O_o_Model may give as utf8 or as dictionary<utf8>; empty for a null.
 std::string_view textAt(const base::ContractReader& reader, const std::string& column, std::int64_t row)
 {
     if (!reader.validity(column).isValid(row))
@@ -117,7 +117,7 @@ GlueParameters ContactTable::glueParameters(std::int64_t row) const
     parameters.searchOption = optionalValue<std::int32_t>(m_pairs, "searchOption", row);
     parameters.errorTolerance = optionalValue<double>(m_pairs, "errorTolerance", row);
     parameters.toleranceBias = optionalValue<double>(m_pairs, "toleranceBias", row);
-    // O_o_Reader writes "not given" as NaN or null (the glue then takes its default tolerance).
+    // O_o_Model writes "not given" as NaN or null (the glue then takes its default tolerance).
     if (parameters.errorTolerance && std::isnan(*parameters.errorTolerance))
         parameters.errorTolerance.reset();
     if (parameters.toleranceBias && std::isnan(*parameters.toleranceBias))
@@ -166,7 +166,7 @@ std::vector<std::int64_t> ContactTable::selectedPairRows(std::int32_t bcontactId
                 selected.emplace_back(card);
         }
     }
-    // Without contactTablesTable, or with an empty one (O_o_Reader's for a model built without contact cards, whose
+    // Without contactTablesTable, or with an empty one (O_o_Model's for a model built without contact cards, whose
     // pairs a caller hands over), the ContactTable of that ID (BCONTACT names a ContactTable or a ContactTable1). A
     // non-empty table lists every contact table of the model: an ID it does not name selects nothing.
     if (!m_tables || m_tables->rowCount() == 0)
@@ -184,9 +184,9 @@ std::vector<std::int64_t> ContactTable::selectedPairRows(std::int32_t bcontactId
             throw base::ContractError(base::concatenate(
                 {"contact: ContactSelection = ", std::to_string(bcontactId),
                  " names no ContactTable and the model pairs bodies by ContactPair, which only a ContactTable1 "
-                 "selects; expected the table contactTablesTable of O_o_Reader (the pairs of each ContactTable1), "
+                 "selects; expected the table contactTablesTable of O_o_Model (the pairs of each ContactTable1), "
                  "found none; "
-                 "install a O_o_Reader that gives it or hand it over to the "
+                 "install a O_o_Model that gives it or hand it over to the "
                  "snapshot"}));
     }
     std::vector<std::int64_t> rows;

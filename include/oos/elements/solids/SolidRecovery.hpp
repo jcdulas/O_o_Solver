@@ -36,7 +36,7 @@ struct PrincipalState
 // principalStateOf alone. Throws std::invalid_argument when the spans differ in size.
 void principalStatesOf(std::span<const base::Mat3> tensors, std::span<PrincipalState> states);
 
-// The columns of the solids' stress and strain tables in the O_o_Reader data contract (types 39, 67, 68, 255): oxx
+// The columns of the solids' stress and strain tables in the O_o_Model data contract (types 39, 67, 68, 255): oxx
 // oyy ozz txy tyz txz o1 o2 o3 von_mises pressure o1x o1y o1z o2x o2y o2z o3x o3y o3z, and for the strains exx ... exz
 // e1 e2 e3 von_mises pressure and the same direction cosines; empty for the forces and the curvatures (the solids
 // have no force output).

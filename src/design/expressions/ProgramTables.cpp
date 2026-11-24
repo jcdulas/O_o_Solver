@@ -35,7 +35,7 @@ struct EquationSymbols
     throw base::ContractError(
         base::concatenate({"table '", table, "', row ", std::to_string(row), ": expected ", expected, ", found ", found,
                            "; the producer breaks the contract of the DesignEquation program tables "
-                           "(update O_o_Reader, or report the table)"}));
+                           "(update O_o_Model, or report the table)"}));
 }
 
 void placeName(std::vector<std::string>& names, std::int32_t slot, std::string_view name, std::int64_t row)
@@ -83,7 +83,7 @@ std::map<std::int32_t, EquationSymbols> readSymbols(const base::ContractReader& 
                          " has no name for its ", list == &equation.arguments ? "argument" : "variable", " slot ",
                          std::to_string(slot),
                          "; expected every slot from 0 to the last one: take the "
-                         "snapshot again with a O_o_Reader that follows it"}));
+                         "snapshot again with a O_o_Model that follows it"}));
             }
         }
     }

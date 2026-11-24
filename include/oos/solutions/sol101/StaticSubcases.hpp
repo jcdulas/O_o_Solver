@@ -83,9 +83,9 @@ struct InitialStrainKey
 
 // The subcases of a static analysis, in the order of the Case Control (SUBCASE, SUBCOM, SUBSEQ):
 // - SUBCASE rows are solved (a deck without SUBCASE is solved as subcase 1, its selections those of the global
-//   section, subcase 0 of O_o_Reader's subcasesTable);
+//   section, subcase 0 of O_o_Model's subcasesTable);
 // - a SUBCOM is the linear combination of the results of the subcases it names with its SUBSEQ coefficients
-//   (combined_subcases and coefficients of subcasesTable, as O_o_Reader gives them): its displacements, SPC and MPC
+//   (combined_subcases and coefficients of subcasesTable, as O_o_Model gives them): its displacements, SPC and MPC
 //   forces and applied loads are combined, and its element results recovered from the combined displacements with the
 //   temperatures of its own TEMPERATURE(LOAD) and the element deformations of its own DEFORM (in the
 //   input format, the thermal strains and element deformations of a combination come from the SUBCOM's own commands,

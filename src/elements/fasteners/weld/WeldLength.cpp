@@ -16,7 +16,7 @@ namespace
 constexpr std::array<std::string_view, 6> SHELL_CARDS{"ShellQuad4",        "ShellTria3", "ShellQuad4Drilling",
                                                       "ShellTria3Drilling", "ShellQuad8", "ShellTria6"};
 
-// The row of `id` in a column of IDs: by bisection when the column is sorted there (O_o_Reader sorts its card tables
+// The row of `id` in a column of IDs: by bisection when the column is sorted there (O_o_Model sorts its card tables
 // by ID), else by a scan.
 std::optional<std::size_t> findIdRow(std::span<const std::int32_t> ids, std::int32_t id)
 {

@@ -34,7 +34,7 @@ struct FreedReference
 // The absorption of the spiders of the connection system into their units (the rigid spiders and the fastener sides
 // alike): after the cluster absorption, each spider of the
 // catalog whose card is still a connection of the connection system (a cluster absorbed whole took its spiders with
-// it) and whose legs are all on one unit is decided by AbsorptionEligibility (O_o_Reader's topological rule, the
+// it) and whose legs are all on one unit is decided by AbsorptionEligibility (O_o_Model's topological rule, the
 // exclusions of the analysis, the numerical safeguard). An absorbed spider:
 // - RigidInterpolation or RigidBodyStar: becomes part of its unit (its element ID among the unit's elements, its
 //   revision in the unit's stamp); its reference point joins the unit's points as a boundary point, its legs leave the
@@ -45,7 +45,7 @@ struct FreedReference
 //   stiffness between P_A and P_B); P has no model point when it is generated, so the plan puts the smallest grid
 //   point of the pierced element on the boundary to stand for it (SpiderDecision::boundaryNodeId).
 // As a last check, two absorbed spiders that share a leg (or whose reference is the other's leg) are both kept on their
-// legs (O_o_Reader's rule already excludes them; the check keeps the change of basis well defined whatever the tables).
+// legs (O_o_Model's rule already excludes them; the check keeps the change of basis well defined whatever the tables).
 // This is exact: the relation is the same equation, eliminated inside the unit instead of at the interface.
 //
 // Thread-safety: immutable once built. Ownership: owns its lists (one decision per spider of the catalog: a

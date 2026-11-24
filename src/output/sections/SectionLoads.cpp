@@ -561,7 +561,7 @@ std::vector<Transform> SectionLoads::memberCoefficients(std::size_t s, const ass
         total += weight;
     }
     // The normal of the section: the area-weighted mean of its shells' (the first's when they cancel); an element whose
-    // normal opposes it has its y_s turned (shellTransform), as O_o_Reader's readBlock turns it for element groups.
+    // normal opposes it has its y_s turned (shellTransform), as O_o_Model's readBlock turns it for element groups.
     if (!normals.empty() && !(base::norm(sectionNormal) > 0.0))
         sectionNormal = normals.front();
     const SectionDefinition& definition = m_definitions[section.definition];

@@ -17,7 +17,7 @@ namespace oos::elements
 namespace
 {
 
-// O_o_Reader gives a blank Weld MCID as −1 (the weld system from the geometry).
+// O_o_Model gives a blank Weld MCID as −1 (the weld system from the geometry).
 constexpr std::int32_t GEOMETRIC_SYSTEM = -1;
 
 void setBlock(base::MatN<12>& t, std::size_t blockRow, std::size_t blockColumn, const base::Mat3& block)
@@ -59,7 +59,7 @@ Resolution<WeldElement::Weld> WeldElement::resolve(const ElementBatchView& view,
     using Result = Resolution<Weld>;
     const auto r = static_cast<std::size_t>(row);
     Weld weld;
-    // The WeldProp by its ID (O_o_Reader gives no propIdRow for Weld: its property column is PWID).
+    // The WeldProp by its ID (O_o_Model gives no propIdRow for Weld: its property column is PWID).
     const std::int32_t propId = columns.pwid[r];
     const auto found = std::lower_bound(columns.weldPropIds.begin(), columns.weldPropIds.end(), propId);
     if (found == columns.weldPropIds.end() || *found != propId)

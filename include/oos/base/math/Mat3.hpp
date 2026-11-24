@@ -7,7 +7,7 @@ namespace oos::base
 {
 
 // A 3 × 3 matrix: rotations between frames (the rows of a rotation are the axes of the target frame written in the
-// source frame, as O_o_Reader's `displacementRotations` gives them), inertia tensors, material matrices, Jacobians.
+// source frame, as O_o_Model's `displacementRotations` gives them), inertia tensors, material matrices, Jacobians.
 using Mat3 = MatN<3>;
 
 [[nodiscard]] constexpr Vec3 operator*(const Mat3& m, Vec3 v)

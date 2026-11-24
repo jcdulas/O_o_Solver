@@ -14,7 +14,7 @@ namespace oos::assembly
 {
 
 // One pair of contact bodies glued in a subcase, with the glue parameters in force (ContactPairGeomParams,
-// ContactTable; O_o_Reader's contactPairsTable).
+// ContactTable; O_o_Model's contactPairsTable).
 struct GluedPair
 {
     std::int64_t pairRow = 0;   // the row of contactPairsTable
@@ -29,7 +29,7 @@ struct GluedPair
     std::int32_t searchOption = 0;
     std::optional<double> errorTolerance; // the position tolerance of the tie when given (GlueConstraints)
     std::optional<double> toleranceBias;
-    std::string glueOptionSource; // the card that sets IGLUE, as O_o_Reader names it; may be empty
+    std::string glueOptionSource; // the card that sets IGLUE, as O_o_Model names it; may be empty
     std::int64_t nodePairCount = 0;
 
     // IGLUE 3 and 4 (and −3, −4) ask for a glue of the rotations of shells too: GlueConstraints ties them on the

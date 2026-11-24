@@ -20,7 +20,7 @@ namespace
 {
 
 // The fixed names a static aeroelastic solution reads its direct matrix input by (DirectMatrix, DirectMatrixAeroJ,
-// DirectMatrixAeroK: the correction factors), O_o_Reader's `role` column.
+// DirectMatrixAeroK: the correction factors), O_o_Model's `role` column.
 constexpr std::string_view NORMALWASH_ROLE = "DownwashMatrix";
 constexpr std::string_view PRESSURE_ROLE = "AeroPressureMatrix";
 constexpr std::string_view WEIGHT_ROLE = "AeroWeightingMatrix";
@@ -217,7 +217,7 @@ TrimCorrections::TrimCorrections(const input::ModelSnapshot& snapshot, const Aer
                            isComplex[row],
                            rowCounts[index],
                            columnCounts[index]};
-        // O_o_Reader gives AeroPressureMatrix no role on a DirectMatrixAeroK: a k-set AeroPressureMatrix is ambiguous
+        // O_o_Model gives AeroPressureMatrix no role on a DirectMatrixAeroK: a k-set AeroPressureMatrix is ambiguous
         // (the pressure equations act on the j set), so it is named, not guessed.
         if (matrix.role.empty() && matrix.card == DIRECT_MATRIX_AERO_K_CARD && matrix.name == PRESSURE_ROLE)
             throw base::UnsupportedCardError(base::concatenate(

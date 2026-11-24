@@ -37,7 +37,7 @@ class AnalysisModel;
 //   a DOF constrained in every subcase is removed from the units and from the interface problem, a DOF constrained in
 //   some subcases only puts its point on the boundary of its unit;
 // - the MPC equations, by the SID of their MPC card (a MultiPointConstrUnion is resolved to the cards it holds, from
-//   the source_sid column of multiPointConstrTable when O_o_Reader gives it, MpcEquations::sourceSetIdsOf): the cards
+//   the source_sid column of multiPointConstrTable when O_o_Model gives it, MpcEquations::sourceSetIdsOf): the cards
 //   every subcase selects go into the dependent DOFs of the plan graph with the rigid elements and the fasteners (Gm),
 //   keyed by their card's SID as connectionClusters names them; a card some subcases select and others do not keeps its
 //   equations in the connection system (reduction::AbsorptionOptions::varyingMpcSets);
@@ -48,7 +48,7 @@ class AnalysisModel;
 // - the node graph of the stiffness pattern (the element groups and the couplings of the m-set elimination,
 //   assembly::MsetCouplings, as ConstrainedSystem builds it), the free DOFs of each point and the positions;
 // - the FreeBodySupport points (when the snapshot has the dof_sets table): boundary points;
-// - the spiders: the catalog of O_o_Reader's spiders and fastener sides, and the measurement of each relation on
+// - the spiders: the catalog of O_o_Model's spiders and fastener sides, and the measurement of each relation on
 //   this model: the conditioning of its change of basis (AbsorptionSafeguard, from the rows of Gm of an
 //   RigidInterpolation or the interpolation of the piercing point of a fastener side) and whether a leg DOF of the
 //   relation is constrained in
@@ -79,7 +79,7 @@ public:
     ~CondensationPlanner();
 
     // The plan of `units` (made from this snapshot). absorbsClusters: false keeps every cluster in the connection
-    // system (the boundaries are then O_o_Reader's interface points). Throws base::ContractError when the snapshot has
+    // system (the boundaries are then O_o_Model's interface points). Throws base::ContractError when the snapshot has
     // no connection tables, std::invalid_argument for a request that names unknown units or points.
     [[nodiscard]] reduction::CondensationPlan plan(const reduction::UnitSet& units,
                                                    const reduction::PlanRequest& request,

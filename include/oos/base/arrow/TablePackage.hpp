@@ -8,8 +8,8 @@
 namespace oos::base
 {
 
-// Reads a "table package": one block of bytes that holds a table of O_o_Reader with its exact Arrow layout (its
-// `QueryTable.toPackage()` in JavaScript). It is how a table crosses from the O_o_Reader WebAssembly module to this
+// Reads a "table package": one block of bytes that holds a table of O_o_Model with its exact Arrow layout (its
+// `QueryTable.toPackage()` in JavaScript). It is how a table crosses from the O_o_Model WebAssembly module to this
 // one, which cannot read the other module's memory. The Arrow C Data Interface structures are rebuilt over the bytes,
 // which the table keeps: the buffers are not copied again.
 //

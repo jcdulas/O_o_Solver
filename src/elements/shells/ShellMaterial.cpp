@@ -15,7 +15,7 @@ namespace oos::elements
 namespace
 {
 
-// The row of a material in its card table, by ID. O_o_Reader sorts its card tables by ID, so a binary search finds it;
+// The row of a material in its card table, by ID. O_o_Model sorts its card tables by ID, so a binary search finds it;
 // the IDs are checked (a table out of order falls back to a scan, a defence against an unsorted input).
 [[nodiscard]] std::optional<std::int64_t> cardRowOf(const input::CardTable& table, std::int32_t matId)
 {
@@ -29,8 +29,8 @@ namespace
     return std::nullopt;
 }
 
-// The value O_o_Reader kept for a blank G1Z or G2Z of an OrthoMat2D before its contract 45 (its Mat8Card::
-// DEFAULT_TRANSVERSE_SHEAR): the field was not null but 1.0E8, and O_o_Reader wrote 1.0E8 back as a blank field, so in
+// The value O_o_Model kept for a blank G1Z or G2Z of an OrthoMat2D before its contract 45 (its Mat8Card::
+// DEFAULT_TRANSVERSE_SHEAR): the field was not null but 1.0E8, and O_o_Model wrote 1.0E8 back as a blank field, so in
 // its data model the value meant "blank". A blank G1Z or G2Z of an OrthoMat2D is an infinite transverse shear modulus
 // (zero or blank: no transverse shear flexibility). Read as a modulus, 1.0E8 is a soft transverse shear in SI units
 // (Pa), which on a laminated wing model lowers the buckling roots by 1 % to 13 % against the rigid reading. Since
@@ -38,7 +38,7 @@ namespace
 constexpr double READER_BLANK_TRANSVERSE_SHEAR = 1.0e8;
 
 // A transverse shear modulus of an OrthoMat2D: 0 (rigid) when blank (null or NaN), zero, or, in the tables
-// of a contract before 45, O_o_Reader's blank value.
+// of a contract before 45, O_o_Model's blank value.
 [[nodiscard]] double orthoMat2DTransverseShear(const base::ContractReader& card, const char* column, std::int64_t row,
                                                std::int64_t contractVersion)
 {
@@ -184,7 +184,7 @@ constexpr double READER_BLANK_TRANSVERSE_SHEAR = 1.0e8;
     allowables.xt = xt.value_or(0.0);
     allowables.yt = yt.value_or(0.0);
     allowables.s = s.value_or(0.0);
-    // OrthoMat2D: Xc defaults to Xt, Yc to Yt (O_o_Reader gives a blank as null or 0).
+    // OrthoMat2D: Xc defaults to Xt, Yc to Yt (O_o_Model gives a blank as null or 0).
     const std::optional<double> xc = realIfGiven(card, "compressionStrength1", row);
     const std::optional<double> yc = realIfGiven(card, "compressionStrength2", row);
     allowables.xc = xc && *xc > 0.0 ? *xc : allowables.xt;

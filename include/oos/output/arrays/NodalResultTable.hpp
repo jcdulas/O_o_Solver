@@ -8,7 +8,7 @@
 namespace oos::output
 {
 
-// The point type of a row of a nodal result table, as the result tables of O_o_Reader number them
+// The point type of a row of a nodal result table, as the result tables of O_o_Model number them
 // (point_types: 1 a grid point, 2 a scalar point).
 enum class PointType : std::int8_t
 {
@@ -16,7 +16,7 @@ enum class PointType : std::int8_t
     Scalar = 2
 };
 
-// One nodal result table in the layout of the O_o_Reader data contract (the result tables: the kinds "displacements",
+// One nodal result table in the layout of the O_o_Model data contract (the result tables: the kinds "displacements",
 // "singlePointConstrForces", "multiPointConstrForces", ...): one static step, one row per point (the grid points, then
 // the scalar points, in the order of the node table), six components t1, t2, t3, r1, r2, r3 in the displacement system
 // CD of the grid point (stored frame "nodeOutputSystem"); a scalar point has its value in t1 and zeros elsewhere.

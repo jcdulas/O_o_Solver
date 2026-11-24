@@ -18,7 +18,7 @@ inline constexpr double SPRING_COINCIDENT_DISTANCE = 1.0e-4;
 // The orientation vector is parallel to the axis when |x × v| ≤ this factor times |v|.
 inline constexpr double SPRING_PARALLEL_ORIENTATION_FACTOR = 1.0e-12;
 
-// O_o_Reader gives a blank CID of Bushing1D and Gap2 as −1 (0 is the basic system).
+// O_o_Model gives a blank CID of Bushing1D and Gap2 as −1 (0 is the basic system).
 inline constexpr std::int32_t BLANK_SPRING_SYSTEM = -1;
 
 // Where the element axes of a two-point spring come from (Bushing1D, Gap2): the system CID when it is given, else x

@@ -22,7 +22,7 @@ namespace oos::solutions
 // and multiPointConstrForce (RigidElimination::computeMpcForces, its rows in its order):
 //     q_m = (K·u − P)_m,   q_n = −Gmᵀ·q_m,   q_s = (K·u − P − q)_s,
 // K·u the sum of the elements' forces at the point (StiffnessRecovery::pointForces gives −K_e·u_e). For a reader of
-// O_o_Reader's data contract 56 (BasisFixedRowRequest::isMpcSplit) the multiPointConstrForce rows are split by relation
+// O_o_Model's data contract 56 (BasisFixedRowRequest::isMpcSplit) the multiPointConstrForce rows are split by relation
 // as statics splits them (RigidElimination::forEachRelationForce): the kept relations then include the rows chained to
 // them, and each kept row's relation and own terms are kept.
 //

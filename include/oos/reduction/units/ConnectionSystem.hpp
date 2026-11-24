@@ -13,7 +13,7 @@
 namespace oos::reduction
 {
 
-// What a connection is (the kind of O_o_Reader's connectionClusters(detail="connections")). The
+// What a connection is (the kind of O_o_Model's connectionClusters(detail="connections")). The
 // relations among them (Rigid, RigidInterpolation, Mpc, and the piercing constraints of a Fastener) are eliminated at
 // the interface when they stay in the connection system.
 enum class ConnectionKind : std::uint8_t
@@ -35,11 +35,11 @@ struct Connection
     std::string card;
     base::EntityId id = 0;             // the element ID, the set ID of an MPC
     std::vector<base::EntityId> nodes; // the points it acts on (nodeIds), sorted and distinct
-    std::int64_t revision = 0;         // O_o_Reader's stamp of the connection
+    std::int64_t revision = 0;         // O_o_Model's stamp of the connection
 };
 
 // An MPC set a subcase selects that holds the equations of an MPC card set (a MultiPointConstrUnion of it), when
-// multiPointConstrTable does not name the card of each row (its source_sid column): O_o_Reader's connection list names
+// multiPointConstrTable does not name the card of each row (its source_sid column): O_o_Model's connection list names
 // an MPC equation by the set ID of its card, the constraints of the analysis by the set the subcase selects, so the
 // connections of the card stand for the selected set too (ConnectionSystem).
 struct MpcSetAlias
@@ -62,7 +62,7 @@ struct ConnectionCluster
 };
 
 // The connection system of a set of units (any mixture of connections, any chain of them, and components made only of
-// 1D and 0D elements), from O_o_Reader's connection tables (connection_nodes, connectionClusters):
+// 1D and 0D elements), from O_o_Model's connection tables (connection_nodes, connectionClusters):
 // - the points of each unit: a component's from connection_nodes, a group's from its own list;
 // - the connections: every row of connectionClusters(detail="connections") (the direct links between
 //   two components included), less those a group holds (a merged group or an element list that lists them: they are

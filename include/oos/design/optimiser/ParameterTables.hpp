@@ -6,7 +6,7 @@
 namespace oos::design
 {
 
-// The DesignOptimParams of a deck as O_o_Solver reads it (the table O_o_Solver proposes to O_o_Reader, which does not
+// The DesignOptimParams of a deck as O_o_Solver reads it (the table O_o_Solver proposes to O_o_Model, which does not
 // deliver it yet):
 //
 // designParametersTable (proposed), one row per PARAMi/VALi pair of the DesignOptimParams entry: name text (PARAMi, as

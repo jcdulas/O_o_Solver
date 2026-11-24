@@ -180,7 +180,7 @@ struct CondensedMemoryRecord
 
 // The design stamp of a unit of the analysis (part of its cache key: the hash of the values a design point
 // gives to the fields of the unit and to the positions of its grid points; design::computeDesignStamps), by the ID of
-// the unit O_o_Reader gives (a component; FieldTargets::unitIds).
+// the unit O_o_Model gives (a component; FieldTargets::unitIds).
 struct UnitDesignStamp
 {
     std::int64_t unitId = 0;

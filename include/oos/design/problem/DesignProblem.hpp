@@ -78,7 +78,7 @@ struct DesignEvaluation
 // and runs the analysis on the overlaid snapshot, never editing the model. The responses, the sensitivities and the
 // optimisers build on it, and the SOL 200 driver uses it. The caller gathers the deck's design model and the
 // declarations into DesignModelParts, builds this object, and writes a point into the model (card edits through
-// O_o_Reader).
+// O_o_Model).
 //
 // Thread-safety: immutable but for what it keeps between design points (the geometry of the linearity check, under a
 // mutex); designPoint() and evaluateStatics() may run concurrently. Ownership: shares the snapshot.
@@ -91,7 +91,7 @@ public:
     // With responses and constraints. Throws, in addition, as DesignResponses and DesignConstraints.
     DesignProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, DesignModelParts parts, ResponseParts responses,
                   ConstraintParts constraints);
-    // With the section library of the designed BarShapeProp and BeamShapeProp (O_o_Reader's formulas, which the caller
+    // With the section library of the designed BarShapeProp and BeamShapeProp (O_o_Model's formulas, which the caller
     // gives; FieldTargets).
     DesignProblem(std::shared_ptr<const input::ModelSnapshot> snapshot, DesignModelParts parts, ResponseParts responses,
                   ConstraintParts constraints, std::shared_ptr<const SectionLibrary> sections);

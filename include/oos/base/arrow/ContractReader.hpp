@@ -17,7 +17,7 @@ namespace oos::base
 // "dictionary<utf8>", "list<int32>", "fixed_list<float64>[3]", as contractTypeOf names them). An optional column may
 // be absent; if present, its type is checked all the same.
 //
-// Some columns come in more than one layout: O_o_Reader gives the grid points of the elements of one type as
+// Some columns come in more than one layout: O_o_Model gives the grid points of the elements of one type as
 // "fixed_list<int32>[4]" and those of mixed types as "list<int32>". `otherTypes` lists the layouts accepted besides
 // `type`; a fixed list written with the width "[*]" ("fixed_list<int32>[*]") accepts any width.
 struct ColumnContract
@@ -31,7 +31,7 @@ struct ColumnContract
 // Whether `found` (a type as contractTypeOf names it) is one of the types the column accepts.
 [[nodiscard]] bool acceptsType(const ColumnContract& column, const std::string& found);
 
-// What a table of O_o_Reader must look like, as O_o_Solver reads it (the table contracts of input/contract/).
+// What a table of O_o_Model must look like, as O_o_Solver reads it (the table contracts of input/contract/).
 struct TableContract
 {
     std::string table; // the name used in messages, e.g. "spc_table"
@@ -105,7 +105,7 @@ struct ArrowValueType<double>
 template <typename T>
 concept ArrowPrimitive = requires { ArrowValueType<T>::NAME; };
 
-// Reads a table of O_o_Reader by its contract. At construction it checks that every column of the
+// Reads a table of O_o_Model by its contract. At construction it checks that every column of the
 // contract is present with its type, and refuses the table otherwise with ContractError naming the table, the column,
 // the type expected and the type found (or, for a missing column, the columns there are). The typed accessors check
 // the type again (they may read a column outside the contract), refuse nulls unless asked (NullPolicy), check the
@@ -113,7 +113,7 @@ concept ArrowPrimitive = requires { ArrowValueType<T>::NAME; };
 // read as bits, narrow offsets and indices in place), so nothing the reader hands out grows the memory with the model;
 // the views are valid as long as the reader lives.
 //
-// Every Arrow type O_o_Reader exports is read: integers, reals, booleans, texts, dictionaries of texts, lists and
+// Every Arrow type O_o_Model exports is read: integers, reals, booleans, texts, dictionaries of texts, lists and
 // fixed-size lists of numbers, lists of fixed-size lists, and nulls (validity bitmaps, and the null type).
 //
 // Thread-safety: immutable once built; concurrent reads are safe. Ownership: owns the table.

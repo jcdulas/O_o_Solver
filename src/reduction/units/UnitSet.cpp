@@ -91,7 +91,7 @@ UnitSet::UnitSet(std::vector<CondensationUnit> units, std::vector<DeclaredConnec
             throw std::invalid_argument(base::concatenate(
                 {"UnitSet: element ", std::to_string(connection.elementId), " is declared a connection but is in unit ",
                  std::to_string(*owner),
-                 "; take the components with the connection list (O_o_Reader's connections= option)"}));
+                 "; take the components with the connection list (O_o_Model's connections= option)"}));
         if (!isSortedAndDistinct(connection.nodes))
             throw std::invalid_argument(
                 base::concatenate({"UnitSet: the points of declared connection ", std::to_string(connection.elementId),
@@ -104,7 +104,7 @@ UnitSet UnitSet::fromComponents(const input::UnitTable& table, std::vector<Decla
     const base::ContractReader& components = table.components();
     const std::span<const std::int64_t> ids = table.componentIds();
     const std::span<const std::int64_t> revisions = table.revisions();
-    // O_o_Reader (contract 34) flags the components made only of 1D and 0D elements (is_line_only); a table without
+    // O_o_Model (contract 34) flags the components made only of 1D and 0D elements (is_line_only); a table without
     // the flag tells them by their shell and solid counts.
     const bool hasLineFlag = components.hasColumn("isLineOnly");
     const bool hasCounts = components.hasColumn("shellCount") && components.hasColumn("solidCount");

@@ -14,7 +14,7 @@ namespace oos::assembly
 {
 
 // The temperatures of a subcase with a thermal load (Case Control TEMPERATURE), gathered
-// from temperatureTable of O_o_Reader for the set of TEMPERATURE(LOAD) and the set of TEMPERATURE(INITIAL):
+// from temperatureTable of O_o_Model for the set of TEMPERATURE(LOAD) and the set of TEMPERATURE(INITIAL):
 // - TEMP: the temperature of a grid point; DefaultTemperatureLoad: the default of the set, for every grid point its
 // TEMP cards leave
 //   out; a grid point with neither has none (NaN);

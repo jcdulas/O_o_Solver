@@ -12,7 +12,7 @@ namespace oos::elements
 namespace
 {
 
-// O_o_Reader's code of SO = NO on a BeamShapeProp station (BeamStressOutput).
+// O_o_Model's code of SO = NO on a BeamShapeProp station (BeamStressOutput).
 constexpr std::uint8_t STRESS_OUTPUT_NO = 0;
 
 // The SO of the BeamShapeProp station at X/XB `position`: NO only when the card gives that station with SO = NO (the
@@ -61,7 +61,7 @@ Resolution<BeamSection> resolveTabulatedSection(const ElementBatchView& view, st
         return Result::failure(elementProblem(
             view, row, problem_code::UNSUPPORTED_FIELD, "propId",
             base::concatenate({"expected the section properties of ", property,
-                               " in the snapshot's sectionsTable, found no such table; O_o_Reader does not give it "
+                               " in the snapshot's sectionsTable, found no such table; O_o_Model does not give it "
                                "yet: hand the table over to the snapshot, or give "
                                "the section as a BarProp or BeamProp"})));
     const std::optional<input::SectionRows> rows = columns.table->findProperty(propId);
@@ -103,7 +103,7 @@ Resolution<BeamSection> resolveTabulatedSection(const ElementBatchView& view, st
                     view, row, problem_code::INVALID_FIELD, "propId",
                     base::concatenate({"expected the shear centre of ", property, " at BeamShapeProp.stationRatio ",
                                        std::to_string(station.position),
-                                       " (its neutral axis n1, n2 in sectionsTable), found none: O_o_Reader gives no "
+                                       " (its neutral axis n1, n2 in sectionsTable), found none: O_o_Model gives no "
                                        "shear centre for these dimensions; correct the dimensions of the section"})));
         }
         station.hasOutput = hasStationOutput(station.position, stationPositions, stationOutputs);

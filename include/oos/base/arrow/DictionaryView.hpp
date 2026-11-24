@@ -11,7 +11,7 @@ namespace oos::base
 
 // A dictionary-encoded text column ("dictionary<utf8>": the card types of a mixed table): per row an index into the
 // dictionary of distinct values. One of the typed views of ContractReader (base/arrow/ColumnViews.hpp). The indices
-// are read in place whatever their signed width (int8, int16, int32 as O_o_Reader gives them, int64): no copy.
+// are read in place whatever their signed width (int8, int16, int32 as O_o_Model gives them, int64): no copy.
 //
 // Thread-safety: copyable, immutable, safe to read from several threads. Valid while the ContractReader lives.
 class DictionaryView

@@ -12,7 +12,7 @@
 namespace oos::base
 {
 
-// A table handed over by its producer (O_o_Reader) through the Arrow C Data Interface: a struct array (one record
+// A table handed over by its producer (O_o_Model) through the Arrow C Data Interface: a struct array (one record
 // batch) and its schema, each child being a column. The table owns the two structures and releases them when it dies,
 // which lets the producer free its buffers; the buffers themselves are never copied.
 //
@@ -40,7 +40,7 @@ public:
     // interface): copies them and marks the sources released, so that the capsules no longer free them.
     [[nodiscard]] static ImportedTable takeOver(ArrowSchema* schema, ArrowArray* array);
 
-    // Reads the one record batch of a stream (O_o_Reader's __arrow_c_stream__ gives a table as one batch). Throws
+    // Reads the one record batch of a stream (O_o_Model's __arrow_c_stream__ gives a table as one batch). Throws
     // ContractError when the stream fails, is empty, or has a second batch. The stream stays the caller's: the
     // structures taken from it live on after its release, as the Arrow stream interface says.
     [[nodiscard]] static ImportedTable fromStream(ArrowArrayStream* stream);
@@ -59,7 +59,7 @@ public:
     // The row offset of the struct array itself, added to every column's own offset.
     [[nodiscard]] std::int64_t offset() const noexcept { return m_owned ? m_owned->array.offset : 0; }
 
-    // A value of the schema's key/value metadata (O_o_Reader puts "oor_reader.data_contract_version" there), "" when
+    // A value of the schema's key/value metadata (O_o_Model puts "oor_reader.data_contract_version" there), "" when
     // absent.
     [[nodiscard]] std::string metadataValue(const std::string& key) const;
 
@@ -109,9 +109,9 @@ private:
     std::unique_ptr<Owned> m_owned;
 };
 
-// The type of a column as the data contract of O_o_Reader names it ("int32", "float64", "utf8", "bool",
+// The type of a column as the data contract of O_o_Model names it ("int32", "float64", "utf8", "bool",
 // "dictionary<utf8>", "list<int32>", "fixed_list<float64>[3]", "null"; "unknown(<format>)" for a format the solver
-// does not read), from its Arrow schema alone. Both list layouts ("+l" and "+L") are "list<...>", as O_o_Reader names
+// does not read), from its Arrow schema alone. Both list layouts ("+l" and "+L") are "list<...>", as O_o_Model names
 // its "+L" lists.
 [[nodiscard]] std::string contractTypeOf(const ArrowSchema& column);
 

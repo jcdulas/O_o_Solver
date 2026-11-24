@@ -195,7 +195,7 @@ void LoadVectorBuilder::forEachConcentratedValue(base::EntityId loadSetId, base:
                         base::concatenate({"the load card ", card, " of load set ", std::to_string(setId),
                                            " needs its fields, which loadsTable does not give (they are in "
                                            "inertialLoadsTable); install a "
-                                           "O_o_Reader that delivers it, or hand the table over to the snapshot"})));
+                                           "O_o_Model that delivers it, or hand the table over to the snapshot"})));
                 continue;
             }
             const bool isNodal = isOneOf(card, NODAL_CARDS);
@@ -880,7 +880,7 @@ std::vector<std::vector<elements::ElementLineLoad>> LoadVectorBuilder::collectLi
             load.scaleType = scaleTypes[row];
             load.x1 = x1[index];
             load.p1 = p1[index] * scale;
-            // BeamDistributedLoad: a blank X2 is a concentrated load at X1 (O_o_Reader gives X2 = X1 then).
+            // BeamDistributedLoad: a blank X2 is a concentrated load at X1 (O_o_Model gives X2 = X1 then).
             load.x2 = std::isfinite(x2[index]) ? x2[index] : x1[index];
             load.p2 = (std::isfinite(p2[index]) ? p2[index] : p1[index]) * scale;
             byBatch[static_cast<std::size_t>(location->batchIndex)].push_back(load);

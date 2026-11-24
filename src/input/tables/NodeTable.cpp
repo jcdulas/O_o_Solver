@@ -31,7 +31,7 @@ NodeTable::NodeTable(base::ImportedTable nodes, std::optional<base::ImportedTabl
              " values (a 3 x 3 matrix for each of the ", std::to_string(rowCount()),
              " grid points of the node table), found ", std::to_string(m_cdRotations.size()),
              "; take the rotations and the node table from the same model (displacementRotations(deck) of "
-             "O_o_Reader)"}));
+             "O_o_Model)"}));
 }
 
 std::span<const std::int32_t> NodeTable::scalarPointIds() const

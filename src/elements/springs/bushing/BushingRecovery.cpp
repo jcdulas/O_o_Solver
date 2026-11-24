@@ -7,7 +7,7 @@
 namespace oos::elements
 {
 
-// Output columns of the O_o_Reader data contract: forces.bushing (fx, fy, fz, mx, my, mz, in the element system),
+// Output columns of the O_o_Model data contract: forces.bushing (fx, fy, fz, mx, my, mz, in the element system),
 // stress.bushing and strain.bushing (tx, ty, tz, rx, ry, rz).
 std::vector<std::string> BushingElement::outputColumns(ElementOutput output) const
 {

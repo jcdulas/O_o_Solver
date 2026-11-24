@@ -16,7 +16,7 @@
 namespace oos::design
 {
 
-// The pieces of a design model as they are read (DesignTables, from the design tables of O_o_Reader) or declared (by
+// The pieces of a design model as they are read (DesignTables, from the design tables of O_o_Model) or declared (by
 // the caller): plain data, checked when a DesignModel is made of them.
 struct DesignModelParts
 {

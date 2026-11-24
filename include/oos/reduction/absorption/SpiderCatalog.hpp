@@ -12,8 +12,8 @@
 namespace oos::reduction
 {
 
-// Every spider of a model, from O_o_Reader's tables:
-// - each row of `spiders` (O_o_Reader spiders(contact="merge")): a RigidBodyStar or RigidInterpolation, its
+// Every spider of a model, from O_o_Model's tables:
+// - each row of `spiders` (O_o_Model spiders(contact="merge")): a RigidBodyStar or RigidInterpolation, its
 //   reference, legs, topology, eligibility and revision as given;
 // - each side of each Fastener and Weld of the piercing table (with its is_eligible and blocking_connections
 // columns): a

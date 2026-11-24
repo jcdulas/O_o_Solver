@@ -37,7 +37,7 @@ struct SpiderKey
     [[nodiscard]] auto operator<=>(const SpiderKey&) const = default;
 };
 
-// One spider as O_o_Reader describes it (its spiders table; fastenerPiercings for the fastener sides), before the
+// One spider as O_o_Model describes it (its spiders table; fastenerPiercings for the fastener sides), before the
 // analysis-dependent rules of O_o_Solver (AbsorptionEligibility).
 //
 // Invariant: legNodeIds sorted and distinct (the card's order is not kept: the change of basis takes the leg DOFs in
@@ -51,19 +51,19 @@ struct Spider
     base::EntityId referenceNodeId = 0;
     std::string referenceDofs; // the components as written ("123456"); empty for a fastener side
     std::vector<base::EntityId> legNodeIds;
-    // The component of the legs O_o_Reader gives (null when they are on several components or one on none).
+    // The component of the legs O_o_Model gives (null when they are on several components or one on none).
     std::optional<std::int64_t> componentId;
-    // O_o_Reader's topology: a card whose legs are all on one component, with its reason when it is not
+    // O_o_Model's topology: a card whose legs are all on one component, with its reason when it is not
     // ("legsOnSeveralUnits", "um", "referenceIsLeg", "referenceDependentElsewhere").
     bool isSpider = false;
     std::string notSpiderReason;
-    // No leg touched by another connection ("the rule is computed by O_o_Reader from the connectivity
+    // No leg touched by another connection ("the rule is computed by O_o_Model from the connectivity
     // alone"), with what touches them: the legs (blockingNodeIds) and the connections (an MPC equation by its set ID).
     bool isEligible = false;
     bool hasEligibility = false; // false when the table does not say (a piercing table without is_eligible)
     std::vector<base::EntityId> blockingNodeIds;
     std::vector<base::EntityId> blockingConnections;
-    // O_o_Reader's revision stamp of the card and of what it refers to; for a fastener side, the stamp of its piercing
+    // O_o_Model's revision stamp of the card and of what it refers to; for a fastener side, the stamp of its piercing
     // rows (SpiderCatalog: the card, the side, the grid points and the bits of the weights).
     std::int64_t revision = 0;
 };

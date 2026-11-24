@@ -133,7 +133,7 @@ Resolution<FastenerConnection> resolveFastenerConnection(const ElementBatchView&
         return Result::failure(elementProblem(
             view, row, problem_code::UNSUPPORTED_FIELD, "propId",
             base::concatenate({"expected the piercing points of the fastener in the snapshot's fastenerPiercings "
-                               "table (O_o_Reader data contract 60 or later), found no such table: hand the table "
+                               "table (O_o_Model data contract 60 or later), found no such table: hand the table "
                                "over to the snapshot"})));
     // An ALIGN Weld reads no table: both sides connect directly.
     const input::FastenerPiercingTable* table = isDirect ? nullptr : &view.snapshot().fastenerPiercings();

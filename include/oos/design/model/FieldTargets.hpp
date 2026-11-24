@@ -60,14 +60,14 @@ struct ShapeTarget
 // "elements/<TYPE>" at the row of the EID; a material field to materialsTable at the row of (MID, TYPE) and to
 // "materials/<TYPE>" at the row of the MID, each when it has the column. The column must be "float64" (fieldItem
 // -1), "fixed_list<float64>[n]" (fieldItem below n) or "list<fixed_list<float64>[n]>" (the stations of a BeamProp:
-// fieldItem station · n + component, below n times the stations of the row, as O_o_Reader's designRelationsTable
+// fieldItem station · n + component, below n times the stations of the row, as O_o_Model's designRelationsTable
 // flattens it): only real fields can be designed.
 //
 // The ply thicknesses of CompProp and CompPropGlobal (ply_thickness: the plies the elements read from
 // laminatePliesTable) and the dimensions of BarShapeProp and BeamShapeProp (dims, station_dims: the section properties
 // they read from sectionsTable) are "list<float64>" columns, the item the position in the list; a design point overlays
-// beside them the tables O_o_Reader derives from these cards (DerivedProperties; the section properties from
-// `sections`, O_o_Reader's section library). Any other field of these cards is refused (UnsupportedCardError,
+// beside them the tables O_o_Model derives from these cards (DerivedProperties; the section properties from
+// `sections`, O_o_Model's section library). Any other field of these cards is refused (UnsupportedCardError,
 // design_code::UNSUPPORTED_TARGET), THETA among them. A TubeProp's OD2, blank or given equal to its OD (to the bit),
 // follows a designed OD (a blank OD2 is OD; a given equal one left behind would taper the tube, which this version does
 // not analyse); its OD2 as a target of its own is refused.
@@ -82,7 +82,7 @@ struct ShapeTarget
 // design point overlays the column xyzGlobal of "nodes" at those rows with g = g0 + Σ_v s_v·T_v(g) (ShapeRelations).
 // A grid point changes the unit (component) componentNodes gives it, or every unit when the snapshot has the units but
 // not componentNodes (a moved grid point must never leave a stamp unchanged). Refused
-// (design_code::UNSUPPORTED_TARGET), because the overlay of xyzGlobal would leave a table that O_o_Reader derives from
+// (design_code::UNSUPPORTED_TARGET), because the overlay of xyzGlobal would leave a table that O_o_Model derives from
 // the positions as it was read, so that the analysis of the point would be wrong: a moved grid point whose displacement
 // system CD is cylindrical or spherical (its rotation, displacementRotations, depends on the position); a grid point of
 // a shell element a Fastener or Weld pierces, or the GA, GB or GS of a Fastener or Weld

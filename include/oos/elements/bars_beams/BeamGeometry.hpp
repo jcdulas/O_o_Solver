@@ -33,7 +33,7 @@ namespace oos::elements
 // in basic, w the offset in basic): the rigid offset u_end = u + θ × w, then the element axes.
 //
 // Not supported (refused by resolveBeamGeometry): OFFT with the letter E or an old numeric code; CD rotations are
-// those O_o_Reader evaluates at the grid point (curvilinear CD allowed).
+// those O_o_Model evaluates at the grid point (curvilinear CD allowed).
 struct BeamGeometry
 {
     std::int32_t rowA = 0;

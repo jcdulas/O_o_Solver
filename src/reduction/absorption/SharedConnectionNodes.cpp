@@ -21,7 +21,7 @@ SharedConnectionNodes::SharedConnectionNodes(const base::ContractReader& table)
         const auto r = static_cast<std::size_t>(row);
         if (row > 0 && m_nodeIds[r] <= m_nodeIds[r - 1])
             throw base::ContractError(base::concatenate(
-                {"connectionSharing: expected the grid points by increasing nodeId (O_o_Reader's default sort), found ",
+                {"connectionSharing: expected the grid points by increasing nodeId (O_o_Model's default sort), found ",
                  std::to_string(m_nodeIds[r]), " after ", std::to_string(m_nodeIds[r - 1]),
                  "; take the table without sort="}));
         const auto count = static_cast<std::int64_t>(m_ids[row].size());
@@ -32,7 +32,7 @@ SharedConnectionNodes::SharedConnectionNodes(const base::ContractReader& table)
                  std::to_string(m_nodeIds[r]), ", found ", std::to_string(m_kinds.count(row)), ", ",
                  std::to_string(m_cards.count(row)), ", ", std::to_string(count), " and ",
                  std::to_string(m_equations[row].size()),
-                 "; the table does not follow the data contract: take the snapshot again with a O_o_Reader that "
+                 "; the table does not follow the data contract: take the snapshot again with a O_o_Model that "
                  "follows it"}));
     }
 }

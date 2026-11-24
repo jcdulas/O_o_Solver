@@ -9,7 +9,7 @@
 namespace oos::elements
 {
 
-// Where a row of results lies in its element, as the result tables of O_o_Reader name the rows (node_ids, layers,
+// Where a row of results lies in its element, as the result tables of O_o_Model name the rows (node_ids, layers,
 // positions): the grid point ID of a corner (0 for the centre or for an element with a single place), the layer (1 for
 // an element with a single row per place; for a shell 1 the fibre Z1 or the membrane strains, 2 the fibre Z2 or the
 // curvatures; for a beam the number of the station, from 1 at end A) and the position of a station of a bar or beam
@@ -23,7 +23,7 @@ struct ResultPlace
 
 // The recovered quantities of a range of elements of one batch for one output kind (forces, stresses): one or more rows
 // of values per element (a rod has one, a ShellQuad4 one per corner and fibre), each with its place, in the columns the
-// family names for that kind. The column names are those of the O_o_Reader data
+// family names for that kind. The column names are those of the O_o_Model data
 // contract ("springForce", "axial", "sma", ...), so that the output
 // module copies a block into a result table without renaming.
 //

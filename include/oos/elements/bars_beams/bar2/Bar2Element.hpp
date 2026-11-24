@@ -27,7 +27,7 @@
 //
 // The section of a BarShapeProp (a section type of the standard section library and its dimensions) is read from the
 // sections table of the snapshot (bars_beams/TabulatedSection: the properties computed from the dimensions, with
-// their shear factors, a table O_o_Reader provides): the element is then the Bar2 of that BarProp-equivalent
+// their shear factors, a table O_o_Model provides): the element is then the Bar2 of that BarProp-equivalent
 // section, the MID and the stress limits from the BarShapeProp's IsoMat.
 //
 // Not supported, refused by check() with a diagnostic: a BarShapeProp without a sections table (field PID, code

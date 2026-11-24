@@ -12,7 +12,7 @@ namespace oos::input
 {
 
 // The row of each ID of a table column (grid points, scalar points, materials, coordinate systems), found by binary
-// search in a copy of the (ID, row) pairs sorted by ID. O_o_Reader gives the row-index columns nodesRows and propIdRow
+// search in a copy of the (ID, row) pairs sorted by ID. O_o_Model gives the row-index columns nodesRows and propIdRow
 // for most element cards, but not for the grid points of the springs, Bushing, PointMassMatrix, PointMassInertia and
 // the scalar masses (these come without a row-index column), nor for the material of a property: the elements find
 // those rows here.
@@ -26,7 +26,7 @@ class IdIndex
 {
 public:
     IdIndex() = default;
-    // Throws ContractError when an ID appears twice (O_o_Reader guarantees unique IDs per table), MemoryBudgetError
+    // Throws ContractError when an ID appears twice (O_o_Model guarantees unique IDs per table), MemoryBudgetError
     // when the pairs do not fit the budget. `label` names the index in both messages ("grid point IDs").
     IdIndex(std::span<const std::int32_t> ids, base::MemoryBudget& budget, const std::string& label);
 

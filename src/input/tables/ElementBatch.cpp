@@ -33,7 +33,7 @@ std::span<const std::int32_t> ElementBatch::propertyIds() const
 
 std::span<const std::int32_t> ElementBatch::propertyRows() const
 {
-    // A row is null when the property does not exist (O_o_Reader in tolerant mode): the caller reports it.
+    // A row is null when the property does not exist (O_o_Model in tolerant mode): the caller reports it.
     return m_reader.values<std::int32_t>("propIdRow", base::NullPolicy::Allow);
 }
 
@@ -45,7 +45,7 @@ base::DictionaryView ElementBatch::propertyTypes() const
 ConnectivityView ElementBatch::connectivity(const std::string& column) const
 {
     // Nulls are allowed: an absent midside grid point (ShellQuad8), or the row of a grid point that does not exist
-    // (O_o_Reader in tolerant mode), is a problem of the model the element code reports as a diagnostic.
+    // (O_o_Model in tolerant mode), is a problem of the model the element code reports as a diagnostic.
     const base::NullPolicy nulls = base::NullPolicy::Allow;
     if (m_reader.columnType(column).starts_with("fixed_list"))
         return ConnectivityView(m_reader.fixedLists<std::int32_t>(column, nulls));

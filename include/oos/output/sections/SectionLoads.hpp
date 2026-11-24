@@ -46,7 +46,7 @@ inline constexpr double SECTION_AXIS_MIN_PROJECTION = 1.0e-8;
 //     N'x = c²Nx + s²Ny + 2csNxy,  N'y = s²Nx + c²Ny − 2csNxy,  N'xy = −csNx + csNy + (c² − s²)Nxy,
 // and the vector rotation of the transverse shears, Q'x = cQx + sQy, Q'y = −sQx + cQy. The y_s of an element whose
 // normal opposes the section's (the area-weighted mean of its shells' normals) is turned to point as the section's
-// (N'xy, M'xy, Q'y change sign), as O_o_Reader's readBlock does for element groups: the same numbers for the same
+// (N'xy, M'xy, Q'y change sign), as O_o_Model's readBlock does for element groups: the same numbers for the same
 // group; its moments and transverse shears stay those the element gives about its normal. The default weight of a
 // shell is its area (in its plane: 4·det J0 for a quadrilateral), recomputed from the geometry it is evaluated on (the
 // sensitivities to a shape move it).

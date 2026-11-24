@@ -12,7 +12,7 @@ namespace oos::reduction
 {
 
 // The units of condensation of a model: by default one per component of
-// O_o_Reader, with its revision stamp and its boundary as connectedComponents and componentBoundaries give them;
+// O_o_Model, with its revision stamp and its boundary as connectedComponents and componentBoundaries give them;
 // Regrouping makes other sets from it.
 //
 // Invariants: units sorted by ID, IDs distinct, each unit's lists sorted and distinct, a component in one unit at
@@ -31,7 +31,7 @@ public:
     // shell_count and solid_count when the table has them), its elements from connectedComponents(detail="elements")
     // and its boundary from componentBoundaries (every load group of the component merged; empty when the snapshot
     // was taken without the boundaries). `declaredConnections`: the elements the caller declared connections, which
-    // O_o_Reader's component queries took (their `connections` option): in no component.
+    // O_o_Model's component queries took (their `connections` option): in no component.
     [[nodiscard]] static UnitSet fromComponents(const input::UnitTable& table,
                                                 std::vector<DeclaredConnection> declaredConnections = {});
 
@@ -46,7 +46,7 @@ public:
     // The unit an element belongs to, or nothing (a connection, or an element of no unit).
     [[nodiscard]] std::optional<std::int64_t> unitOfElement(base::EntityId elementId) const noexcept;
     // The elements declared connections, by increasing ID: in no unit,
-    // connections of the connection system (O_o_Reader lists them there).
+    // connections of the connection system (O_o_Model lists them there).
     [[nodiscard]] std::span<const DeclaredConnection> declaredConnections() const noexcept
     {
         return m_declaredConnections;

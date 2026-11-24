@@ -12,7 +12,7 @@
 namespace oos::elements
 {
 
-// The grid point columns of a shell batch, read once per facet call: nodesRows (O_o_Reader: the rows of G1, G2 ... in
+// The grid point columns of a shell batch, read once per facet call: nodesRows (O_o_Model: the rows of G1, G2 ... in
 // the node table, the row null when a grid point is unknown) and nodes (their IDs, for the messages and the outputs).
 struct ShellConnectivity
 {

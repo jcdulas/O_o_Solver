@@ -16,7 +16,7 @@ namespace
 {
 
 // Two displacement systems are the same when every term of their rotations (CD to basic) agrees to this: the rotations
-// are evaluated by O_o_Reader from the same CORD cards on both sides (a superelement and the residual structure share
+// are evaluated by O_o_Model from the same CORD cards on both sides (a superelement and the residual structure share
 // the coordinate systems a deck defines for both, an external superelement repeating its RectFrame2 cards), so they
 // agree to the bit or differ by a rotation.
 constexpr double SAME_SYSTEM_TOLERANCE = 1.0e-12;

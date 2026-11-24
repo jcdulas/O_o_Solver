@@ -31,7 +31,7 @@ struct ElementEntry
 // "Elements", the ATTi are elements; PTYPE a property card, the ATTi are property IDs of that card, since property IDs
 // are unique within a property card only).
 //
-// The property card of an element is the propType O_o_Reader gives with propIdRow; without it, the property table of
+// The property card of an element is the propType O_o_Model gives with propIdRow; without it, the property table of
 // the snapshot that holds the PID among those the element's card can take (its ElementFamily::propertyCards()).
 //
 // Thread-safety: immutable once built. Ownership: owns its entries (bounded by the elements of the model: one entry

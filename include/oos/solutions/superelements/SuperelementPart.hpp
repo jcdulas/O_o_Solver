@@ -16,7 +16,7 @@ namespace oos::solutions
 // The number of the residual structure (SuperelementBulkOptions, SUPER: superelement 0).
 inline constexpr std::int32_t RESIDUAL_STRUCTURE = 0;
 
-// A boundary point of a superelement (O_o_Reader's part_boundaries): the point in the superelement's own ID space and
+// A boundary point of a superelement (O_o_Model's part_boundaries): the point in the superelement's own ID space and
 // the point of the residual structure it is (a SuperelementConnection pair, the automatic search of
 // SuperelementBulkOptions AUTO, a SuperelementExternalBoundary point of an external superelement).
 struct SuperelementBoundaryPoint

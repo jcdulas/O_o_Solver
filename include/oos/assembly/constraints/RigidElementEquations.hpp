@@ -59,7 +59,7 @@ struct LocalConstraintRows
 };
 
 // The equations of the rigid elements, eliminated by default (linear elimination, dependents in the
-// m set), one element at a time, from the rows of rigidElementsTable (O_o_Reader: one row per grid point, the
+// m set), one element at a time, from the rows of rigidElementsTable (O_o_Model: one row per grid point, the
 // independent rows first then the dependent ones, in the order of the card; RigidBar CMA/CMB defaults already
 // resolved). All the geometry is in the basic system; a DOF is in the displacement system CD of its grid point.
 //

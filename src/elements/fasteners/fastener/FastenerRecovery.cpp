@@ -6,7 +6,7 @@
 namespace oos::elements
 {
 
-// forces.fastener (fx ... mz) and stress.fastener (force_x ... moment_z) of the O_o_Reader data contract.
+// forces.fastener (fx ... mz) and stress.fastener (force_x ... moment_z) of the O_o_Model data contract.
 std::vector<std::string> FastenerElement::outputColumns(ElementOutput output) const
 {
     if (output == ElementOutput::Forces)

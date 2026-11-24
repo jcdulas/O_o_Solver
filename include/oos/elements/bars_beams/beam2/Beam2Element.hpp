@@ -46,7 +46,7 @@
 // and end B, and NSM per station) is read from the sections table of the snapshot (bars_beams/TabulatedSection): one
 // row per station with the properties computed from the dimensions, the shear factors (those of end A for the element),
 // the recovery points from the neutral axis and the neutral axis from the shear centre (n1, n2: the element system of
-// a BeamShapeProp is at the shear centre; the snapshot's columns from O_o_Reader's section properties); the SO of the
+// a BeamShapeProp is at the shear centre; the snapshot's columns from O_o_Model's section properties); the SO of the
 // card's stations; its NSM at the shear centre (the derived BeamProp has no M1, M2: a hypothesis); the BeamShapeProp
 // has no field of the refused list above (no warping, S1, S2, NSI).
 //
@@ -172,7 +172,7 @@ public:
         PropertyRows properties;
         IsotropicMaterialColumns materials;
         std::span<const std::int32_t> matId;
-        base::ListView<std::uint8_t> stationOutput; // SO: 0 NO, 1 YES, 2 YESA (O_o_Reader BeamStressOutput)
+        base::ListView<std::uint8_t> stationOutput; // SO: 0 NO, 1 YES, 2 YESA (O_o_Model BeamStressOutput)
         base::ListView<double> stationPosition;     // X/XB
         input::NestedListView stationSection;       // A, I1, I2, I12, J, NSM
         input::NestedListView stationStress;        // C1, C2, D1, D2, E1, E2, F1, F2

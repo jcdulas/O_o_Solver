@@ -57,8 +57,8 @@ OutputRequest::Scope OutputRequests::scopeAt(std::int64_t row) const
          ": expected the selection All, None, Yes, No or a SetDefinition ID, "
          "found '",
          word,
-         "'; the table does not follow the data contract of O_o_Reader (outputRequestsTable): take the snapshot "
-         "again with a O_o_Reader that follows it"}));
+         "'; the table does not follow the data contract of O_o_Model (outputRequestsTable): take the snapshot "
+         "again with a O_o_Model that follows it"}));
 }
 
 std::vector<OutputRequest> OutputRequests::requestsOf(std::int32_t subcase) const

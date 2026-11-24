@@ -143,7 +143,7 @@ public:
             refuse(m_frames.front().bases,
                    base::concatenate({"the shape variables move coordinate system ",
                                       std::to_string(m_frames.front().frameId),
-                                      ", and the model has an aerodynamic model, whose boxes O_o_Reader derives from "
+                                      ", and the model has an aerodynamic model, whose boxes O_o_Model derives from "
                                       "the CAERO cards in their systems when it reads the model; leave the grid "
                                       "points that define the system out of the shapes"}));
     }
@@ -188,7 +188,7 @@ private:
         m_problems.push_back(designProblem(
             design_code::UNSUPPORTED_TARGET, SHAPE_CARD, variableId, SHAPE_FIELD,
             base::concatenate({why,
-                               " (O_o_Reader resolves it when it reads the model; it "
+                               " (O_o_Model resolves it when it reads the model; it "
                                "gives the grid points of the PointForceLoad1, PointForceLoad2, PointMomentLoad1, "
                                "PointMomentLoad2 and CORD1x cards, "
                                "from which O_o_Solver derives their directions and frames at a design point)"})));
@@ -217,8 +217,8 @@ private:
                 if (definition[row].value_or(0) == 1)
                     refuse({}, base::concatenate({"coordinate system ", std::to_string(frameId),
                                                   " is a CORD1x, whose grid points coordsTable does not give (a "
-                                                  "O_o_Reader before data contract 44), so a shape cannot be checked "
-                                                  "against it; install a O_o_Reader of data contract 44 or later"}));
+                                                  "O_o_Model before data contract 44), so a shape cannot be checked "
+                                                  "against it; install a O_o_Model of data contract 44 or later"}));
                 continue;
             }
             if (!grids[0][row] || !grids[1][row] || !grids[2][row])
@@ -230,7 +230,7 @@ private:
                 continue;
             bindPointFrame(systems, row, frameId, bases, {*grids[0][row], *grids[1][row], *grids[2][row]});
         }
-        // The systems defined in moved ones, by passes until none is added (a chain is finite: O_o_Reader refuses a
+        // The systems defined in moved ones, by passes until none is added (a chain is finite: O_o_Model refuses a
         // circular one).
         bool isGrown = !m_frames.empty();
         while (isGrown)
@@ -262,7 +262,7 @@ private:
         }
     }
 
-    // A CORD1x whose grid points move: bound when the frame from its base points is O_o_Reader's.
+    // A CORD1x whose grid points move: bound when the frame from its base points is O_o_Model's.
     void bindPointFrame(const input::CoordinateSystemTable& systems, std::int64_t row, std::int32_t frameId,
                         const BasisSet& bases, const std::array<std::int32_t, 3>& gridIds)
     {
@@ -278,7 +278,7 @@ private:
         {
             const std::optional<std::size_t> point = pointOf(gridIds[k]);
             if (!point)
-                return; // a grid point the model does not have: O_o_Reader could not resolve the system either
+                return; // a grid point the model does not have: O_o_Model could not resolve the system either
             frame.points[k] = *point;
         }
         const base::Vec3 a = m_points[frame.points[0]].base;
@@ -304,7 +304,7 @@ private:
                         "from G1, G2, G3 as the format defines it (origin "
                         "G1, z along G1 to G2, G3 in the x-z plane) and finds ",
                         frame.size > 0.0 && width > 0.0 ? "another frame than" : "undefined (aligned points), unlike",
-                        " the one O_o_Reader resolved (origin ", vectorText(placed.origin), ", z axis ",
+                        " the one O_o_Model resolved (origin ", vectorText(placed.origin), ", z axis ",
                         vectorText(column(placed.axes, 2)), "); leave its grid points out of the shapes"}));
             return;
         }
@@ -350,7 +350,7 @@ private:
                        base::concatenate({"the DesignNodeMove of DesignVar ", std::to_string(term.variableId),
                                           " on grid point ", std::to_string(term.gridId),
                                           " gives its vector in coordinate system ", std::to_string(term.frameId),
-                                          ", which the shape variables move (O_o_Reader takes N along "
+                                          ", which the shape variables move (O_o_Model takes N along "
                                           "DesignNodeMove.frameId when it "
                                           "reads the model); give N in a system no shape moves"}));
     }
@@ -416,8 +416,8 @@ private:
                 {
                     refuse({}, base::concatenate({"the direction of ", loadText(card, gridId, row),
                                                   " comes from grid points that loadsTable does not give (a "
-                                                  "O_o_Reader before data contract 44), so a shape cannot be checked "
-                                                  "against it; install a O_o_Reader of data contract 44 or later"}));
+                                                  "O_o_Model before data contract 44), so a shape cannot be checked "
+                                                  "against it; install a O_o_Model of data contract 44 or later"}));
                     continue;
                 }
                 std::array<std::optional<std::int32_t>, 4> defining{grids[0][row], grids[1][row], grids[2][row],
@@ -468,7 +468,7 @@ private:
     }
 
     // A PointForceLoad1, PointForceLoad2, PointMomentLoad1 or PointMomentLoad2 whose grid points move: bound when its
-    // direction from the base points is O_o_Reader's.
+    // direction from the base points is O_o_Model's.
     void bindDirection(std::int64_t row, std::string_view card, LoadForm form,
                        const std::array<std::optional<std::int32_t>, 4>& defining, std::int32_t gridId,
                        const std::array<std::string, 3>& columns, base::Vec3 vector)
@@ -525,7 +525,7 @@ private:
             refuse(bases, base::concatenate({what,
                                              ": O_o_Solver derives its direction from its grid points as the format "
                                              "defines it and finds ",
-                                             vectorText(unit), ", unlike the load O_o_Reader gives, ",
+                                             vectorText(unit), ", unlike the load O_o_Model gives, ",
                                              vectorText(vector), "; leave its grid points out of the shapes"}));
             return;
         }

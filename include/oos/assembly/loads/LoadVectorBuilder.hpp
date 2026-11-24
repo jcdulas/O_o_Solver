@@ -23,10 +23,10 @@
 namespace oos::assembly
 {
 
-// The static load vector Pg of a load set, from the load tables of O_o_Reader. A load set
+// The static load vector Pg of a load set, from the load tables of O_o_Model. A load set
 // is what a subcase's LOAD selects: its terms (input::LoadTable::termsOf) are the sets whose rows make its
 // loads, each with its factor (the set alone with the factor 1 when the tables expand the LOAD combinations, the rows
-// of a combination then listed under its SID with its factors applied; or, when O_o_Reader lists each set once,
+// of a combination then listed under its SID with its factors applied; or, when O_o_Model lists each set once,
 // a LOAD entry the sets it reaches with their combined_factor); each value is the row's times its term's factor, and
 // the terms are read in their order, the rows of each in table order:
 // - loadsTable: PointForceLoad, PointForceLoad1, PointForceLoad2, PointMomentLoad, PointMomentLoad1, PointMomentLoad2
@@ -221,7 +221,7 @@ public:
                                                                     base::MemoryBudget& budget) const;
     void pressuresOfRows(std::span<const std::int64_t> rows, std::vector<ElementLocation>& locations,
                          std::vector<elements::ElementPressure>& pressures) const;
-    // The rows of pressureTable in its form (PressureRows: the rows, or O_o_Reader's fields).
+    // The rows of pressureTable in its form (PressureRows: the rows, or O_o_Model's fields).
     [[nodiscard]] const PressureRows& pressureRows() const noexcept { return m_pressures; }
 
 private:

@@ -13,7 +13,7 @@
 namespace oos::design
 {
 
-// One DesignNodeMove entry (DVID, GID, CID, COEFF, N1-N3), as O_o_Reader's shapeVariablesTable gives it: the
+// One DesignNodeMove entry (DVID, GID, CID, COEFF, N1-N3), as O_o_Model's shapeVariablesTable gives it: the
 // vector N already taken along the directions of CID at the grid point and expressed in the basic system, not made a
 // unit vector. CID is kept for the messages only.
 struct ShapeTerm
@@ -22,7 +22,7 @@ struct ShapeTerm
     std::int32_t gridId = 0;           // GID
     std::int32_t frameId = 0;          // CID
     double coefficient = 0.0;          // COEFF (default 0.0)
-    std::array<double, 3> direction{}; // N in the basic system (NaN when O_o_Reader could not resolve the vector)
+    std::array<double, 3> direction{}; // N in the basic system (NaN when O_o_Model could not resolve the vector)
 };
 
 // The move of one grid point per unit change of its design variable, in the basic system.
@@ -51,10 +51,10 @@ struct ShapeBasis
 // derivative of s_v with respect to x is that of X_v: 1 for an independent variable, CMULT·Ci through a DesignVarLink.
 //
 // N is taken as written: the format determines N from CID and Ni, nothing more (N is not made a unit vector), and
-// O_o_Reader's model.design.apply moves the grid points by COEFF·(X − XINIT)·N with N as written (src/design/README.md
+// O_o_Model's model.design.apply moves the grid points by COEFF·(X − XINIT)·N with N as written (src/design/README.md
 // gives the rules), so that the overlay of a design point and the model `apply` writes are the same geometry.
 //
-// Checks (check()): every DVID names a DesignVar; N was resolved (finite: O_o_Reader gives NaN for a grid point or a
+// Checks (check()): every DVID names a DesignVar; N was resolved (finite: O_o_Model gives NaN for a grid point or a
 // system CID it does not know) and is not zero (at least one Ni ≠ 0.0); COEFF is finite. The grid points are
 // bound to a snapshot by FieldTargets, which refuses the moves the overlay cannot make.
 //

@@ -446,7 +446,7 @@ void StaticLoadCases::addFamily(LoadFamily family, base::MemoryBudget& budget)
     // (below), or, with tables that expand the combinations, read from loadsTable (source_sid and scale): every use of
     // a set in a combination brings all of its rows with the product of the LOAD factors it was reached through, so a
     // set used k times with the scale v has k × (its own rows) rows of scale v. The factor is Σ v·k over the distinct
-    // scales, exact for a set used once (its scale itself, the factor O_o_Reader multiplied each of its values by).
+    // scales, exact for a set used once (its scale itself, the factor O_o_Model multiplied each of its values by).
     // Taking it as (Σ of the rows' scales) / (its own rows) would round more as the rows grow (a set of 8 700
     // FacePressureLoad summed 8 700 times: 1e-13 relative), so that the cases of a pressure on the whole skin would
     // fail the reconstruction check and join the basis (222 vectors for 600 cases of 30 families). A count that is not

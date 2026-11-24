@@ -22,7 +22,7 @@ namespace oos::design
 // BucklingSolution): the static subcases of the deck are then solved by the buckling solution, with the outputs the
 // responses read.
 //
-// The SAERO subcases are trimmed by TrimSolution, with the AeroTrimLink of the model (`links`: O_o_Reader gives
+// The SAERO subcases are trimmed by TrimSolution, with the AeroTrimLink of the model (`links`: O_o_Model gives
 // the cards without their fields, the caller reads them, as for SOL 144).
 struct DesignAnalyses
 {

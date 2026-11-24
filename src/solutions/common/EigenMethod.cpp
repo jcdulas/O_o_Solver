@@ -16,7 +16,7 @@ namespace oos::solutions
 namespace
 {
 
-// The codes of O_o_Reader's method tables (data contract of model.lanczosTable/eigr/eigb.table(): uint8 columns).
+// The codes of O_o_Model's method tables (data contract of model.lanczosTable/eigr/eigb.table(): uint8 columns).
 // LanczosEigenMethod normalization: blank, Mass, Maximum.
 constexpr std::uint8_t LANCZOS_NORM_MASS = 1;
 constexpr std::uint8_t LANCZOS_NORM_MAX = 2;

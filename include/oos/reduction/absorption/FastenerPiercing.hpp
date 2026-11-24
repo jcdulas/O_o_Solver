@@ -17,7 +17,7 @@ namespace oos::reduction
 // elements::interpolateSide (the grid points under the four corners of the footprint of the fastener; or those of
 // the shell element it pierces, a RigidInterpolation weighted by the shape functions at P),
 //     (u_P, θ_P) = M·u_grids,
-// M the 6 × 6g map of the side (every form of the card; O_o_Reader's piercing rows and the footprints, through
+// M the 6 × 6g map of the side (every form of the card; O_o_Model's piercing rows and the footprints, through
 // input::FastenerPiercingTable), u_grids the DOFs of those g grid points (FastenerPiercingTable::tieGrids). That is a
 // spider whose legs are these grid points and whose weighting matrix is W = M: the side is absorbed into
 // its unit by the same change of basis (SpiderChangeOfBasis), only P stays on the boundary, and the fastener

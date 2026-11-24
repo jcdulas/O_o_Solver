@@ -38,7 +38,7 @@ struct FastenerPiercingRows
 // grid point or on the side of the element its other grid points span.
 inline constexpr double PIERCING_ZERO_SHAPE_VALUE = 1.0e-9;
 
-// A side of a fastener whose piercing point O_o_Reader did not find: the field of the card the problem is about (its
+// A side of a fastener whose piercing point O_o_Model did not find: the field of the card the problem is about (its
 // neutral name, nodeA or nodeB when the reader names none) and
 // what it could not find (its tolerance, the nearest element), which the element reports as its problem.
 struct SideFailure
@@ -49,7 +49,7 @@ struct SideFailure
     std::string message;
 };
 
-// The piercing points of the Fastener and Weld elements (O_o_Reader fastenerPiercings, data contract 60), in the layout
+// The piercing points of the Fastener and Weld elements (O_o_Model fastenerPiercings, data contract 60), in the layout
 // the elements, the fastener constraints and the spider absorption read: for each side A and B of each fastener, one
 // row: its piercing point (GA or GB, given on the card or found by the reader on the shells), with the grid points of
 // the shell element it pierces (or of the face of grid points of a Weld GRIDID) and the shape functions of that
@@ -139,7 +139,7 @@ public:
     // Why the reader did not find the piercing point of a side, or null when it did (or the side has no row).
     [[nodiscard]] const SideFailure* findFailure(std::int32_t elementId, bool isSideA) const;
 
-    // O_o_Reader's table as it came (the snapshot's findTable gives it).
+    // O_o_Model's table as it came (the snapshot's findTable gives it).
     [[nodiscard]] const base::ContractReader& reader() const noexcept { return m_reader; }
 
 private:

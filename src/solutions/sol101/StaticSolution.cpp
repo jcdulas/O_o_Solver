@@ -311,7 +311,7 @@ struct CaseState
     std::span<const double> applied;
     std::span<const double> spcForces;
     std::span<const double> mpcForces; // empty without an m set
-    // The multiPointConstrForce rows split by relation (from an O_o_Reader of data contract 56): the relations' forces
+    // The multiPointConstrForce rows split by relation (from an O_o_Model of data contract 56): the relations' forces
     // (RigidElimination::relationForces; a SUBCOM the combination of its terms').
     bool isMpcSplit = false;
     base::BudgetedBuffer<assembly::RelationForce> mpcRelationForces;
@@ -1055,7 +1055,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
     const input::ModelSnapshot& snapshot = *m_snapshot;
     const base::CancellationToken* cancellation = m_options.cancellation;
     base::ThreadPool* pool = m_options.pool;
-    // The multiPointConstrForce rows of the grid point forces split by relation for an O_o_Reader of data contract 56
+    // The multiPointConstrForce rows of the grid point forces split by relation for an O_o_Model of data contract 56
     // or later (the snapshot's tables say which); one row a point below.
     const bool isMpcSplit = snapshot.versions().dataContractVersion >= input::FIRST_CONTRACT_WITH_SPLIT_MPC_ROWS;
     BasisFixedRowRequest basisFixedRows = m_options.basisFixedRows;

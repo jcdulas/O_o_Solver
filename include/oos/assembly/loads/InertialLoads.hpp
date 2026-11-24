@@ -47,7 +47,7 @@ struct InertialTerm
 //   point G (the origin when 0), ω = 2π·A and α = 2π·RACC (A in revolutions per unit time): the acceleration of a point
 //   at ρ from the axis point is ω×(ω×ρ) + α×ρ, and its rotations accelerate by α; the load is −Mgg·a (the force of
 //   the field on the mass: outward for the centrifugal part).
-// The rows come from O_o_Reader's inertialLoadsTable (the vectors in the basic system with the LOAD factors
+// The rows come from O_o_Model's inertialLoadsTable (the vectors in the basic system with the LOAD factors
 // applied); without that table, from the GravityLoad rows of loadsTable (the acceleration in the basic system, scaled),
 // and a RotationalForceLoad, AccelFieldLoad or AccelNodeLoad is refused naming the missing table.
 //

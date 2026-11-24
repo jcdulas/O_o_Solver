@@ -14,7 +14,7 @@ namespace oos::elements
 //
 // The element axis (the line between the end points) is the axis of the shear centres of a Beam2 (BeamProp,
 // BeamShapeProp): the transverse shears pass through it and the torque is about it. The neutral axis is at
-// `neutralAxis` = (N1, N2) from it (BeamProp N1, N2; a BeamShapeProp's from O_o_Reader's shear centre and centroid):
+// `neutralAxis` = (N1, N2) from it (BeamProp N1, N2; a BeamShapeProp's from O_o_Model's shear centre and centroid):
 // the axial force acts there and the bending moments are about it. A Bar2's is (0, 0): its axis is the neutral axis and
 // the shear centre (BarProp, BarShapeProp). `massCentre` = (M1, M2) is the centre of gravity of the non-structural mass
 // from the element axis (BeamProp M1, M2; (0, 0) for the others). The stress recovery points C, D, E, F are (y, z)
@@ -52,7 +52,7 @@ struct BeamSection
     std::array<BeamStation, BEAM_MAX_STATIONS> stations{};
     std::size_t count = 0;
     // K1, K2: the shear area of plane 1 (shear along y) is K1·A, that of plane 2 (along z) K2·A. A factor ≤ 0 means no
-    // shear flexibility in that plane (BarProp: K1, K2 blank or 0.0 give an infinite shear stiffness; O_o_Reader
+    // shear flexibility in that plane (BarProp: K1, K2 blank or 0.0 give an infinite shear stiffness; O_o_Model
     // gives a blank BarProp factor as −1).
     double shearFactor1 = 0.0;
     double shearFactor2 = 0.0;

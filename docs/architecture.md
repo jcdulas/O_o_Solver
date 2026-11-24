@@ -14,7 +14,7 @@ shows the WebAssembly transport.
 
 *The application coordinates the two modules. Their C++ libraries and WebAssembly memories stay independent.*
 
-The Model exposes query tables for decks built in memory and for decks loaded by its file adapters. `modelFromReader` obtains the tables the solver needs,
+Applications add cards and controls through the Model API. An external adapter can also supply a deck. Both routes expose the same model tables to the Solver. `modelFromReader` obtains the tables the solver needs,
 serializes them as table packages, and imports them through `api::ModelInput`. The solver checks the data contract
 before constructing its model snapshot. The [table-package guide](table-package.md) describes the transport.
 

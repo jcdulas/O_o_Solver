@@ -1,6 +1,6 @@
 # O_o_Solver documentation
 
-Solve finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities with the same C++20 library from **JavaScript (WebAssembly)** or **Python (native C++)**.
+Run static, modal, buckling and aeroelastic analyses through the O_o_Solver API in JavaScript (WebAssembly) or Python (native C++). An application builds a deck with O_o_Model, passes it to the Solver and reads result arrays directly.
 
 **[Published documentation](https://jcdulas.github.io/O_o_Solver/)** · [JavaScript / WASM releases](https://github.com/jcdulas/O_o_Solver/releases) · [Python wheels on PyPI](https://pypi.org/project/oo-solver/)
 
@@ -24,7 +24,7 @@ Solve finite element models for statics, vibration, buckling and aeroelastic tri
 - [Thin-plate bending with solid elements](docs/thin-plate-solid-bending.md) compares element degree, mesh
   distortion and the number of layers against a three-dimensional elasticity solution.
 - [Element names](docs/naming.md): shared roots, implementation roles and compatibility.
-- [Table packages](docs/table-package.md): reader-to-solver data contract.
+- [Table packages](docs/table-package.md): model-to-solver data contract.
 - [Bar and beam derivatives](docs/beam-derivatives.md): native sizing rates and their solution paths.
 - [Four-node shell](docs/shell-quad4-formulation.md), [three-node shell](docs/shell-tria3-formulation.md) and
   [eight-node and six-node shells](docs/shell-quad8-tria6-formulation.md): the formulations of ShellQuad4,
@@ -38,9 +38,9 @@ Solve finite element models for statics, vibration, buckling and aeroelastic tri
 | Project | Responsibility |
 | --- | --- |
 | [O_o_Model](https://github.com/jcdulas/O_o_Model/blob/main/index.md) | Model records, model queries and result storage |
-| [O_o_Solver](https://github.com/jcdulas/O_o_Solver/blob/main/index.md) | Finite element analyses from reader tables |
+| [O_o_Solver](https://github.com/jcdulas/O_o_Solver/blob/main/index.md) | Model snapshots, finite element analyses and result arrays |
 
-The reader and solver have public documentation sites and exchange model data through typed table packages.
+JavaScript transfers typed table packages between the two WASM memories. Python passes Arrow buffers within the same process. The Solver returns arrays of results to the caller.
 
 ~~~{toctree}
 :hidden:

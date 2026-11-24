@@ -61,7 +61,7 @@ public:
     // The g-set vectors of one subcase: displacements, applied loads (OLOAD), SPC forces, MPC forces (empty when the
     // model has no m set), and the flags of the constrained DOFs (nonzero for the s set and the r set, one per g-set
     // DOF). `request` the GPFORCE request (its grid points). Throws std::invalid_argument for a vector not of the
-    // g-set size. `isMpcSplit` (for an O_o_Reader of data contract 56 or later): the multiPointConstrForce row of each
+    // g-set size. `isMpcSplit` (for an O_o_Model of data contract 56 or later): the multiPointConstrForce row of each
     // grid point split by relation from `mpcRelationForces` (RigidElimination::relationForces of `mpcForces`, or a
     // combination of such lists): a row per rigid element or MPC set acting at the point, a zero one included, its
     // element ID the relation's (RigidElimination::relationOf), and one row of ID 0 for the other constraint rows (a

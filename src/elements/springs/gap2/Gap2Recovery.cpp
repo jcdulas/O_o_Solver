@@ -6,7 +6,7 @@
 namespace oos::elements
 {
 
-// forces.gap2 of the O_o_Reader data contract.
+// forces.gap2 of the O_o_Model data contract.
 std::vector<std::string> Gap2Element::outputColumns(ElementOutput output) const
 {
     if (output == ElementOutput::Forces)

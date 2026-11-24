@@ -30,7 +30,7 @@ enum MonitorContribution : std::size_t
 };
 inline constexpr std::size_t MONITOR_CONTRIBUTION_COUNT = 5;
 
-// A MonitorIntegratedLoad1 as the caller gives it: O_o_Reader gives the MonitorIntegratedLoad1 fields as columns but
+// A MonitorIntegratedLoad1 as the caller gives it: O_o_Model gives the MonitorIntegratedLoad1 fields as columns but
 // the AeroComponent and AeroComponentUnion only as card objects, so the caller resolves the component of each monitor
 // point to its boxes (an AeroComponent of AeroBoxList or CAERO lists) or its grid points (of SET1 lists), the
 // AeroComponentUnion expanded.

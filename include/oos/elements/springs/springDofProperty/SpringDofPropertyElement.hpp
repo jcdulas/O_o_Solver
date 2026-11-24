@@ -11,7 +11,7 @@
 // Facets: stiffness, recovery (forces, stresses). No mass. GE plays no part in SOL 101, 103, 105. Differential
 // stiffness and loads are zero. The derivatives of K and S are closed form.
 //
-// Not supported: nothing on these cards (the second SpringProp of a card is a separate SpringProp row in O_o_Reader).
+// Not supported: nothing on these cards (the second SpringProp of a card is a separate SpringProp row in O_o_Model).
 // Problems reported by check(): those of SpringDofInline, and a PID that is not a SpringProp.
 
 #include "oos/elements/core/ElementFamily.hpp"

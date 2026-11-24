@@ -78,7 +78,7 @@ struct BasisFixedRowRequest
 {
     bool isRequested = false;
     bool isAll = false;
-    // The multiPointConstrForce rows split by relation (a snapshot of O_o_Reader's data contract 56 or later): set by
+    // The multiPointConstrForce rows split by relation (a snapshot of O_o_Model's data contract 56 or later): set by
     // the solution from the snapshot's contract, not by the caller.
     bool isMpcSplit = false;
     std::vector<base::EntityId> points;

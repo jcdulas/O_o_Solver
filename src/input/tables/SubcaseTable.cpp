@@ -126,8 +126,8 @@ SubcaseTable::Combination SubcaseTable::combinationAtRow(std::int64_t row) const
         throw base::ContractError(base::concatenate(
             {"subcasesTable, row ", std::to_string(row), ": expected as many coefficients as combined subcases, found ",
              std::to_string(combination.coefficients.size()), " for ", std::to_string(combination.subcases.size()),
-             "; the table does not follow the data contract of O_o_Reader: "
-             "take the snapshot again with a O_o_Reader that follows it"}));
+             "; the table does not follow the data contract of O_o_Model: "
+             "take the snapshot again with a O_o_Model that follows it"}));
     return combination;
 }
 

@@ -22,9 +22,9 @@ struct SharedConnection
     std::int32_t equation = 0;
 };
 
-// Per grid point, the connections that touch it (from O_o_Reader's connectionSharing query), known before running so
+// Per grid point, the connections that touch it (from O_o_Model's connectionSharing query), known before running so
 // that the user sees which grid points are touched by several relations or by a Fastener, and why the boundary is
-// where it is. Read in place from O_o_Reader's connectionSharing, whose rows are by increasing nodeId; the absorption
+// where it is. Read in place from O_o_Model's connectionSharing, whose rows are by increasing nodeId; the absorption
 // report names with it the connections that make a spider ineligible.
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: borrows the table, which must outlive it.

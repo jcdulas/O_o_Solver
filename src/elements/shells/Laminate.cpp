@@ -18,7 +18,7 @@ namespace
 
 constexpr double RADIANS_PER_DEGREE = std::numbers::pi / 180.0;
 
-// The codes of O_o_Reader's CompPropGlobal `failureTheory` and `laminateOption` columns (its FailureTheory and
+// The codes of O_o_Model's CompPropGlobal `failureTheory` and `laminateOption` columns (its FailureTheory and
 // LaminateOption enumerations, in the order of the card fields).
 enum class FailureTheoryCode : std::uint8_t
 {
@@ -104,7 +104,7 @@ void setTransverseShear(Laminate& laminate, std::size_t d)
     const auto range = std::equal_range(propIds.begin(), propIds.end(), propId);
     if (range.first != range.second)
         return {range.first - propIds.begin(), range.second - propIds.begin()};
-    // A table out of order: the rows of the PID by a scan (they are contiguous in O_o_Reader's layout).
+    // A table out of order: the rows of the PID by a scan (they are contiguous in O_o_Model's layout).
     const auto first = std::find(propIds.begin(), propIds.end(), propId);
     if (first == propIds.end())
         return {};
@@ -129,7 +129,7 @@ void setTransverseShear(Laminate& laminate, std::size_t d)
     return "";
 }
 
-// The failure theory of the property row: the `failureTheory` column of a CompPropGlobal (O_o_Reader's codes) or of a
+// The failure theory of the property row: the `failureTheory` column of a CompPropGlobal (O_o_Model's codes) or of a
 // CompProp, as a code or a text. Nothing when the code is a theory the solver does not compute (the Hashin criteria).
 struct TheoryReading
 {

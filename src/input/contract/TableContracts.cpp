@@ -39,7 +39,7 @@ ColumnContract optional(std::string name, std::string type)
 }
 
 // A column of grid points or of rows per element: a fixed list for a table of one card type, a list for a table of
-// mixed types (O_o_Reader's two layouts of the same column).
+// mixed types (O_o_Model's two layouts of the same column).
 ColumnContract optionalConnectivity(std::string name)
 {
     return {std::move(name), INT32_LIST, true, {"fixed_list<int32>[*]"}};
@@ -81,7 +81,7 @@ TableContract contractOf(TableRole role)
         return tableOf(role, {required("elementId", INT32), required("type", TEXTS), required("role", TEXTS),
                               required("nodeId", INT32), required("dof", UTF8), required("weight", FLOAT64)});
     case TableRole::Loads:
-        // g1 to g4 (O_o_Reader contract 44): the grid points that define the direction of a PointForceLoad1,
+        // g1 to g4 (O_o_Model contract 44): the grid points that define the direction of a PointForceLoad1,
         // PointForceLoad2, PointMomentLoad1 or PointMomentLoad2 (null for the other cards), from which a design point
         // derives it again when the grid points move.
         return tableOf(role,
@@ -96,7 +96,7 @@ TableContract contractOf(TableRole role)
                         required("faceNodes", INT32_LIST), required("frameId", INT32)},
                        {"p1", "p2", "p3", "p4", "directionX", "directionY", "directionZ", "scale"});
     case TableRole::PressureFields:
-        // O_o_Reader contract 55: pressureTable(detail="fields"), a row per field (the rows of consecutive cards
+        // O_o_Model contract 55: pressureTable(detail="fields"), a row per field (the rows of consecutive cards
         // of a set that share all but their element and pressure): elementCount rows, the elements of its element
         // list as (first, last) runs given on the first field of the list (empty on the later ones; elementList null
         // for a PointsPressureLoad, whose faceNodes the field holds), the pressures `values` (cornerCount of them, one
@@ -115,7 +115,7 @@ TableContract contractOf(TableRole role)
                         required("loadType", TEXTS), required("scaleType", TEXTS)},
                        {"x1", "p1", "x2", "p2", "scale"});
     case TableRole::Temperatures:
-        // O_o_Reader temperatureTable: a row per grid point, default or element of a temperature card. `gradient` is
+        // O_o_Model temperatureTable: a row per grid point, default or element of a temperature card. `gradient` is
         // the gradient through the thickness of a PlateTemperatureLoad, or the change from end A to end B of a
         // LineElemTemperatureLoad. The four line gradients are those of a LineElemTemperatureLoad across its section:
         // gradient1a and gradient1b along the element y axis at ends A and B, gradient2a and gradient2b along z (null
@@ -126,12 +126,12 @@ TableContract contractOf(TableRole role)
                         optional("gradient2a", FLOAT64), optional("gradient2b", FLOAT64)},
                        {"temperature", "gradient"});
     case TableRole::Deformations:
-        // The DEFORM cards as O_o_Reader stores them (cardTable(deck, "AxialDeformationLoad")): one row per card, its
+        // The DEFORM cards as O_o_Model stores them (cardTable(deck, "AxialDeformationLoad")): one row per card, its
         // set ID and its one to three (EID, D) pairs as two lists of the same length (a positive D is an elongation).
         return tableOf(role,
                        {required("id", INT32), required("element", INT32_LIST), required("deformation", REAL_LIST)});
     case TableRole::InertialLoads:
-        // O_o_Reader inertialLoadsTable (contract 31): one row per GravityLoad, AccelFieldLoad, AccelNodeLoad and
+        // O_o_Model inertialLoadsTable (contract 31): one row per GravityLoad, AccelFieldLoad, AccelNodeLoad and
         // RotationalForceLoad a load set reaches, LOAD factors applied; directionX/y/z a unit vector in the basic
         // system (the acceleration of GravityLoad, AccelFieldLoad, AccelNodeLoad, the axis of RotationalForceLoad),
         // acceleration its magnitude, scaled; RotationalForceLoad: centerNodeId (G, null when blank), centerX/y/z (G or
@@ -170,12 +170,12 @@ TableContract contractOf(TableRole role)
                               // The contact table the subcase's BCONTACT selects, effective (null: none).
                               optional("contactSelection", INT32),
                               optional("nonStructMass", INT32),
-                              // The element deformation set its DEFORM selects, effective: int32 as O_o_Reader gives
+                              // The element deformation set its DEFORM selects, effective: int32 as O_o_Model gives
                               // it (contract 59), float64 (NaN: none) as the snapshot adds it from the Case Control
-                              // for an older O_o_Reader; absent: no subcase selects one.
+                              // for an older O_o_Model; absent: no subcase selects one.
                               {"deform", INT32, true, {FLOAT64}}});
     case TableRole::Params:
-        // O_o_Reader paramsTable (contract 31): one row per PARAM name (its neutral name: WeightToMass) of the Bulk
+        // O_o_Model paramsTable (contract 31): one row per PARAM name (its neutral name: WeightToMass) of the Bulk
         // Data (subcase null) and of each Case Control section (subcase 0 the global section); kind "integer", "real",
         // "text", "complex" or "blank", the value in the column it names (a complex value: realValue and imagValue).
         return tableOf(role, {required("name", TEXTS), required("subcase", INT32), required("kind", TEXTS),
@@ -204,22 +204,22 @@ TableContract contractOf(TableRole role)
                         required("targetId", INT32), required("kind", TEXTS)},
                        {"value", "mass"});
     case TableRole::OutputRequests:
-        // O_o_Reader outputRequestsTable (contract 31): one row per effective request of each subcase (the
+        // O_o_Model outputRequestsTable (contract 31): one row per effective request of each subcase (the
         // global requests inherited), the neutral request name (DisplacementOutput), describers (PrintListing or
         // ReferenceNode=12) in their given order; set is the selection word (All, None, Yes, No) and setId the named
         // set, both null for a request without a selection.
         return tableOf(role, {required("subcase", INT32), required("request", TEXTS), required("describers", TEXT_LIST),
                               required("set", TEXTS), required("setId", INT32)});
     case TableRole::CaseSets:
-        // O_o_Reader caseSetsTable (contract 31): one row per member of each Case Control SET, in the order of
+        // O_o_Model caseSetsTable (contract 31): one row per member of each Case Control SET, in the order of
         // the set (THRU, BY, EXCEPT expanded); subcase 0 for the global section; id a member of a set of IDs (null for
         // a set of reals or of words); section "case" for the sets the requests name.
         return tableOf(role, {required("subcase", INT32), required("setId", INT32), required("position", INT32),
                               required("id", INT32), required("section", TEXTS)});
     case TableRole::CoordinateSystems:
-        // The origin and the axes i, j, k of each system in the basic system, RID chains resolved by O_o_Reader;
+        // The origin and the axes i, j, k of each system in the basic system, RID chains resolved by O_o_Model;
         // definition (1 for a CORD1x, 2 for a CORD2x), referenceFrameId (a CORD2x's) and g1 to g3 (a CORD1x's grid
-        // points, O_o_Reader contract 44), from which a design point derives a moved system again.
+        // points, O_o_Model contract 44), from which a design point derives a moved system again.
         return tableOf(
             role,
             {required("frameId", INT32), required("type", TEXTS), optional("definition", INT32),
@@ -238,7 +238,7 @@ TableContract contractOf(TableRole role)
         return tableOf(role, {required("propId", INT32), required("type", TEXTS), required("laminateOption", TEXTS)},
                        {"thickness", "z0"});
     case TableRole::Sections:
-        // O_o_Reader sectionsTable(types=["BarShapeProp", "BeamShapeProp"]) (contract 31): the section properties
+        // O_o_Model sectionsTable(types=["BarShapeProp", "BeamShapeProp"]) (contract 31): the section properties
         // computed from the dimensions of the section type, one row per property and station, sorted by propId then
         // station (xxb from 0 at end A to 1 at end B), in the element system about the neutral axis; k1, k2 the shear
         // factors; the recovery points C, D, E, F as (y, z): c1 c2 d1 d2 e1 e2 f1 f2. n1, n2: the neutral axis from
@@ -277,7 +277,7 @@ TableContract contractOf(TableRole role)
         return tableOf(role, {required("id", INT32), required("node1Id", INT32), required("throughNodeId", INT32),
                               required("node2Id", INT32)});
     case TableRole::FastenerPiercings:
-        // O_o_Reader fastenerPiercings (contract 60): where each Fastener and Weld pierces the shells, one row per
+        // O_o_Model fastenerPiercings (contract 60): where each Fastener and Weld pierces the shells, one row per
         // fastener and side ("A", "B"; a point-to-patch Weld has side A only, a Weld ALIGN no row: its ends are GA
         // and GB, which the element reads from its card); card "Fastener" or "Weld", form its TYPE; pointGrid GA or GB
         // when the card gives it (null otherwise; the point is then that grid point); x y z the piercing point in the
@@ -294,7 +294,7 @@ TableContract contractOf(TableRole role)
                         required("shapeValues", REAL_LIST), required("field", TEXTS), required("problem", UTF8)},
                        {"x", "y", "z", "xi", "eta"});
     case TableRole::AeroReference:
-        // O_o_Reader aeroReferenceTable (contract 25): one row per AERO and AeroStaticParams card (the AERO rows
+        // O_o_Model aeroReferenceTable (contract 25): one row per AERO and AeroStaticParams card (the AERO rows
         // first); aeroFrameId the aerodynamic system (x along the flow), rigidBodyFrameId the reference system of the
         // rigid body motions and of the stability derivatives, the reference chord, span and area, the symmetry keys
         // (Case Control AESYMXZ and AESYMXY applied).
@@ -303,12 +303,12 @@ TableContract contractOf(TableRole role)
                               required("refChord", FLOAT64), required("refSpan", FLOAT64), required("refArea", FLOAT64),
                               required("refDensity", FLOAT64), required("symXz", INT32), required("symXy", INT32)});
     case TableRole::AeroPanels:
-        // O_o_Reader aeroPanelsTable: one row per AeroLiftingPanel1 to AeroPistonPanel5 card, its type and the IDs of
+        // O_o_Model aeroPanelsTable: one row per AeroLiftingPanel1 to AeroPistonPanel5 card, its type and the IDs of
         // its boxes.
         return tableOf(role, {required("elementId", INT32), required("type", TEXTS), required("firstBox", INT32),
                               required("boxCount", INT64)});
     case TableRole::AeroBoxes:
-        // O_o_Reader aeroBoxesTable: one row per box of an AeroLiftingPanel1, AeroStripPanel4 or AeroPistonPanel5 panel
+        // O_o_Model aeroBoxesTable: one row per box of an AeroLiftingPanel1, AeroStripPanel4 or AeroPistonPanel5 panel
         // in the basic system, corners 1 and 2 on the inboard edge (leading, trailing), 3 and 4 on the outboard edge
         // (trailing, leading); control the point at three quarters of the chord at mid span; chord the length along the
         // flow at mid span; normal the unit normal of the box.
@@ -317,7 +317,7 @@ TableContract contractOf(TableRole role)
                         "corner3Z", "corner4X", "corner4Y", "corner4Z", "centerX",  "centerY",  "centerZ",  "controlX",
                         "controlY", "controlZ", "area",     "chord",    "normalX",  "normalY",  "normalZ"});
     case TableRole::ControlSurfaces:
-        // O_o_Reader controlSurfacesTable: one row per AeroControlSurface; frameId1 the system whose y axis is the
+        // O_o_Model controlSurfacesTable: one row per AeroControlSurface; frameId1 the system whose y axis is the
         // hinge line of its first component, boxes the boxes of its AeroBoxList cards; effectiveness EFF; refChord and
         // refArea CREFC and CREFS, the reference values of its hinge moment coefficient; the position and hinge moment
         // limits PLLIM, PULIM, HMLLIM, HMULIM (null for none).
@@ -329,7 +329,7 @@ TableContract contractOf(TableRole role)
              optional("hingeMomentLower", FLOAT64), optional("hingeMomentUpper", FLOAT64),
              optional("aeroListId1", INT32), required("boxes", INT32_LIST)});
     case TableRole::TrimCases:
-        // O_o_Reader aeroTrimCasesTable: one row per variable of each TRIM (or AeroTrim2) set, the subcases that select
+        // O_o_Model aeroTrimCasesTable: one row per variable of each TRIM (or AeroTrim2) set, the subcases that select
         // it, its Mach number, dynamic pressure and AEQR, the variable's label, value (when fixed), state ("fixed",
         // "free", "linked", "scheduled") and kind ("rigid_body", "control_surface", "user").
         return tableOf(role, {required("setId", INT32), required("subcases", INT32_LIST), required("mach", FLOAT64),
@@ -337,7 +337,7 @@ TableContract contractOf(TableRole role)
                               required("variable", UTF8), required("value", FLOAT64), required("isFixed", BOOL),
                               required("state", TEXTS), required("variableKind", TEXTS)});
     case TableRole::Splines:
-        // O_o_Reader splinesTable: one row per SPLINE card; caero the panel, firstBox and lastBox BOX1 and BOX2
+        // O_o_Model splinesTable: one row per SPLINE card; caero the panel, firstBox and lastBox BOX1 and BOX2
         // (AeroSurfaceSpline1, AeroBeamSpline2) or the extremes of the AeroBoxList (AeroSurfaceSpline4,
         // AeroBeamSpline5), aelist its AeroBoxList (null for AeroSurfaceSpline1, AeroBeamSpline2), setg the structural
         // set, dz DZ, method METH, usage FORCE, DISP or BOTH.
@@ -346,10 +346,10 @@ TableContract contractOf(TableRole role)
                               required("nodeSetId", INT32), required("dz", FLOAT64), required("method", TEXTS),
                               required("usage", TEXTS)});
     case TableRole::SplineNodes:
-        // O_o_Reader splineNodes: one row per structural point of each spline, by increasing nodeId.
+        // O_o_Model splineNodes: one row per structural point of each spline, by increasing nodeId.
         return tableOf(role, {required("spline", INT32), required("nodeId", INT32)});
     case TableRole::DirectMatrixShapes:
-        // O_o_Reader directMatricesTable(detail="matrices") (contract 57): one row per DirectMatrix, DirectMatrixNodal,
+        // O_o_Model directMatricesTable(detail="matrices") (contract 57): one row per DirectMatrix, DirectMatrixNodal,
         // DirectMatrixAeroJ, DirectMatrixAeroJInterference or DirectMatrixAeroK matrix; formCode FORM or IFO; rowCount
         // and columnCount its shape; role the fixed name a solution reads it by (DownwashMatrix, AeroPressureMatrix,
         // AeroWeightingMatrix, AeroWeightingFactor; null otherwise); inEffect false for a DirectMatrixAeroJ,
@@ -358,7 +358,7 @@ TableContract contractOf(TableRole role)
                               required("isComplex", BOOL), required("rowCount", INT64), required("columnCount", INT64),
                               required("termCount", INT64), optional("role", TEXTS), required("inEffect", BOOL)});
     case TableRole::DirectMatrices:
-        // O_o_Reader directMatricesTable (contract 57): one row per stored term, row and column from 0; a DMI
+        // O_o_Model directMatricesTable (contract 57): one row per stored term, row and column from 0; a DMI
         // labelled by its row and column numbers (rowId, columnId from 1, the components 0), a matrix at points by
         // its degrees of freedom (a DirectMatrixAeroJ: the box ID and component of the js set).
         return tableOf(role,
@@ -367,7 +367,7 @@ TableContract contractOf(TableRole role)
                         required("columnId", INT32), required("columnComponent", INT32)},
                        {"real", "imag"});
     case TableRole::Supports:
-        // O_o_Reader dofSetsTable(cards=["FreeBodySupport", "FreeBodySupportSet"]) (contract 31): one row per (card,
+        // O_o_Model dofSetsTable(cards=["FreeBodySupport", "FreeBodySupportSet"]) (contract 31): one row per (card,
         // point); dof the components as text; setId the FreeBodySupportSet set (null for FreeBodySupport); subcases the
         // subcases whose Case Control selects the FreeBodySupportSet set (null for a FreeBodySupport, which every
         // subcase takes). The table may hold the other DOF set cards (ASET, OMIT, ...): the readers keep
@@ -375,13 +375,13 @@ TableContract contractOf(TableRole role)
         return tableOf(role, {required("card", TEXTS), required("setId", INT32), required("nodeId", INT32),
                               required("dof", UTF8), required("subcases", INT32_LIST)});
     case TableRole::ConnectionNodes:
-        // O_o_Reader connectedComponents(detail="nodes") (contract 34): every grid point of the model and every
+        // O_o_Model connectedComponents(detail="nodes") (contract 34): every grid point of the model and every
         // point an element uses, by increasing nodeId; componentId its component, null for a point no component holds;
         // isConnectionOnly a point only connections use.
         return tableOf(role,
                        {required("nodeId", INT32), required("componentId", INT64), optional("isConnectionOnly", BOOL)});
     case TableRole::ConnectionClusters:
-        // O_o_Reader connectionClusters(detail="connections") (contract 40; contract 39 lists the connections
+        // O_o_Model connectionClusters(detail="connections") (contract 40; contract 39 lists the connections
         // of the clusters only): one row per connection of the model, the rows of the clusters first, then those in no
         // cluster (the direct links between two components) by card type name and ID with a null clusterId; kind
         // "rigid", "rigidInterpolation", "mpc", "fastener" (Fastener, Weld), "connector" (springs, dampers, bushes,
@@ -394,7 +394,7 @@ TableContract contractOf(TableRole role)
         return tableOf(role, {required("clusterId", INT64), required("kind", TEXTS), required("card", TEXTS),
                               required("id", INT32), required("nodeIds", INT32_LIST), required("revision", INT64)});
     case TableRole::ContactNodePairs:
-        // O_o_Reader contactNodePairs (contract 38), taken with the reader's own rule (rule="components"): one row per
+        // O_o_Model contactNodePairs (contract 38), taken with the reader's own rule (rule="components"): one row per
         // grid point of a secondary surface near the primary surface, with a face of that surface; table the card and
         // ID that pair the bodies ("ContactTable 5", null for the pairing of a Bulk Data without table); kind glued,
         // breakable or touching. The glue reads the rows as the two surfaces near each other and projects the points on
@@ -407,7 +407,7 @@ TableContract contractOf(TableRole role)
                         required("nodeId", INT32), required("primaryElementId", INT32), required("kind", TEXTS),
                         optional("primaryFace", INT32_LIST), ColumnContract{"searchedFrom", TEXTS, true, {UTF8}}});
     case TableRole::ContactPairs:
-        // O_o_Reader contactPairsTable (contract 38): one row per pair of contact bodies of every contact
+        // O_o_Model contactPairsTable (contract 38): one row per pair of contact bodies of every contact
         // table of the Bulk Data; nodePairCount the rows of contactNodePairs of the pair. The glue columns are
         // optional here: the glue parameters in force (null when not given, an IGLUE null is blank: touching
         // contact) and the card that sets IGLUE. ERROR, when given, is the position tolerance of the glue.
@@ -419,14 +419,14 @@ TableContract contractOf(TableRole role)
              optional("searchOption", INT32), optional("errorTolerance", FLOAT64), optional("toleranceBias", FLOAT64),
              optional("nearDistance", FLOAT64), ColumnContract{"glueOptionSource", TEXTS, true, {UTF8}}});
     case TableRole::ContactTables:
-        // O_o_Reader contactTablesTable (contract 39): one row per contact table and pair of bodies; tableId
+        // O_o_Model contactTablesTable (contract 39): one row per contact table and pair of bodies; tableId
         // the ID a BCONTACT names, tableCard its card by its neutral name (ContactTable, ContactTable1, ContactPair,
         // ContactSet, ContactSetUnion, ContactSlideline), pairCard the card that pairs the bodies ("ContactTable 5",
         // "ContactPair 3": the `table` text of contactNodePairs), null for a table with no pair left.
         return tableOf(role, {required("tableId", INT32), ColumnContract{"tableCard", TEXTS, false, {UTF8}},
                               ColumnContract{"pairCard", UTF8, false, {TEXTS}}});
     case TableRole::Spiders:
-        // O_o_Reader spiders(contact="merge") (contract 34): one row per RigidBodyStar and RigidInterpolation, by
+        // O_o_Model spiders(contact="merge") (contract 34): one row per RigidBodyStar and RigidInterpolation, by
         // elementId; componentId the component of its legs (null when they are on several components or one on none);
         // referenceNodeId GN of a RigidBodyStar or REFGRID of a RigidInterpolation, referenceDofs its components
         // (REFC; "123456" for a RigidBodyStar); legNodeIds, legDofs and legWeights (null for a RigidBodyStar) as the
@@ -441,7 +441,7 @@ TableContract contractOf(TableRole role)
                               required("isEligible", BOOL), required("blockingNodeIds", INT32_LIST),
                               required("blockingConnections", INT32_LIST), required("revision", INT64)});
     case TableRole::ConnectionSharing:
-        // O_o_Reader connectionSharing(contact="merge") (contract 34): per grid point a connection touches, the
+        // O_o_Model connectionSharing(contact="merge") (contract 34): per grid point a connection touches, the
         // connections that touch it, aligned: kinds ("rigid", "rigidInterpolation", "mpc", "fastener", "connector",
         // "contact"), cards, ids (the element ID, the set ID of an MPC equation) and equations (the number of an MPC
         // equation in its set, 0 otherwise); by increasing nodeId.
@@ -458,12 +458,12 @@ base::ContractError missingTableError(TableRole role)
     if (!isGivenByReader(role))
         return base::ContractError(
             base::concatenate({"the model snapshot has no table '", tableName(role), "' (", prerequisite,
-                               "): O_o_Reader does not give it in this form; hand the table over to the snapshot "
+                               "): O_o_Model does not give it in this form; hand the table over to the snapshot "
                                "yourself"}));
     if (!prerequisite.empty())
         return base::ContractError(base::concatenate(
             {"the model snapshot has no table '", tableName(role), "' (", prerequisite,
-             "): it was taken without it; take the snapshot again with that table from a O_o_Reader that gives it"}));
+             "): it was taken without it; take the snapshot again with that table from a O_o_Model that gives it"}));
     return base::ContractError(
         base::concatenate({"the model snapshot has no table '", tableName(role),
                            "': it was taken without it; take the snapshot again with that table"}));

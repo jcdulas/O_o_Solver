@@ -8,7 +8,7 @@
 //
 // Formulation: in a linear solution sequence the gap is a linear spring in the state the initial opening
 // U0 gives it (GapProp: the gap is closed when U0 ≤ 0, open when U0 > 0; the nonlinear contact is for SOL 106 and
-// 400): closed, the axial stiffness KA and the transverse stiffness KT (O_o_Reader gives KT = MU1·KA when blank) in the
+// 400): closed, the axial stiffness KA and the transverse stiffness KT (O_o_Model gives KT = MU1·KA when blank) in the
 // element y and z directions; open, the axial stiffness KB and no transverse stiffness. The springs act on the
 // translations of GA and GB only (the Gap2 has no rotational stiffness), on the relative displacement
 // Δ = Eᵀ·(u_B − u_A) in the element system E: K = Hᵀ·diag(k_x, k_t, k_t)·H. The element axes are those of CID when CID

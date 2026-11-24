@@ -28,7 +28,7 @@ void requireOwnRows(const base::ContractReader& table)
         throw base::ContractError(
             base::concatenate({"model snapshot: expected ", table.tableName(),
                                " to list each load set once, its own cards, with "
-                               "loadCombinationsTable (O_o_Reader's expandCombinations=False), found row ",
+                               "loadCombinationsTable (O_o_Model's expandCombinations=False), found row ",
                                std::to_string(row), " of set ", std::to_string(setIds[row]),
                                " whose card belongs to set ", std::to_string(sources[row]),
                                " (a combination expanded); take every load table with "
@@ -55,11 +55,11 @@ LoadTable::LoadTable(base::ImportedTable loads, base::ImportedTable pressures, b
     m_combinationLoads = m_combinations->values<std::int32_t>("load");
     m_combinationSets = m_combinations->values<std::int32_t>("loadSet");
     m_combinationFactors = m_combinations->values<double>("combinedFactor");
-    // termsOf finds the rows of an entry by a binary search: O_o_Reader sorts the table by (load, loadSet).
+    // termsOf finds the rows of an entry by a binary search: O_o_Model sorts the table by (load, loadSet).
     const auto unsorted = std::is_sorted_until(m_combinationLoads.begin(), m_combinationLoads.end());
     if (unsorted != m_combinationLoads.end())
         throw base::ContractError(base::concatenate(
-            {"model snapshot: expected loadCombinationsTable sorted by load (O_o_Reader's default order), found "
+            {"model snapshot: expected loadCombinationsTable sorted by load (O_o_Model's default order), found "
              "load ",
              std::to_string(*unsorted), " after load ", std::to_string(*(unsorted - 1)), " at row ",
              std::to_string(unsorted - m_combinationLoads.begin()), "; take the table without sort="}));

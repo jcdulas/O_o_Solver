@@ -59,7 +59,7 @@ struct RodData
 // max(1, |x_A|, |x_B|). Two coincident grid points give no axis, so such a rod is refused.
 inline constexpr double ROD_ZERO_LENGTH_FACTOR = 1.0e-12;
 
-// The grid point columns of a rod batch, read once per facet call: nodesRows (O_o_Reader: the rows of GA and GB in
+// The grid point columns of a rod batch, read once per facet call: nodesRows (O_o_Model: the rows of GA and GB in
 // the node table, null for a grid point the model does not define) and nodes (their IDs, for the messages).
 struct RodConnectivity
 {
@@ -139,7 +139,7 @@ struct RodForces
 // its equivalent nodal loads are −P_0 x_A at A and +P_0 x_B at B.
 [[nodiscard]] double rodThermalForce(const RodData& rod, const RodInitialStrain& initial);
 
-// The output columns of the rod elements in the O_o_Reader data contract: forces (axial, torsion), stresses (axial,
+// The output columns of the rod elements in the O_o_Model data contract: forces (axial, torsion), stresses (axial,
 // sma, torsion, smt: the axial stress P/A and its margin, the torsional stress C·T/J and its margin), strains (the
 // same columns: P/(A·E) and C·T/(J·G), with the margins of the stresses).
 [[nodiscard]] std::vector<std::string> rodOutputColumns(ElementOutput output);

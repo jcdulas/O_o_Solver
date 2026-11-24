@@ -35,7 +35,7 @@ namespace oos::api
 namespace
 {
 
-constexpr const char* PROGRAM_VERSION = "0.2.0";
+constexpr const char* PROGRAM_VERSION = "0.2.1";
 
 solutions::AnalysisKind kindOf(Analysis analysis)
 {
@@ -63,7 +63,7 @@ std::uint64_t budgetBytes(const AnalysisSettings& settings)
     return available > 0 ? available : base::MemoryBudget::UNLIMITED;
 }
 
-// The tables of O_o_Reader a condensation plan reads: the components with their elements, the points of each
+// The tables of O_o_Model a condensation plan reads: the components with their elements, the points of each
 // component and the connections between them.
 constexpr std::array<input::TableRole, 4> CONDENSATION_TABLES{
     input::TableRole::Components, input::TableRole::ComponentElements, input::TableRole::ConnectionNodes,

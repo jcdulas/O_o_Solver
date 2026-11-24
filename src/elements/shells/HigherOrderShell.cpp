@@ -20,7 +20,7 @@ namespace oos::elements
 namespace
 {
 
-// O_o_Reader gives MCID −1 when the field holds THETA.
+// O_o_Model gives MCID −1 when the field holds THETA.
 constexpr std::int32_t NO_MAT_FRAME_ID = -1;
 // An MCID whose x axis projects on the element plane to less than this has no direction there.
 constexpr double MATERIAL_FRAME_MIN_PROJECTION = 1.0e-8;

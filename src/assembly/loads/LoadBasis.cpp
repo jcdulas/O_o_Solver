@@ -893,7 +893,7 @@ LoadBasis LoadBasis::choose(const Input& input, base::MemoryBudget& budget)
     if (isWrittenPrecisionMissing)
         explanation.append(
             "; written precision was requested, but some load cards lack significantDigits metadata; "
-            "the rank used round-off instead: take a new snapshot from O_o_Reader to include numeric precision");
+            "the rank used round-off instead: take a new snapshot from O_o_Model to include numeric precision");
     basis.m_report.explanation = std::move(explanation);
     if (input.tolerance == LoadBasisTolerance::WrittenPrecision && !isWrittenPrecisionMissing)
     {

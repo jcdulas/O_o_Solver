@@ -6,7 +6,7 @@
 namespace oos::elements
 {
 
-// Output columns as the O_o_Reader data contract names them (result tables forces.springDofInline: spring_force;
+// Output columns as the O_o_Model data contract names them (result tables forces.springDofInline: spring_force;
 // stress.springDofInline: spring_stress).
 std::vector<std::string> SpringDofInlineElement::outputColumns(ElementOutput output) const
 {

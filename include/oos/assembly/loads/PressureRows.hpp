@@ -32,13 +32,13 @@ struct PressureRow
     double scale = 0.0;                // NaN when null
 };
 
-// The rows of pressureTable in either of O_o_Reader's forms:
+// The rows of pressureTable in either of O_o_Model's forms:
 // - the rows (the default form), one per card and element, read in place;
 // - the fields (detail="fields", input::LoadTable::isPressureFields()), a row per field of consecutive cards sharing
 //   all but their element and pressure: its element_count rows are numbered after the previous fields' (the rows of
 //   the default form, in order), the k-th row's element the k-th of the field's element list (its (first, last) runs,
 //   given on the first field of the list), its pressures values[0..corner_count) for a uniform field, else
-//   values[k·corner_count..], one value standing for the four corners. O_o_Reader expands them so to the rows of the
+//   values[k·corner_count..], one value standing for the four corners. O_o_Model expands them so to the rows of the
 //   default form to the bit, so that every load made from them is the rows' to the bit.
 // The fields of a large model hold its 73 M pressure rows in 560 MB instead of 12.8 GB.
 //

@@ -6,10 +6,10 @@ the native CPU kernel selection and takes its model from the separately installa
 
 ## Analyses
 
-Install the two native packages with `python -m pip install oo-model oo-solver`. For a development build from adjacent checkouts, run `python -m pip install ../O_o_Model .` from the Solver directory. The [published Solver 0.2.0](https://pypi.org/project/oo-solver/0.2.0/) uses `oo-reader`.
+Run `python -m pip install oo-solver==0.2.1` to get the Solver and its `oo-model` dependency. For a development build from adjacent checkouts, run `python -m pip install ../O_o_Model .` from the Solver directory.
 Extract `frequency-8.oos` from the [benchmark inputs](https://github.com/jcdulas/O_o_Solver/raw/refs/heads/main/docs/benchmarks/structural-comparison-inputs.zip). Both examples give about **28.7583 Hz** for the first bending mode.
-The JavaScript snippets below use the Model and Solver initialized in [Getting started](getting-started.md).
-Load the input file into the Model's WASM file system as shown there.
+Initialize `reader = await loadOoModel()` and `solver = await loadOosSolver()` with the module imports in [Getting started](getting-started.md).
+This benchmark uses the optional OOS adapter. In Node.js, copy the downloaded input into the model module with `reader.writeFile("/work/frequency-8.oos", await readFile("frequency-8.oos"))` after importing `readFile` from `node:fs/promises`. The [in-memory example](getting-started.md#run-linear-statics) supplies the deck entirely through API calls.
 
 **JavaScript / WebAssembly**
 
@@ -52,15 +52,19 @@ Further specialised outputs and settings are described by the WebAssembly API.
 
 ## External optimization
 
-For the sizing example, use the [two-node rod](https://raw.githubusercontent.com/jcdulas/O_o_Solver/main/docs/examples/axial.oos) as `sizing.oos`. Response 10 is the axial displacement and variable 1 is its section area. Both examples return a displacement of 0.015 and a derivative of −0.0075 at area 2.
+Use the in-memory rod from [Getting started](getting-started.md#run-linear-statics). Add the following design cards to the deck before releasing it. Response 10 is the axial displacement and variable 1 is its section area. Both examples return a displacement of 0.015 and a derivative of −0.0075 at area 2.
 The optimizer owns the proposed points. Each evaluation retains its native solution
 for subsequent derivative calls.
 
 **JavaScript / WebAssembly**
 
 ```javascript
-const deck = reader.readModel("/work/sizing.oos");
-const problem = solver.optimizationFromReader(reader, deck);
+deck.addCards([
+  { type: "DesignVar", fields: [1, "AREA", 2, 0.5, 5] },
+  { type: "DesignPropRelation1", fields: [1, "RodProp", 1, "area", null, null, null, 1, 1] },
+  { type: "DesignResp1", fields: [10, "TIP", "Displacement", null, null, 1, null, 2] },
+]);
+const problem = solver.optimizationFromReader(api, deck);
 const point = problem.evaluate(problem.metadata().initialValues);
 try {
   const tip = point.values().responses.find(r => r.id === 10).values[0];
@@ -69,17 +73,19 @@ try {
   const directionalChange = point.jvp([1]);
   const weightedGradient = point.vjp({ responses: { 10: [1] } });
 } finally {
-  point.delete(); problem.delete(); deck.delete();
+  point.delete(); problem.delete();
 }
 ```
 
 **Python / native C++**
 
 ```python
-from oo_model import read_model
 from oo_solver import optimization_from_reader
 
-problem = optimization_from_reader(read_model("sizing.oos"), analysis="statics")
+deck.add_card("DesignVar", [1, "AREA", 2., 0.5, 5.])
+deck.add_card("DesignPropRelation1", [1, "RodProp", 1, "area", None, None, None, 1, 1.])
+deck.add_card("DesignResp1", [10, "TIP", "Displacement", None, None, 1, None, 2])
+problem = optimization_from_reader(deck, analysis="statics")
 x = problem.initial_values
 point = problem.evaluate(x)
 tip = point.responses[10]              # response ID from this model

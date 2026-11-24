@@ -80,7 +80,7 @@ ExpressionProgram::ExpressionProgram(std::int64_t equationId, std::vector<std::s
              ": expected at least one statement (variable-1 = expression-1), found none; the producer of the "
              "designEquationSymbols table must list the statement names (kind 'variable'): take the snapshot again "
              "with a "
-             "O_o_Reader that follows the contract of the DesignEquation program tables"}));
+             "O_o_Model that follows the contract of the DesignEquation program tables"}));
     std::set<std::string, std::less<>> names;
     for (const std::vector<std::string>* list : {&m_arguments, &m_variables})
     {
@@ -113,7 +113,7 @@ void ExpressionProgram::checkInstructions()
                  std::to_string(instruction.statement), "): expected ", expected, ", found ", found,
                  "; the designEquationInstructions table breaks the contract of the DesignEquation program tables: "
                  "take the "
-                 "snapshot again with a O_o_Reader that follows it"}));
+                 "snapshot again with a O_o_Model that follows it"}));
         };
         if (instruction.statement != statement)
         {
@@ -177,7 +177,7 @@ void ExpressionProgram::checkInstructions()
              " instructions ending in statement ", std::to_string(statement), " with ", std::to_string(depth),
              " values; the designEquationInstructions table breaks the contract of the DesignEquation program tables: "
              "take the "
-             "snapshot again with a O_o_Reader that follows it"}));
+             "snapshot again with a O_o_Model that follows it"}));
 }
 
 std::string ExpressionProgram::label() const

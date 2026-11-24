@@ -37,7 +37,7 @@ int dofsOfNode(const assembly::DofMap& dofMap, std::int32_t node, std::array<bas
 }
 
 // The side of a grid point to a plane (point, normal): behind it (the dot product of its offset with the normal below
-// zero: O_o_Reader's side of a plane cut), or not; a scalar point has none.
+// zero: O_o_Model's side of a plane cut), or not; a scalar point has none.
 enum class Side : std::uint8_t
 {
     None,

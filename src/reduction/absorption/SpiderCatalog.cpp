@@ -39,11 +39,11 @@ SpiderKind kindOfCard(std::string_view card)
         return SpiderKind::RigidBodyStar;
     throw base::ContractError(base::concatenate(
         {"spiders: expected the card RigidBodyStar or RigidInterpolation, found '", card,
-         "'; the table does not follow the data contract: take the snapshot again with a O_o_Reader that follows "
+         "'; the table does not follow the data contract: take the snapshot again with a O_o_Model that follows "
          "it"}));
 }
 
-// The rigid spiders of O_o_Reader's spiders table.
+// The rigid spiders of O_o_Model's spiders table.
 void readRigidSpiders(const base::ContractReader& table, std::vector<Spider>& spiders)
 {
     const std::span<const std::int64_t> components = table.values<std::int64_t>("componentId", ALLOW);
@@ -79,7 +79,7 @@ void readRigidSpiders(const base::ContractReader& table, std::vector<Spider>& sp
         spider.referenceNodeId = hasReference.isValid(row) ? references[r] : 0;
         spider.referenceDofs = hasReferenceDofs.isValid(row) ? std::string(referenceDofs[row]) : std::string();
         const std::span<const std::int32_t> legIds = legs[row];
-        // The leg components (and the weights of a RigidInterpolation) follow the legs one to one (O_o_Reader: "as the
+        // The leg components (and the weights of a RigidInterpolation) follow the legs one to one (O_o_Model: "as the
         // card gives them"); a table where they do not is not the contract's.
         if ((hasLegDofs.isValid(row) && legDofs.count(row) != static_cast<std::int64_t>(legIds.size())) ||
             (spider.kind == SpiderKind::RigidInterpolation && hasLegWeights.isValid(row) &&
@@ -88,7 +88,7 @@ void readRigidSpiders(const base::ContractReader& table, std::vector<Spider>& sp
                 {"spiders: expected one leg component and (RigidInterpolation) one weight per leg of element ",
                  std::to_string(elementIds[r]), ", found ", std::to_string(legIds.size()), " legs, ",
                  std::to_string(legDofs.count(row)), " components and ", std::to_string(legWeights[row].size()),
-                 " weights; the table does not follow the data contract: take the snapshot again with a O_o_Reader "
+                 " weights; the table does not follow the data contract: take the snapshot again with a O_o_Model "
                  "that follows it"}));
         spider.legNodeIds.assign(legIds.begin(), legIds.end());
         sortAndMakeUnique(spider.legNodeIds);
@@ -110,7 +110,7 @@ void readRigidSpiders(const base::ContractReader& table, std::vector<Spider>& sp
     }
 }
 
-// The eligibility of each fastener side in O_o_Reader's own rows (one per fastener, side and point): a side is
+// The eligibility of each fastener side in O_o_Model's own rows (one per fastener, side and point): a side is
 // eligible when each of its rows is, blocked by the union of their connections; its component when its rows agree.
 struct SideEligibility
 {
@@ -173,7 +173,7 @@ std::map<SpiderKey, SideEligibility> sideEligibility(const base::ContractReader&
     return sides;
 }
 
-// The fastener sides of the solver's piercing layout (FastenerPiercingTable), with O_o_Reader's eligibility.
+// The fastener sides of the solver's piercing layout (FastenerPiercingTable), with O_o_Model's eligibility.
 void readFastenerSides(const input::FastenerPiercingTable& piercings, std::vector<Spider>& spiders)
 {
     bool hasEligibility = false;

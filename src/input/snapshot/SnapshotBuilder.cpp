@@ -59,7 +59,7 @@ void requireOwnEnforcedRows(const ConstraintTable& constraints)
         throw base::ContractError(base::concatenate(
             {"model snapshot: expected the enforced displacement rows of singlePointConstrTable to list each load set "
              "once with "
-             "loadCombinationsTable (O_o_Reader's expandCombinations=False), found row ",
+             "loadCombinationsTable (O_o_Model's expandCombinations=False), found row ",
              std::to_string(row), " of set ", std::to_string(setIds[index]), " whose card belongs to set ",
              std::to_string(sources[index]), "; take singlePointConstrTable with expandCombinations=False too"}));
     }
@@ -86,7 +86,7 @@ void SnapshotBuilder::checkVersion(const base::ImportedTable& table, const std::
         throw base::ContractError(
             base::concatenate({"table '", name, "': expected the data_contract_version ",
                                std::to_string(m_versions.dataContractVersion), " of the tables given before, found ",
-                               std::to_string(version), "; take every table of a snapshot from the same O_o_Reader"}));
+                               std::to_string(version), "; take every table of a snapshot from the same O_o_Model"}));
     m_versions.dataContractVersion = version;
 }
 
@@ -293,7 +293,7 @@ void SnapshotBuilder::checkPresence() const
 {
     if (!m_tables.contains(TableRole::Nodes))
         throw base::ContractError(
-            "model snapshot: expected the node table 'nodes' (cardTable(deck, \"nodes\") of O_o_Reader), found none; "
+            "model snapshot: expected the node table 'nodes' (cardTable(deck, \"nodes\") of O_o_Model), found none; "
             "every snapshot needs it: hand it over with the other tables");
     checkGroup({TableRole::Spc, TableRole::Mpc});
     if (m_tables.contains(TableRole::Pressures) && m_tables.contains(TableRole::PressureFields))

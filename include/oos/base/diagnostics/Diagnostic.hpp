@@ -6,7 +6,7 @@
 namespace oos::base
 {
 
-// How serious a diagnostic is. Same meaning as O_o_Reader's severities (own code).
+// How serious a diagnostic is. Same meaning as O_o_Model's severities (own code).
 enum class Severity
 {
     Information,

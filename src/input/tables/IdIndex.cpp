@@ -19,7 +19,7 @@ std::size_t checkedRowCount(std::size_t rows, const std::string& label)
     if (rows > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
         throw base::ContractError(
             base::concatenate({"index of ", label, ": expected at most 2^31 - 1 rows, found ", std::to_string(rows),
-                               "; the model is larger than O_o_Reader's 32-bit IDs allow: split it into parts "
+                               "; the model is larger than O_o_Model's 32-bit IDs allow: split it into parts "
                                "(superelements) or external units"}));
     return rows;
 }
@@ -39,7 +39,7 @@ IdIndex::IdIndex(std::span<const std::int32_t> ids, base::MemoryBudget& budget, 
         throw base::ContractError(base::concatenate(
             {"index of ", label, ": expected unique IDs, found ID ", std::to_string(duplicate->id), " at rows ",
              std::to_string(duplicate->row), " and ", std::to_string((duplicate + 1)->row),
-             "; O_o_Reader gives unique IDs per table, so the table was built by hand: remove the duplicate"}));
+             "; O_o_Model gives unique IDs per table, so the table was built by hand: remove the duplicate"}));
 }
 
 std::optional<std::int32_t> IdIndex::find(std::int32_t id) const noexcept

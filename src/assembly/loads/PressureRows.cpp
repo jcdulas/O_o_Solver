@@ -15,7 +15,7 @@ namespace
 
 constexpr std::array<const char*, 3> DIRECTION_COLUMNS{"directionX", "directionY", "directionZ"};
 constexpr std::array<const char*, 4> CORNER_COLUMNS{"p1", "p2", "p3", "p4"};
-// One value of a field stands for the four corners (O_o_Reader: a pressure a row when the four are equal).
+// One value of a field stands for the four corners (O_o_Model: a pressure a row when the four are equal).
 constexpr std::int32_t ONE_VALUE_FOR_FOUR = 1;
 constexpr std::int32_t FOUR_CORNERS = 4;
 
@@ -23,7 +23,7 @@ constexpr std::int32_t FOUR_CORNERS = 4;
 {
     throw base::ContractError(base::concatenate(
         {"pressureFields (pressureTable(detail=\"fields\")): ", what,
-         "; take the table again from O_o_Reader (data contract 55 or later), or its rows (detail=\"rows\")"}));
+         "; take the table again from O_o_Model (data contract 55 or later), or its rows (detail=\"rows\")"}));
 }
 
 } // namespace
@@ -169,7 +169,7 @@ PressureRow PressureRows::rowOfTable(std::int64_t row) const
     if (out.hasFace)
         out.faceNodes = m_faceNodes[row];
     for (std::size_t c = 0; c < 4; ++c)
-        out.corners[c] = m_corners[c][index]; // as the table holds it (a null is the NaN O_o_Reader writes there)
+        out.corners[c] = m_corners[c][index]; // as the table holds it (a null is the NaN O_o_Model writes there)
     out.hasFrameId = m_validFrameIds.isValid(row);
     out.frameId = out.hasFrameId ? m_frameIds[index] : 0;
     for (std::size_t c = 0; c < 3; ++c)

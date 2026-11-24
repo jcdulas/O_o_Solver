@@ -9,7 +9,7 @@ namespace oos::elements
 // given input (stiffness, mass, differential stiffness, pressure, line and thermal loads). What is kept beyond a run
 // and was computed from them carries it, so that a result of another formulation is never reused: the key of the
 // condensation cache (reduction::CacheKey::elementFormulation: K*, the reduced mass, the condensed load patterns and
-// the rigid-body mass properties of a unit all come from its elements' matrices and loads). O_o_Reader's revision
+// the rigid-body mass properties of a unit all come from its elements' matrices and loads). O_o_Model's revision
 // stamps and the solver's version text see the model and the release, not a change of a formulation between two
 // builds of one release: without this number, a cache filled before such a change keeps the old K*.
 //

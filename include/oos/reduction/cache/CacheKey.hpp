@@ -55,11 +55,11 @@ inline constexpr std::string_view OFFSET_DEFINITION_PARAMETER = "ModelParams Off
 // - unitIdentity: the hash of the unit's element IDs (a unit "identified by the hash of its element
 //   IDs"): the same unit across edits, which tells a superseded entry and names the cause of a miss; unitId is the
 //   plan's ID, for the reports only;
-// - revision: O_o_Reader's revision stamp of the unit (its cards and what they depend on), the stamps of its absorbed
+// - revision: O_o_Model's revision stamp of the unit (its cards and what they depend on), the stamps of its absorbed
 //   clusters and spiders mixed in by the plan (UnitPlan::revision);
 // - designStamp: the hash of the values a design point gives to the unit's fields and grid points
 //   (design::computeDesignStamps; EMPTY_DESIGN_STAMP, 0, when no variable drives it): a design point is applied as an
-//   overlay, which O_o_Reader's stamps do not see;
+//   overlay, which O_o_Model's stamps do not see;
 // - constraintStamp: the DOFs of the unit held in every subcase (the constraints applied before reducing; the enforced
 //   values are loads, in the patterns), before the singularity processor (whose AutoSingularityConstr is a function of
 //   the rest);
@@ -154,7 +154,7 @@ struct UnitKeySources
 [[nodiscard]] CacheKey makeUnitKey(const UnitKeySources& sources, base::MemoryBudget& budget);
 
 // The checksum of a unit's inputs beside the stamps (CacheKey::inputStamp), in O(points + elements + relation terms):
-// what UnitSystem reads of `model` for `description` that O_o_Reader's revision stamps do not see. Throws
+// what UnitSystem reads of `model` for `description` that O_o_Model's revision stamps do not see. Throws
 // std::invalid_argument for a point the model does not have, MemoryBudgetError.
 [[nodiscard]] std::uint64_t unitInputStamp(const UnitModel& model, const UnitDescription& description,
                                            base::MemoryBudget& budget);

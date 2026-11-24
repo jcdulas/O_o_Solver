@@ -25,7 +25,7 @@ namespace
 {
 
 // The property cards whose fields the elements do not read from the property table itself but from a table
-// O_o_Reader derives from it (laminatePliesTable for the composites, sectionsTable for the library sections): a
+// O_o_Model derives from it (laminatePliesTable for the composites, sectionsTable for the library sections): a
 // design point overlays those tables too (DerivedProperties).
 constexpr std::array<std::string_view, 4> DERIVED_PROPERTY_CARDS{"CompProp", "CompPropGlobal", "BarShapeProp",
                                                                  "BeamShapeProp"};
@@ -205,7 +205,7 @@ private:
         if (type.starts_with(NESTED_REAL_LIST))
         {
             // A BeamProp station field (station_section: A, I1, I2, I12, J, NSM; station_stress: C1 to F2), its item
-            // flattened as O_o_Reader's field_item: station · width + component, within the stations of the row.
+            // flattened as O_o_Model's field_item: station · width + component, within the stations of the row.
             const input::NestedListView view(reader, relation.field);
             const std::int64_t items = view.itemCount(row) * view.width();
             if (relation.fieldItem >= 0 && relation.fieldItem < items)
@@ -316,7 +316,7 @@ private:
         }
         target.cells.push_back({table, relation.field, row, relation.fieldItem});
         // A TubeProp's blank OD2 is OD (a constant tube) and its blank T is OD/2 (a solid rod); a blank one follows a
-        // designed OD (as O_o_Reader's model.design.apply). From data contract 54 the card says which were given
+        // designed OD (as O_o_Model's model.design.apply). From data contract 54 the card says which were given
         // (od2_given, t_given); before it, T is taken as given. An OD2 equal to OD follows it either way.
         if (relation.targetCard == "TubeProp" && relation.field == "outerDiameter")
         {
@@ -419,7 +419,7 @@ private:
         const base::DictionaryView types = elements.dictionaryTexts("type", base::NullPolicy::Allow);
         const std::span<const std::int32_t> propIds = elements.values<std::int32_t>("propId", base::NullPolicy::Allow);
         const base::ValidityView propIdValid = elements.validity("propId");
-        // O_o_Reader leaves component_id null for an element in no component (a rigid element of a single grid
+        // O_o_Model leaves component_id null for an element in no component (a rigid element of a single grid
         // point): it changes no unit.
         const std::span<const std::int64_t> components =
             elements.values<std::int64_t>("componentId", base::NullPolicy::Allow);
@@ -511,7 +511,7 @@ private:
         return {units.begin(), units.end()};
     }
 
-    // Among the grid points `moving`, those whose positions a table derived by O_o_Reader reads (the elements
+    // Among the grid points `moving`, those whose positions a table derived by O_o_Model reads (the elements
     // Fastener and Weld pierce and those under their footprints, glued contact), with the first thing found that
     // reads them, for the refusals of refuseMove.
     void prepareShapeRefusals(const std::set<std::int32_t>& moving)
@@ -534,7 +534,7 @@ private:
                 {
                     return base::concatenate({"the pierced element of ", std::string(piercings.card(row)), " ",
                                               std::to_string(piercings.fastenerIds()[static_cast<std::size_t>(row)]),
-                                              " (fastenerPiercings: projections and shape functions O_o_Reader "
+                                              " (fastenerPiercings: projections and shape functions O_o_Model "
                                               "computes from the positions)"});
                 };
                 const auto underFootprint = [&]
@@ -575,7 +575,7 @@ private:
                             {
                                 return base::concatenate(
                                     {card, " ", std::to_string(batch->ids()[static_cast<std::size_t>(row)]),
-                                     " (its piercing points come from fastenerPiercings, computed by O_o_Reader from "
+                                     " (its piercing points come from fastenerPiercings, computed by O_o_Model from "
                                      "the positions)"});
                             });
             }
@@ -589,7 +589,7 @@ private:
                 const auto reader = [&]
                 {
                     return base::concatenate({"the glued contact of grid point ", std::to_string(pair.nodeId),
-                                              " (contactNodePairs: the projection and local coordinates O_o_Reader "
+                                              " (contactNodePairs: the projection and local coordinates O_o_Model "
                                               "computes from the positions)"});
                 };
                 add(pair.nodeId, reader);
@@ -633,7 +633,7 @@ private:
         refuse(
             base::concatenate({"its displacement system Node.displacementFrameId ", std::to_string(displacementFrameId),
                                " is cylindrical or spherical, so its directions (displacementRotations, computed by "
-                               "O_o_Reader at the read position) turn with the position"}));
+                               "O_o_Model at the read position) turn with the position"}));
     }
 
     // The unit of each moved grid point (componentNodes), when the snapshot has the units and that table.

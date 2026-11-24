@@ -32,8 +32,8 @@ namespace oos::reduction
 // point with no DOF for the unit (constrained in every subcase) is not added.
 //
 // The converse rule, for the relations eliminated at the interface (interfaceRelationPoints): every point of such a
-// relation, dependent or independent, is a boundary point of the units that hold it, whether or not O_o_Reader's
-// boundary names it (glued contact: the components of O_o_Reader and the glue's own search of the solver may pair
+// relation, dependent or independent, is a boundary point of the units that hold it, whether or not O_o_Model's
+// boundary names it (glued contact: the components of O_o_Model and the glue's own search of the solver may pair
 // different points), so that the equation never reaches an interior DOF. Such a
 // point stays on the boundary even when every DOF of it is constrained in every subcase (the leg of an
 // RigidInterpolation kept on its legs on a clamped edge): the unit then brings none of its DOFs, and the interface

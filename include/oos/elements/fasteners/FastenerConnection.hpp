@@ -57,7 +57,7 @@ struct FastenerConnection
 };
 
 // The connection of the fastener of batch row `row` from the fastener piercing table of the snapshot (the piercing
-// points of O_o_Reader's fastenerPiercings and the shape functions of the elements they pierce). A side without a row
+// points of O_o_Model's fastenerPiercings and the shape functions of the elements they pierce). A side without a row
 // in the table is the grid point `directGrids[side]` of the card itself (Weld ALIGN: GA and GB connect directly, and
 // no table is read; the GS end of a point-to-patch Weld), or a problem when that is 0.
 //

@@ -57,7 +57,7 @@ enum class InertiaReliefMode : std::int8_t
     Automatic = -2
 };
 
-// The r-set DOFs of a subcase (FreeBodySupport, and the FreeBodySupportSet set the subcase selects), from O_o_Reader's
+// The r-set DOFs of a subcase (FreeBodySupport, and the FreeBodySupportSet set the subcase selects), from O_o_Model's
 // dofSetsTable (the selection of a FreeBodySupportSet set given in the table as the subcases that select it). A point
 // the model does not have, or a component a scalar point does not have, is an error Diagnostic; an empty result without
 // the table. Sorted, each DOF once.

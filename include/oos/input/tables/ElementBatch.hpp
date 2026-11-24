@@ -11,9 +11,9 @@
 namespace oos::input
 {
 
-// The elements of one card type (elements are processed in batches of one type, as the columns of O_o_Reader): the
+// The elements of one card type (elements are processed in batches of one type, as the columns of O_o_Model): the
 // table of cardTable(deck, "<card>") (the neutral card name: ShellQuad4) with the card's fields and the row-index
-// columns O_o_Reader computes (nodesRows: the row of each grid point in the node table; propIdRow and propType: the
+// columns O_o_Model computes (nodesRows: the row of each grid point in the node table; propIdRow and propType: the
 // row of the property in the table of its card type). The columns every batch may have are checked at construction
 // (elementBatchContract); the element's own code reads its other fields through reader().
 //

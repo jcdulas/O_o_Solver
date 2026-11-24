@@ -54,7 +54,7 @@ AeroBoxes::AeroBoxes(const input::ModelSnapshot& snapshot, const AeroReference& 
     if (!snapshot.hasTable(input::TableRole::AeroBoxes))
         throw base::SolverError(
             "a static aeroelastic analysis needs the aerodynamic boxes (aeroBoxesTable of "
-            "O_o_Reader), and the snapshot has none; add AeroLiftingPanel1 panels to the "
+            "O_o_Model), and the snapshot has none; add AeroLiftingPanel1 panels to the "
             "model or take the snapshot with its aero tables");
     checkPanels(snapshot);
     const base::ContractReader& table = snapshot.aeroTable(input::TableRole::AeroBoxes);

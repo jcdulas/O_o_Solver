@@ -51,7 +51,7 @@ struct Instruction
 // may read the arguments and the variables of the statements before it. The value of the equation is variable-m.
 //
 // Invariants, checked at construction (ContractError otherwise, naming the equation and the instruction: a program
-// that breaks them is a broken contract of the producer, O_o_Reader): at least one statement, every statement has
+// that breaks them is a broken contract of the producer, O_o_Model): at least one statement, every statement has
 // instructions, statements in order, slots in range, a Variable reads an earlier statement, a Call has an argument
 // count within its function's signature, the stack never underflows and each statement leaves one value, constants
 // are finite and an integer constant is an integer, names are unique.

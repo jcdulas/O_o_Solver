@@ -13,20 +13,20 @@ namespace oos::input
 
 // A load set whose cards a subcase's LOAD brings, and the factor of their values: a LOAD entry defines the load
 // S·Σ Si·Li, so the set Li comes with S·Si (through a nested LOAD entry, the product of the factors on the way;
-// summed when the entry reaches the set twice): O_o_Reader's combinedFactor.
+// summed when the entry reaches the set twice): O_o_Model's combinedFactor.
 struct LoadTerm
 {
     std::int32_t set = 0;
     double factor = 1.0;
 };
 
-// The static loads of the model, scaled by O_o_Reader, one reader per table:
+// The static loads of the model, scaled by O_o_Model, one reader per table:
 // - loadsTable: one row per elementary load of each load set (`scale` the product of the LOAD factors, `sourceSetId`
 //   the set of the card): FORCE, MOMENT and their variants per grid point with the force and moment in the basic
 //   system, GravityLoad as an acceleration in the basic system, the first pressure of the pressure loads,
 //   RotationalForceLoad with no values;
 // - pressureTable: PointsPressureLoad, ShellPressureLoad, FacePressureLoad per element face, or its fields
-//   (O_o_Reader's detail="fields": a row per card and its element runs; isPressureFields(), read row by row through
+//   (O_o_Model's detail="fields": a row per card and its element runs; isPressureFields(), read row by row through
 //   assembly::PressureRows);
 // - lineLoadsTable: BeamDistributedLoad;
 // - temperatureTable: NodeTemperatureLoad, DefaultTemperatureLoad, PlateTemperatureLoad, ...;
@@ -36,7 +36,7 @@ struct LoadTerm
 //
 // Two forms. Without loadCombinationsTable the tables expand every LOAD combination: the rows of a
 // combination are listed under its SID with their factors applied (`scale`), and a set's loads are its rows. With it
-// (O_o_Reader's expandCombinations=False) each load set is listed once, its own cards with the scale 1, and the loads
+// (O_o_Model's expandCombinations=False) each load set is listed once, its own cards with the scale 1, and the loads
 // a LOAD selects are made from its terms (termsOf): the rows of each set it reaches times the set's factor. The
 // EnforcedMotionConstr rows of singlePointConstrTable take the same form as these tables (ConstraintTable;
 // SnapshotBuilder checks that they agree).

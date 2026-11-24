@@ -16,8 +16,8 @@ namespace oos::output
 // A linear map from the element tables of some elements to declared quantities: quantity q = Σ coefficient · value,
 // each term one value of an element's table, named by the element, the row among that element's rows of the table
 // (its locations in the order the table gives them: the centre first, the corners, the stations of a beam) and the
-// column (an index into the table's components). The caller makes the terms from O_o_Reader's reads on probe tables
-// (the pockets' mean fluxes in their frames, the members' end forces), so that a quantity is O_o_Reader's read of the
+// column (an index into the table's components). The caller makes the terms from O_o_Model's reads on probe tables
+// (the pockets' mean fluxes in their frames, the members' end forces), so that a quantity is O_o_Model's read of the
 // same tables, to round-off.
 //
 // The terms are kept sorted by element, row and column; reduce() sums a vector's terms in the order of its tables

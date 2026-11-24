@@ -183,7 +183,7 @@ std::vector<DesignRelation> readRelations(const ContractReader& table)
                      std::to_string(relations[index].id), " to run from 0 by steps of 1, found ",
                      std::to_string(arguments[k].first), " at position ", std::to_string(k),
                      "; the producer breaks the design table contract (src/design/README.md): take the snapshot "
-                     "again with a O_o_Reader that follows it"}));
+                     "again with a O_o_Model that follows it"}));
             relations[index].arguments.push_back(std::move(arguments[k].second));
         }
     }
@@ -245,7 +245,7 @@ std::vector<ShapeTerm> readShapeTable(const ContractReader& shapes)
     const std::span<const std::int32_t> grids = shapes.values<std::int32_t>("nodeId");
     const std::span<const std::int32_t> systems = shapes.values<std::int32_t>("frameId");
     const std::span<const double> coefficients = shapes.values<double>("coefficient");
-    // O_o_Reader writes NaN (not a null) for a vector it cannot resolve; a null is read as NaN too, so that
+    // O_o_Model writes NaN (not a null) for a vector it cannot resolve; a null is read as NaN too, so that
     // ShapeRelations::check reports it.
     const NullableColumn<double> x(shapes, "directionX");
     const NullableColumn<double> y(shapes, "directionY");

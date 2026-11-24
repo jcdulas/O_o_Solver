@@ -1,38 +1,49 @@
 # Getting started
 
-Solve finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities with the same C++20 library from **JavaScript (WebAssembly)** or **Python (native C++)**.
+Run static, modal, buckling and aeroelastic analyses through the O_o_Solver API in JavaScript (WebAssembly) or Python (native C++). An application builds a deck with O_o_Model, passes it to the Solver and reads result arrays directly.
 
 (build-the-packages)=
 ## Install the packages
 
 | Interface | Install |
 | --- | --- |
-| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/wasm-latest/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.0/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
-| Python / native C++ | Install the two native packages with `python -m pip install oo-model oo-solver`. |
+| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.1/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.1/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
+| Python / native C++ | Run `python -m pip install oo-solver==0.2.1` to get the Solver and its `oo-model` dependency. |
 
 ## Run linear statics
 
-Download [axial.oos](https://raw.githubusercontent.com/jcdulas/O_o_Solver/main/docs/examples/axial.oos) next to your script. The rod has length 3, area 2 and Young's modulus 1000. An axial force of 10 at node 2 gives a displacement of **0.015** from `FL/(EA)`, in the length units of the model. Save the JavaScript example as `example.mjs` and run `node example.mjs`, or save the Python example as `example.py` and run `python example.py`.
+Build a two-node rod in memory. Its length is 3, its area is 2, and its Young’s modulus is 1000. A force of 10 at the free end gives an axial displacement of `FL/(EA) = 0.015`. Both examples find the displacement by node ID.
 
 **JavaScript / WebAssembly**
 
 ```javascript
-import { readFile } from "node:fs/promises";
 import { loadOoModel } from "./model/index.js";
 import { loadOosSolver } from "./solver/index.js";
 
-const reader = await loadOoModel();
+const api = await loadOoModel();
 const solver = await loadOosSolver();
-reader.writeFile("/work/axial.oos", await readFile("axial.oos", "utf8"));
-const deck = reader.readModel("/work/axial.oos");
-const model = solver.modelFromReader(reader, deck);
+const deck = api.createModel();
+let snapshot;
 try {
-  const run = solver.run(model, "statics");
-  const u = run.nodalTables.find(t => t.kind === "displacements");
-  const row = u.ids.indexOf(2);
-  console.log(u.values[6 * row]); // axial displacement at node 2
+  deck.setSolution("LinearStatics");
+  deck.caseControl.global.set("SinglePointConstrSelection", 1);
+  deck.caseControl.global.set("DisplacementOutput", "All");
+  deck.caseControl.addSubcase(1, { commands: [{ name: "StaticLoadSelection", value: 2 }] });
+  deck.addCard({ type: "Node", fields: [1, null, 0, 0, 0] });
+  deck.addCard({ type: "Node", fields: [2, null, 3, 0, 0] });
+  deck.addCard({ type: "Rod2", fields: [1, 1, 1, 2] });
+  deck.addCard({ type: "RodProp", fields: [1, 1, 2] });
+  deck.addCard({ type: "IsoMat", fields: [1, 1000, null, 0.3, 1] });
+  deck.addCard({ type: "SinglePointConstrList", fields: [1, 123456, 1] });
+  deck.addCard({ type: "SinglePointConstrList", fields: [1, 23456, 2] });
+  deck.addCard({ type: "PointForceLoad", fields: [2, 2, 0, 10, 1, 0, 0] });
+  deck.applyDefaults();
+  snapshot = solver.modelFromReader(api, deck);
+  const result = solver.run(snapshot, "statics");
+  const u = result.nodalTables.find(table => table.kind === "displacements");
+  console.log(u.values[6 * u.ids.indexOf(2)]); // 0.015
 } finally {
-  model.delete();
+  snapshot?.delete();
   deck.delete();
 }
 ```
@@ -40,18 +51,33 @@ try {
 **Python / native C++**
 
 ```python
-from oo_model import read_model
+from oo_model import create_model
 from oo_solver import model_from_reader
 
-deck = read_model("axial.oos")
-model = model_from_reader(deck)
-run = model.run("statics")
-u = next(t for t in run["nodal_tables"] if t["kind"] == "displacements")
-row = u["ids"].tolist().index(2)
-print(u["values"][row, 0])  # axial displacement at node 2
+deck = create_model()
+deck.set_solution("LinearStatics")
+deck.set_case_control([
+    {"name": "SinglePointConstrSelection", "fields": ["1"]},
+    {"name": "DisplacementOutput", "fields": ["All"]},
+    {"name": "SubcaseStart", "fields": ["1"]},
+    {"name": "StaticLoadSelection", "fields": ["2"]},
+])
+deck.add_card("Node", [1, None, 0., 0., 0.])
+deck.add_card("Node", [2, None, 3., 0., 0.])
+deck.add_card("Rod2", [1, 1, 1, 2])
+deck.add_card("RodProp", [1, 1, 2.])
+deck.add_card("IsoMat", [1, 1000., None, 0.3, 1.])
+deck.add_card("SinglePointConstrList", [1, 123456, 1])
+deck.add_card("SinglePointConstrList", [1, 23456, 2])
+deck.add_card("PointForceLoad", [2, 2, 0, 10., 1., 0., 0.])
+deck.apply_defaults()
+snapshot = model_from_reader(deck)
+result = snapshot.run("statics")
+u = next(table for table in result["nodal_tables"] if table["kind"] == "displacements")
+print(u["values"][u["ids"].tolist().index(2), 0])  # 0.015
 ```
 
-JavaScript returns the six displacement components in a flat typed array. Python returns a read-only NumPy array with one row per node and one column per component. Both examples locate the row by node ID.
+JavaScript transfers typed tables between the Model and Solver WASM memories. Python transfers Arrow buffers within one process. The result arrays are available to the caller immediately after the solve.
 
 ## Solve a model built in memory
 

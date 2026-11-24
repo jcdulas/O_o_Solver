@@ -28,7 +28,7 @@ std::uint64_t alignUp(std::uint64_t value)
 [[noreturn]] void throwMalformed(const std::string& what)
 {
     throw ContractError("table package: " + what +
-                        "; expected the bytes of QueryTable.toPackage() of O_o_Reader, unchanged");
+                        "; expected the bytes of QueryTable.toPackage() of O_o_Model, unchanged");
 }
 
 // The bytes of a package, shared by every structure built over them: the last structure released frees them.

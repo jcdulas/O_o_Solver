@@ -29,11 +29,11 @@ inline constexpr std::array<std::string_view, 6> ZONE_COMPONENTS{"t1", "t2", "t3
 }
 
 // One thing outside a zone that acts on a contour point (the contour report gives, per contour point, its components
-// and their causes). The causes O_o_Reader gives (zoneBoundaries: `kind` "element", "rigid", "mpc" or "connection",
+// and their causes). The causes O_o_Model gives (zoneBoundaries: `kind` "element", "rigid", "mpc" or "connection",
 // `card` and `id`, an MPC equation by its set ID), and those O_o_Solver adds:
 // "enclosed" (an enclosed element kept outside, enclosed="warn" or "exclude") and "constraint" (a grid point
 // constrained in some subcases only: `card` "SinglePointConstr", `id` the SPC set of a subcase that constrains it).
-// `components` is what the cause itself uses there when O_o_Solver knows it (0: O_o_Reader gives the union of a point's
+// `components` is what the cause itself uses there when O_o_Solver knows it (0: O_o_Model gives the union of a point's
 // causes only).
 struct ContourCause
 {
@@ -43,7 +43,7 @@ struct ContourCause
     ComponentMask components = 0;
 };
 
-// One boundary point of a zone as O_o_Reader gives it (zoneBoundaries): its grid point, the components through which
+// One boundary point of a zone as O_o_Model gives it (zoneBoundaries): its grid point, the components through which
 // the outside acts on it, whether it is a grid point of the element a Fastener or Weld pierces when its other side is
 // outside, and the outside things that act on it.
 struct ZoneBoundaryPoint
@@ -54,7 +54,7 @@ struct ZoneBoundaryPoint
     std::vector<ContourCause> causes;
 };
 
-// An element not in the list of a zone whose grid points are all grid points of the zone (O_o_Reader
+// An element not in the list of a zone whose grid points are all grid points of the zone (O_o_Model
 // enclosedElements): a stringer forgotten in the list, a rigid element or a connector inside, a mass on one point.
 struct EnclosedElement
 {
@@ -88,8 +88,8 @@ struct ZoneSubcaseConstraint
 };
 
 // A zone of an external local model: the set of elements a local model represents, as the caller gives it, with what
-// O_o_Reader says of it as a group of elements (zoneBoundaries, enclosedElements): its boundary points with their
-// components and causes and its enclosed elements. O_o_Reader's group holds its enclosed elements; ZoneContour applies
+// O_o_Model says of it as a group of elements (zoneBoundaries, enclosedElements): its boundary points with their
+// components and causes and its enclosed elements. O_o_Model's group holds its enclosed elements; ZoneContour applies
 // the enclosed policy, adds the grid points constrained in some subcases only, and resolves the rest against the
 // snapshot.
 //
@@ -100,8 +100,8 @@ struct ZoneDefinition
     std::string name;
     std::int32_t group = 0;             // a tag of the caller carried to the labels (a DesignProblem: the zone's ID)
     std::vector<std::int32_t> elements; // the members the caller gave: element and rigid element IDs
-    std::vector<ZoneBoundaryPoint> boundary; // O_o_Reader zoneBoundaries
-    std::vector<EnclosedElement> enclosed;   // O_o_Reader enclosedElements
+    std::vector<ZoneBoundaryPoint> boundary; // O_o_Model zoneBoundaries
+    std::vector<EnclosedElement> enclosed;   // O_o_Model enclosedElements
     EnclosedPolicy enclosedPolicy = EnclosedPolicy::Warn;
     std::int32_t frameId = 0;
     // The unit a zone was made from, 0 for a zone of elements: the report names it.

@@ -16,9 +16,9 @@ namespace oos::elements
 // taken from the sections table of the snapshot, where the section properties computed from the dimensions are given
 // per station: area, I1, I2, I12, J, NSM, the shear factors K1, K2 and the recovery points C, D, E, F. The element
 // never computes a section from its dimensions: the formulas (and the shear factors, which are not those of the
-// thin-walled rules) belong to O_o_Reader. A BeamShapeProp station's neutral axis from its shear centre (the element
+// thin-walled rules) belong to O_o_Model. A BeamShapeProp station's neutral axis from its shear centre (the element
 // axis of a Beam2 on a BeamShapeProp) is the table's n1, n2 (the centroid less the shear centre of the section, which
-// O_o_Reader gives); a BarShapeProp's axis is its neutral axis (a BarShapeProp makes no difference between the shear
+// O_o_Model gives); a BarShapeProp's axis is its neutral axis (a BarShapeProp makes no difference between the shear
 // centre and the neutral axis).
 //
 // The columns of the sections table, read once per facet call; `table` is nullptr when the snapshot has no sections
@@ -46,7 +46,7 @@ struct TabulatedSectionColumns
 // The section of property `propId` (a `propertyCard`, "BarShapeProp" or "BeamShapeProp") for the element of batch row
 // `row`, from the sections table: a BarShapeProp has one row (a uniform section, its two stations equal); a
 // BeamShapeProp has one row per station, from X/XB 0 to 1 (or one row, a uniform section). `stationPositions` and
-// `stationOutputs` are the X/XB and SO of the BeamShapeProp card (empty for a BarShapeProp; O_o_Reader codes SO as 0
+// `stationOutputs` are the X/XB and SO of the BeamShapeProp card (empty for a BarShapeProp; O_o_Model codes SO as 0
 // NO, 1 YES): a station whose X/XB the card gives with SO = NO has no output; the ends always have one.
 //
 // Problems on the field PID: no sections table, no row for the property, a BarShapeProp with

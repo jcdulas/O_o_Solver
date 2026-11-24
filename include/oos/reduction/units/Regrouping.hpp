@@ -11,7 +11,7 @@
 namespace oos::reduction
 {
 
-// A group whose boundary and stamp O_o_Reader is asked for: merged components, or a list of
+// A group whose boundary and stamp O_o_Model is asked for: merged components, or a list of
 // elements. groupId is the ID the unit takes.
 struct GroupDefinition
 {
@@ -21,7 +21,7 @@ struct GroupDefinition
     std::vector<base::EntityId> elementIds;          // ElementList: sorted
 };
 
-// O_o_Reader's tables of the groups (input/contract/GroupContracts.hpp), read through their contracts.
+// O_o_Model's tables of the groups (input/contract/GroupContracts.hpp), read through their contracts.
 struct GroupTables
 {
     const base::ContractReader& elements;
@@ -38,18 +38,18 @@ struct GroupTables
 //   components merge (a component or merged components);
 // - then element lists: each becomes a new unit, numbered after the largest unit ID in the order given; a unit an
 //   element list takes elements from keeps its ID and becomes the element list of what remains (and disappears when
-//   nothing remains): its boundary changes, so O_o_Reader is asked for it too;
-// - a unit no rule touches keeps O_o_Reader's component data: a group never changes the boundary of a unit it takes
+//   nothing remains): its boundary changes, so O_o_Model is asked for it too;
+// - a unit no rule touches keeps O_o_Model's component data: a group never changes the boundary of a unit it takes
 //   nothing from (the point a group shares with it is in both boundaries);
-// - an element belongs to one unit: O_o_Reader adds to a group every element whose grid points are all in it (a frame
+// - an element belongs to one unit: O_o_Model adds to a group every element whose grid points are all in it (a frame
 //   on the plane where two lists meet is in both), so an element stays with the unit it was given to, and one no list
 //   names that several groups take goes to the first of them by ID.
-// - elements declared connections (the plan's `connections` option) are in no unit given: O_o_Reader makes the
+// - elements declared connections (the plan's `connections` option) are in no unit given: O_o_Model makes the
 //   components without them. They stay the units' declared connections
-//   (UnitSet::declaredConnections), an element list may not name one, and no group of O_o_Reader keeps one (a group
+//   (UnitSet::declaredConnections), an element list may not name one, and no group of O_o_Model keeps one (a group
 //   takes every element whose grid points are all in it).
-// groups() lists what O_o_Reader is asked for; apply() builds the new units from its answer (boundaries and stamps
-// computed by O_o_Reader, never by O_o_Solver, so that both packages agree).
+// groups() lists what O_o_Model is asked for; apply() builds the new units from its answer (boundaries and stamps
+// computed by O_o_Model, never by O_o_Solver, so that both packages agree).
 //
 // Thread-safety: immutable once built. Ownership: owns its definitions; borrows nothing.
 class Regrouping
@@ -63,7 +63,7 @@ public:
 
     [[nodiscard]] const std::vector<GroupDefinition>& groups() const noexcept { return m_groups; }
 
-    // The units after regrouping: those no rule touches, as they were, and one per group with O_o_Reader's elements,
+    // The units after regrouping: those no rule touches, as they were, and one per group with O_o_Model's elements,
     // points, boundary and revision. Throws base::ContractError when a group is missing from a table or the tables
     // disagree with the definitions (an element of a definition missing from group_elements).
     [[nodiscard]] UnitSet apply(const GroupTables& tables) const;

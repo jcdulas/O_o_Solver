@@ -3348,7 +3348,7 @@ ProductReport VectorJacobianProducts::hessianVector(const DesignProblem& problem
                 for (const auto& [id, row] : effective.sparseWeights)
                     readIds.insert(id);
                 options.responseIds.assign(readIds.begin(), readIds.end());
-                // The finite element sections of the moved states on the meshes of the point (O_o_Reader's
+                // The finite element sections of the moved states on the meshes of the point (O_o_Model's
                 // reference=): their properties smooth in the dimensions there.
                 std::vector<double> reference; // bounded by the relations
                 for (const FieldValue& field : computation.inputs().design->fields)

@@ -9,7 +9,7 @@
 namespace oos::input
 {
 
-// The materials of the model (materialsTable of O_o_Reader): one row per material card of any type, with the
+// The materials of the model (materialsTable of O_o_Model): one row per material card of any type, with the
 // constants of IsoMat (e, g, nu, rho, a, tref, ge) and of OrthoMat2D (e1, e2, nu12, g12) in shared columns, null where
 // a type has no such constant. The element code reads the constants it needs with NullPolicy::Allow and refuses a null
 // it cannot accept, as a diagnostic.

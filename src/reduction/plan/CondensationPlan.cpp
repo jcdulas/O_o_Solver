@@ -311,7 +311,7 @@ CondensationPlan::CondensationPlan(const ClusterAbsorption& absorption, const Un
             const std::span<const std::size_t> absorbedSpiders = spiders->absorbedIn(index);
             unit.absorbedSpiders.assign(absorbedSpiders.begin(), absorbedSpiders.end());
         }
-        // Before absorption: the points of its own units that any connection uses, and the points O_o_Reader puts on
+        // Before absorption: the points of its own units that any connection uses, and the points O_o_Model puts on
         // their boundaries (a point an element list shares with its neighbour).
         std::vector<base::EntityId> before;
         for (const std::int64_t member : absorbed.memberUnits)
@@ -331,7 +331,7 @@ CondensationPlan::CondensationPlan(const ClusterAbsorption& absorption, const Un
         // DOFs left to the unit, and the points a relation eliminated inside the unit makes them depend on come onto
         // the boundary with its reasons (a retained leg is retained through them).
         // Every point of a relation eliminated at the interface that the unit holds is on its boundary, named by
-        // O_o_Reader or not (BoundaryPromotion::interfaceRelationPoints).
+        // O_o_Model or not (BoundaryPromotion::interfaceRelationPoints).
         std::vector<BoundaryNode> candidates(boundaries.at(index).begin(), boundaries.at(index).end());
         for (const base::EntityId nodeId : entityNodes.boundary[index])
             candidates.push_back(BoundaryNode{nodeId, static_cast<std::uint8_t>(BoundaryReason::SharedPoint)});

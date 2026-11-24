@@ -13,7 +13,7 @@ namespace oos::solutions
 namespace
 {
 
-// The results of a deck without SUBCASE are numbered as subcase 1; O_o_Reader gives its selections as the global
+// The results of a deck without SUBCASE are numbered as subcase 1; O_o_Model gives its selections as the global
 // section, subcase 0 of kind GLOBAL.
 constexpr base::EntityId GLOBAL_SUBCASE = 0;
 constexpr base::EntityId SUBCASE_OF_A_DECK_WITHOUT_SUBCASES = 1;

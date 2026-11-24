@@ -29,7 +29,7 @@ struct OutputRequest
     std::int32_t setId = 0; // for Scope::Set
 };
 
-// The output requests of the Case Control and their sets (O_o_Reader outputRequestsTable and caseSetsTable,
+// The output requests of the Case Control and their sets (O_o_Model outputRequestsTable and caseSetsTable,
 // data contract 31): the requests of a subcase and the members of a set; the solution drivers map them to result
 // kinds.
 //
@@ -39,7 +39,7 @@ class OutputRequests
 public:
     OutputRequests(base::ImportedTable requests, base::ImportedTable caseSets);
 
-    // The effective requests of a subcase (the global requests already inherited by O_o_Reader), in table order.
+    // The effective requests of a subcase (the global requests already inherited by O_o_Model), in table order.
     [[nodiscard]] std::vector<OutputRequest> requestsOf(std::int32_t subcase) const;
 
     // The members of Case Control SET `setId` as seen from `subcase`: the set defined in that subcase if there is

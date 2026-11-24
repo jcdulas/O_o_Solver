@@ -347,7 +347,7 @@ const ParameterDefinition& OptimisationParameters::definition(DesignOptimParams 
 
 std::optional<DesignOptimParams> OptimisationParameters::find(std::string_view name) noexcept
 {
-    // The neutral name of the dictionary (designParametersTable of O_o_Reader): "MaxDesignCycles" for DESMAX. NASPR0,
+    // The neutral name of the dictionary (designParametersTable of O_o_Model): "MaxDesignCycles" for DESMAX. NASPR0,
     // a spelling with a zero found in some decks, is an alias of NASPRO in the dictionary: PrintAnalysisEveryCycle too.
     for (const ParameterDefinition& row : DEFINITIONS)
         if (row.name == name)

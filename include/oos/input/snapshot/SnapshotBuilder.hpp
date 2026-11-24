@@ -17,8 +17,8 @@
 namespace oos::input
 {
 
-// Assembles a ModelSnapshot from the tables the caller gathers from a O_o_Reader model (the table packages of the
-// O_o_Reader WebAssembly module): the tables of the roles, one table per element, property and method card type, the
+// Assembles a ModelSnapshot from the tables the caller gathers from a O_o_Model model (the table packages of the
+// O_o_Model WebAssembly module): the tables of the roles, one table per element, property and method card type, the
 // CD rotations and the version stamps. Each table is taken over as it comes (its contract version is checked then);
 // build() checks every table against its contract and hands everything to the snapshot without copying a column.
 //
@@ -74,13 +74,13 @@ public:
     void addElementBatch(std::string card, base::ImportedTable table);
     void addPropertyTable(std::string card, base::ImportedTable table);
     void addMethodTable(std::string card, std::string idColumn, base::ImportedTable table);
-    // A material card table (IsoMat, AnisoMat2D, OrthoMat2D: the card table of O_o_Reader), keyed by "id".
+    // A material card table (IsoMat, AnisoMat2D, OrthoMat2D: the card table of O_o_Model), keyed by "id".
     void addMaterialCardTable(std::string card, base::ImportedTable table);
     // A load card table with the field formats of its cards (PointForceLoad, ShellPressureLoad, LoadCombination...: the
-    // card table of O_o_Reader), keyed by "setId".
+    // card table of O_o_Model), keyed by "setId".
     void addLoadCardTable(std::string card, base::ImportedTable table);
     // An aeroelastic card table read field by field (AeroBeamSpline2, AeroBeamSpline5 and AeroBoxList keyed by "id":
-    // the card table of O_o_Reader).
+    // the card table of O_o_Model).
     void addAeroCardTable(std::string card, std::string idColumn, base::ImportedTable table);
 
     // Checks every table against its contract and builds the snapshot; the builder is left empty. Throws

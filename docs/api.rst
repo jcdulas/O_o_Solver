@@ -14,7 +14,7 @@ the live C++ contexts and facets in :doc:`element-derivative-api`.
    * - Operation
      - JavaScript / WebAssembly
      - Python / native C++
-   * - Import a model
+   * - Build a solver snapshot from an in-memory deck
      - ``solver.modelFromReader(reader, deck)``
      - ``oo_solver.model_from_reader(deck)``
    * - Run statics

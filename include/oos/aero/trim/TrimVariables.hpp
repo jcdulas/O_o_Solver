@@ -36,7 +36,7 @@ namespace oos::aero
 class TrimVariables
 {
 public:
-    // One variable: its label (upper case) and the kind of O_o_Reader's aeroTrimCasesTable ("rigid_body",
+    // One variable: its label (upper case) and the kind of O_o_Model's aeroTrimCasesTable ("rigid_body",
     // "control_surface").
     struct Variable
     {

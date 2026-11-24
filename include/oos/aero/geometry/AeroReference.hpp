@@ -20,7 +20,7 @@ namespace oos::aero
 // about its axes at its origin) and of the stability derivatives (forces along its axes, moments about its origin), the
 // reference coordinates. REFC, REFB, REFS divide the forces and moments of the derivatives (CX = Fx / (q REFS), CMX =
 // Mx / (q REFS REFB), CMY = My / (q REFS REFC), CMZ = Mz / (q REFS REFB)). SYMXZ and SYMXY (+1 symmetric, −1
-// antisymmetric, 0 none; the Case Control AESYMXZ and AESYMXY applied by O_o_Reader) say that only half of the
+// antisymmetric, 0 none; the Case Control AESYMXZ and AESYMXY applied by O_o_Model) say that only half of the
 // configuration is modelled, the other half being its image in the plane (DoubletLatticeSteady).
 //
 // Thread-safety: immutable. Ownership: plain values.

@@ -9,7 +9,7 @@
 namespace oos::input
 {
 
-// The grid points (or their rows) of each element of a batch, read in place whichever of O_o_Reader's two layouts the
+// The grid points (or their rows) of each element of a batch, read in place whichever of O_o_Model's two layouts the
 // column has: a fixed list of n values per row for a table of one card type ("fixed_list<int32>[4]"), a list for a
 // table of mixed types ("list<int32>"). Same lifetime and thread-safety as the views of base/arrow/ColumnViews.hpp.
 class ConnectivityView

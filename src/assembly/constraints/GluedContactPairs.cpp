@@ -68,8 +68,8 @@ void requireGlueContract(const input::ModelSnapshot& snapshot)
     throw base::ContractError(base::concatenate(
         {"contact: the model pairs contact bodies by ", tables,
          "; O_o_Solver ties them by its own projection of the secondary grid points on the primary faces, reading the "
-         "two surfaces from O_o_Reader's contactNodePairs, and expected the glued contact columns, found none of: ",
-         columns, "; install a O_o_Reader that gives them, or remove the contact tables to solve without contact"}));
+         "two surfaces from O_o_Model's contactNodePairs, and expected the glued contact columns, found none of: ",
+         columns, "; install a O_o_Model that gives them, or remove the contact tables to solve without contact"}));
 }
 
 std::vector<GluedPair> selectGluedPairs(const input::ModelSnapshot& snapshot, std::optional<base::EntityId> contactId,

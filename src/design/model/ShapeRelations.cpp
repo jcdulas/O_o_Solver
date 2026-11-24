@@ -71,7 +71,7 @@ void ShapeRelations::check(const DesignVariables& variables, std::vector<base::D
             diagnostics.push_back(designProblem(
                 design_code::INVALID_SHAPE, DESIGN_NODE_MOVE, term.variableId, "directionX",
                 base::concatenate({"expected the vector of the DesignNodeMove of ", gridText(term),
-                                   " in the basic system, found none: O_o_Reader could not resolve it (the grid point "
+                                   " in the basic system, found none: O_o_Model could not resolve it (the grid point "
                                    "or the system DesignNodeMove.frameId does not exist); correct "
                                    "DesignNodeMove.nodeId or DesignNodeMove.frameId"})));
         else if (term.direction[0] == 0.0 && term.direction[1] == 0.0 && term.direction[2] == 0.0)

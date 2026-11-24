@@ -35,10 +35,10 @@ std::string missingGroup(input::GroupTable table, std::int64_t groupId)
 {
     return base::concatenate({"the table ", input::groupTableName(table), " (", input::GROUP_TABLES_PREREQUISITE,
                               ") has no row for group ", std::to_string(groupId),
-                              "; ask O_o_Reader for every group of Regrouping::groups()"});
+                              "; ask O_o_Model for every group of Regrouping::groups()"});
 }
 
-// The rows of a group table by group: group ID -> rows. O_o_Reader keys its group tables by the name the caller gave
+// The rows of a group table by group: group ID -> rows. O_o_Model keys its group tables by the name the caller gave
 // each group (`group` utf8); O_o_Solver names a group by the decimal text of its ID (snapshot.group_tables).
 std::map<std::int64_t, std::vector<std::int64_t>> rowsByGroup(const base::ContractReader& table)
 {
@@ -53,7 +53,7 @@ std::map<std::int64_t, std::vector<std::int64_t>> rowsByGroup(const base::Contra
             throw base::ContractError(
                 base::concatenate({"table '", table.tableName(), "', row ", std::to_string(row),
                                    ": expected a group named by the decimal text of its ID, found '", name,
-                                   "'; ask O_o_Reader for the groups of Regrouping::groups() under those names"}));
+                                   "'; ask O_o_Model for the groups of Regrouping::groups() under those names"}));
         rows[groupId].push_back(row);
     }
     return rows;
@@ -168,7 +168,7 @@ Regrouping::Regrouping(const UnitSet& units, std::span<const std::vector<std::in
         {
             const auto owner = ownerOfElement.find(element);
             if (owner == ownerOfElement.end())
-                continue; // a connection (or an element no unit holds): O_o_Reader checks that it exists
+                continue; // a connection (or an element no unit holds): O_o_Model checks that it exists
             WorkingUnit& from = working.at(owner->second);
             std::vector<base::EntityId>& remaining = from.unit.elementIds;
             remaining.erase(std::lower_bound(remaining.begin(), remaining.end(), element));
@@ -213,7 +213,7 @@ UnitSet Regrouping::apply(const GroupTables& tables) const
     const std::span<const std::int64_t> revisions = tables.summary.values<std::int64_t>("revision");
 
     std::vector<CondensationUnit> units = m_untouched;
-    // O_o_Reader puts in a group every element whose grid points are all in it (group_revisions): a frame
+    // O_o_Model puts in a group every element whose grid points are all in it (group_revisions): a frame
     // lying on the plane where two element lists meet is then in both, the list it was given to and the one beside
     // it. An element belongs to the unit it was given to (an untouched unit, or an element list); one that no list
     // names and several groups absorb goes to the first of them by ID.
@@ -249,7 +249,7 @@ UnitSet Regrouping::apply(const GroupTables& tables) const
             unit.elementIds,
             [&](base::EntityId element)
             {
-                // A declared connection is in no unit (O_o_Reader's group takes it when its points are
+                // A declared connection is in no unit (O_o_Model's group takes it when its points are
                 // all in the group).
                 if (std::binary_search(m_declared.begin(), m_declared.end(), DeclaredConnection{element, {}, {}, 0},
                                        [](const DeclaredConnection& a, const DeclaredConnection& b)

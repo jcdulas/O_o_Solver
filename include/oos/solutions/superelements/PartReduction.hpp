@@ -42,7 +42,7 @@ inline constexpr double FIXED_INTERFACE_TIE_TOLERANCE = 1.0e-8;
 
 // The reduction of one part superelement (BEGIN SUPER) onto its boundary (deck superelements are mapped onto the
 // condensation engine): the part is one condensation unit of its own model (reduction::UnitSystem on
-// every element and point of the part; its boundary points, those O_o_Reader's part_boundaries gives, the unit's
+// every element and point of the part; its boundary points, those O_o_Model's part_boundaries gives, the unit's
 // boundary), reduced by the unit's static condensation,
 //     K* = K_bb − K_bo·K_oo⁻¹·K_ob,    f*_s = f_b,s − K_bo·K_oo⁻¹·f_o,s    (one f* per subcase of the part),
 // and, in a modal analysis, by Craig-Bampton (reduction::CraigBampton) on the modes of its q set: the

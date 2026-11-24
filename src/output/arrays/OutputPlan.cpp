@@ -19,7 +19,7 @@ namespace oos::output
 namespace
 {
 
-// The request of each kind by the neutral name O_o_Reader gives the command in outputRequestsTable (it turns the
+// The request of each kind by the neutral name O_o_Model gives the command in outputRequestsTable (it turns the
 // keyword, its aliases and its abbreviations into this name: DISPLACEMENT, VECTOR and DISP give DisplacementOutput).
 struct RequestName
 {
@@ -83,7 +83,7 @@ std::optional<OutputKind> kindOf(std::string_view request)
 
 base::Diagnostic requestProblem(base::Severity severity, std::string code, std::int32_t subcase, std::string message);
 
-// The Case Control request MEFFMASS and its reference point describer GRID = gid (a describer O_o_Reader keeps as the
+// The Case Control request MEFFMASS and its reference point describer GRID = gid (a describer O_o_Model keeps as the
 // deck writes it, with its value).
 constexpr std::string_view MODAL_EFFECTIVE_MASS = "ModalEffectiveMassOutput";
 // The aerodynamic outputs of SOL 144 (APRESSURE, AEROF).
@@ -293,7 +293,7 @@ OutputPlan OutputPlan::forSubcase(const input::ModelSnapshot& snapshot, std::int
                                   base::DiagnosticSink& sink)
 {
     // A Case Control without any output request (a model built in memory, a snapshot without the table) gives every
-    // output, so that the caller always gets results; a deck with requests gets those of each subcase. O_o_Reader
+    // output, so that the caller always gets results; a deck with requests gets those of each subcase. O_o_Model
     // gives output_requests_table for every model since data contract 31, with no row when there is no request.
     if (!snapshot.hasTable(input::TableRole::OutputRequests) ||
         snapshot.outputRequests().requestReader().rowCount() == 0)

@@ -6,7 +6,7 @@
 namespace oos::design
 {
 
-// The tables of O_o_Reader that give the constraints of a deck and the design commands of its Case Control,
+// The tables of O_o_Model that give the constraints of a deck and the design commands of its Case Control,
 // as O_o_Solver reads them; "proposed" marks what O_o_Solver asks for (src/design/README.md).
 //
 // designConstraintsTable, one row per DesignConstr: constraint_set int32 (DCID) · response_id int32 (RID) · lower

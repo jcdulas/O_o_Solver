@@ -13,7 +13,7 @@ namespace oos::elements
 namespace
 {
 
-// O_o_Reader gives MCID −1 when field 7 holds THETA.
+// O_o_Model gives MCID −1 when field 7 holds THETA.
 constexpr std::int32_t NO_MAT_FRAME_ID = -1;
 
 // An MCID whose x axis projects on the element plane to less than this has no direction there.

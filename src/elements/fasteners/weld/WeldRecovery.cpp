@@ -67,7 +67,7 @@ std::array<double, STRESS_COLUMNS> stressRow(std::span<const double> forces, con
 
 } // namespace
 
-// forces.weld and stress.weld of the O_o_Reader data contract.
+// forces.weld and stress.weld of the O_o_Model data contract.
 std::vector<std::string> WeldElement::outputColumns(ElementOutput output) const
 {
     if (output == ElementOutput::Forces)

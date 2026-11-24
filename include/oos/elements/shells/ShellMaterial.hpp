@@ -9,9 +9,9 @@
 //   | AnisoMat2D | MID | G11 | G12 | G13 | G22 | G23 | G33  | RHO | A1 A2 A3 TREF GE ST SC SS MCSID |
 //   | OrthoMat2D | MID | E1  | E2  | NU12| G12 | G1Z | G2Z  | RHO | A1 A2 TREF Xt Xc Yt Yc S GE F12 STRN |
 //
-// IsoMat comes from materialsTable (E, G, NU completed by O_o_Reader); AnisoMat2D and OrthoMat2D from their own card
+// IsoMat comes from materialsTable (E, G, NU completed by O_o_Model); AnisoMat2D and OrthoMat2D from their own card
 // tables (model.anisoMat2D.table(), model.orthoMat2D.table(): the Gij, G1Z, G2Z and Ai that materialsTable does not
-// give). O_o_Reader gives a blank G1Z or G2Z as 1.0E8, its stored form of a blank field: read as a blank, an infinite
+// give). O_o_Model gives a blank G1Z or G2Z as 1.0E8, its stored form of a blank field: read as a blank, an infinite
 // transverse shear modulus (a rigid direction).
 
 #include "oos/base/math/Mat3.hpp"

@@ -8,7 +8,7 @@
 namespace oos::input
 {
 
-// The non-structural mass of the model, expanded by O_o_Reader (nonStructMassTable): one row per NonStructMass,
+// The non-structural mass of the model, expanded by O_o_Model (nonStructMassTable): one row per NonStructMass,
 // NonStructMass1, NonStructMassLumped, NonStructMassLumped1 target (NonStructMassUnion resolved) with the value as the
 // card gives it and the mass it adds. The concentrated masses (PointMassMatrix, PointMassInertia, CMASSi) are element
 // batches of the snapshot, and the mass parameters (WeightToMass, CoupledMass) PARAM values.

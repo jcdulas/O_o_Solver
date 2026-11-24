@@ -101,7 +101,7 @@ struct RecoveryWindow
 
 // Makes the element result tables of the data contract from the displacements of a subcase: every batch of the
 // element set whose family offers the Recovery facet gives, for each output kind it names columns for, a table of its
-// rows in the layout of O_o_Reader's result tables:
+// rows in the layout of O_o_Model's result tables:
 //   - "stress" from ElementOutput::Stresses;
 //   - "strain" from ElementOutput::StrainCurvatures when the family gives it (the shells: STRCUR, the membrane
 //     strains and curvatures, is the default form of STRAIN), else ElementOutput::Strains;

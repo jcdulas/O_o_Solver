@@ -34,7 +34,7 @@ struct AeroBox
 };
 
 // The boxes of the AeroLiftingPanel1 panels of a model (aeroBoxesTable, aeroPanelsTable), in the
-// aerodynamic frame of the AeroStaticParams and in the order O_o_Reader gives them (by panel, then span strip, then
+// aerodynamic frame of the AeroStaticParams and in the order O_o_Model gives them (by panel, then span strip, then
 // chordwise), the order of the aerodynamic j set.
 //
 // Thread-safety: immutable. Ownership: owns its boxes (budgeted: one per box of the model).

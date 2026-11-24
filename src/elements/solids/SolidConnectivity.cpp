@@ -12,7 +12,7 @@ namespace oos::elements
 namespace
 {
 
-// O_o_Reader gives an absent mid-side node as ID 0 (and row −1 in nodesRows).
+// O_o_Model gives an absent mid-side node as ID 0 (and row −1 in nodesRows).
 constexpr std::int32_t ABSENT_NODE_ID = 0;
 
 [[nodiscard]] std::string fieldOf(std::size_t node)

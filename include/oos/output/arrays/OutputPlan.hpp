@@ -66,7 +66,7 @@ struct ModalEffectiveMassRequest
 // The outputs of one subcase: the requests of output_requests_table and the members of their SETs, SORT1 (a
 // SORT2 request is given in SORT1 with a warning: O_o_Solver writes no SORT2 table).
 //
-// Without the requests table (when O_o_Reader does not give it), the tables of every point and element are given:
+// Without the requests table (when O_o_Model does not give it), the tables of every point and element are given:
 // displacements, SPC forces, MPC forces when there is an m set, and the stresses, strains and forces
 // of every element at the centre and corners with the von Mises column; GPFORCE, ESE and OLOAD are then not produced
 // (a warning says the requests are not known).
@@ -121,7 +121,7 @@ private:
 };
 
 // The element tables a plan asks for (STRESS, STRAIN, FORCE with their SETs, CENTER or CORNER, FIBER or STRCUR). The
-// maximum shear describer (MAXS) is not applied: O_o_Reader's result tables hold the stress tables of the shells and
+// maximum shear describer (MAXS) is not applied: O_o_Model's result tables hold the stress tables of the shells and
 // plies with their von Mises column only, so the von Mises stress is given whatever
 // the describer, the maximum shear (σ1 − σ2)/2 following from the principal stresses of the table. The selection
 // borrows the members of the plan, which must outlive it.

@@ -291,7 +291,7 @@ std::string parameterValue(const input::ParamTable* params, std::string_view nam
     return {};
 }
 
-// The design stamp of a unit of the plan: those of the units O_o_Reader gives that it is made of (its member units),
+// The design stamp of a unit of the plan: those of the units O_o_Model gives that it is made of (its member units),
 // mixed in their order; empty when no design variable drives any of them.
 std::uint64_t designStampOf(const reduction::UnitPlan& plan, std::span<const UnitDesignStamp> stamps)
 {

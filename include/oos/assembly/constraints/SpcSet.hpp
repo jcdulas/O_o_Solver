@@ -42,7 +42,7 @@ struct DerivedSupportDof
     std::vector<ConstraintTerm> reactionTo;
 };
 
-// The single-point constraints of one subcase, from the singlePointConstrTable of O_o_Reader
+// The single-point constraints of one subcase, from the singlePointConstrTable of O_o_Model
 // (SinglePointConstrUnion expanded: the rows of a SinglePointConstrUnion set carry its ID in `setId`) and the
 // permanent constraints of the grid points:
 // - sg: the PS field of every GRID (read from the node table; singlePointConstrTable repeats them as rows "GRID.PS"
@@ -53,7 +53,7 @@ struct DerivedSupportDof
 //   (singlePointConstrTable gives EnforcedMotionConstr under the ID of the load set; the DOFs of an
 //   EnforcedMotionConstr become members of the s set, and in statics its SID is selected by LOAD); the
 //   EnforcedMotionConstr of a LOAD combination are those of the sets it reaches times their factors
-//   (input::LoadTable::termsOf: O_o_Reader lists each set's EnforcedMotionConstr once);
+//   (input::LoadTable::termsOf: O_o_Model lists each set's EnforcedMotionConstr once);
 // - the enforced values: field D of SPC (0 when blank), and the value of EnforcedMotionConstr, which replaces the SPC
 // value of the same
 //   DOF. Only nonzero values are kept: every other s DOF is held
@@ -78,7 +78,7 @@ public:
            base::DiagnosticSink& sink);
 
     // The constraints of a subcase: the sets its SPC and LOAD commands select (subcasesTable, inheritance applied by
-    // O_o_Reader). Throws std::invalid_argument when the subcase is not in the table.
+    // O_o_Model). Throws std::invalid_argument when the subcase is not in the table.
     [[nodiscard]] static SpcSet forSubcase(const input::ConstraintTable* constraints, const input::LoadTable* loads,
                                            const input::SubcaseTable& subcases, const DofMap& dofMap,
                                            base::EntityId subcase, base::MemoryBudget& budget,

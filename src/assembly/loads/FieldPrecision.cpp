@@ -13,7 +13,7 @@ namespace oos::assembly
 namespace
 {
 
-// The card that combines load sets (LOAD), and its column of the sets it combines (O_o_Reader: Li).
+// The card that combines load sets (LOAD), and its column of the sets it combines (O_o_Model: Li).
 constexpr std::string_view COMBINATION_CARD = "LoadCombination";
 constexpr const char* COMBINED_SETS_COLUMN = "termLoad";
 

@@ -41,7 +41,7 @@ Resolution<PropertyRef> resolveProperty(const ElementBatchView& view, const Prop
         propertyRow >= 0 && propertyRow < table->rowCount() && ids[static_cast<std::size_t>(propertyRow)] == propId;
     if (!isRowOfPropId)
     {
-        // The tables of O_o_Reader are sorted by ID; a linear search covers one that would not be.
+        // The tables of O_o_Model are sorted by ID; a linear search covers one that would not be.
         const auto sorted = std::lower_bound(ids.begin(), ids.end(), propId);
         auto found = sorted != ids.end() && *sorted == propId ? sorted : std::find(ids.begin(), ids.end(), propId);
         if (found != ids.end())

@@ -18,7 +18,7 @@
 namespace oos::output
 {
 
-// A MonitorNodeForceSum3 as the caller gives it: O_o_Reader gives the card's fields as columns, and the caller expands
+// A MonitorNodeForceSum3 as the caller gives it: O_o_Model gives the card's fields as columns, and the caller expands
 // GRIDSET and ELEMSET (SET1 lists) to their IDs.
 struct MonitorPoint3Definition
 {
@@ -50,7 +50,7 @@ struct MonitorNodalLoads
 // CID) and given along the axes of CD:
 //     F = Σ_g R_g·q_g^t,    M = Σ_g (x_g − p) × R_g·q_g^t + R_g·q_g^r,    loads = (A_CDᵀ·F, A_CDᵀ·M),
 // with q_g the kept rows at grid point g, R_g its displacement system in basic. With ELEMSET the elements on one side
-// of a cut and TemperatureLoadFlag blank this is the internal load the cut transmits. O_o_Reader's
+// of a cut and TemperatureLoadFlag blank this is the internal load the cut transmits. O_o_Model's
 // monitor_point_loads computes the same sum from the grid point forces of a result set.
 //
 // Thread-safety: immutable once built. Ownership: borrows the DOF map, which must outlive it; owns its definition and

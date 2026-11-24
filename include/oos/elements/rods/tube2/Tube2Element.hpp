@@ -7,7 +7,7 @@
 //
 // Formulation: rods/RodFormulation with the section of the tube (TubeProp): inner diameter D_i = OD − 2T,
 // A = π(OD² − D_i²)/4, J = π(OD⁴ − D_i⁴)/32, and the torsional stress at the outer fibre, C = OD/2. T blank or 0 is
-// a solid rod (O_o_Reader gives a blank T as null).
+// a solid rod (O_o_Model gives a blank T as null).
 //
 // Facets: stiffness, mass, recovery (forces: axial, torsion; stresses: axial, sma, torsion, smt). Differential
 // stiffness (SOL 105: rodDifferentialStiffness of the axial force). Design derivatives are not written yet.

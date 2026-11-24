@@ -6,8 +6,8 @@
 namespace oos::design
 {
 
-// The tables of O_o_Reader that give the responses of a deck, as O_o_Solver reads them; the columns marked "proposed"
-// are asked of O_o_Reader (src/design/README.md gives the full contract).
+// The tables of O_o_Model that give the responses of a deck, as O_o_Solver reads them; the columns marked "proposed"
+// are asked of O_o_Model (src/design/README.md gives the full contract).
 //
 // designResponsesTable, one row per DesignResp1, DesignResp2, DesignResp3: id int32 · label text · response_type text
 // (the RTYPE of

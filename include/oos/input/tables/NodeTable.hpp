@@ -11,7 +11,7 @@
 namespace oos::input
 {
 
-// The grid points of the model (cardTable(deck, "nodes") of O_o_Reader): ID, position system CP, displacement system
+// The grid points of the model (cardTable(deck, "nodes") of O_o_Model): ID, position system CP, displacement system
 // CD, permanent constraints PS, superelement SEID, and the position in the basic system (xyzGlobal, whatever CP); the
 // rotation from each grid point's CD system to the basic system (displacementRotations(deck): per row a 3 x 3 matrix,
 // row-major, whose columns are the directions 1, 2, 3 of CD in the basic system, evaluated at the point); and the

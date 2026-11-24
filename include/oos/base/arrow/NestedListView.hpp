@@ -9,7 +9,7 @@
 namespace oos::base
 {
 
-// A column of type "list<fixed_list<T>[n]>": per row a list of items of n values each (O_o_Reader gives the stations
+// A column of type "list<fixed_list<T>[n]>": per row a list of items of n values each (O_o_Model gives the stations
 // of a BeamProp this way). One of the typed views of ContractReader (base/arrow/ColumnViews.hpp), in place for both
 // offset widths.
 //

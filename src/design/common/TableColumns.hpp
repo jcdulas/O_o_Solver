@@ -1,7 +1,7 @@
 #pragma once
 
 // Column readers shared by the design table readers (model/DesignTables, responses/ResponseTables,
-// constraints/ConstraintTables): the contract helpers of the design tables of O_o_Reader. Private to src/design.
+// constraints/ConstraintTables): the contract helpers of the design tables of O_o_Model. Private to src/design.
 
 #include "oos/base/arrow/ContractReader.hpp"
 #include "oos/base/errors/ContractError.hpp"
@@ -130,7 +130,7 @@ private:
         base::concatenate({"table '", table.tableName(), "', row ", std::to_string(row), ": ", what,
                            "; the producer breaks the design table contract "
                            "(src/design/README.md): take the snapshot again with a "
-                           "O_o_Reader that follows it"}));
+                           "O_o_Model that follows it"}));
 }
 
 } // namespace oos::design::table_columns

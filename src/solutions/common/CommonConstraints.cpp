@@ -154,7 +154,7 @@ CommonConstraints CommonConstraints::of(const input::ModelSnapshot& snapshot, co
         std::vector<base::EntityId> cards; // bounded by the MPC cards of one set
         if (subcase.mpc)
         {
-            // Without the source_sid column of multiPointConstrTable (to be added by O_o_Reader) an
+            // Without the source_sid column of multiPointConstrTable (to be added by O_o_Model) an
             // MultiPointConstrUnion stands for its own cards, keyed by its ID, which connectionClusters does not use:
             // CondensationPlanner then matches the cards' equations to the set's (reduction::MpcSetAlias), so that the
             // plan keys them as the analysis does.

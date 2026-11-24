@@ -43,7 +43,7 @@ std::int64_t childCountOf(std::string_view format)
 
 // What to do about a table that breaks the Arrow C Data Interface.
 constexpr std::string_view NOT_ARROW_COMPLIANT =
-    "; the producer did not follow the Arrow C Data Interface: report it to the producer (O_o_Reader)";
+    "; the producer did not follow the Arrow C Data Interface: report it to the producer (O_o_Model)";
 
 [[noreturn]] void refuseLayout(const std::string& where, std::string_view problem)
 {
@@ -132,12 +132,12 @@ ImportedTable::ImportedTable(ArrowSchema schema, ArrowArray array) : m_owned(std
     if (schema.release == nullptr || array.release == nullptr)
         throw ContractError(
             "an Arrow table was handed over already released; expected live structures (a capsule "
-            "may be consumed only once): ask O_o_Reader for the table again");
+            "may be consumed only once): ask O_o_Model for the table again");
     if (schema.format == nullptr || std::strcmp(schema.format, "+s") != 0)
         throw ContractError(concatenate({"an Arrow table must be a struct array (format '+s'), found format '",
                                          schema.format != nullptr ? schema.format : "(none)",
                                          "'; hand over a table (one record batch of columns), as the query tables of "
-                                         "O_o_Reader give it"}));
+                                         "O_o_Model give it"}));
     if (schema.n_children != array.n_children || (schema.n_children > 0 && (!schema.children || !array.children)))
         throw ContractError(
             concatenate({"an Arrow table has ", std::to_string(schema.n_children), " columns in its schema and ",
@@ -195,7 +195,7 @@ ImportedTable ImportedTable::takeOver(ArrowSchema* schema, ArrowArray* array)
     if (schema == nullptr || array == nullptr)
         throw ContractError(
             "an Arrow table was handed over without its schema or its array; hand over both, as "
-            "the query tables of O_o_Reader give them");
+            "the query tables of O_o_Model give them");
     const ArrowSchema schemaCopy = *schema;
     const ArrowArray arrayCopy = *array;
     // The Arrow move: the source keeps its fields but is marked released, so that its owner does not free it again.
@@ -209,7 +209,7 @@ ImportedTable ImportedTable::fromStream(ArrowArrayStream* stream)
     if (stream == nullptr || stream->release == nullptr)
         throw ContractError(
             "an Arrow stream was handed over already released; expected a live stream (a capsule "
-            "may be consumed only once): ask O_o_Reader for the table again");
+            "may be consumed only once): ask O_o_Model for the table again");
     auto streamError = [stream](int code, std::string_view what)
     {
         const char* detail = stream->get_last_error != nullptr ? stream->get_last_error(stream) : nullptr;
@@ -231,7 +231,7 @@ ImportedTable ImportedTable::fromStream(ArrowArrayStream* stream)
         schema.release(&schema);
         throw ContractError(
             "the Arrow stream ended before its first batch; expected a table as one record batch: "
-            "hand over the table as O_o_Reader gives it");
+            "hand over the table as O_o_Model gives it");
     }
     ImportedTable table(schema, array);
     ArrowArray next{};
@@ -242,7 +242,7 @@ ImportedTable ImportedTable::fromStream(ArrowArrayStream* stream)
         next.release(&next);
         throw ContractError(
             "the Arrow stream has more than one batch; expected a table as one record batch: hand over the "
-            "table as O_o_Reader gives it");
+            "table as O_o_Model gives it");
     }
     return table;
 }

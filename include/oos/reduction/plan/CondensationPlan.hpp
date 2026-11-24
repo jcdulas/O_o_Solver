@@ -77,8 +77,8 @@ struct UnitPlan
     std::int64_t revision = 0;              // its stamp, absorbed clusters included
     std::vector<base::EntityId> elementIds; // its elements and the connections it absorbed, sorted
     std::vector<base::EntityId> nodeIds;    // its points, absorbed connection-only points included, sorted
-    // Its boundary points before absorption: the points of its own units that a connection uses (O_o_Reader's
-    // componentBoundaries, with the grid points of the elements the fasteners pierce), and those O_o_Reader's group
+    // Its boundary points before absorption: the points of its own units that a connection uses (O_o_Model's
+    // componentBoundaries, with the grid points of the elements the fasteners pierce), and those O_o_Model's group
     // boundary adds.
     std::int64_t boundaryNodeCountBefore = 0;
     std::vector<BoundaryNode> boundary;        // after absorption, with the analysis' additions; free points only
@@ -162,7 +162,7 @@ public:
     [[nodiscard]] ReductionKind reduction() const noexcept { return m_reduction; }
     // The decision on every spider and fastener side (empty without spider absorption), in the catalog's order.
     [[nodiscard]] std::span<const SpiderDecision> spiderDecisions() const noexcept { return m_spiderDecisions; }
-    // Whether the spiders were decided at all, and whether the snapshot had O_o_Reader's spiders table.
+    // Whether the spiders were decided at all, and whether the snapshot had O_o_Model's spiders table.
     [[nodiscard]] bool hasSpiderAbsorption() const noexcept { return m_hasSpiderAbsorption; }
     [[nodiscard]] bool hasRigidSpiders() const noexcept { return m_hasRigidSpiders; }
 

@@ -16,7 +16,7 @@ namespace oos::reduction
 struct AbsorptionOptions
 {
     // False keeps every cluster and every 1D/0D-only unit where the connection system put it (the boundaries are then
-    // O_o_Reader's interface points: a check, and the "before absorption" column of the plan report).
+    // O_o_Model's interface points: a check, and the "before absorption" column of the plan report).
     bool absorbsClusters = true;
     // The SIDs of the MPC cards that some subcases select and others do not (a MultiPointConstrUnion resolved to its
     // cards: the connections name an MPC equation by its card's SID): a cluster holding an equation of such a card

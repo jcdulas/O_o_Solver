@@ -68,7 +68,7 @@ TrimVariables::TrimVariables(const input::ModelSnapshot& snapshot, const AeroRef
         const base::ValidityView hasUpperPosition = limitValidity("positionUpper");
         const base::ValidityView hasLowerMoment = limitValidity("hingeMomentLower");
         const base::ValidityView hasUpperMoment = limitValidity("hingeMomentUpper");
-        // A value of a limit column when the row has one (a NaN, O_o_Reader's blank real, counts as none).
+        // A value of a limit column when the row has one (a NaN, O_o_Model's blank real, counts as none).
         const auto limitOf = [](std::span<const double> column, const base::ValidityView& validity,
                                 std::int64_t row) -> std::optional<double>
         {

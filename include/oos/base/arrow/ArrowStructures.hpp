@@ -3,8 +3,8 @@
 #include <cstdint>
 
 // The structures of the Arrow C Data Interface, as the Arrow specification gives them
-// (https://arrow.apache.org/docs/format/CDataInterface.html). O_o_Solver reads O_o_Reader's tables through them alone:
-// no Arrow library and no O_o_Reader header (coupling by data). The names are the specification's.
+// (https://arrow.apache.org/docs/format/CDataInterface.html). O_o_Solver reads O_o_Model's tables through them alone:
+// no Arrow library and no O_o_Model header (coupling by data). The names are the specification's.
 
 // NOLINTBEGIN(readability-identifier-naming)
 extern "C"

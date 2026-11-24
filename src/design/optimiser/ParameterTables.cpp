@@ -35,7 +35,7 @@ OptimisationParameters readDesignParameters(const base::ContractReader& table)
     std::optional<base::ValidityView> textValidity;
     if (table.hasColumn("textValue"))
         textValidity.emplace(table.validity("textValue"));
-    // O_o_Reader gives a row per parameter of the format's catalogue: is_default true for the catalogue's default,
+    // O_o_Model gives a row per parameter of the format's catalogue: is_default true for the catalogue's default,
     // and no value at all for a default the program computes (DABOBJ, OPTCOD). OptimisationParameters holds the
     // defaults itself: only the values a DesignOptimParams gives are read.
     std::optional<base::BooleanView> isDefault;

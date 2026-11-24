@@ -61,8 +61,8 @@ ParamValue ParamTable::valueAt(std::int64_t row) const
         throw base::ContractError(
             base::concatenate({"paramsTable, row ", std::to_string(row),
                                ": expected the kind 'integer', 'real', 'text', 'complex' or 'blank', found '", kind,
-                               "'; the table does not follow the data contract of O_o_Reader (paramsTable): take "
-                               "the snapshot again with a O_o_Reader that follows it"}));
+                               "'; the table does not follow the data contract of O_o_Model (paramsTable): take "
+                               "the snapshot again with a O_o_Model that follows it"}));
     }
     return value;
 }

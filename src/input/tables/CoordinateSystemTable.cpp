@@ -38,8 +38,8 @@ CoordinateSystemTable::CoordinateSystemTable(base::ImportedTable systems)
             throw base::ContractError(
                 base::concatenate({"coordsTable: expected the kind R, C or S, found '", kind,
                                    "' for coordinate system ", std::to_string(frameIds[static_cast<std::size_t>(row)]),
-                                   "; the table does not come from O_o_Reader's coordsTable query: take the "
-                                   "snapshot again from O_o_Reader's query"}));
+                                   "; the table does not come from O_o_Model's coordsTable query: take the "
+                                   "snapshot again from O_o_Model's query"}));
     }
 }
 

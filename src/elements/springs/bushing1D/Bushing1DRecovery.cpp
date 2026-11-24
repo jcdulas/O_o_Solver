@@ -6,7 +6,7 @@
 namespace oos::elements
 {
 
-// stress.bushing1D and strain.bushing1D of the O_o_Reader data contract (the same record).
+// stress.bushing1D and strain.bushing1D of the O_o_Model data contract (the same record).
 std::vector<std::string> Bushing1DElement::outputColumns(ElementOutput output) const
 {
     if (output == ElementOutput::Stresses || output == ElementOutput::Strains)

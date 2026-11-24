@@ -17,7 +17,7 @@
           130
         ],
         "body": [
-          "Build or import a model",
+          "Build a deck through the API",
           "Build and query typed tables"
         ],
         "color": "blue",
@@ -165,7 +165,7 @@
         "text": [
           "Data contract checked on import. Each module owns its memory.",
           "The modules exchange bytes and arrays; C++ pointers stay within their owning module.",
-          "Adding result arrays to the reader is an explicit application step."
+          "The application passes result arrays to the Model API."
         ]
       }
     ],

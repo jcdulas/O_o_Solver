@@ -22,7 +22,7 @@ constexpr int SIDE_A = 0;
 constexpr int SIDE_B = 1;
 constexpr int UNKNOWN = -1;
 
-constexpr std::string_view WHAT_TO_DO = "; take the snapshot again with a O_o_Reader that follows the data contract";
+constexpr std::string_view WHAT_TO_DO = "; take the snapshot again with a O_o_Model that follows the data contract";
 
 int sideCode(std::string_view side)
 {

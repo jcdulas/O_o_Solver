@@ -12,7 +12,7 @@ namespace oos::aero
 {
 
 // The direct matrix input of a static aeroelastic trim (the correction factors of the format): the matrices of the
-// fixed names DownwashMatrix and AeroPressureMatrix that O_o_Reader's directMatricesTable gives, read on the boxes of
+// fixed names DownwashMatrix and AeroPressureMatrix that O_o_Model's directMatricesTable gives, read on the boxes of
 // the doublet lattice.
 //
 // - DownwashMatrix is the initial downwash w_j^g (incidence, camber, twist): radians of downwash at each box's control
@@ -31,7 +31,7 @@ namespace oos::aero
 // are accepted only as the
 //   identity, which changes nothing; a true weighting is not applied by this version.
 //
-// Only the matrices O_o_Reader marks in effect are read (a DirectMatrixAeroJ, DirectMatrixAeroJInterference or
+// Only the matrices O_o_Model marks in effect are read (a DirectMatrixAeroJ, DirectMatrixAeroJInterference or
 // DirectMatrixAeroK of a name a DirectMatrix also has is not). What cannot be read unambiguously is refused, naming the
 // matrix: several columns, a complex matrix, a DirectMatrix whose rows are not the boxes, a DirectMatrixAeroJ row on a
 // box the model lacks or on another component or given twice, a DirectMatrixAeroJInterference (bodies), a

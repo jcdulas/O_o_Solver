@@ -42,7 +42,7 @@ constexpr std::array<ShellCard, 6> SHELL_CARDS{{{"ShellQuad4", 4, false},
                                                 {"ShellQuad8", 4, true},
                                                 {"ShellTria6", 3, true}}};
 
-// The material frame ID of a shell given its THETA (O_o_Reader: −1 when field 7 holds THETA).
+// The material frame ID of a shell given its THETA (O_o_Model: −1 when field 7 holds THETA).
 constexpr std::int32_t NO_MATERIAL_FRAME = -1;
 
 // The relative threshold of the rows of the mean corner rotation (the reference's tie 6: terms below 1e-14 of the

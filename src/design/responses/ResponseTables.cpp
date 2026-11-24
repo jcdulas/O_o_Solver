@@ -27,7 +27,7 @@ std::string laterStepOf(const std::string& /*rtype*/)
     return "no planned version";
 }
 
-// ATTA (an int32) or ATTB (a float64) of a row: O_o_Reader gives them as the field as written (utf8, data contract 32:
+// ATTA (an int32) or ATTB (a float64) of a row: O_o_Model gives them as the field as written (utf8, data contract 32:
 // an ATTA may be a word for some response types), a table built by a caller as numbers. Nothing for a null or blank
 // field; refused (refuseRow) for a text that is not a number.
 template <typename T>
@@ -178,7 +178,7 @@ ResponseParts readResponseTables(const base::ContractReader& responses, const ba
     {
         const auto r = static_cast<std::size_t>(row);
         const std::string kindName = kinds[row];
-        // The ATTi of a DesignResp1 are rows of kind "attribute" (O_o_Reader contract 39); the solver reads what a
+        // The ATTi of a DesignResp1 are rows of kind "attribute" (O_o_Model contract 39); the solver reads what a
         // DesignResp1 measures from the targets of designResponsesTable.
         if (kindName == "attribute")
             continue;
@@ -218,7 +218,7 @@ ResponseParts readResponseTables(const base::ContractReader& responses, const ba
                      parts.equations[e].card, " ", std::to_string(parts.equations[e].id),
                      " to run from 0 by steps of 1, found ", std::to_string(list[k].first), " at place ",
                      std::to_string(k),
-                     " (src/design/README.md); take the snapshot again with a O_o_Reader that follows the contract"}));
+                     " (src/design/README.md); take the snapshot again with a O_o_Model that follows the contract"}));
             parts.equations[e].arguments.push_back(std::move(list[k].second));
         }
     }

@@ -8,8 +8,8 @@
 namespace oos::design
 {
 
-// The tables of O_o_Reader that give the design model of a deck, as O_o_Solver reads them. The columns marked
-// "proposed" are not delivered by O_o_Reader yet: O_o_Solver asks for them (src/design/README.md gives the full
+// The tables of O_o_Model that give the design model of a deck, as O_o_Solver reads them. The columns marked
+// "proposed" are not delivered by O_o_Model yet: O_o_Solver asks for them (src/design/README.md gives the full
 // contract).
 //
 // designVariablesTable: id int32 · label utf8 · value float64 (XINIT) · lower float64 · upper float64 · delta float64
@@ -30,7 +30,7 @@ namespace oos::design
 [[nodiscard]] base::TableContract designLinksContract();
 [[nodiscard]] base::TableContract designRelationsContract();
 [[nodiscard]] base::TableContract designConstantsContract();
-// shapeVariablesTable (O_o_Reader data contract 32), one row per DesignNodeMove card: designVariable int32 · nodeId
+// shapeVariablesTable (O_o_Model data contract 32), one row per DesignNodeMove card: designVariable int32 · nodeId
 // int32 · frameId int32 · coefficient float64 · directionX, directionY, directionZ float64 (the vector N along the
 // directions of the frame at the grid point, in the basic system, not made a unit vector; NaN when the grid point or
 // the system does not exist).

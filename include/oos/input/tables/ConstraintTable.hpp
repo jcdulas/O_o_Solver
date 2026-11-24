@@ -10,7 +10,7 @@
 namespace oos::input
 {
 
-// The constraints of the model, expanded by O_o_Reader:
+// The constraints of the model, expanded by O_o_Model:
 // - singlePointConstrTable: one row per constrained grid point and SPC set (SinglePointConstr, SinglePointConstrList,
 //   EnforcedMotionConstr, SinglePointConstrUnion expanded), and the permanent constraints of the grid points (card
 //   PERMANENT_CONSTRAINT_CARD, set null: they apply to every set); the card by its neutral name (SinglePointConstr,

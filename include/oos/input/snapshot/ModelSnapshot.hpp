@@ -105,7 +105,7 @@ inline constexpr std::array<TableRole, AERO_TABLE_COUNT> AERO_TABLE_ROLES{
     TableRole::ControlSurfaces, TableRole::TrimCases,          TableRole::Splines,
     TableRole::SplineNodes,     TableRole::DirectMatrixShapes, TableRole::DirectMatrices};
 
-// The version stamps of the model a snapshot was taken from (O_o_Reader: model.structure_version, which changes when
+// The version stamps of the model a snapshot was taken from (O_o_Model: model.structure_version, which changes when
 // cards are added or removed and invalidates the row-index columns; model.content_version, which changes with any
 // edit), and the data contract version its tables carry (0 when none carried one).
 struct ModelVersions
@@ -115,10 +115,10 @@ struct ModelVersions
     std::int64_t dataContractVersion = 0;
 };
 
-// Everything the solver reads from a O_o_Reader model, in one immutable object: the tables of the data
+// Everything the solver reads from a O_o_Model model, in one immutable object: the tables of the data
 // contract, each checked against its contract and read in place. The snapshot borrows the producer's buffers: it owns
-// the Arrow structures of every table (whose release lets O_o_Reader free its buffers) and the owners of the borrowed
-// arrays, and never copies a column it can read in place. O_o_Reader's columns are copy-on-write, so an edit of the
+// the Arrow structures of every table (whose release lets O_o_Model free its buffers) and the owners of the borrowed
+// arrays, and never copies a column it can read in place. O_o_Model's columns are copy-on-write, so an edit of the
 // model after the snapshot leaves the snapshot's buffers as they were: a new snapshot is taken after an edit, and
 // SnapshotDiff tells what changed.
 //
@@ -176,19 +176,19 @@ public:
     [[nodiscard]] const std::vector<CardTable>& methodTables() const noexcept { return m_methodTables; }
     [[nodiscard]] const CardTable* findMethodTable(std::string_view card) const noexcept;
     // One table per material card type the elements read field by field (IsoMat, AnisoMat2D, OrthoMat2D: the card
-    // tables of O_o_Reader, keyed by "id"), for the constants materialsTable does not give (the transverse shear moduli
+    // tables of O_o_Model, keyed by "id"), for the constants materialsTable does not give (the transverse shear moduli
     // and expansion coefficients of an OrthoMat2D, the matrix and expansion coefficients of an AnisoMat2D).
     [[nodiscard]] const std::vector<CardTable>& materialCardTables() const noexcept { return m_materialCardTables; }
     [[nodiscard]] const CardTable* findMaterialCardTable(std::string_view card) const noexcept;
     // One table per load card type whose field formats the deck tolerance reads (PointForceLoad, ShellPressureLoad,
-    // LoadCombination...: the card tables of O_o_Reader with their field formats, keyed by "setId"; the
+    // LoadCombination...: the card tables of O_o_Model with their field formats, keyed by "setId"; the
     // LoadCombination table with its "termLoad" column too).
     [[nodiscard]] const std::vector<CardTable>& loadCardTables() const noexcept { return m_loadCardTables; }
     // The card tables of the aeroelastic model (AeroBeamSpline2, AeroBeamSpline5, AeroBoxList,
     // AeroRigidTrimVariable ...).
     [[nodiscard]] const std::vector<CardTable>& aeroCardTables() const noexcept { return m_aeroCardTables; }
     // One table per aeroelastic card type the aero module reads field by field (AeroBeamSpline2, AeroBeamSpline5 and
-    // AeroBoxList keyed by "id": the card tables of O_o_Reader).
+    // AeroBoxList keyed by "id": the card tables of O_o_Model).
     [[nodiscard]] const CardTable* findAeroCardTable(std::string_view card) const noexcept;
 
     // Whether the snapshot holds the table of a role.

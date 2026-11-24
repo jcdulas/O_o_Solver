@@ -81,13 +81,13 @@ struct MassOptions
 {
     MassFormulation formulation = MassFormulation::Lumped;
     // The non-structural mass that NonStructMass, NonStructMass1, NonStructMassLumped, NonStructMassLumped1 cards add
-    // to each element (nonStructMassTable of O_o_Reader, distributed to the elements by the assembler), indexed by
+    // to each element (nonStructMassTable of O_o_Model, distributed to the elements by the assembler), indexed by
     // batch row: per unit length for a line element. Empty when none; the NSM field of the element's own property is
     // read by the element and is not included here.
     std::span<const double> addedNonStructuralMass;
 };
 
-// The output kinds a recovery facet gives, each as a result table of the O_o_Reader data contract (forces, stresses,
+// The output kinds a recovery facet gives, each as a result table of the O_o_Model data contract (forces, stresses,
 // strains). The strains of a shell come in two forms (Case Control STRAIN): at the fibres Z1 and Z2
 // (FIBER, first column fiber_distance) or as the membrane strains and the curvatures (STRCUR, first column
 // fiber_curvature); an element with one form gives it as Strains.
@@ -146,7 +146,7 @@ struct RecoveryOutput
     }
 };
 
-// One distributed pressure of a load set on an element (pressureTable of O_o_Reader: ShellPressureLoad,
+// One distributed pressure of a load set on an element (pressureTable of O_o_Model: ShellPressureLoad,
 // FacePressureLoad per element), with the batch row of that element: the load vector builder finds the rows from the
 // element IDs.
 struct ElementPressure
@@ -158,13 +158,13 @@ struct ElementPressure
     bool hasDirection = false;               // CID or N1-N3 given: a traction along a vector, not a normal pressure
     std::int32_t directionFrameId = 0;       // CID of the direction (0 the basic system)
     std::array<double, 3> direction{};       // N1-N3 in the system CID (not normalised)
-    // The corner grid point IDs of the loaded face of a solid (face_nodes of pressureTable: the corners O_o_Reader
+    // The corner grid point IDs of the loaded face of a solid (face_nodes of pressureTable: the corners O_o_Model
     // finds from G1 and G3 or G4 of a FacePressureLoad), P1-P4 at these corners in this order; empty for a shell, whose
     // face is the element. Borrowed from the pressure table, which outlives the call.
     std::span<const std::int32_t> faceNodes{};
 };
 
-// One distributed or concentrated load of a load set on a line element (lineLoadsTable of O_o_Reader:
+// One distributed or concentrated load of a load set on a line element (lineLoadsTable of O_o_Model:
 // BeamDistributedLoad on a Bar2 or Beam2), with the batch row of that element. The load and scale types are the
 // texts of the card (BeamDistributedLoad kind: "ForceX" ... "MomentZAlongLength", scale: "ActualLength",
 // "FractionalLength", "ProjectedLength", "FractionalProjectedLength"), which the element checks; X1, X2 are as on the
@@ -451,7 +451,7 @@ public:
                                     const NodalDisplacements& displacements, ElementResultBlock& block) const;
 
     // The element type of the result tables of the data contract that hold the rows of recover() (underLineLoads
-    // false) or of recoverUnderLineLoads() (true), as O_o_Reader's MemoryResults names its containers ("ShellQuad4",
+    // false) or of recoverUnderLineLoads() (true), as O_o_Model's MemoryResults names its containers ("ShellQuad4",
     // "Bar2LoadStations"): by default the exact card type for both.
     [[nodiscard]] virtual std::string resultElementType(bool underLineLoads) const;
     // The columns of a layer output kind, in the order recoverLayers() fills them; empty (the default) for an element

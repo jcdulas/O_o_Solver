@@ -10,11 +10,11 @@ namespace oos::input
 {
 
 // The tables of user-defined groups of elements (the boundaries and stamps of a group given as a list of components to
-// merge or as a list of element IDs; O_o_Reader data contract 34). They are not tables of the model snapshot: they
-// answer a question about groups the caller defines (a regrouping), so the caller asks O_o_Reader for them with the
+// merge or as a list of element IDs; O_o_Model data contract 34). They are not tables of the model snapshot: they
+// answer a question about groups the caller defines (a regrouping), so the caller asks O_o_Model for them with the
 // group definitions, each group named by the decimal text of its ID, and hands them to reduction::Regrouping. The
-// summary is O_o_Reader's groupRevisions(groups), the boundaries its componentBoundaries(groups=); the elements and
-// the points of each group, which O_o_Reader does not list, are gathered by the caller from its
+// summary is O_o_Model's groupRevisions(groups), the boundaries its componentBoundaries(groups=); the elements and
+// the points of each group, which O_o_Model does not list, are gathered by the caller from its
 // connectedComponents(detail="elements"), enclosed_elements(groups) and node_elements queries.
 //
 // The rules these tables follow:

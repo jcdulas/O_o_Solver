@@ -63,7 +63,7 @@ struct GluedPairReport
 // spring). For each glued pair of bodies (GluedContactPairs; the secondary body is the slave surface, the primary body
 // the master surface):
 //
-// - The surfaces. O_o_Reader's contactNodePairs, taken with the reader's own rule (rule="components"), gives the
+// - The surfaces. O_o_Model's contactNodePairs, taken with the reader's own rule (rule="components"), gives the
 //   grid points of the secondary surface near the primary surface and, for each, a face of the primary surface near
 //   it. The glue reads those rows as the two surfaces near each other: the candidate points are the distinct grid
 //   points of the rows searched from the secondary body, the primary faces the distinct faces of those rows (the rows

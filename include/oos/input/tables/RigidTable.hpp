@@ -9,7 +9,7 @@
 namespace oos::input
 {
 
-// The rigid elements of the model, expanded by O_o_Reader (rigidElementsTable): one row per grid point of each
+// The rigid elements of the model, expanded by O_o_Model (rigidElementsTable): one row per grid point of each
 // RigidBar, RigidBar1, RigidBodyMulti, RigidBodyStar, RigidInterpolation, RigidRod, RigidTriaPlate... with its role
 // ("independent", "dependent", and for a RigidInterpolation the weighted legs), its components as a text of digits,
 // and the RigidInterpolation weight (null for the other cards). The card fields themselves (ALPHA, TREF) are in the

@@ -9,7 +9,7 @@
 // of the mean flow, the extensional rods of F1 and F2). G, E and RHO from the IsoMat of MID; translations of the four
 // grid points only (the panel has no rotational stiffness).
 //
-// Recovery (the layouts of the O_o_Reader data contract): stresses max_shear (the edge shear
+// Recovery (the layouts of the O_o_Model data contract): stresses max_shear (the edge shear
 // stress τ_e = q_e / T of largest magnitude), avg_shear (the mean of the four), margin (SS of the IsoMat against
 // max_shear); strains the same divided by G; forces the corner forces F_ij = q_e L_e / 2 at the two ends of each
 // edge, the kick forces (0 on a flat panel) and the shear flows q12, q23, q34, q41.

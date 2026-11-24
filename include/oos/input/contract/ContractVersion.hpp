@@ -24,7 +24,7 @@ inline constexpr std::int64_t FIRST_CONTRACT_WITH_SPLIT_MPC_ROWS = 56;
 // a blank transverse shear modulus of an orthotropic material was 1.0E8 (see ShellMaterial.cpp).
 inline constexpr std::int64_t FIRST_CONTRACT_WITH_BLANK_FIELDS = 45;
 
-// The key under which O_o_Reader writes its contract version in the Arrow schema metadata of every table it exports.
+// The key under which O_o_Model writes its contract version in the Arrow schema metadata of every table it exports.
 inline constexpr std::string_view DATA_CONTRACT_VERSION_KEY = "oor_reader.data_contract_version";
 
 [[nodiscard]] bool isAcceptedContractVersion(std::int64_t version) noexcept;
@@ -33,7 +33,7 @@ inline constexpr std::string_view DATA_CONTRACT_VERSION_KEY = "oor_reader.data_c
 [[nodiscard]] std::string acceptedContractVersionsText();
 
 // Throws ContractError when `version` is not accepted and not newer than the last accepted one (a newer contract is
-// read). `where` names what carries the version ("the installed O_o_Reader", "table 'singlePointConstrTable'"); the
+// read). `where` names what carries the version ("the installed O_o_Model", "table 'singlePointConstrTable'"); the
 // message gives both versions and what to install.
 void requireAcceptedContractVersion(std::int64_t version, std::string_view where);
 

@@ -16,7 +16,7 @@ namespace oos::assembly
 {
 
 // The non-structural mass that the NSM and NonStructMass1 cards of one NSM set add to each element (MassOptions::
-// addedNonStructuralMass of the element families), from the nonStructMassTable of O_o_Reader (NonStructMassUnion
+// addedNonStructuralMass of the element families), from the nonStructMassTable of O_o_Model (NonStructMassUnion
 // expanded): per unit length for the line elements (Rod2, Rod2InlineSection, Tube2, Bar2, Beam2: kind per_length), per
 // unit area for the shells (ShellQuad4, ShellTria3: kind per_area). A row names a property (every element of that PID:
 // on an NSM card the property IDs are unique across the property types) or an element; the values of several rows on

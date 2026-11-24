@@ -29,14 +29,14 @@ namespace oos::output
 inline constexpr std::size_t EQUILIBRIUM_ROWS = 12;
 
 // Two frames are the same when their rotation differs from the identity by less than this: the axes of the systems
-// come from the CORDij cards through O_o_Reader in double precision, so equal systems give the identity to a few
+// come from the CORDij cards through O_o_Model in double precision, so equal systems give the identity to a few
 // units of round-off, and any real difference of direction is far above it.
 inline constexpr double SAME_FRAME_TOLERANCE = 1.0e-12;
 
 // The contours of the zones of external local models and their contour data.
 //
 // The contour. A grid point of a zone (one its members touch) is a contour point when something outside the zone acts
-// on it: O_o_Reader's boundary of the zone as a group of elements (zoneBoundaries: the elements, rigid elements, MPC
+// on it: O_o_Model's boundary of the zone as a group of elements (zoneBoundaries: the elements, rigid elements, MPC
 // equations and connectors outside, the grid points of the element a fastener pierces when its other side is outside),
 // with the components through which they act; the enclosed elements kept outside (enclosed="warn" or "exclude": the
 // components their stiffness uses there, by kind, the exact ones for a spring or a Bushing); and the grid points

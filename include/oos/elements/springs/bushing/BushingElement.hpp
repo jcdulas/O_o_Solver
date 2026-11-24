@@ -29,7 +29,7 @@
 // validated); recovery: forces fx, fy, fz, mx, my, mz in the element system (f above), stresses and strains by the
 // recovery coefficients of BushProp RCV (BushProp: SA, ST the stress coefficients of the translational and rotational
 // components, EA, ET the strain coefficients; stress_i = SA·f_i for i = 1-3, ST·m_i for 4-6; strain_i = EA·Δu_i,
-// ET·Δθ_i, the element displacements; their default 1.0 is given by O_o_Reader). B and GE (damping) play no part in
+// ET·Δθ_i, the element displacements; their default 1.0 is given by O_o_Model). B and GE (damping) play no part in
 // SOL 101, 103, 105. Stiffness, mass and recovery have exact field derivatives in K1-K6, M and RCV.
 //
 // Not supported: a cylindrical or spherical CID or OCID (the element axes are then those of the curvilinear system

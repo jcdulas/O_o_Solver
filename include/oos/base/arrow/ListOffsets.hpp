@@ -5,7 +5,7 @@
 namespace oos::base
 {
 
-// The offsets of a variable-size list column, read in place in either Arrow layout: int64 ("+L", what O_o_Reader
+// The offsets of a variable-size list column, read in place in either Arrow layout: int64 ("+L", what O_o_Model
 // gives) or int32 ("+l"). The views of list columns (ListView, NestedListView) hold one; ContractReader checks them
 // once (non-decreasing, within the child) before handing a view out.
 //

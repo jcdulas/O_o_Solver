@@ -169,7 +169,7 @@ DesignProblem::PreparedStatics DesignProblem::prepareStatics(const DesignPoint& 
         request.keepsBasis = request.keepsBasis || zones.keepsBasis;
     }
     // The condensed path (the designed units kept full by default, the others condensed once): the design stamp of
-    // every unit the point drives (part of the cache key: a design point is an overlay, which O_o_Reader's stamps do
+    // every unit the point drives (part of the cache key: a design point is an overlay, which O_o_Model's stamps do
     // not see), and the driven units recovered (their pseudo-loads read the displacements of their elements).
     const bool isCondensed = options.condensation && !options.condensation->isFullPath();
     if (isCondensed)

@@ -10,13 +10,13 @@
 namespace oos::output
 {
 
-// The grid point forces of one subcase in the layout of the O_o_Reader data contract (the result tables of kind
+// The grid point forces of one subcase in the layout of the O_o_Model data contract (the result tables of kind
 // "nodePointForces"): for each grid point of the request, one row per contribution, its six components in the
 // displacement system CD of the grid point (stored frame "nodeOutputSystem"):
 //   appliedLoad             the applied loads (OLOAD),
 //   singlePointConstrForce  the forces of the single-point constraints (when the point has constrained DOFs),
 //   multiPointConstrForce   the forces of the multipoint constraints and rigid elements (when nonzero; for a reader of
-//                           O_o_Reader's data contract 56 or later, one row per relation acting at the grid point
+//                           O_o_Model's data contract 56 or later, one row per relation acting at the grid point
 //                           instead, a zero one included: elementIds the rigid element's ID or minus the MPC card's
 //                           set ID, the rows of a point summing to the single row;
 //                           StiffnessRecovery::NodalState::mpcRelations),

@@ -19,7 +19,7 @@ namespace oos::elements
 namespace
 {
 
-// O_o_Reader gives 0 for a blank edge grid point.
+// O_o_Model gives 0 for a blank edge grid point.
 constexpr std::int32_t BLANK_GRID = 0;
 
 // The element frame of the corners, its x axis along the edge G1→G2 (projected on the mean plane of the corners of

@@ -16,7 +16,7 @@ namespace oos::api
 {
 
 // A real column added after the columns of a table, one value per row (NaN for none): what the caller computes for a
-// table of O_o_Reader that the solver reads with one more column (the neutral axes n1, n2 of sections_table).
+// table of O_o_Model that the solver reads with one more column (the neutral axes n1, n2 of sections_table).
 struct AddedColumn
 {
     std::string name;
@@ -29,7 +29,7 @@ struct SourceCard
     std::int64_t count = 0;
 };
 
-// The model of one analysis, gathered table by table: the tables of O_o_Reader as table packages (the bytes of its
+// The model of one analysis, gathered table by table: the tables of O_o_Model as table packages (the bytes of its
 // QueryTable.toPackage(), which keep the exact Arrow layout), the rotations of the displacement systems and the version
 // counters of the model. build() checks every table against what the solver reads and makes the snapshot the analyses
 // run on.
@@ -65,7 +65,7 @@ public:
     void addAeroCardTable(const std::string& card, const std::string& idColumn, std::vector<std::uint8_t> package);
 
     // The rotation of each grid point's displacement system to the basic system, 9 values per grid point in the rows
-    // of the "nodes" table (O_o_Reader's displacementRotations).
+    // of the "nodes" table (O_o_Model's displacementRotations).
     void setDisplacementRotations(std::vector<double> rotations);
 
     // ModelParams OffsetDefinition: "ElemOffsetsOnly" (the default), "LoadRecoveryOffsets" or "ElemOffsetZ"; another

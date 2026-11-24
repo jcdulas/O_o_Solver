@@ -56,7 +56,7 @@ struct StaticPreflightReport
 // the symbolic analysis of the stiffness pattern give the factor's size, flops and memory exactly for the
 // unconstrained g set. Nothing is assembled or factorised.
 //
-// The caller adds what the core does not see (cards O_o_Reader keeps outside the snapshot, unit heuristics,
+// The caller adds what the core does not see (cards O_o_Model keeps outside the snapshot, unit heuristics,
 // parameters, element statuses) and gathers everything in its own check report.
 //
 // Thread-safety: run() is const; it uses the pool of the options (ordering). Ownership: borrows the snapshot.

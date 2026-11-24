@@ -4,8 +4,8 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "oo-solver"
-version = "0.2.0"
-description = "Solve finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities. Native Python interface to the O_o C++ library, also available for JavaScript/WebAssembly."
+version = "0.2.1"
+description = "Solve in-memory finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities. Native Python interface to the O_o C++ library, also available for JavaScript/WebAssembly."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

@@ -8,7 +8,7 @@ namespace oos::input
 {
 
 // The tables of a model snapshot that exist once per model (the element, property and method card tables exist once
-// per card type and are not roles). The name of a role is the name of the O_o_Reader query or table it is taken from,
+// per card type and are not roles). The name of a role is the name of the O_o_Model query or table it is taken from,
 // and the name the caller hands it over with.
 enum class TableRole
 {
@@ -129,8 +129,8 @@ inline constexpr std::array<TableRole, 50> ALL_TABLE_ROLES{TableRole::Nodes,
 // A brief description of an optional table for missing-table diagnostics; empty when no extra description is needed.
 [[nodiscard]] std::string_view prerequisiteOf(TableRole role) noexcept;
 
-// Whether O_o_Reader gives the table of this role (rather than the caller of the snapshot): every role since data
-// contract 40, which gives connectionList (every connection with its stamp). Kept for a table O_o_Reader may not
+// Whether O_o_Model gives the table of this role (rather than the caller of the snapshot): every role since data
+// contract 40, which gives connectionList (every connection with its stamp). Kept for a table O_o_Model may not
 // give yet in a later version of the solver.
 [[nodiscard]] bool isGivenByReader(TableRole role) noexcept;
 

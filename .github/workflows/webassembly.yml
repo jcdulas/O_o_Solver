@@ -178,7 +178,7 @@ jobs:
   release:
     name: Publish the package as releases
     # Two kinds of release. One follows the main branch (wasm-latest, a pre-release): its tag moves to the commit built
-    # and its archive is replaced. One is kept for each version of wasm/package.json (v0.2.0, ...): it is made by the
+    # and its archive is replaced. One is kept for each version of wasm/package.json (v0.2.1, ...): it is made by the
     # first build of that version and never changed afterwards, and the newest is the latest release of the repository.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: [package, tests, validation]

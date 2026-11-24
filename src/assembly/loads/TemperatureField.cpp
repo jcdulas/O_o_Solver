@@ -181,7 +181,7 @@ base::BudgetedBuffer<elements::ElementDeformation> TemperatureField::gatherDefor
             throw base::ContractError(base::concatenate(
                 {"deform, row ", std::to_string(row), ": expected as many deformations as elements, found ",
                  std::to_string(values.size()), " for ", std::to_string(elementIds.size()),
-                 "; the table does not follow the data contract of O_o_Reader: take the snapshot again"}));
+                 "; the table does not follow the data contract of O_o_Model: take the snapshot again"}));
         for (std::size_t k = 0; k < elementIds.size(); ++k)
             deformations[next++] = {elementIds[k], values[k]};
     }

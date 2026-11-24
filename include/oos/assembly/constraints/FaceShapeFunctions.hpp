@@ -35,7 +35,7 @@ struct FaceShapeDerivatives
 };
 
 // The shape functions of the face of a shell or solid at the local coordinates (ξ, η) of a point on it (glued
-// contact: u_s = Σ N_i(ξ, η)·u_i), for the faces of O_o_Reader's contactNodePairs: `face` the grid
+// contact: u_s = Σ N_i(ξ, η)·u_i), for the faces of O_o_Model's contactNodePairs: `face` the grid
 // points in the element's order, the corners first, then the mid-side points in the order of the edges, 0 for an
 // absent mid-side point. The same functions place the points of the face, x(ξ, η) = Σ N_i(ξ, η)·x_i (GlueSearch).
 //

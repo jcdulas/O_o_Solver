@@ -13,7 +13,7 @@ namespace oos::elements
 namespace
 {
 
-// O_o_Reader gives a blank CID or OCID as −1 (Bushing: OCID default −1; CID blank means "from the geometry").
+// O_o_Model gives a blank CID or OCID as −1 (Bushing: OCID default −1; CID blank means "from the geometry").
 constexpr std::int32_t BLANK_SYSTEM = -1;
 
 // Writes the 3 × 3 block `block` at (3·blockRow, 3·blockColumn) of H.

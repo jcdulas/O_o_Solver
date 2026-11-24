@@ -47,7 +47,7 @@ constexpr std::array<std::string_view, 2> NEUTRAL_AXIS_COLUMNS{"n1", "n2"};
     return text.str();
 }
 
-// The stack sum of a laminate's thicknesses, in stack order (O_o_Reader's laminateSummary thickness).
+// The stack sum of a laminate's thicknesses, in stack order (O_o_Model's laminateSummary thickness).
 [[nodiscard]] double stackThickness(std::span<const double> thicknesses)
 {
     double total = 0.0;
@@ -119,7 +119,7 @@ bool DerivedProperties::bindLaminate(const input::ModelSnapshot& snapshot, const
     if (!snapshot.hasTable(input::TableRole::LaminatePlies))
     {
         problem = base::concatenate({"expected the plies of ", card, " ", std::to_string(propId),
-                                     " in laminatePliesTable, found no such table; take the snapshot with O_o_Reader's "
+                                     " in laminatePliesTable, found no such table; take the snapshot with O_o_Model's "
                                      "laminate tables"});
         return false;
     }
@@ -168,7 +168,7 @@ bool DerivedProperties::bindLaminate(const input::ModelSnapshot& snapshot, const
         stackThicknesses.push_back(laminate.plies[ply]);
     const double total = stackThickness(stackThicknesses);
     const double z0 = bottoms[static_cast<std::size_t>(laminate.stackRows.front())];
-    // A blank Z0 of a CompProp is −T/2 and follows the designed thickness (as O_o_Reader's model.design.apply). From
+    // A blank Z0 of a CompProp is −T/2 and follows the designed thickness (as O_o_Model's model.design.apply). From
     // data contract 54 the card says whether Z0 was given (z0_given: a given Z0 stays, even equal to −T/2); before it,
     // a Z0 equal to −T/2 to the bit is taken as blank.
     if (cardTable.hasColumn("bottomOffsetGiven") && cardTable.columnType("bottomOffsetGiven") == "uint8")
@@ -198,7 +198,7 @@ bool DerivedProperties::bindSection(const input::ModelSnapshot& snapshot, const 
     if (!snapshot.hasTable(input::TableRole::Sections))
     {
         problem = base::concatenate({"expected the section properties of ", card, " ", std::to_string(propId),
-                                     " in sectionsTable, found no such table; take the snapshot with O_o_Reader's "
+                                     " in sectionsTable, found no such table; take the snapshot with O_o_Model's "
                                      "sectionsTable"});
         return false;
     }
@@ -317,7 +317,7 @@ std::vector<SectionValues> libraryValues(const SectionLibrary* library, std::spa
     if (library == nullptr)
         throw std::invalid_argument(
             "DerivedProperties: a designed BarShapeProp or BeamShapeProp needs the section library (SectionLibrary: "
-            "O_o_Reader's "
+            "O_o_Model's "
             "formulas, which the caller gives); a bug of O_o_Solver when the design came from the caller: report it");
     std::vector<SectionValues> values = library->properties(shapes, gradient);
     if (values.size() != shapes.size())
@@ -443,7 +443,7 @@ SectionLinearisation DerivedProperties::linearise(std::span<const double> fields
     std::vector<std::pair<std::size_t, std::size_t>> stations;
     stationShapes(fields, std::nullopt, shapes, stations);
     // The meshes of the point's own dimensions: the values are those of the analysis, to the bit (reference = d0
-    // is O_o_Reader's default); or those of `reference`.
+    // is O_o_Model's default); or those of `reference`.
     if (reference.empty())
         for (SectionShape& shape : shapes)
             shape.reference = shape.dimensions;

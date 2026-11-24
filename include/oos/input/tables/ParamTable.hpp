@@ -27,7 +27,7 @@ struct ParamValue
     std::string_view text; // valid as long as the ParamTable lives
 };
 
-// The PARAM cards of the model, typed (O_o_Reader paramsTable, data contract 31): one row per
+// The PARAM cards of the model, typed (O_o_Model paramsTable, data contract 31): one row per
 // PARAM name, by its neutral name (WeightToMass for WeightToMass; a name the dictionary of the deck does not know as
 // the deck writes it, in upper case), of the Bulk Data (subcase null) or of a Case Control section (subcase 0 the
 // global section), with its kind

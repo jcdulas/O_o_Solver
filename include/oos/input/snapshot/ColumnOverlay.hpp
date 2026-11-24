@@ -72,7 +72,7 @@ private:
     std::vector<ColumnEdits> m_columns;
 };
 
-// A float64 column O_o_Solver adds to a table of O_o_Reader: its name and one value per row.
+// A float64 column O_o_Solver adds to a table of O_o_Model: its name and one value per row.
 struct AddedRealColumn
 {
     std::string name;
@@ -81,7 +81,7 @@ struct AddedRealColumn
 
 // The table `source` (named `name` in messages) with the columns `added` after its own, the source's columns shared as
 // ColumnOverlay shares them, the added ones owned by the result (the n1, n2 of the sections table that O_o_Solver's
-// snapshot computes from O_o_Reader's shear centres). `keepAlive` keeps the source's buffers alive (the
+// snapshot computes from O_o_Model's shear centres). `keepAlive` keeps the source's buffers alive (the
 // shared_ptr that owns it). std::invalid_argument when a name is taken or a column has not one value per row.
 [[nodiscard]] base::ImportedTable appendRealColumns(const std::string& name, const base::ImportedTable& source,
                                                     const std::shared_ptr<const void>& keepAlive,

@@ -48,7 +48,7 @@ struct DofLabel
 // DofSelection built from nodeDofCounts() in the natural node order gives the same DOFs. Without entities the
 // numbering is that of grid and scalar points alone.
 //
-// The displacement systems come from the snapshot's CD rotations (O_o_Reader displacementRotations: the columns of each
+// The displacement systems come from the snapshot's CD rotations (O_o_Model displacementRotations: the columns of each
 // 3 × 3 are the CD axes in the basic system, evaluated at the point, so a cylindrical or spherical CD is already
 // resolved).
 //

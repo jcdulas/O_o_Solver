@@ -31,7 +31,7 @@ enum class Analysis : std::uint8_t
     Aeroelastic, // static aeroelastic trim (SOL 144)
 };
 
-// Which units of condensation an analysis condenses. The units are the components of the model as O_o_Reader
+// Which units of condensation an analysis condenses. The units are the components of the model as O_o_Model
 // computes them (connectedComponents: elements joined through shared grid points; rigid elements, multipoint
 // constraints, fasteners, springs and glued contacts between them are the connections), so the model must carry the
 // component tables (in JavaScript: modelFromReader(oor, deck, { condensation: true })).
@@ -68,7 +68,7 @@ struct CondensationSettings
 };
 
 // An external unit of a static analysis given by its matrices (solutions::ExternalUnitPath): the zone whose elements
-// it replaces (its elements and its boundary grid points, as O_o_Reader's zone boundaries give them) and the matrices
+// it replaces (its elements and its boundary grid points, as O_o_Model's zone boundaries give them) and the matrices
 // of the zone condensed onto its contour, on `labels` (grid point and component 1 to 6, in the displacement systems of
 // the grid points), column by column. No load source: a zone loaded inside is refused.
 struct ExternalUnitSettings
@@ -123,7 +123,7 @@ struct AnalysisOutput
     std::shared_ptr<base::MemoryBudget> budget;
     // The applied quartic shell IDs chosen by Auto in full statics.
     std::optional<std::vector<std::int32_t>> selectedQuarticShells;
-    // The nodal and element tables, in the layout of O_o_Reader's results ({kind, subcase, step, ids, values}).
+    // The nodal and element tables, in the layout of O_o_Model's results ({kind, subcase, step, ids, values}).
     output::ResultArrays tables;
     // The eigenvalue table of each modal or buckling subcase (empty for statics).
     std::vector<output::EigenvalueTable> eigenvalues;
@@ -227,7 +227,7 @@ struct SuperelementAnalysisOutput
                                                           std::vector<SuperelementPartSettings> parts,
                                                           Analysis analysis, const AnalysisSettings& settings);
 
-// The name and version of the solver: "O_o_Solver 0.2.0".
+// The name and version of the solver: "O_o_Solver 0.2.1".
 [[nodiscard]] std::string programName();
 
 // A condensation cache that lives in memory, for the analyses of the process to share (CondensationSettings::cache):

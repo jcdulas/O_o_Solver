@@ -18,19 +18,19 @@
 namespace oos::design
 {
 
-// The tolerance of the check of each derived quantity against O_o_Reader's value at the base positions: O_o_Reader
+// The tolerance of the check of each derived quantity against O_o_Model's value at the base positions: O_o_Model
 // evaluates the same formula of the format in double precision when it reads the model, so the two agree to a few units
 // of round-off (1e-15 relative); 1e-9 leaves room for another order of the operations and refuses any other rule (a
-// PointForceLoad2 whose G3 and G4 O_o_Reader completes, a frame resolved otherwise), whose derivation would be wrong.
+// PointForceLoad2 whose G3 and G4 O_o_Model completes, a frame resolved otherwise), whose derivation would be wrong.
 inline constexpr double DERIVED_CHECK_TOLERANCE = 1.0e-9;
 
-// The directions and frames that O_o_Reader computes from grid point positions when it reads the model, computed again
+// The directions and frames that O_o_Model computes from grid point positions when it reads the model, computed again
 // at a design point from the positions the shape variables move (from the grid points G1 to G4 of loadsTable and G1 to
-// G3 of coordsTable, O_o_Reader data contract 44), so that a shape may move the grid points that define them. Each is
+// G3 of coordsTable, O_o_Model data contract 44), so that a shape may move the grid points that define them. Each is
 // written into the overlay of the design point beside the moved positions (FieldTargets::overlayOf), so that the
 // analysis, the perturbations of the sensitivities and the distortion checks of the point all read it.
 //
-// What is derived again (each checked against O_o_Reader's value at the base positions, DERIVED_CHECK_TOLERANCE):
+// What is derived again (each checked against O_o_Model's value at the base positions, DERIVED_CHECK_TOLERANCE):
 // - PointForceLoad1 and PointMomentLoad1 (the direction from G1 to G2): v = m·(G2 − G1)/|G2 − G1|;
 // - PointForceLoad2 and PointMomentLoad2 (the cross product of the vectors from G1 to G2 and from G3 to G4): v =
 // m·n/|n|,
@@ -48,14 +48,14 @@ inline constexpr double DERIVED_CHECK_TOLERANCE = 1.0e-9;
 // their properties, a FacePressureLoad's CID, the locations of an ACCEL, the systems of the section and cut loads) read
 // the overlaid frames as they are.
 //
-// Refused (design_code::UNSUPPORTED_TARGET), because O_o_Reader resolves them from the systems when it reads the model
+// Refused (design_code::UNSUPPORTED_TARGET), because O_o_Model resolves them from the systems when it reads the model
 // and does not give them at a design point: a grid point located (CP) in a moved system (its position in the basic
 // system follows the system), a grid point whose displacement system CD is a moved system (displacementRotations), a
 // DesignNodeMove whose CID is a moved system (N taken along CID at read time), a FORCE or MOMENT in a curvilinear
 // system at a grid point a shape moves or in a moved curvilinear system (its local directions turn with the point), a
 // GravityLoad, AccelFieldLoad, AccelNodeLoad or RotationalForceLoad in a moved curvilinear system, the aerodynamic
 // model when a system moves (its boxes are derived from the CAERO cards in their CP), and every quantity whose formula
-// above does not give O_o_Reader's base value (the check). The fastener piercing points, the glued contact and the
+// above does not give O_o_Model's base value (the check). The fastener piercing points, the glued contact and the
 // curvilinear displacement systems of moved grid points stay refused by FieldTargets.
 //
 // Thread-safety: immutable once built; addCells() may run concurrently. Ownership: owns its data (bounded by the

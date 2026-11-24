@@ -340,7 +340,7 @@ void ZoneContour::resolve(std::size_t d, std::span<const ZoneSubcaseConstraint> 
     std::sort(zone.members.begin(), zone.members.end(), [](const Member& a, const Member& b)
               { return std::make_pair(a.batch, a.row) < std::make_pair(b.batch, b.row); });
 
-    // The contour: O_o_Reader's boundary, the enclosed elements kept outside, the partial constraints.
+    // The contour: O_o_Model's boundary, the enclosed elements kept outside, the partial constraints.
     std::map<std::int32_t, ContourPointReport> contour; // by grid row
     for (const ZoneBoundaryPoint& point : definition.boundary)
     {

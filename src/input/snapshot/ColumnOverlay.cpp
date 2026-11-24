@@ -72,7 +72,7 @@ struct SharedTable
     std::vector<const void*> topBuffers{nullptr};
 };
 
-// The metadata key by which O_o_Reader stamps its tables with their contract version.
+// The metadata key by which O_o_Model stamps its tables with their contract version.
 const std::string CONTRACT_VERSION_KEY(DATA_CONTRACT_VERSION_KEY);
 
 // Arrow C Data Interface metadata of one pair: an int32 pair count, then the int32 length and bytes of the key and of
@@ -236,7 +236,7 @@ std::unique_ptr<OwnedColumn> copyFixedListColumn(const ArrowArray& source, std::
 // The copy of a "list<fixed_list<float64>[width]>" column (the stations of a BeamProp): the list array keeps the base's
 // validity and offsets (borrowed: `keepAlive` holds the base), its child of fixed lists and their values are copied
 // whole (the child keeps its offset, so that the list offsets stay right) with the cells set. The item of a cell is
-// station · width + component, as O_o_Reader's design_relations_table flattens a list of vectors (field_item).
+// station · width + component, as O_o_Model's design_relations_table flattens a list of vectors (field_item).
 std::unique_ptr<OwnedColumn> copyNestedListColumn(const ArrowArray& source, bool isLarge, std::int64_t width,
                                                   std::int64_t lead, const std::vector<CellValue>& cells)
 {
@@ -456,7 +456,7 @@ base::ImportedTable shareTable(const std::string& name, const base::ImportedTabl
         }
         else if (type.starts_with("list<fixed_list<float64>"))
         {
-            // The stations of a BeamProp (design/model/FieldTargets): "+L" (O_o_Reader) or "+l" offsets.
+            // The stations of a BeamProp (design/model/FieldTargets): "+L" (O_o_Model) or "+l" offsets.
             const ArrowSchema& schema = source.columnSchema(index);
             const bool isLarge = std::string_view(schema.format) == "+L";
             const std::int64_t width = base::fixedListWidth(*schema.children[0]);
@@ -468,7 +468,7 @@ base::ImportedTable shareTable(const std::string& name, const base::ImportedTabl
         else if (type == "list<float64>")
         {
             // The plies of a CompProp, the dimensions of a BarShapeProp or of the stations of a BeamShapeProp
-            // (design/model/ FieldTargets): "+L" (O_o_Reader) or "+l" offsets; the item within the list of its row.
+            // (design/model/ FieldTargets): "+L" (O_o_Model) or "+l" offsets; the item within the list of its row.
             const bool isLarge = std::string_view(source.columnSchema(index).format) == "+L";
             checkNestedCells(*columnEdits, array, isLarge, 1, source.offset(), source.rowCount());
             copy = copyListColumn(array, isLarge, source.offset(), columnEdits->cells);

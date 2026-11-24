@@ -11,7 +11,7 @@
 //   condensationCache(memoryBytes)   -> CondensationCache .statistics(), for settings.condensation.cache
 //   runSuperelements(residual, parts, analysis, settings) -> { superelements, diagnostics }
 //
-// The names are those of oos::api, the neutral names of O_o_Reader (card types, table kinds, columns), passed through
+// The names are those of oos::api, the neutral names of O_o_Model (card types, table kinds, columns), passed through
 // untranslated. Errors of the solver become JavaScript errors whose message is the solver's (what was expected, what
 // was found, and what to do).
 

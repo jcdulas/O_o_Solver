@@ -23,7 +23,7 @@ namespace oos::solutions
 
 // What the glue equations of a model do across the units of a condensation. Each glued grid point is one relation of
 // the plan graph (reduction::glueRelationKey of its ID), its rows depending on the corners of its face. The units come
-// from O_o_Reader's components, whose contact rule is not that of the glue equations, so a point may be glued to a face
+// from O_o_Model's components, whose contact rule is not that of the glue equations, so a point may be glued to a face
 // of another unit even where the components say nothing:
 // - a point whose equations have all their DOFs in one unit is eliminated inside it, before the condensation
 //   (insidePointCount);

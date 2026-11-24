@@ -39,7 +39,7 @@ struct TrimOptions
     // The subcases to solve, in this order; empty: every SUBCASE of the Case Control (the global section of a deck
     // without SUBCASE, as subcase 1).
     std::vector<base::EntityId> subcases;
-    // The AeroTrimLink cards of the model (O_o_Reader gives them without their fields: the caller reads them).
+    // The AeroTrimLink cards of the model (O_o_Model gives them without their fields: the caller reads them).
     std::vector<aero::AeroLink> links;
     base::ThreadPool* pool = nullptr; // null: one thread; not owned
     linalg::KernelKind kernel = linalg::KernelKind::Reference;
@@ -47,7 +47,7 @@ struct TrimOptions
     ProgressMonitor* monitor = nullptr;                    // not owned, may be null: the stages of the run
     // The memory the structural result tables may take; nothing: half of the memory budget left at the start.
     std::optional<std::uint64_t> outputLimitBytes;
-    // The MonitorIntegratedLoad1 of the model, their components resolved (O_o_Reader gives the AeroComponent and
+    // The MonitorIntegratedLoad1 of the model, their components resolved (O_o_Model gives the AeroComponent and
     // AeroComponentUnion as card objects only: the caller resolves them). The trim adds its own points: the whole
     // vehicle, structural and aerodynamic (named after the configuration), and the hinge moment of each
     // AeroControlSurface.

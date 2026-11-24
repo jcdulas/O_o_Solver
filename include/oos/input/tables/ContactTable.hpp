@@ -14,8 +14,8 @@ namespace oos::input
 {
 
 // The glue parameters in force for one pair of contact bodies (the glue fields of ContactPairGeomParams and of a
-// ContactTable section, as O_o_Reader resolves them from the pair's ContactPairGeomParams/ContactPairPhysicalParams,
-// the fields of its ContactTable section and the ContactParams defaults). Nothing for a field O_o_Reader leaves null;
+// ContactTable section, as O_o_Model resolves them from the pair's ContactPairGeomParams/ContactPairPhysicalParams,
+// the fields of its ContactTable section and the ContactParams defaults). Nothing for a field O_o_Model leaves null;
 // an IGLUE left null is blank, that is 0: touching contact.
 struct GlueParameters
 {
@@ -30,7 +30,7 @@ struct GlueParameters
 };
 
 // One row of contactNodePairs: a grid point of the secondary surface of a pair of bodies and a face of the primary
-// surface near it, as O_o_Reader's own contact rule (rule="components") finds them. The glue reads these rows as the
+// surface near it, as O_o_Model's own contact rule (rule="components") finds them. The glue reads these rows as the
 // definition of the two surfaces near each other (the candidate secondary grid points, the primary faces), never as
 // the tie itself: GlueConstraints projects every candidate point on every candidate face of its pair itself
 // (CalculiX's tie). `face` holds the grid points of the face in the element's order: the corners in their cyclic order,
@@ -48,7 +48,7 @@ struct ContactNodePair
     bool isSearchedFromPrimary = false; // a row of the search from the primary body: its bodies are swapped
 };
 
-// The contact between bodies as O_o_Reader gives it, read for glued contact: the node pairs of every pair of bodies
+// The contact between bodies as O_o_Model gives it, read for glued contact: the node pairs of every pair of bodies
 // (contactNodePairs, the surfaces near each other), the pairs with their kind and glue parameters
 // (contactPairsTable), and, when given, the pairs each BCONTACT ID selects (contactTablesTable). Contract 38 gives
 // the pairs and the node pairs without the columns the glue needs (the face, the search side, IGLUE):
@@ -86,7 +86,7 @@ public:
 
     // Node pair row `row`. Precondition: missingGlueColumns() is empty (else the face is empty).
     [[nodiscard]] ContactNodePair nodePair(std::int64_t row) const;
-    // Whether node pair `row` names a face (a null primaryFace: O_o_Reader found none).
+    // Whether node pair `row` names a face (a null primaryFace: O_o_Model found none).
     [[nodiscard]] bool hasFace(std::int64_t row) const;
 
     // The pair rows a BCONTACT ID selects, increasing. Throws ContractError (naming contactTablesTable) when the

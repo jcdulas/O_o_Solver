@@ -23,7 +23,7 @@ struct ConstraintTerm
 };
 
 // The MPC equations of one MPC set (MPC: Σ_j A_j·u_j = 0, the first term's DOF dependent, put in the m set), from
-// the multiPointConstrTable of O_o_Reader (MultiPointConstrUnion resolved: the rows of a MultiPointConstrUnion set
+// the multiPointConstrTable of O_o_Model (MultiPointConstrUnion resolved: the rows of a MultiPointConstrUnion set
 // carry its ID in `setId`; one row per term, the equations in the order of the cards). A term on a scalar point has
 // component 0.
 //
@@ -37,7 +37,7 @@ struct ConstraintTerm
 //
 // The MPC card of each equation: the equations of a MultiPointConstrUnion set are those of the MPC
 // cards whose SIDs it lists. multiPointConstrTable names the card's own SID of each row in an optional `source_sid`
-// column (asked of O_o_Reader, as singlePointConstrTable and loadsTable have it); without it the selected set stands
+// column (asked of O_o_Model, as singlePointConstrTable and loadsTable have it); without it the selected set stands
 // for the card (sourceSetIdOf() is setId()), which is exact for a set of MPC cards and keys a MultiPointConstrUnion by
 // its own ID.
 class MpcEquations

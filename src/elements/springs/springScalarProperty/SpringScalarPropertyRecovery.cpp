@@ -6,7 +6,7 @@
 namespace oos::elements
 {
 
-// Output columns of the O_o_Reader data contract (forces.springScalarProperty: spring_force; stress.springScalarProperty: spring_stress).
+// Output columns of the O_o_Model data contract (forces.springScalarProperty: spring_force; stress.springScalarProperty: spring_stress).
 std::vector<std::string> SpringScalarPropertyElement::outputColumns(ElementOutput output) const
 {
     switch (output)

@@ -21,7 +21,7 @@ struct SectionRows
 };
 
 // The section properties of the BarShapeProp and BeamShapeProp cards, computed from the dimensions of their section
-// type (O_o_Reader sectionsTable(types=["BarShapeProp", "BeamShapeProp"]), data contract 31): one row per BarShapeProp,
+// type (O_o_Model sectionsTable(types=["BarShapeProp", "BeamShapeProp"]), data contract 31): one row per BarShapeProp,
 // one row per BeamShapeProp station, in the element system (y, z) about the neutral axis, with the shear factors K1, K2
 // and the stress recovery points C, D, E, F as (y, z) pairs (the columns c1 c2 d1 d2 e1 e2 f1 f2).
 //

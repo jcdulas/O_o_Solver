@@ -39,7 +39,7 @@
 namespace oos::elements
 {
 
-// ShellProp defaults, applied when O_o_Reader gives a field null.
+// ShellProp defaults, applied when O_o_Model gives a field null.
 inline constexpr double SHELL_PROP_DEFAULT_BENDING_RATIO = 1.0;    // 12I/T³
 inline constexpr double SHELL_PROP_DEFAULT_SHEAR_RATIO = 0.833333; // TS/T, 5/6 rounded to six digits
 // The ratio γ / G of the rotation penalty of the drilling membranes of ShellQuad4Drilling and ShellTria3Drilling
@@ -167,7 +167,7 @@ struct ShellSectionColumns
                                                            const ShellSectionColumns& columns, std::int64_t row);
 
 // The thickness at each corner of a shell (ShellQuad4, ShellTria3 fields T1-T4 and TFLAG): a corner thickness as given
-// (TFLAG 0) or as a fraction of T (TFLAG 1); a blank one (O_o_Reader: −1) takes T (TFLAG 0) or 1·T (TFLAG 1). A
+// (TFLAG 0) or as a fraction of T (TFLAG 1); a blank one (O_o_Model: −1) takes T (TFLAG 0) or 1·T (TFLAG 1). A
 // laminate takes its own thickness at every corner. A blank corner without a T, a TFLAG other than 0 or 1, or a
 // thickness that is not positive is a problem.
 template <std::size_t N>

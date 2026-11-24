@@ -15,10 +15,10 @@
 namespace oos::design
 {
 
-// The tables O_o_Reader derives from the designed CompProp, CompPropGlobal, BarShapeProp and BeamShapeProp cards,
+// The tables O_o_Model derives from the designed CompProp, CompPropGlobal, BarShapeProp and BeamShapeProp cards,
 // overlaid at a design point (laminates and library sections as design targets). The elements read the plies of a
 // laminate from laminatePliesTable and the properties of a library section from sectionsTable, not from the card: a
-// design point that changes a ply thickness T or a dimension DIM overlays, beside the card's cell, what O_o_Reader's
+// design point that changes a ply thickness T or a dimension DIM overlays, beside the card's cell, what O_o_Model's
 // model.design.apply derives from it, with the same arithmetic, so that the elements read the bits of the same cards
 // edited by apply:
 // - a laminate (CompProp, CompPropGlobal; its ply thicknesses are the list column ply_thickness, the item the ply of
@@ -30,7 +30,7 @@ namespace oos::design
 // - a library section (BarShapeProp: its list column dims; BeamShapeProp: station_dims, the item station · n +
 //   dimension, n the dimensions of its type): sectionsTable's area, i1, i2, i12, j, k1, k2 and the recovery points c1
 //   ... f2 of its row (each station's row for a BeamShapeProp, with its neutral axis from the shear centre n1, n2 when
-//   the table has them) from the section library (SectionLibrary: O_o_Reader's formulas); NSM stays.
+//   the table has them) from the section library (SectionLibrary: O_o_Model's formulas); NSM stays.
 // THETA of a ply and the other fields of these cards are not derived (THETA is refused as a design target).
 //
 // The sensitivities: the perturbed sides of a section's dimension take the section's properties

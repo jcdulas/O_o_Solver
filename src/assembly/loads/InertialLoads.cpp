@@ -213,7 +213,7 @@ std::vector<InertialLoads::RowSpec> InertialLoads::gravityRowsOf(base::EntityId 
 std::vector<InertialLoads::RowSpec> InertialLoads::inertialRowsOf(base::EntityId loadSetId,
                                                                   base::DiagnosticSink& sink) const
 {
-    // O_o_Reader inertialLoadsTable (contract 31): a column that does not apply to a card is null, so every column
+    // O_o_Model inertialLoadsTable (contract 31): a column that does not apply to a card is null, so every column
     // is read with its nulls and each card reads only its own.
     constexpr base::NullPolicy ALLOW = base::NullPolicy::Allow;
     const base::ContractReader& table = m_snapshot->loads().inertialLoads();
@@ -358,7 +358,7 @@ std::vector<InertialLoads::RowSpec> InertialLoads::inertialRowsOf(base::EntityId
                     continue;
                 }
                 // The point of the axis: G when the card gives it (its position in the model), else the point
-                // O_o_Reader gives (the origin of the basic system).
+                // O_o_Model gives (the origin of the basic system).
                 if (hasCentre.isValid(row))
                     spec.centre = {centres[0][index], centres[1][index], centres[2][index]};
                 if (hasCentreGrid.isValid(row) && centreGrids[index] != 0)

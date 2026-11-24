@@ -11,7 +11,7 @@
 namespace oos::assembly
 {
 
-// Half a unit of the last written digit of a load value. O_o_Reader records the significant digits of each number
+// Half a unit of the last written digit of a load value. O_o_Model records the significant digits of each number
 // in the significantDigits column of the load card tables (ModelSnapshot::loadCardTables).
 //
 // The precision is looked up by load set and card type: the cards of one type of one set may have been written in

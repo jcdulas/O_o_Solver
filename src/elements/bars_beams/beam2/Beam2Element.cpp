@@ -14,7 +14,7 @@ namespace oos::elements
 namespace
 {
 
-// O_o_Reader's codes of the BeamProp SO field (BeamStressOutput).
+// O_o_Model's codes of the BeamProp SO field (BeamStressOutput).
 constexpr std::uint8_t STRESS_OUTPUT_NO = 0;
 constexpr std::uint8_t STRESS_OUTPUT_YES = 1;
 
@@ -185,7 +185,7 @@ Resolution<BeamData> Beam2Element::resolve(const ElementBatchView& view, const C
                      [&](std::size_t a, std::size_t b) { return positions[a] < positions[b]; });
     BeamSection& section = beam.section;
     // N1, N2 (the neutral axis) and M1, M2 (the NSM's centre of gravity) from the shear centre at ends A and B (end B
-    // defaults to end A: O_o_Reader gives them so), linear in X/XB between them (an assumption, as the other
+    // defaults to end A: O_o_Model gives them so), linear in X/XB between them (an assumption, as the other
     // properties of an intermediate station).
     const std::span<const double> n = columns.n[p];
     const std::span<const double> m = columns.m[p];

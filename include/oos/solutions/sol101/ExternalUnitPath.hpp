@@ -32,7 +32,7 @@ namespace oos::solutions
 class StaticLoadCases;
 
 // An external unit of a static analysis (StaticOptions::externalUnits): the zone whose elements it replaces, as for the
-// contour data (its definition with O_o_Reader's boundary; its contour DOFs are taken in the displacement systems of
+// contour data (its definition with O_o_Model's boundary; its contour DOFs are taken in the displacement systems of
 // the grid points whatever its frameId), and the plugin's matrices.
 struct ExternalUnitRequest
 {

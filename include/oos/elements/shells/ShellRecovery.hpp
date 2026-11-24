@@ -18,7 +18,7 @@ namespace oos::elements
 
 // The output rows of the shells (ShellQuad4, ShellTria3, ShellQuad8, ShellTria6, ShellQuad4Drilling,
 // ShellTria3Drilling), shared: from the generalised strains and forces at one place of an element (its centre or a
-// corner) to the rows of the O_o_Reader result tables (stress.shellQuad4, strain.shellQuad4, forces.shellQuad4,
+// corner) to the rows of the O_o_Model result tables (stress.shellQuad4, strain.shellQuad4, forces.shellQuad4,
 // stress.shellQuad4_composite ...), in the element frame (the plies in their own frame).
 //
 // Sign conventions: the fibre at distance z from the reference plane strains as ε(z) = ε_m − z·κ, κ the shell

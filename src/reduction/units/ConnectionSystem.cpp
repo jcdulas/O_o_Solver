@@ -61,10 +61,10 @@ ConnectionKind kindOf(std::string_view text)
         if (text == name)
             return kind;
     throw base::ContractError(base::concatenate(
-        {"connectionList (O_o_Reader's connectionClusters(detail=\"connections\")): expected a "
+        {"connectionList (O_o_Model's connectionClusters(detail=\"connections\")): expected a "
          "kind among \"rigid\", \"rigidInterpolation\", \"mpc\", \"fastener\", \"connector\", \"mass\", "
          "\"contact\", found \"",
-         text, "\"; install a O_o_Reader whose data contract this version reads"}));
+         text, "\"; install a O_o_Model whose data contract this version reads"}));
 }
 
 // The units that hold each point: (point, unit index), sorted.
@@ -160,7 +160,7 @@ ConnectionSystem::ConnectionSystem(const UnitSet& units, const base::ContractRea
         }
     }
 
-    // The elements the caller declared connections (UnitSet::declaredConnections): O_o_Reader's connection list holds
+    // The elements the caller declared connections (UnitSet::declaredConnections): O_o_Model's connection list holds
     // them, as its component queries take the list (their `connections` option). A list without one was taken without
     // the declaration, and the element would be in no unit and no
     // connection: refused.

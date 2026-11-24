@@ -18,7 +18,7 @@ namespace
 constexpr std::int64_t MAX_INT32 = std::numeric_limits<std::int32_t>::max();
 
 const char* const WHAT_TO_DO =
-    "; install a compatible pair of O_o_Reader and O_o_Solver (see the compatibility table "
+    "; install a compatible pair of O_o_Model and O_o_Solver (see the compatibility table "
     "of the user guide)";
 
 const std::byte* bytesOf(const void* buffer)

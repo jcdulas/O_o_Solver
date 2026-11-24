@@ -10,7 +10,7 @@
 namespace oos::input
 {
 
-// The units of the model as O_o_Reader gives them: the connected components with their revision
+// The units of the model as O_o_Model gives them: the connected components with their revision
 // stamps (connectedComponents), the component of each element (connectedComponents(detail="elements")), and, when
 // the snapshot was taken with them, the boundary nodes of each component and load group (componentBoundaries) and the
 // load case groups with their load revision stamps (loadCaseGroups). A revision stamp is a 64-bit hash of everything

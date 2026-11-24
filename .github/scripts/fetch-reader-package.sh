@@ -16,11 +16,8 @@ archive="$work/$READER_ARCHIVE"
 folder="$work/oo-model"
 
 release_url="$server/$READER_REPOSITORY/releases/download/$READER_TAG"
-if ! curl --fail --silent --show-error --location --retry 3 --output "$archive" "$release_url/$READER_ARCHIVE"; then
-    # Releases built before the rename only have the original asset name.
-    test "$READER_ARCHIVE" = O_o_Model-wasm.zip
-    curl --fail --silent --show-error --location --retry 3 --output "$archive" "$release_url/O_o_Reader-wasm.zip"
-fi
+curl --fail --silent --show-error --location --retry 3 --output "$archive" "$release_url/$READER_ARCHIVE"
+
 rm -rf "$folder"
 mkdir -p "$folder"
 unzip -q "$archive" -d "$folder"

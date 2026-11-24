@@ -127,7 +127,7 @@ public:
     // Whether some row comes from the element formulation.
     [[nodiscard]] bool hasFormulationRows() const noexcept { return m_hasFormulationRows; }
 
-    // The relation of row i as the split multiPointConstrForce rows of a grid point force table name it (O_o_Reader's
+    // The relation of row i as the split multiPointConstrForce rows of a grid point force table name it (O_o_Model's
     // data contract): the element ID of a rigid element (RigidBodyMulti, RigidBodyStar, RigidInterpolation, RigidBar,
     // RigidRod), minus the SID of the MPC card of an MPC equation (the equations of one card set are one relation at a
     // grid point), 0 for the other rows (the internal constraints of a Fastener or Weld, the glue of a contact pair:

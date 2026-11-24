@@ -11,9 +11,9 @@
 namespace oos::input
 {
 
-// The subcases of the Case Control, effective (subcasesTable of O_o_Reader): one row per subcase with what it
+// The subcases of the Case Control, effective (subcasesTable of O_o_Model): one row per subcase with what it
 // selects (SPC, MPC, LOAD, METHOD, TEMP(LOAD), TEMP(INIT) set IDs, null when not selected), the global section
-// included as subcase 0 of kind "global" and its selections inherited by the subcases (O_o_Reader applies the
+// included as subcase 0 of kind "global" and its selections inherited by the subcases (O_o_Model applies the
 // inheritance: a subcase takes every global selection it does not override). The kinds are camelCase names: "subcase"
 // (SUBCASE), "subcaseCombination" (SUBCOM), "auxiliary" (AUXCASE)... A subcaseCombination row gives the subcases it
 // combines and their coefficients (SUBSEQ; columns combinedSubcases and coefficients, optional in the contract).
@@ -39,7 +39,7 @@ public:
 
     // Whether the table gives the contact table of each subcase (column bcontact).
     [[nodiscard]] bool hasContactColumn() const { return m_reader.hasColumn("contactSelection"); }
-    // The contact table the subcase of row `row` selects with BCONTACT (O_o_Reader gives it effective),
+    // The contact table the subcase of row `row` selects with BCONTACT (O_o_Model gives it effective),
     // or nothing when it selects none or the table has no bcontact column (hasContactColumn says which). Throws
     // std::invalid_argument for a row out of range.
     [[nodiscard]] std::optional<std::int32_t> contactTableAtRow(std::int64_t row) const;
@@ -53,7 +53,7 @@ public:
     // The row of a subcase, or -1 when there is none.
     [[nodiscard]] std::int64_t findRow(std::int32_t subcase) const;
 
-    // The subcases a SUBCOM row combines and their coefficients (SUBSEQ), as O_o_Reader gives them (both
+    // The subcases a SUBCOM row combines and their coefficients (SUBSEQ), as O_o_Model gives them (both
     // empty for another row, or when the table has no such columns). Throws ContractError when the two lists of a
     // row differ in length.
     struct Combination

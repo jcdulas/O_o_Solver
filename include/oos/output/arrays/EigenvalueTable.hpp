@@ -8,7 +8,7 @@
 namespace oos::output
 {
 
-// One row of an eigenvalue table: the real eigenvalues (O_o_Reader's result kind "eigenvalues" with the components
+// One row of an eigenvalue table: the real eigenvalues (O_o_Model's result kind "eigenvalues" with the components
 // extraction_order, eigenvalue, radians, cycles, generalized_mass, generalized_stiffness).
 //
 // For a vibration mode: λ = ω², radians = √|λ|, cycles = radians / 2π, the generalised mass φᵀ·M·φ and stiffness

@@ -8,7 +8,7 @@
 namespace oos::design
 {
 
-// The two tables by which O_o_Reader hands over parsed DesignEquation equations (the full contract text is in
+// The two tables by which O_o_Model hands over parsed DesignEquation equations (the full contract text is in
 // src/design/README.md):
 //
 // designEquationSymbols, one row per name of an equation:
