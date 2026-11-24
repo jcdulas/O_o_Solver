@@ -2,6 +2,7 @@
 file(GLOB_RECURSE oos_reduction_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 add_library(oos_reduction STATIC ${oos_reduction_sources})
 add_library(oos::reduction ALIAS oos_reduction)
-target_include_directories(oos_reduction PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(oos_reduction PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>")
 target_link_libraries(oos_reduction PUBLIC oos::assembly)
 oos_enable_warnings(oos_reduction)

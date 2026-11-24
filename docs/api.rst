@@ -8,6 +8,20 @@ For a runnable example, start with :doc:`getting-started`. The module guides exp
 For analytic coverage, fallback behavior and report flags, see :doc:`derivatives`. Element implementers can use
 the live C++ contexts and facets in :doc:`element-derivative-api`.
 
+Native C++20 with vcpkg
+-----------------------
+
+Configure the `O_o Git registry <https://github.com/jcdulas/O_o_vcpkg>`_ in your consumer manifest, add ``oo-solver`` to its dependencies and link the installed target:
+
+.. code-block:: cmake
+
+   find_package(oo-solver CONFIG REQUIRED)
+   target_link_libraries(my_application PRIVATE oos::api)
+
+Include ``<oos/api/ModelFromDeck.hpp>`` to call ``oos::api::modelFromDeck(deck)``. The returned snapshot retains
+the imported column buffers. The source deck can be released before calling ``oos::api::runAnalysis``.
+The `standalone rod example <https://github.com/jcdulas/O_o_vcpkg/tree/main/examples/rod>`_ builds and solves a model in memory.
+
 .. list-table::
    :header-rows: 1
 

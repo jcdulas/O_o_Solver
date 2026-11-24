@@ -6,6 +6,7 @@
 
 #include "oos/linalg/kernels/DenseKernelEntryPoints.hpp"
 
+#include <cmath>
 #include <immintrin.h>
 
 namespace oos::linalg::kernels::avx512
@@ -32,7 +33,7 @@ struct Simd
     static Vector subtract(Vector a, Vector b) { return _mm512_sub_pd(a, b); }
     static Vector divide(Vector a, Vector b) { return _mm512_div_pd(a, b); }
     // The scalar form of subtractProduct, the same bits as one lane of it: fma(−a, b, c) = −(a·b) + c rounded once.
-    static double subtractProduct(double a, double b, double c) { return __builtin_fma(-a, b, c); }
+    static double subtractProduct(double a, double b, double c) { return std::fma(-a, b, c); }
     // A hint: the cache line holding `address` brought to L1 ahead of its use (no fault, no effect on any value).
     static void prefetch(const double* address) { _mm_prefetch(reinterpret_cast<const char*>(address), _MM_HINT_T0); }
 };

@@ -16,7 +16,8 @@ endforeach()
 
 add_library(oos_linalg STATIC ${oos_linalg_sources})
 add_library(oos::linalg ALIAS oos_linalg)
-target_include_directories(oos_linalg PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(oos_linalg PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>")
 target_link_libraries(oos_linalg PUBLIC oos::base)
 oos_enable_warnings(oos_linalg)
 
@@ -27,4 +28,4 @@ endforeach()
 
 # The baseline part of the dense kernels (W = L·D, the 2 × 2 pivot formula, the diagonal solve) must round each product
 # as the kernel families do: no contraction into fused multiply-adds, even with a higher OOS_BASELINE_ARCH.
-target_compile_options(oos_linalg PRIVATE -ffp-contract=off)
+target_compile_options(oos_linalg PRIVATE ${OOS_NO_CONTRACTION})

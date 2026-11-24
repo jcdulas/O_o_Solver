@@ -30,7 +30,7 @@ inline constexpr std::int32_t NO_MAT_FRAME_ID = -1;
 inline constexpr double MATERIAL_FRAME_MIN_PROJECTION = 1.0e-8;
 
 template <std::size_t N>
-[[nodiscard]] base::MatN<N> matrixOf(const ScalarMatrix<double, N>& k)
+[[nodiscard]] base::MatN<N> matrixOf(const ScalarMatrix<double, N, N>& k)
 {
     base::MatN<N> m;
     m.values = k.values;

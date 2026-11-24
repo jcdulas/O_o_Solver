@@ -55,7 +55,7 @@ std::array<SecondOrderScalar, N> secondOrderThickness(const std::array<double, N
 }
 
 template <std::size_t N>
-base::MatN<N> secondDerivativeOf(const ScalarMatrix<SecondOrderScalar, N>& matrix)
+base::MatN<N> secondDerivativeOf(const ScalarMatrix<SecondOrderScalar, N, N>& matrix)
 {
     base::MatN<N> result;
     for (std::size_t k = 0; k < matrix.values.size(); ++k)

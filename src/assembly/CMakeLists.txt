@@ -2,6 +2,7 @@
 file(GLOB_RECURSE oos_assembly_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 add_library(oos_assembly STATIC ${oos_assembly_sources})
 add_library(oos::assembly ALIAS oos_assembly)
-target_include_directories(oos_assembly PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(oos_assembly PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>")
 target_link_libraries(oos_assembly PUBLIC oos::elements)
 oos_enable_warnings(oos_assembly)

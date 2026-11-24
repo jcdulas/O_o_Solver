@@ -2,6 +2,7 @@
 file(GLOB_RECURSE oos_aero_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 add_library(oos_aero STATIC ${oos_aero_sources})
 add_library(oos::aero ALIAS oos_aero)
-target_include_directories(oos_aero PUBLIC "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(oos_aero PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>")
 target_link_libraries(oos_aero PUBLIC oos::reduction)
 oos_enable_warnings(oos_aero)

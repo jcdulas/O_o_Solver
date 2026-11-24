@@ -161,7 +161,7 @@ template <typename T, std::size_t R, std::size_t C>
 
 // aᵀ·m·a: a congruence, used to rotate material matrices (Gₑ = Uᵀ G U).
 template <typename T, std::size_t N, typename S>
-[[nodiscard]] ScalarMatrix<T, N> congruenceOf(const ScalarMatrix<T, N>& m, const ScalarMatrix<S, N>& a)
+[[nodiscard]] ScalarMatrix<T, N> congruenceOf(const ScalarMatrix<T, N, N>& m, const ScalarMatrix<S, N, N>& a)
 {
     ScalarMatrix<T, N> result;
     for (std::size_t i = 0; i < N; ++i)
@@ -239,7 +239,7 @@ template <typename T>
 
 // k += w·Bᵀ·G·B for a strain matrix B (S × D) and a symmetric constitutive matrix G (S × S).
 template <typename T, std::size_t S, std::size_t D>
-void addCongruence(ScalarMatrix<T, D>& k, const ScalarMatrix<T, S, D>& b, const ScalarMatrix<T, S>& g, const T& w)
+void addCongruence(ScalarMatrix<T, D, D>& k, const ScalarMatrix<T, S, D>& b, const ScalarMatrix<T, S, S>& g, const T& w)
 {
     ScalarMatrix<T, S, D> gb = productOf(g, b);
     for (std::size_t i = 0; i < D; ++i)

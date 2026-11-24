@@ -18,7 +18,16 @@ endif()
 # fused operations are the explicit ones (intrinsics, __builtin_fma), so that their scalar and vector code give the same
 # bits and AVX2 and AVX-512 agree. GCC lowers _mm256_mul_pd and
 # _mm256_sub_pd to generic vector arithmetic, which it would otherwise be free to fuse.
-set(OOS_KERNEL_FLAGS_reference -ffp-contract=off)
+if(MSVC)
+    set(OOS_NO_CONTRACTION /fp:precise)
+    set(OOS_KERNEL_FLAGS_avx2 /arch:AVX2 /fp:precise)
+    set(OOS_KERNEL_FLAGS_avx512 /arch:AVX512 /fp:precise)
+else()
+    set(OOS_NO_CONTRACTION -ffp-contract=off)
+    set(OOS_KERNEL_FLAGS_avx2 -mavx2 -mfma -ffp-contract=off)
+    set(OOS_KERNEL_FLAGS_avx512 -mavx512f -mavx512dq -mavx512vl -mavx2 -mfma -ffp-contract=off)
+endif()
+set(OOS_KERNEL_FLAGS_reference ${OOS_NO_CONTRACTION})
 if(EMSCRIPTEN)
     # In WebAssembly the compiler may use the 128-bit vector instructions in the loops of the reference family (no
     # intrinsic is written there): its register tiles subtract their terms element by element, in the order of the
@@ -29,8 +38,6 @@ endif()
 # The WebAssembly family: the vector instructions through their intrinsics, and no contraction (WebAssembly has no
 # fused multiply-add among them; the flag keeps its scalar remainders to the same two roundings).
 set(OOS_KERNEL_FLAGS_wasm128 -msimd128 -ffp-contract=off)
-set(OOS_KERNEL_FLAGS_avx2 -mavx2 -mfma -ffp-contract=off)
-set(OOS_KERNEL_FLAGS_avx512 -mavx512f -mavx512dq -mavx512vl -mavx2 -mfma -ffp-contract=off)
 
 # oos_add_kernel_family(<target> <family> <sources...>)
 # Compiles the sources of one kernel family into an object library and adds its objects to <target>.

@@ -41,7 +41,7 @@ template <typename T>
 
 // The solution x of a·x = b for a small dense system (Gauss elimination with partial pivoting on the real parts).
 template <std::size_t N>
-[[nodiscard]] std::array<double, N> solved(ScalarMatrix<double, N> a, std::array<double, N> b)
+[[nodiscard]] std::array<double, N> solved(ScalarMatrix<double, N, N> a, std::array<double, N> b)
 {
     for (std::size_t k = 0; k < N; ++k)
     {

@@ -5,7 +5,10 @@
 #include <cstdint>
 #include <cstring>
 
-#if defined(__x86_64__) || defined(__i386__)
+#if defined(_MSC_VER) && defined(_M_X64)
+#include <intrin.h>
+#define OOS_HAS_CPUID 1
+#elif defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
 #define OOS_HAS_CPUID 1
 #endif
@@ -48,19 +51,30 @@ struct CpuidRegisters
 
 CpuidRegisters readCpuid(unsigned leaf, unsigned subleaf)
 {
+#if defined(_MSC_VER)
+    int words[4];
+    __cpuidex(words, static_cast<int>(leaf), static_cast<int>(subleaf));
+    return {static_cast<unsigned>(words[0]), static_cast<unsigned>(words[1]),
+            static_cast<unsigned>(words[2]), static_cast<unsigned>(words[3])};
+#else
     CpuidRegisters registers;
     __cpuid_count(leaf, subleaf, registers.eax, registers.ebx, registers.ecx, registers.edx);
     return registers;
+#endif
 }
 
 // XGETBV with ECX = 0 reads XCR0. Written as an instruction rather than the _xgetbv intrinsic, which would need the
 // whole translation unit compiled with -mxsave (the baseline code must run on any x86-64).
 std::uint64_t readXcr0()
 {
+#if defined(_MSC_VER)
+    return _xgetbv(0);
+#else
     unsigned low = 0;
     unsigned high = 0;
     __asm__ volatile("xgetbv" : "=a"(low), "=d"(high) : "c"(0));
     return (static_cast<std::uint64_t>(high) << 32) | low;
+#endif
 }
 
 std::string readVendor(const CpuidRegisters& leafZero)
@@ -75,7 +89,7 @@ std::string readVendor(const CpuidRegisters& leafZero)
 
 std::string readBrand()
 {
-    if (__get_cpuid_max(0x80000000U, nullptr) < LEAF_BRAND_LAST)
+    if (readCpuid(0x80000000U, 0).eax < LEAF_BRAND_LAST)
         return {};
     std::array<char, 48> text{};
     for (unsigned leaf = LEAF_BRAND_FIRST; leaf <= LEAF_BRAND_LAST; ++leaf)
@@ -104,7 +118,7 @@ CpuFeatures detectCpuFeatures()
     features.hasWasmSimd128 = true;
 #endif
 #if defined(OOS_HAS_CPUID)
-    const unsigned maxLeaf = __get_cpuid_max(0, nullptr);
+    const unsigned maxLeaf = readCpuid(0, 0).eax;
     if (maxLeaf == 0)
         return features;
     features.vendor = readVendor(readCpuid(0, 0));

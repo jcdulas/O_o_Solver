@@ -1,12 +1,16 @@
 #include "oos/base/platform/SubnormalModeScope.hpp"
 
+#if defined(__x86_64__) || defined(_M_X64)
+#include <xmmintrin.h>
+#endif
+
 namespace oos::base
 {
 
 namespace
 {
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_M_X64)
 
 // The bits of the SSE control and status register MXCSR (Intel 64 and IA-32 Architectures Software Developer's
 // Manual, vol. 1, figure 10-3): FTZ, flush to zero, bit 15; DAZ, denormals are zero, bit 6. Every x86-64 processor has
@@ -17,12 +21,12 @@ constexpr std::uint32_t FLUSH_BITS = FLUSH_TO_ZERO | DENORMALS_ARE_ZERO;
 
 std::uint32_t readControl() noexcept
 {
-    return __builtin_ia32_stmxcsr();
+    return _mm_getcsr();
 }
 
 void writeControl(std::uint32_t control) noexcept
 {
-    __builtin_ia32_ldmxcsr(control);
+    _mm_setcsr(control);
 }
 
 #endif
@@ -31,7 +35,7 @@ void writeControl(std::uint32_t control) noexcept
 
 bool canFlushSubnormals() noexcept
 {
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_M_X64)
     return true;
 #else
     return false;
@@ -40,7 +44,7 @@ bool canFlushSubnormals() noexcept
 
 SubnormalMode subnormalModeOfThisThread() noexcept
 {
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_M_X64)
     return (readControl() & FLUSH_BITS) == FLUSH_BITS ? SubnormalMode::Flush : SubnormalMode::Ieee;
 #else
     return SubnormalMode::Ieee;
@@ -49,7 +53,7 @@ SubnormalMode subnormalModeOfThisThread() noexcept
 
 SubnormalModeScope::SubnormalModeScope([[maybe_unused]] SubnormalMode mode) noexcept
 {
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_M_X64)
     m_saved = readControl();
     const std::uint32_t wanted = mode == SubnormalMode::Flush ? (m_saved | FLUSH_BITS) : (m_saved & ~FLUSH_BITS);
     if (wanted != m_saved)
@@ -62,7 +66,7 @@ SubnormalModeScope::SubnormalModeScope([[maybe_unused]] SubnormalMode mode) noex
 
 SubnormalModeScope::~SubnormalModeScope()
 {
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_M_X64)
     // Only the two bits of the mode go back: an exception flag the work raised meanwhile stays raised.
     if (m_isChanged)
         writeControl((readControl() & ~FLUSH_BITS) | (m_saved & FLUSH_BITS));

@@ -1,0 +1,7 @@
+@PACKAGE_INIT@
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+if(@OOS_WITH_MODEL@)
+    find_dependency(oo-model 0.2.1 CONFIG)
+endif()
+include("${CMAKE_CURRENT_LIST_DIR}/oo-solver-targets.cmake")
