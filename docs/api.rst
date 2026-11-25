@@ -107,74 +107,34 @@ driver controls the coupling iterations and convergence criterion.
 Coupling SOL 101, 103 and 105
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Use the applied box forces in SOL 101 to equilibrate the structure. They add to the selected
-mechanical loads. The result includes the usual structural tables, the box motion and an opaque
-preload containing the full displacement field. SOL 105 accepts that state on the same snapshot
-when its case control selects the same static subcase. Initial strains still come from that subcase.
+See :doc:`external-aeroelastic-coupling` for the complete call sequence, subcase selection,
+handle lifetimes and reference results for a four-box wing in JavaScript, Python and C++.
 
-SOL 103 returns the dry structural modes, their frequencies and generalized masses in the eigenvalue
-table, and the plunge and slope of each mode in the same order. Its retained modal basis projects new
-box forces onto those modes as generalized loads, using the force-enabled splines and the mode
-normalisation of the eigensolution. This projection can be repeated throughout a coupling loop.
+.. list-table::
+   :header-rows: 1
 
-These examples use static subcase 1 and eigenvalue subcase 2, whose static subcase selection is 1.
+   * - Operation
+     - JavaScript / WebAssembly
+     - Python
+     - C++20
+   * - Solve with external box forces
+     - ``t.solveStatic(subcase, f)``
+     - ``t.solve_static(subcase, f)``
+     - ``t.solveStatic(subcase, f)``
+   * - Obtain structural modes and box motion
+     - ``t.solveModes(subcase)``
+     - ``t.solve_modes(subcase)``
+     - ``t.solveModes(subcase)``
+   * - Calculate generalized loads
+     - ``m.modalBasis.generalizedLoads(f)``
+     - ``m["modal_basis"].generalized_loads(f)``
+     - ``m.modalBasis->generalizedLoads(f)``
+   * - Use the equilibrated preload
+     - ``t.solveBuckling(subcase, s.preload)``
+     - ``t.solve_buckling(subcase, s["preload"])``
+     - ``t.solveBuckling(subcase, *s.preload)``
 
-**JavaScript / WebAssembly**
-
-.. code-block:: javascript
-
-   const t = model.aeroTransfer();
-   try {
-     const forces = new Float64Array(t.boxIds.length).fill(1);
-     const state = t.solveStatic(1, forces);
-     try {
-       const motion = state.boxMotions[0];
-       const buckling = t.solveBuckling(2, state.preload);
-       const factors = buckling.eigenvalues[0].rows.map(row => row.eigenvalue);
-     } finally { state.preload.delete(); }
-     const modes = t.solveModes(2);
-     try {
-       const q = modes.modalBasis.generalizedLoads(forces);
-       const firstMode = modes.boxMotions[0];
-     } finally { modes.modalBasis.delete(); }
-   } finally { t.delete(); }
-
-**Python**
-
-.. code-block:: python
-
-   import numpy as np
-
-   t = model.aero_transfer()
-   forces = np.ones(len(t.box_ids))
-   state = t.solve_static(1, forces)
-   motion = state["box_motions"][0]
-   buckling = t.solve_buckling(2, state["preload"])
-   factors = buckling["eigenvalues"][0]["rows"]["eigenvalue"]
-   modes = t.solve_modes(2)
-   q = modes["modal_basis"].generalized_loads(forces)
-   first_mode = modes["box_motions"][0]
-
-**C++20**
-
-.. code-block:: cpp
-
-   #include <oos/api/AeroCoupling.hpp>
-
-   oos::api::AeroCoupling t(snapshot);
-   std::vector<double> forces(t.boxIds().size(), 1.);
-   auto state = t.solveStatic(1, forces);
-   const auto& motion = state.boxMotions.at(0);
-   auto buckling = t.solveBuckling(2, *state.preload);
-   const auto& factors = buckling.analysis.eigenvalues.at(0).rows;
-   auto modes = t.solveModes(2);
-   auto q = modes.modalBasis->generalizedLoads(forces);
-   const auto& firstMode = modes.boxMotions.at(0);
-
-The external driver updates the forces and calls SOL 101 at each static equilibrium iteration.
-Pass the converged state to SOL 105. The load factors refer to this reference preload.
-Create a new model snapshot and transfer when the geometry changes. The built-in SOL 144 trim uses
-the same displacement and force operators internally.
+Here ``t`` is the prepared coupling, ``s`` is its static result and ``m`` is its modal result.
 
 JavaScript and TypeScript
 -------------------------
@@ -255,6 +215,15 @@ Analyses.hpp
 .. literalinclude:: ../include/oos/api/Analyses.hpp
    :language: cpp
    :linenos:
+
+AeroTransfer.hpp and AeroCoupling.hpp
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. literalinclude:: ../include/oos/api/AeroTransfer.hpp
+   :language: cpp
+
+.. literalinclude:: ../include/oos/api/AeroCoupling.hpp
+   :language: cpp
 
 Optimization.hpp
 ~~~~~~~~~~~~~~~~

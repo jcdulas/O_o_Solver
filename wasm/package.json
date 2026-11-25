@@ -1,6 +1,6 @@
 {
   "name": "oos-solver",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Solve in-memory finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities. JavaScript/WebAssembly interface to the O_o C++ library, also available for Python.",
   "license": "MIT",
   "type": "module",

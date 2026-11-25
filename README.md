@@ -1,9 +1,10 @@
 # O_o_Solver
 
-Run static, modal, buckling and aeroelastic analyses through the O_o_Solver API in JavaScript (WebAssembly) or Python (native C++). An application builds a deck with O_o_Model, passes it to the Solver and reads result arrays directly.
+Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembly), Python or native C++20. An application builds a deck with O_o_Model, passes it to the Solver and reads result arrays directly.
 
 **[Sphinx documentation](https://jcdulas.github.io/O_o_Solver/)** ·
 **[Benchmark comparison — Classic, Mixed Auto and commercial solvers](docs/structural-benchmark-comparison.md)** ·
+**[External aeroelastic coupling guide](docs/external-aeroelastic-coupling.md)** ·
 [Derivative coverage](https://jcdulas.github.io/O_o_Solver/docs/derivatives.html) ·
 [API reference](https://jcdulas.github.io/O_o_Solver/docs/api.html)
 
@@ -11,13 +12,25 @@ Run static, modal, buckling and aeroelastic analyses through the O_o_Solver API 
 
 | Interface | Install |
 | --- | --- |
-| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.1/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.1/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
-| Python / native C++ | Run `python -m pip install oo-solver==0.2.1` to get the Solver and its `oo-model` dependency. |
+| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.1/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.2/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
+| Python / native C++ | Run `python -m pip install oo-solver==0.2.2` to get the Solver and its `oo-model` dependency. |
 | C++20 / vcpkg | Add `oo-solver` from the [O_o vcpkg registry](https://github.com/jcdulas/O_o_vcpkg) and link `oos::api`. [Native CMake example](https://github.com/jcdulas/O_o_vcpkg/tree/main/examples/rod) |
 
-Applications building from source can link an external optimizer to the [JavaScript, Python or C++ evaluation API](docs/optimization.md). The [client benchmark](docs/benchmarks/optimizer-api/README.md) exercises all three interfaces on identical inputs.
+Applications can link an external optimizer to the [JavaScript, Python or C++ evaluation API](docs/optimization.md). The [client benchmark](docs/benchmarks/optimizer-api/README.md) exercises all three interfaces on identical inputs.
 
-For aeroelastic coupling from source, [transfer nodal motions and aerodynamic box forces](docs/api.rst) directly between O_o_Solver and an external solver in JavaScript, Python or C++. The same interface applies box forces in SOL 101, projects SOL 103 modes and generalized loads, and passes the equilibrated preload to SOL 105.
+## Couple an external aerodynamic solver
+
+Use Solver 0.2.2 to couple a structural model to an external aerodynamic solver. Prepare the transfer once per model geometry.
+
+| Operation | JavaScript / WebAssembly | Python | C++20 |
+| --- | --- | --- | --- |
+| Prepare the coupling | `const t = model.aeroTransfer()` | `t = model.aero_transfer()` | `oos::api::AeroCoupling t(snapshot)` |
+| Apply box forces and solve SOL 101 | `const s = t.solveStatic(1, f)` | `s = t.solve_static(1, f)` | `auto s = t.solveStatic(1, f)` |
+| Project SOL 103 modes onto boxes | `const m = t.solveModes(2)` | `m = t.solve_modes(2)` | `auto m = t.solveModes(2)` |
+| Project new forces onto the retained modes | `m.modalBasis.generalizedLoads(f)` | `m["modal_basis"].generalized_loads(f)` | `m.modalBasis->generalizedLoads(f)` |
+| Reuse the SOL 101 preload in SOL 105 | `t.solveBuckling(2, s.preload)` | `t.solve_buckling(2, s["preload"])` | `t.solveBuckling(2, *s.preload)` |
+
+Here `f` contains one signed normal force per box in the order reported by the transfer. The external solver reads the box displacements and slopes after each static solve and controls convergence. SOL 144 provides the built-in trim calculation. The [four-box RBE3 wing example](docs/external-aeroelastic-coupling.md) includes complete calls in all three languages, handle lifetimes and numerical results.
 
 ## Run linear statics
 
@@ -94,7 +107,7 @@ JavaScript also exposes condensation, streamed solutions, external units and sup
 
 ## Documentation
 
-[Optimization with JavaScript and Python](docs/optimization.md): native design interfaces and derivatives.
+[Optimization with JavaScript, Python and C++](docs/optimization.md): native design interfaces and derivatives.
 [External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, full-analysis derivatives,
 workers and accepted-point archives.
 [Bar and beam derivatives](docs/beam-derivatives.md): analytic section, material, mass and recovery rates.

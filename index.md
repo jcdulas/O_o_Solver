@@ -1,6 +1,6 @@
 # O_o_Solver documentation
 
-Run static, modal, buckling and aeroelastic analyses through the O_o_Solver API in JavaScript (WebAssembly) or Python (native C++). An application builds a deck with O_o_Model, passes it to the Solver and reads result arrays directly.
+Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembly), Python or native C++20. An application builds a deck with O_o_Model, passes it to the Solver and reads result arrays directly.
 
 **[Published documentation](https://jcdulas.github.io/O_o_Solver/)** · [JavaScript / WASM releases](https://github.com/jcdulas/O_o_Solver/releases) · [Python wheels on PyPI](https://pypi.org/project/oo-solver/)
 
@@ -11,6 +11,7 @@ Run static, modal, buckling and aeroelastic analyses through the O_o_Solver API 
 - [Project overview](README.md): capabilities, repository layout and build commands.
 - [API reference](docs/api.rst): JavaScript and Python operations, TypeScript declarations and C++ headers.
 - [WebAssembly threads](docs/threading.md): shared-memory builds, runtime settings and browser Workers.
+- [Couple an external aerodynamic solver](docs/external-aeroelastic-coupling.md) with SOL 101, 103 and 105, or use the built-in SOL 144 trim. The RBE3 wing example gives results for JavaScript, Python and C++.
 - [External optimizer API for JavaScript, Python and C++](docs/optimization.md) covers retained points, batched derivatives and CSR callbacks.
 - [External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, workers and archives.
 - [Derivative coverage](docs/derivatives.md): analytic paths, numerical fallbacks and diagnostic reports.
@@ -51,6 +52,7 @@ docs/getting-started
 docs/python
 docs/threading
 docs/static-inputs
+docs/external-aeroelastic-coupling
 docs/testing
 docs/structural-benchmark-comparison
 docs/thin-plate-solid-bending
