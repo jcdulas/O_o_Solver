@@ -23,7 +23,7 @@ An external structural solver can also call the two transfer operators independe
 
 Use the [four-box wing model](../wasm/test/fixtures/trim-rbe3-wing.oos) with the default classic formulation. The boxes have IDs 100 through 103. Node 6 is a dependent RBE3 attachment. The examples apply forces of `[1, -2, 3, 5]` to subcase 1. Subcase 2 selects the eigenvalue method and references subcase 1 for buckling.
 
-All three examples read the same file through the O_o_Model OOS adapter. Place `trim-rbe3-wing.oos` in the working directory. For the Node.js example, place the built JavaScript packages in `model/` and `solver/` beside the script. For Python, install the native package with `python -m pip install oo-solver==0.2.2`. For C++, link the Model adapter used to read the fixture and the Solver API.
+All three examples read the same file through the O_o_Model OOS adapter. Place `trim-rbe3-wing.oos` in the working directory. For the Node.js example, place the JavaScript packages in `model/` and `solver/` beside the script. For Python, install the native package with `python -m pip install oo-solver==0.2.2`. For C++, install `oo-solver` from the vcpkg registry. To read this fixture, add a checkout of the [O_o_OOS adapter](https://github.com/jcdulas/O_o_OOS) to the application build after `find_package(oo-solver CONFIG REQUIRED)` and link the application to `oos::api` and `oor::oos`.
 
 **JavaScript / WebAssembly (Node.js)**
 
@@ -77,14 +77,14 @@ print(state["box_motions"][0]["plunge"][0], modes["eigenvalues"][0]["rows"]["cyc
 **C++20**
 
 ```cpp
-#include <oor/api/Deck.hpp>
+#include <oor/formats/oos.hpp>
 #include <oos/api/AeroCoupling.hpp>
 #include <oos/api/ModelFromDeck.hpp>
 #include <array>
 #include <iostream>
 
 int main() {
-    auto deck = oor::api::Deck::readModel("trim-rbe3-wing.oos");
+    auto deck = oor::formats::oos::read("trim-rbe3-wing.oos");
     oos::api::AeroCoupling transfer(oos::api::modelFromDeck(deck));
     const std::array<double, 4> forces{1., -2., 3., 5.};
     auto state = transfer.solveStatic(1, forces);
