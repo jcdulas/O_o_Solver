@@ -162,7 +162,10 @@ export class OosSolver {
   checkOptimization(model, declarations = {}, settings = {}) {
     const catalogue = this.capabilities(model);
     const kinds = Object.entries(settings.analyses ?? { statics: [] }).filter(([, cases]) => cases != null).map(([kind]) => kind);
-    const analyses = kinds.map(analysis => ({ analysis, ...this.checkSupport(model, analysis) }));
+    const analyses = kinds.map(analysis => {
+      const support = analysis === "buckling" && kinds.includes("aeroelastic") ? "trimPreloadedBuckling" : analysis;
+      return { analysis, ...this.checkSupport(model, support) };
+    });
     let problem, metadata = null, error = null;
     try { problem = this.createOptimization(model, declarations, settings); metadata = problem.metadata(); }
     catch (failure) { error = failure.message; }
@@ -391,6 +394,9 @@ export class OosSolver {
   }
 
   // `modelOptions`: the options of modelFromReader (elementFormulation, formulationGeometry...).
+  prepareOptimization(oor, deck, declarations = {}, settings = {}, modelOptions = {}) {
+    return this.optimizationFromReader(oor, deck, declarations, settings, modelOptions);
+  }
   optimizationFromReader(oor, deck, declarations = {}, settings = {}, modelOptions = {}) {
     const design = oor.designVariables(deck);
     if (design.problems.length || design.notApplied.length)

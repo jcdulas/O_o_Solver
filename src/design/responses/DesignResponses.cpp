@@ -22,7 +22,14 @@ DesignResponses::DesignResponses(ResponseParts parts, const DesignModel& model, 
     {
         // In model cards, ATTB of a non-composite field selects its vibration mode. Caller declarations can use
         // mode directly, leaving ATTB available for its existing meanings on the other response types.
-        const bool takesMode = definition.type == ResponseType::Displacement ||
+        // The portable deck spelling retains the node references in Model's designResponsesTable.
+        if (definition.type == ResponseType::Displacement && definition.propertyType == "Buckling")
+        {
+            definition.type = ResponseType::BucklingDisplacement;
+            definition.propertyType.clear();
+        }
+        const bool takesMode = definition.type == ResponseType::BucklingDisplacement ||
+                               definition.type == ResponseType::Displacement ||
                                definition.type == ResponseType::Stress || definition.type == ResponseType::Strain ||
                                definition.type == ResponseType::Force;
         if (!definition.mode && takesMode && definition.attributeB)
@@ -35,6 +42,8 @@ DesignResponses::DesignResponses(ResponseParts parts, const DesignModel& model, 
                 definition.attributeB.reset();
             }
         }
+        if (definition.type == ResponseType::BucklingDisplacement && !definition.mode)
+            definition.mode = 1;
         if (!m_kinds.emplace(definition.id, std::make_pair(Kind::DesignResp1, m_designResp1.size())).second)
             problems.push_back(
                 designProblem(design_code::INVALID_RESPONSE, "DesignResp1", definition.id, "id",
@@ -44,7 +53,9 @@ DesignResponses::DesignResponses(ResponseParts parts, const DesignModel& model, 
         m_designResp1.emplace_back(definition, snapshot, catalog, problems);
         m_isGlobal[definition.id] = isGlobalType(definition.type);
         // A static type in the STATICS and SAERO subcases (the trimmed state), the others in their analysis'.
-        const SubcaseAnalysis analysis = definition.mode ? SubcaseAnalysis::Modes : analysisOfType(definition.type);
+        const SubcaseAnalysis analysis = definition.mode && definition.type != ResponseType::BucklingDisplacement
+                                             ? SubcaseAnalysis::Modes
+                                             : analysisOfType(definition.type);
         m_analyses[definition.id] =
             isGlobalType(definition.type) ? EVERY_ANALYSIS
             : analysis == SubcaseAnalysis::Statics

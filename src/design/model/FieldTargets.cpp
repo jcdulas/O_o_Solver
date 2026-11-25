@@ -84,6 +84,9 @@ public:
             FieldTarget& target = targets[index];
             switch (relation.targetKind)
             {
+            case TargetKind::Trim:
+                bindTrim(relation, target);
+                break;
             case TargetKind::Property:
                 m_relationIndex = index;
                 bindCardTable(relation, "properties/", target);
@@ -258,6 +261,26 @@ private:
     }
 
     static constexpr std::string_view NESTED_REAL_LIST = "list<fixed_list<float64>";
+
+    void bindTrim(const DesignRelation& relation, FieldTarget& target)
+    {
+        const std::string table = "aeroTrimCasesTable";
+        if ((relation.targetCard != "AeroTrim" && relation.targetCard != "AeroTrim2") ||
+            relation.field != "dynamicPressure" || relation.fieldItem != -1)
+        {
+            problem(design_code::MISSING_TARGET, relation, "expected the dynamicPressure field of a trim set");
+            return;
+        }
+        if (const auto* reader = m_snapshot.findTable(table))
+        {
+            const auto ids = reader->values<std::int32_t>("setId");
+            for (std::size_t i = 0; i < ids.size(); ++i)
+                if (ids[i] == relation.targetId)
+                    target.cells.push_back({table, relation.field, static_cast<std::int64_t>(i), -1});
+        }
+        if (target.cells.empty())
+            problem(design_code::MISSING_TARGET, relation, "the selected trim set is absent");
+    }
 
     void bindCardTable(const DesignRelation& relation, const std::string& prefix, FieldTarget& target)
     {
@@ -491,6 +514,8 @@ private:
         };
         switch (relation.targetKind)
         {
+        case TargetKind::Trim:
+            break;
         case TargetKind::Property:
             addProperty(relation.targetId);
             break;

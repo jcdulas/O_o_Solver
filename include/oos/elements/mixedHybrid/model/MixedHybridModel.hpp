@@ -221,8 +221,10 @@ public:
     // Adds to the stress coefficients `beta` of a solid the particular stresses of the body force ρ a(x) of the
     // acceleration field of a case (NodalDisplacements::bodyAcceleration; nothing without a field or without
     // density), from its kernel.
-    static void addBodyForceStresses(const MixedSolid& solid, const BodyAcceleration* acceleration,
-                                     const VolumeKernel& kernel, Vector& beta);
+
+    // Adds the particular stresses of an affine body force density times acceleration.
+    static void addBodyForceStresses(double density, const BodyAcceleration* acceleration, const VolumeKernel& kernel,
+                                     Vector& beta);
     // The stress coefficients of a solid for the displacements of a case, with the kernel they are of (the kept one,
     // or one with the free expansion of the case's temperatures as its load) and the nodal changes (empty without a
     // thermal strain).

@@ -50,7 +50,7 @@ double torsionKernel(double d, double torsionRatio)
 
 BeamSpline::Interpolation BeamSpline::interpolate(std::span<const double> stations, const Flexibility& flexibility,
                                                   std::span<const std::array<double, 2>> targets,
-                                                  base::MemoryBudget& budget)
+                                                  base::MemoryBudget& budget, Geometry* keep)
 {
     const std::size_t n = stations.size();
     std::vector<double> distinct(stations.begin(), stations.end());
@@ -91,7 +91,7 @@ BeamSpline::Interpolation BeamSpline::interpolate(std::span<const double> statio
         }
         bending(slopeRow, slopeRow) += flexibility.dthx;
     }
-    const linalg::DenseLu bendingFactor(std::move(bending), budget);
+    linalg::DenseLu bendingFactor(std::move(bending), budget);
     if (bendingFactor.isSingular())
         throw base::SolverError(
             "the bending system of a beam spline is singular (structural points at the same "
@@ -128,6 +128,14 @@ BeamSpline::Interpolation BeamSpline::interpolate(std::span<const double> statio
     }
 
     // Torsion: [b0, T], the twists attached.
+    if (keep)
+    {
+        keep->stations.assign(stations.begin(), stations.end());
+        keep->targets.assign(targets.begin(), targets.end());
+        keep->flexibility = flexibility;
+        keep->bending = std::make_unique<linalg::DenseLu>(std::move(bendingFactor));
+        keep->bendCoefficients = std::move(bendingCoefficients);
+    }
     if (!hasTwists)
         return result;
     linalg::DenseMatrix torsion(budget, 1 + n, 1 + n, "beam spline torsion system");
@@ -138,7 +146,7 @@ BeamSpline::Interpolation BeamSpline::interpolate(std::span<const double> statio
             torsion(1 + j, 1 + i) = torsionKernel(stations[j] - stations[i], flexibility.dtor);
         torsion(1 + j, 1 + j) += flexibility.dthy;
     }
-    const linalg::DenseLu torsionFactor(std::move(torsion), budget);
+    linalg::DenseLu torsionFactor(std::move(torsion), budget);
     if (torsionFactor.isSingular())
         throw base::SolverError(
             "the torsion system of a beam spline is singular (repeated stations with attached "
@@ -167,7 +175,101 @@ BeamSpline::Interpolation BeamSpline::interpolate(std::span<const double> statio
             result.spanSlope(t, STATION_UNKNOWNS * k + 2) = -x * twistRate;
         }
     }
+    if (keep)
+    {
+        keep->torsion = std::make_unique<linalg::DenseLu>(std::move(torsionFactor));
+        keep->twistCoefficients = std::move(torsionCoefficients);
+    }
     return result;
+}
+
+BeamSpline::Interpolation BeamSpline::Geometry::derivative(std::span<const double> velocity,
+                                                           base::MemoryBudget& budget) const
+{
+    const std::size_t n = stations.size(), columns = bendCoefficients.columns();
+    const bool hasSlopes = columns > n;
+    // Directional derivative of |d|. A moving kink does not have a two-sided tangent.
+    const auto absRate = [](double d, double v)
+    {
+        if (d == 0 && v != 0)
+            throw base::SolverError("undefined beam spline derivative at coincident moving stations");
+        return d > 0 ? v : d < 0 ? -v : 0.0;
+    };
+    linalg::DenseMatrix db(budget, bending->order(), columns, "beam spline bending coefficient rates");
+    linalg::DenseMatrix dt(budget, torsion ? n + 1 : 0, torsion ? n : 0, "beam spline torsion coefficient rates");
+    // Solve A dC = -dA C for bending and torsion with their original factors.
+    for (std::size_t j = 0; j < n; ++j)
+    {
+        for (std::size_t c = 0; c < columns; ++c)
+        {
+            db(1, c) -= velocity[j] * bendCoefficients(2 + j, c);
+            db(2 + j, c) -= velocity[j] * bendCoefficients(1, c);
+        }
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            const double d = stations[j] - stations[i], v = velocity[j] - velocity[i];
+            const double da = (hasSlopes || torsion) ? absRate(d, v) : 0.;
+            for (std::size_t c = 0; c < columns; ++c)
+            {
+                db(2 + j, c) -= v * forceSlopeKernel(d) * bendCoefficients(2 + i, c);
+                if (hasSlopes)
+                {
+                    db(2 + j, c) -= v * coupleSlopeKernel(d) * bendCoefficients(2 + n + i, c);
+                    db(2 + n + j, c) += v * coupleSlopeKernel(d) * bendCoefficients(2 + i, c) +
+                                        0.5 * da * bendCoefficients(2 + n + i, c);
+                }
+            }
+            if (torsion)
+                for (std::size_t c = 0; c < n; ++c)
+                    dt(1 + j, c) += 0.5 * flexibility.dtor * da * twistCoefficients(1 + i, c);
+        }
+    }
+    bending->solve(db.view());
+    if (torsion)
+        torsion->solve(dt.view());
+    Interpolation out{linalg::DenseMatrix(budget, targets.size(), 3 * n, "beam plunge rates"),
+                      linalg::DenseMatrix(budget, targets.size(), 3 * n, "beam chord slope rates"),
+                      linalg::DenseMatrix(budget, targets.size(), 3 * n, "beam span slope rates")};
+    for (std::size_t t = 0; t < targets.size(); ++t)
+    {
+        const auto [x, y] = targets[t];
+        for (std::size_t c = 0; c < columns; ++c)
+        {
+            const std::size_t col = c < n ? 3 * c : 3 * (c - n) + 1;
+            double plunge = db(0, c) + y * db(1, c), slope = db(1, c);
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                const double d = y - stations[i], v = -velocity[i];
+                plunge += db(2 + i, c) * forceKernel(d) + bendCoefficients(2 + i, c) * forceSlopeKernel(d) * v;
+                slope += db(2 + i, c) * forceSlopeKernel(d) - bendCoefficients(2 + i, c) * coupleSlopeKernel(d) * v;
+                if (hasSlopes)
+                {
+                    plunge +=
+                        db(2 + n + i, c) * coupleKernel(d) + bendCoefficients(2 + n + i, c) * coupleSlopeKernel(d) * v;
+                    slope +=
+                        db(2 + n + i, c) * coupleSlopeKernel(d) - 0.5 * bendCoefficients(2 + n + i, c) * absRate(d, v);
+                }
+            }
+            out.plunge(t, col) = plunge;
+            out.spanSlope(t, col) = slope;
+        }
+        if (torsion)
+            for (std::size_t c = 0; c < n; ++c)
+            {
+                double theta = dt(0, c), span = 0;
+                for (std::size_t i = 0; i < n; ++i)
+                {
+                    const double d = y - stations[i];
+                    theta += dt(1 + i, c) * torsionKernel(d, flexibility.dtor) -
+                             0.5 * flexibility.dtor * twistCoefficients(1 + i, c) * absRate(d, -velocity[i]);
+                    span -= 0.5 * flexibility.dtor * dt(1 + i, c) * (d > 0 ? 1 : d < 0 ? -1 : 0);
+                }
+                out.plunge(t, 3 * c + 2) = -x * theta;
+                out.slope(t, 3 * c + 2) = -theta;
+                out.spanSlope(t, 3 * c + 2) = -x * span;
+            }
+    }
+    return out;
 }
 
 } // namespace oos::aero

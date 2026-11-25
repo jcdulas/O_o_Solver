@@ -12,12 +12,14 @@
 #include "oos/design/constraints/ConstraintTables.hpp"
 #include "oos/design/expressions/ProgramTables.hpp"
 #include "oos/design/model/DesignTables.hpp"
+#include "oos/design/sensitivity/ShapeElements.hpp"
 #include "oos/design/responses/ResponseTables.hpp"
 #include "oos/linalg/dense/KernelSelection.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <set>
 #include <string_view>
 
 namespace oos::api
@@ -148,13 +150,52 @@ std::uint64_t budgetBytes(std::uint64_t requested)
     return requested ? requested : (available ? available : base::MemoryBudget::UNLIMITED);
 }
 
-bool needsFullShapeColumns(const design::DesignEvaluation& evaluation,
-                           const OptimizationSettings& settings)
+bool needsFullShapeColumns(const design::DesignEvaluation& evaluation, const OptimizationProblem& owner,
+                           std::optional<std::int32_t> coordinateResponse = {}, const design::DesignProblem* coordinateBasis = nullptr)
 {
-    if (evaluation.analysis.point.values().shapes.empty())
+    if (!coordinateResponse && evaluation.analysis.point.values().shapes.empty())
         return false;
-    if (settings.analyses.hasAeroelastic())
-        return true;
+    if (owner.settings().analyses.hasAeroelastic())
+    {
+        const auto& a = evaluation.analysis;
+        if (!a.trim || !a.trim->linearisation || !a.trim->linearisation->supportsTransferRates(false) ||
+            owner.settings().analyses.modes || owner.settings().analyses.statics)
+            return true;
+        if (!a.trim->linearisation->supportsTransferRates(true))
+        {
+            const auto& basis = coordinateBasis ? *coordinateBasis : owner.problem();
+            const design::ShapeElements reached(basis.model(), basis.targets(), a.trim->linearisation->elementSet());
+            for (std::size_t b = 0; b < basis.model().shapes().bases().size(); ++b)
+                if (!reached.of(b).empty())
+                    return true;
+        }
+        for (const auto& response : evaluation.responses)
+        {
+            if (coordinateResponse && response.id != *coordinateResponse)
+                continue;
+            const auto* r = owner.problem().responses().findDesignResp1(response.id);
+            if (!r || !(design::isTrimLoadType(r->definition().type) ||
+                        r->definition().type == design::ResponseType::TrimVariable ||
+                        r->definition().type == design::ResponseType::BucklingFactor))
+                return true;
+        }
+        if (a.buckling && a.buckling->path != solutions::AnalysisPath::Full)
+            return true;
+        if (a.buckling)
+            for (const auto& solve : a.buckling->solves)
+                if (std::find(a.aeroelasticSubcases.begin(), a.aeroelasticSubcases.end(), solve.preloadSubcase) ==
+                    a.aeroelasticSubcases.end())
+                    return true;
+        return false;
+    }
+    // A moving constraint changes the expansion and normalisation of a buckling mode.
+    // Re-evaluate geometric columns for retained buckling field responses.
+    for (const auto& response : evaluation.responses)
+        for (const auto& item : response.items)
+            if (item.mode > 0 &&
+                std::find(evaluation.analysis.bucklingSubcases.begin(), evaluation.analysis.bucklingSubcases.end(),
+                          item.subcase) != evaluation.analysis.bucklingSubcases.end())
+                return true;
     const auto& results = evaluation.analysis.results;
     if (!results.reliefs.empty())
         return true;
@@ -249,6 +290,104 @@ design::ProductContext OptimizationEvaluation::context(const design::CallableReg
     return result;
 }
 
+NodalCoordinateGradient OptimizationEvaluation::nodalCoordinateGradient(std::int32_t responseId,
+                                                                        std::span<const std::int32_t> nodes,
+                                                                        std::size_t item)
+{
+    const auto& problem = m_owner->problem();
+    const auto& snapshot = m_evaluation.analysis.snapshot;
+    const auto* primary = problem.responses().findDesignResp1(responseId);
+    const auto row = std::find_if(m_evaluation.responses.begin(), m_evaluation.responses.end(),
+                                  [&](const auto& r) { return r.id == responseId; });
+    if (!primary || row == m_evaluation.responses.end() || item >= row->itemCount() || !row->isOk(item))
+        throw std::invalid_argument("nodalCoordinateGradient requires an evaluated scalar item of a primary response");
+    if (primary->definition().type == design::ResponseType::FractionalMass)
+        throw std::invalid_argument("fractional mass requires the design's original reference mass");
+    const auto ids = snapshot->nodes().ids();
+    if (nodes.empty())
+        nodes = ids;
+    requireOutput(nodes.size(), 3);
+    if (nodes.size() > static_cast<std::size_t>(INT32_MAX) / 3)
+        throw std::invalid_argument("too many coordinate variables");
+    OptimizationInput input;
+    std::set<std::int32_t> seen;
+    for (auto id : nodes)
+    {
+        if (!std::binary_search(ids.begin(), ids.end(), id) || !seen.insert(id).second)
+            throw std::invalid_argument("unknown or duplicate node in nodalCoordinateGradient: " + std::to_string(id));
+        for (std::size_t axis = 0; axis < 3; ++axis)
+        {
+            const auto k = static_cast<std::int32_t>(input.model.variables.size() + 1);
+            input.model.variables.push_back({k, "coordinate", 0., -1., 1., {}, {}});
+            design::ShapeTerm term{k, id, 0, 1., {}};
+            term.direction[axis] = 1.;
+            input.model.shapes.push_back(term);
+        }
+    }
+    NodalCoordinateGradient result;
+    result.nodeIds.assign(nodes.begin(), nodes.end());
+    if (nodes.empty())
+        return result;
+    auto definition = primary->definition();
+    const auto label = row->items[item];
+    if (label.subcase)
+        definition.subcases = {label.subcase};
+    const auto& settings = m_owner->settings();
+    design::GradientOptions options;
+    options.responseIds = {responseId};
+    std::size_t selected = 0;
+    design::DesignGradients gradient;
+    const design::DesignProblem coordinateBasis(snapshot, input.model);
+    if (needsFullShapeColumns(m_evaluation, *m_owner, responseId, &coordinateBasis))
+    {
+        input.responses.designResp1.push_back(std::move(definition));
+        auto probeSettings = settings;
+        // OptimizationProblem imports the deck links on construction. Preserve the caller's additional links.
+        const auto imported = aero::trimLinks(*snapshot).size();
+        probeSettings.analyses.links.erase(probeSettings.analyses.links.begin(),
+            probeSettings.analyses.links.begin() + static_cast<std::ptrdiff_t>(imported));
+        auto coordinates = std::make_shared<OptimizationProblem>(snapshot, std::move(input), std::move(probeSettings));
+        auto x = coordinates->problem().initialValues();
+        design::ModeReferences refs;
+        for (const auto& mode : m_evaluation.trackedModes)
+            if (mode.responseId == responseId)
+                refs[{responseId, mode.subcase}] = mode.shape;
+        auto base = coordinates->evaluate(x, refs);
+        const auto& items = base->evaluation().responses.at(0).items;
+        const auto found = std::find(items.begin(), items.end(), label);
+        if (found == items.end())
+            throw std::invalid_argument("the response item changed at the coordinate reference point");
+        selected = static_cast<std::size_t>(found - items.begin());
+        options.itemMasks.push_back({responseId, std::vector<std::uint8_t>(items.size())});
+        options.itemMasks.back().isRetained[selected] = 1;
+        gradient = base->gradients(options);
+    }
+    else
+    {
+        // Bind the XYZ basis to the current geometry; reuse the factors, states and selected modal roots of this point.
+        const auto basis = coordinateBasis.designPoint(coordinateBasis.initialValues());
+        const auto callables = m_owner->callables();
+        const auto subcases = problem.responseSubcases(m_evaluation);
+        auto in =
+            problem.sensitivityInputs(m_evaluation, subcases, callables, settings.analysisOptions, settings.blockItems);
+        in.base = snapshot;
+        in.model = &coordinateBasis.model();
+        in.targets = &coordinateBasis.targets();
+        in.design = &basis.values();
+        // Only one item is differentiated, even for a response that recovers all nodes.
+        const std::vector<design::ResponseValues> values{{responseId, row->label, {label}, {row->values[item]}, {}}};
+        in.values = &values;
+        gradient = design::StaticSensitivity::compute(in, options, m_budget);
+    }
+    if (gradient.report.repeatedRoots)
+        throw std::invalid_argument("a nodal coordinate gradient of an eigenvalue requires an isolated mode");
+    const auto& values = gradient.responses.at(0).values;
+    const auto first = values.begin() + static_cast<std::ptrdiff_t>(selected * gradient.variableCount);
+    result.values.assign(first, first + static_cast<std::ptrdiff_t>(gradient.variableCount));
+    result.report = std::move(gradient.report);
+    return result;
+}
+
 design::DesignGradients OptimizationEvaluation::gradients(const design::GradientOptions& options)
 {
     if (!m_owner->settings().analyses.keepsTrimLinearisation && m_owner->settings().analyses.hasAeroelastic())
@@ -271,7 +410,7 @@ design::DesignGradients OptimizationEvaluation::gradients(const design::Gradient
     std::vector<std::size_t> shapeColumns;
     if (!options.isVariableWanted.empty() && options.isVariableWanted.size() != m_x.size())
         throw std::invalid_argument("isVariableWanted must have one entry per independent variable");
-    if (needsFullShapeColumns(m_evaluation, m_owner->settings()))
+    if (needsFullShapeColumns(m_evaluation, *m_owner))
     {
         for (const auto& shape : m_evaluation.analysis.point.values().shapes)
             for (const auto& [column, rate] : shape.gradient)
@@ -295,11 +434,30 @@ design::DesignGradients OptimizationEvaluation::gradients(const design::Gradient
     return result;
 }
 
+OptimizerValues OptimizationEvaluation::optimizerValues() const
+{
+    OptimizerValues result;
+    result.objective = m_evaluation.objective;
+    result.constraints.reserve(m_evaluation.constraints.size());
+    for (const auto& row : m_evaluation.constraints)
+        result.constraints.push_back(row.normalised);
+    for (const auto& response : m_evaluation.responses)
+        if (std::find(response.statuses.begin(), response.statuses.end(), design::ItemStatus::Failed) !=
+            response.statuses.end())
+        {
+            result.partial = true;
+            break;
+        }
+    result.uncertainMode = std::any_of(m_evaluation.trackedModes.begin(), m_evaluation.trackedModes.end(),
+                                       [](const auto& mode) { return mode.isUncertain; });
+    return result;
+}
+
 design::GradientStreamReport OptimizationEvaluation::streamGradients(design::GradientSink& sink, std::size_t block)
 {
     if (!m_owner->settings().analyses.keepsTrimLinearisation && m_owner->settings().analyses.hasAeroelastic())
         throw std::invalid_argument("native derivatives were disabled; use full-analysis numerical derivatives");
-    if (needsFullShapeColumns(m_evaluation, m_owner->settings()))
+    if (needsFullShapeColumns(m_evaluation, *m_owner))
         return detail::fullShapeStream(*this, m_budget, sink, block);
     design::GradientStreamOptions options;
     options.block = block;
@@ -313,7 +471,7 @@ design::ProductReport OptimizationEvaluation::jvp(std::span<const double> direct
                                                   const design::ProductSelection& selection)
 {
     requireFinite(directions, "directions");
-    if (needsFullShapeColumns(m_evaluation, m_owner->settings()))
+    if (needsFullShapeColumns(m_evaluation, *m_owner))
         return detail::fullShapeJvp(*this, directions, count, block, sink, selection);
     const auto callables = m_owner->callables();
     return design::VectorJacobianProducts::jvp(m_owner->problem(), m_evaluation, directions, count, block, sink,
@@ -324,7 +482,7 @@ design::ProductReport OptimizationEvaluation::vjp(const design::ProductWeights& 
                                                   design::ProductSink& sink)
 {
     requireFiniteWeights(weights);
-    if (needsFullShapeColumns(m_evaluation, m_owner->settings()))
+    if (needsFullShapeColumns(m_evaluation, *m_owner))
         return detail::fullShapeVjp(*this, weights, block, sink);
     const auto callables = m_owner->callables();
     return design::VectorJacobianProducts::vjp(m_owner->problem(), m_evaluation, weights, block, sink, m_budget,

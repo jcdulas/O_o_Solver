@@ -160,10 +160,10 @@ base::SupportReport checkStaticSupport(const input::ModelSnapshot& snapshot, con
 }
 
 base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const elements::ElementRegistry& registry,
-                                 AnalysisKind analysis)
+                                 AnalysisKind analysis, bool usesAeroTransfer)
 {
     input::SupportCatalog catalog = staticSupportCatalog(registry);
-    if (analysis == AnalysisKind::StaticAeroelastic)
+    if (usesAeroTransfer || analysis == AnalysisKind::StaticAeroelastic || analysis == AnalysisKind::TrimPreloadedBuckling)
     {
         // These source cards are consumed by the aerodynamic tables. Their geometric and field restrictions are
         // checked by the aero module before factorisation, just as structural element fields are checked there.
@@ -181,14 +181,15 @@ base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const ele
         catalog.addCard("LanczosEigenMethod");
         catalog.addCard("RealEigenMethod");
     }
-    else if (analysis == AnalysisKind::Buckling)
+    else if (analysis == AnalysisKind::Buckling || analysis == AnalysisKind::TrimPreloadedBuckling)
     {
         catalog.addCard("LanczosEigenMethod");
         catalog.addCard("BucklingEigenMethod");
     }
-    const char* analysisName = analysis == AnalysisKind::Statics    ? "a linear static analysis"
-                               : analysis == AnalysisKind::Modes    ? "a real eigenvalue analysis (SOL 103)"
-                               : analysis == AnalysisKind::Buckling ? "a linear buckling analysis (SOL 105)"
+    const char* analysisName = analysis == AnalysisKind::TrimPreloadedBuckling ? "a trim-preloaded buckling analysis"
+                               : analysis == AnalysisKind::Statics             ? "a linear static analysis"
+                               : analysis == AnalysisKind::Modes               ? "a real eigenvalue analysis (SOL 103)"
+                               : analysis == AnalysisKind::Buckling            ? "a linear buckling analysis (SOL 105)"
                                                                     : "a static aeroelastic analysis (SOL 144)";
     base::SupportReport report = catalog.check(snapshot);
     std::vector<base::Diagnostic> refusals;

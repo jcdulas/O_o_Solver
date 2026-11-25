@@ -84,6 +84,7 @@ std::vector<DesignRelation> readRelations(const ContractReader& table)
     const TextColumn targetCards(table, "targetCard");
     const std::span<const std::int32_t> targetIds = table.values<std::int32_t>("targetId");
     const TextColumn fields(table, "field");
+    const TextColumn fieldNames(table, "fieldName");
     const NullableColumn<std::int32_t> variables(table, "designVariable");
     const NullableColumn<double> coefficients(table, "coefficient");
     const NullableColumn<double> constants(table, "constant");
@@ -137,6 +138,17 @@ std::vector<DesignRelation> readRelations(const ContractReader& table)
             relation.targetCard = targetCards[row];
             relation.targetId = targetIds[r];
             relation.field = fields[row];
+            // A model can export the literal density field of AnisoMat3D without a resolved column.
+            if (relation.field.empty() && relation.targetKind == TargetKind::Material &&
+                relation.targetCard == "AnisoMat3D" && fieldNames[row] == "density")
+                relation.field = "density";
+            if (relation.targetKind == TargetKind::Element &&
+                (relation.targetCard == "AeroTrim" || relation.targetCard == "AeroTrim2"))
+            {
+                relation.targetKind = TargetKind::Trim;
+                if (relation.field.empty())
+                    relation.field = fieldNames[row];
+            }
             relation.fieldItem = items[row].value_or(-1);
             relation.form = isLinear ? RelationForm::Linear : RelationForm::Equation;
             relation.constant = constants[row].value_or(0.0);
@@ -222,7 +234,8 @@ base::TableContract designRelationsContract()
             {text("relationCard"), required("relationId", INT32), text("targetType"), text("targetCard"),
              required("targetId", INT32), text("field"), required("designVariable", INT32),
              required("coefficient", FLOAT64), required("constant", FLOAT64), required("equationId", INT32),
-             optional("fieldItem", INT32), optional("argumentIndex", INT32), optional("constantLabel", UTF8),
+             table_columns::optionalText("fieldName"), optional("fieldItem", INT32), optional("argumentIndex", INT32),
+             optional("constantLabel", UTF8),
              optional("fieldMin", FLOAT64), optional("fieldMax", FLOAT64)}};
 }
 

@@ -17,8 +17,8 @@ weighted response. An available matrix derivative alone does not provide the cor
 | --- | --- | --- | --- |
 | SOL 101, linear statics | Supported sizing and shape responses, with applied-load and recovery terms | Element Hessian blocks for supported sizing responses | Unsupported recovery columns, shape curvature, nonlinear/derived relations and unavailable load rates retain numerical paths |
 | SOL 103, normal modes | Eigenvalues, frequencies and mode-selected displacement/force/stress/strain fields | Bordered tangent and adjoint solves for simple modes | Repeated or unresolved individual modes, shape directions, unsupported element curvature and approximate condensed solutions |
-| SOL 105, linear buckling | Load-factor gradients including the static preload | Coupled preload and eigenvector tangents | The closed product requires a mechanical preload; thermal/deformation preloads, inertia relief, combined subcases and unsupported applied-load changes retain the general path |
-| SOL 144, static aeroelasticity | Supported trim variables, stability coefficients and structural fields | Differentiated trim/state/coefficient equations | Geometry-dependent splines/supports, unavailable element/recovery rates and unsupported applied-load changes |
+| SOL 105, linear buckling | Load factor and selected simple-mode displacement, including static or trim preload sensitivity | Coupled preload and eigenvector tangents for load factors under mechanical, supported thermal/deformation or trim preloads | Repeated roots, unavailable element curvature, combined structural preloads and unsupported applied-load changes |
+| SOL 144, static aeroelasticity | Trim variables, stability coefficients, structural fields, box pressure coefficients, pressure jumps, box forces/moments and hinge moments, with sizing or dynamic-pressure variables, plus restrained spline and RBE3 shape rates for local loads and trim variables | Differentiated trim state and coefficient equations for linear structural sizing | Free-body support geometry, spline curvature, dynamic-pressure curvature, unavailable element/recovery rates and unsupported applied-load changes |
 
 The [modal guide](modal-derivatives.md) covers mode selection, normalization and repeated roots.
 The [coupled guide](coupled-derivatives.md) gives the buckling and trim equations and their precise load restrictions.
@@ -37,8 +37,7 @@ The [coupled guide](coupled-derivatives.md) gives the buckling and trim equation
 | Geometric stiffness partials | Section/material and release-map rates at fixed preload displacements and supplied temperatures |
 
 The [bar and beam guide](beam-derivatives.md) lists exact field names, flattened station indices, result item
-conventions and remaining numerical paths. Its element-level geometric-stiffness formulas do not remove the
-mechanical-preload restriction of the analytic buckling Hessian.
+conventions and remaining numerical paths. The thermal buckling Hessian uses both the equivalent-load derivatives of the preload and the geometric-stiffness derivatives of the buckling pencil.
 
 Raw sizing fields keep grid positions, orientation, load positions and load values fixed. Library section dimensions,
 completed material defaults and nonlinear relations require additional chain rules and retain their documented

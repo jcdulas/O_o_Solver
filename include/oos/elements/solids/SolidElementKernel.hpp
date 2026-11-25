@@ -78,6 +78,12 @@ public:
                                                        std::int64_t row) const;
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const;
+    bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                            const NodalDisplacements& preload, ElementMatrixBlock& block) const;
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementMatrixBlock& block) const;
+    bool massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                             const MassOptions& options, ElementMatrixBlock& block) const;
     void computeStiffness(const ElementBatchView& view, ElementRange range, ElementMatrixBlock& block) const;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                      ElementMatrixBlock& block) const;
@@ -112,6 +118,8 @@ public:
                              ElementVectorBlock& block) const;
 
 private:
+    bool differential(const ElementBatchView& view, ElementRange range, const NodalDisplacements& preload,
+                      const DesignedField* field, ElementMatrixBlock& block) const;
     SolidCardShapes m_shapes;
     SolidFormulation m_formulation;
 };

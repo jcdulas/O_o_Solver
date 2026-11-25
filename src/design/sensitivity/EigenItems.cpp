@@ -1,19 +1,21 @@
+#include "oos/assembly/constraints/RigidShapeRate.hpp"
 #include "EigenItems.hpp"
 
 #include "FormulationShape.hpp"
+#include "ModalSystem.hpp"
+#include "oos/linalg/eigen/BorderedEigenSystem.hpp"
 #include "oos/assembly/assemble/DifferentialStiffnessAssembler.hpp"
 #include "oos/assembly/assemble/MassAssembler.hpp"
 #include "oos/assembly/assemble/NonStructuralMassShares.hpp"
-
 #include "oos/base/diagnostics/DiagnosticSink.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/errors/InternalError.hpp"
 #include "oos/base/errors/OptimisationError.hpp"
 #include "oos/design/sensitivity/SubcaseSolve.hpp"
-#include "oos/solutions/sol101/StaticSubcases.hpp"
 #include "oos/elements/core/ElementMatrixBlock.hpp"
 #include "oos/elements/core/ElementVectorBlock.hpp"
 #include "oos/linalg/dense/SmallEigenSolver.hpp"
+#include "oos/solutions/sol101/StaticSubcases.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -145,6 +147,121 @@ void EigenItems::add(const ItemKey& key, ResponseType type, const ResponseItem& 
     m_items.push_back(item);
 }
 
+void EigenItems::addBucklingShape(ItemKey key, const ResponseItem& label, double value)
+{
+    if (!m_in.buckling)
+        throw base::OptimisationError("a buckling displacement requires a buckling solve");
+    const auto& solves = m_in.buckling->solves;
+    const auto solve =
+        std::find_if(solves.begin(), solves.end(), [&](const auto& s) { return s.subcase == label.subcase; });
+    const auto dof = m_in.dofMap->findDof(label.entity, label.component);
+    if (solve == solves.end() || !dof || label.mode < 1 ||
+        static_cast<std::size_t>(label.mode) > solve->eigenvectors.columns())
+        throw base::OptimisationError("buckling displacement refers to an unavailable mode or component");
+    const auto mode = static_cast<std::size_t>(label.mode - 1);
+    const auto& vectors = solve->eigenvectors;
+    const std::span<const double> shape(vectors.data() + mode * vectors.leadingDimension(), vectors.rows());
+    if (shape.size() != static_cast<std::size_t>(m_in.dofMap->gSetSize()) ||
+        std::abs(shape[*dof] - value) > 1e-10 * std::max(1.0, std::abs(value)))
+        throw base::OptimisationError("buckling displacement and retained mode do not match");
+    m_shapeItems.push_back({key, &*solve, mode, *dof, shape, {}, 0.0, {}, {}});
+    m_hasBuckling = true;
+}
+
+void EigenItems::prepareBucklingShapes(linalg::KernelKind kernel, bool hasTrim)
+{
+    m_hasTrim = hasTrim;
+    if (m_shapeItems.empty())
+        return;
+    base::DiagnosticSink sink;
+    auto& budget = *m_in.budget;
+    const auto kind = hasTrim ? solutions::AnalysisKind::TrimPreloadedBuckling : solutions::AnalysisKind::Buckling;
+    solutions::AnalysisModel model(*m_in.snapshot, kind, budget, m_in.pool, nullptr, sink);
+    const linalg::DenseKernels kernels(kernel, linalg::DenseKernelOptions{m_in.pool});
+    for (const auto& solve : m_in.buckling->solves)
+    {
+        std::map<std::size_t, std::vector<ShapeItem*>> requested;
+        for (auto& item : m_shapeItems)
+            if (item.solve == &solve)
+                requested[item.mode].push_back(&item);
+        if (requested.empty())
+            continue;
+        ModalSystem pencil(model, solve.subcase, budget, m_in.pool, false);
+        const auto& selection = pencil.selection();
+        const auto n = static_cast<std::size_t>(selection.keptDofCount());
+        linalg::BlockSparseMatrix gg(pencil.constraints().pattern(), budget, "buckling shape geometric stiffness");
+        assembly::DifferentialStiffnessAssembler(model.elementSet(), model.dofMap())
+            .assemble(m_preloadVectors.at(solve.preloadSubcase), m_preloads.at(solve.preloadSubcase).temperatures, gg,
+                      m_in.pool);
+        const auto reduced = pencil.constraints().reduce(gg, budget, "buckling shape reduced geometric stiffness");
+        const auto geometric = linalg::SymmetricCsc::fromBlocks(reduced, selection, budget, m_in.pool);
+        for (auto& [mode, items] : requested)
+        {
+            const double lambda = solve.eigenvalues.rows.at(mode).eigenvalue;
+            if (lambda == 0.0)
+                throw base::OptimisationError("buckling displacement requires a nonzero load factor");
+            for (std::size_t other = 0; other < solve.eigenvalues.rows.size(); ++other)
+            {
+                const double neighbour = solve.eigenvalues.rows[other].eigenvalue;
+                if (other != mode &&
+                    std::abs(lambda - neighbour) <=
+                        REPEATED_ROOT_TOLERANCE * std::max({std::abs(lambda), std::abs(neighbour), 1e-12}))
+                    throw base::OptimisationError(
+                        "an individual buckling displacement is not unique at a repeated root");
+            }
+            const auto shape = items.front()->shape;
+            std::vector<double> freeShape(n), kgPhi(n), kPhi(n);
+            for (std::size_t i = 0; i < n; ++i)
+                freeShape[i] = shape[selection.dofOfEquation(static_cast<std::int32_t>(i))];
+            geometric.multiply(freeShape, kgPhi);
+            pencil.stiffness().multiply(freeShape, kPhi);
+            double residual = 0.0, scale = 0.0;
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                residual = std::max(residual, std::abs(kgPhi[i] + kPhi[i] / lambda));
+                scale = std::max(scale, std::abs(kgPhi[i]) + std::abs(kPhi[i] / lambda));
+            }
+            if (residual > 1e-6 * std::max(scale, 1e-20))
+                throw base::OptimisationError("buckling displacement requires a converged eigenpair");
+            const auto pivot = modalNormalisationPivot(solve.method, shape, selection, model.dofMap());
+            const linalg::BorderedEigenSystem bordered(geometric, pencil.stiffness(), -1.0 / lambda, freeShape, kernels,
+                                                       budget);
+            ++m_shapeFactorisations;
+            for (ShapeItem* item : items)
+            {
+                std::vector<double> weights(shape.size(), 0.0), right(n), solution(n);
+                weights[item->dof] = 1.0;
+                if (pivot)
+                    weights[*pivot] -= shape[item->dof] / shape[*pivot];
+                pencil.constraints().gm().reduceToN(weights);
+                for (std::size_t i = 0; i < n; ++i)
+                    right[i] = weights[selection.dofOfEquation(static_cast<std::int32_t>(i))];
+                item->metricMultiplier = bordered.solve(right, solution);
+                item->adjoint = base::BudgetedBuffer<double>(budget, shape.size(), "buckling shape adjoint");
+                std::fill(item->adjoint.span().begin(), item->adjoint.span().end(), 0.0);
+                for (std::size_t i = 0; i < n; ++i)
+                    item->adjoint[selection.dofOfEquation(static_cast<std::int32_t>(i))] = solution[i];
+                pencil.constraints().gm().expandToG(item->adjoint.span());
+            }
+        }
+    }
+}
+
+double EigenItems::shapeProduct(const ShapeItem& item, std::span<const base::DofIndex> dofs,
+                                std::span<const double> matrix, bool metric) const
+{
+    double value = 0.0;
+    const double mu = -1.0 / item.solve->eigenvalues.rows[item.mode].eigenvalue;
+    for (std::size_t i = 0; i < dofs.size(); ++i)
+    {
+        const double z = item.adjoint[dofs[i]];
+        const double left = metric ? mu * z - 0.5 * item.metricMultiplier * item.shape[dofs[i]] : -z;
+        for (std::size_t j = 0; j < dofs.size(); ++j)
+            value += left * matrix[i * dofs.size() + j] * item.shape[dofs[j]];
+    }
+    return value;
+}
+
 void EigenItems::formClusters()
 {
     for (Item& item : m_items)
@@ -218,21 +335,23 @@ EigenItems::SolveConstraints& EigenItems::constraintsOf(std::size_t solveIndex)
     base::MemoryBudget& budget = *m_in.budget;
     base::DiagnosticSink sink; // the analysis reported the problems of the model
     made.model = std::make_unique<solutions::AnalysisModel>(
-        *m_in.snapshot, solve.isBuckling ? solutions::AnalysisKind::Buckling : solutions::AnalysisKind::Modes, budget,
-        m_in.pool, nullptr, sink);
+        *m_in.snapshot,
+        solve.isBuckling
+            ? (m_hasTrim ? solutions::AnalysisKind::TrimPreloadedBuckling : solutions::AnalysisKind::Buckling)
+            : solutions::AnalysisKind::Modes,
+        budget, m_in.pool, nullptr, sink);
     const std::vector<solutions::StaticSubcase> subcases =
         solutions::staticSubcasesOf(made.model->snapshot(), {solve.subcase}, sink);
     if (subcases.empty())
-        throw base::OptimisationError(base::concatenate(
-            {"the sensitivities of the eigenvalues of subcase ", std::to_string(solve.subcase),
-             " under a shape: the subcase is not found again in the model"}));
+        throw base::OptimisationError(
+            base::concatenate({"the sensitivities of the eigenvalues of subcase ", std::to_string(solve.subcase),
+                               " under a shape: the subcase is not found again in the model"}));
     const solutions::StaticSubcase& subcase = subcases.front();
     made.system = std::make_unique<solutions::ConstrainedSystem>(
         *made.model,
         solutions::ConstraintSelection{subcase.label, subcase.spc, subcase.mpc, std::nullopt, subcase.contact}, budget,
         m_in.pool, nullptr, sink);
-    const assembly::FormulationConstraints* formulation = made.system->formulationConstraints();
-    if (formulation == nullptr || formulation->relations().empty())
+    if (made.system->gm().rowCount() == 0)
     {
         made.system.reset();
         return made;
@@ -240,8 +359,9 @@ EigenItems::SolveConstraints& EigenItems::constraintsOf(std::size_t solveIndex)
     const assembly::DofMap& dofMap = made.model->dofMap();
     const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
     if (solve.shapes->rows() != gSize)
-        throw std::logic_error("EigenItems: the shapes of a solve are not on the g set of its analysis model (a bug "
-                               "of O_o_Solver: report it)");
+        throw std::logic_error(
+            "EigenItems: the shapes of a solve are not on the g set of its analysis model (a bug "
+            "of O_o_Solver: report it)");
     // The second matrix: the mass of the vibration, the differential stiffness of the preload.
     linalg::BlockSparseMatrix second(made.system->pattern(), budget, "eigenvalue shape second matrix");
     if (solve.isBuckling)
@@ -278,14 +398,43 @@ EigenItems::SolveConstraints& EigenItems::constraintsOf(std::size_t solveIndex)
     return made;
 }
 
-void EigenItems::addFormulationShapeTerms(
-    std::size_t quantity, const FieldPerturbation& perturbation,
-    const std::array<const elements::FormulationModel*, FIELD_SIDE_COUNT>& models)
+void EigenItems::addRigidShapeTerms(std::size_t quantity, std::span<const assembly::LocalConstraintRows> rates)
+{
+    for (auto& cluster : m_clusters)
+    {
+        auto& made = constraintsOf(cluster.solve);
+        if (!made.system)
+            continue;
+        const auto& solve = m_solves[cluster.solve];
+        const auto n = cluster.modes.size();
+        auto& target = cluster.byQuantity[quantity];
+        if (target.empty())
+            target.resize(n * n);
+        for (std::size_t a = 0; a < n; ++a)
+        {
+            auto imposed =
+                assembly::imposedRate(made.system->gm(), rates, normalisedShape(solve, cluster.modes[a]));
+            made.system->fillExcluded(imposed);
+            for (std::size_t b = 0; b < n; ++b)
+            {
+                const auto& [k, kg] = made.products.at(cluster.modes[b]);
+                double value = 0;
+                for (std::size_t i = 0; i < k.size(); ++i)
+                    value += imposed[i] * (k[i] + cluster.root * kg[i]);
+                target[a * n + b] += value;
+                target[b * n + a] += value;
+            }
+        }
+    }
+}
+
+void EigenItems::addFormulationShapeTerms(std::size_t quantity, const FieldPerturbation& perturbation,
+                                          const std::array<const elements::FormulationModel*, FIELD_SIDE_COUNT>& models)
 {
     for (Cluster& cluster : m_clusters)
     {
         SolveConstraints& made = constraintsOf(cluster.solve);
-        if (!made.system)
+        if (!made.system || !made.system->formulationConstraints() || made.system->formulationConstraints()->relations().empty())
             continue;
         const Solve& solve = m_solves[cluster.solve];
         const assembly::FormulationConstraints& formulation = *made.system->formulationConstraints();
@@ -335,12 +484,12 @@ double EigenItems::shapeValue(const Solve& solve, std::size_t mode, base::DofInd
     return (*solve.shapes)(static_cast<std::size_t>(dof), mode) / (*solve.scales)[mode];
 }
 
-std::vector<base::DofIndex> EigenItems::dofsOf(std::span<const elements::ElementDof> dofs) const
+std::vector<base::DofIndex> EigenItems::dofsOf(std::span<const elements::ElementDof> dofs, bool modal) const
 {
     std::vector<base::DofIndex> result; // bounded by the element's DOFs
     result.reserve(dofs.size());
     for (const elements::ElementDof& dof : dofs)
-        result.push_back(m_in.dofMap->dofOf(dof));
+        result.push_back((modal ? m_in.modalDofMap : m_in.dofMap)->dofOf(dof));
     return result;
 }
 
@@ -487,8 +636,8 @@ std::vector<std::pair<ItemKey, SparseVector>> EigenItems::bucklingWeights() cons
 }
 
 void EigenItems::projectElement(const elements::ElementFamily& family, const elements::FieldUse& use,
-                                const ElementMatrixDerivative& stiffness, const MassOf& massOf,
-                                const DifferentialOf& differentialOf, const TargetOf& targetOf,
+                                const ElementMatrixDerivative& stiffness, const ElementMatrixDerivative& modalStiffness,
+                                const MassOf& massOf, const DifferentialOf& differentialOf, const TargetOf& targetOf,
                                 const EnergiesOf& energiesOf)
 {
     // The mass derivative per modal solve (its formulation), the differential stiffness at fixed u per preload.
@@ -504,13 +653,15 @@ void EigenItems::projectElement(const elements::ElementFamily& family, const ele
         const Solve& solve = m_solves[cluster.solve];
         // A vibration root of one mode keeps its strain and kinetic energy rates apart (the Rayleigh quotient).
         const bool keepsEnergies = !solve.isBuckling && cluster.modes.size() == 1 && energiesOf;
-        if (!stiffness.isEmpty())
+        const auto& rate = solve.isBuckling ? stiffness : modalStiffness;
+        if (!rate.isEmpty())
         {
-            addProjection(cluster, dofsOf(stiffness.dofs), stiffness.values, 1.0, targetOf(c));
+            const auto dofs = dofsOf(rate.dofs, !solve.isBuckling);
+            addProjection(cluster, dofs, rate.values, 1.0, targetOf(c));
             if (keepsEnergies)
             {
                 energy[0] = 0.0;
-                addProjection(cluster, dofsOf(stiffness.dofs), stiffness.values, 1.0, energy);
+                addProjection(cluster, dofs, rate.values, 1.0, energy);
                 energiesOf(c, energy[0], 0.0);
             }
         }
@@ -521,12 +672,12 @@ void EigenItems::projectElement(const elements::ElementFamily& family, const ele
                 found->second = massOf(solve.massOptions);
             if (!found->second.isEmpty())
             {
-                addProjection(cluster, dofsOf(found->second.dofs), found->second.values,
+                addProjection(cluster, dofsOf(found->second.dofs, true), found->second.values,
                               -cluster.root * solve.weightToMass, targetOf(c));
                 if (keepsEnergies)
                 {
                     energy[0] = 0.0;
-                    addProjection(cluster, dofsOf(found->second.dofs), found->second.values, solve.weightToMass,
+                    addProjection(cluster, dofsOf(found->second.dofs, true), found->second.values, solve.weightToMass,
                                   energy);
                     energiesOf(c, 0.0, energy[0]);
                 }
@@ -551,13 +702,28 @@ void EigenItems::projectElement(const elements::ElementFamily& family, const ele
 }
 
 void EigenItems::addElement(std::size_t quantity, const elements::ElementFamily& family, const elements::FieldUse& use,
-                            const ElementMatrixDerivative& stiffness, const MassOf& massOf,
-                            const DifferentialOf& differentialOf)
+                            const ElementMatrixDerivative& stiffness, const ElementMatrixDerivative& modalStiffness,
+                            const MassOf& massOf, const DifferentialOf& differentialOf)
 {
+    std::map<std::int32_t, ElementMatrixDerivative> rates;
+    for (auto& item : m_shapeItems)
+    {
+        double value = shapeProduct(item, dofsOf(stiffness.dofs), stiffness.values, true);
+        if ((use.changesStiffness || use.changesLoads) && family.facets().has(elements::Facet::Differential) &&
+            !family.isDifferentiallyInert())
+        {
+            auto [entry, added] = rates.try_emplace(item.solve->preloadSubcase);
+            if (added)
+                entry->second = differentialOf(m_preloads.at(item.solve->preloadSubcase));
+            value += shapeProduct(item, dofsOf(entry->second.dofs), entry->second.values);
+        }
+        if (value != 0.0)
+            item.byQuantity[quantity] += value;
+    }
     if (m_items.empty())
         return;
     projectElement(
-        family, use, stiffness, massOf, differentialOf,
+        family, use, stiffness, modalStiffness, massOf, differentialOf,
         [&](std::size_t c) -> std::vector<double>&
         {
             const std::size_t m = m_clusters[c].modes.size();
@@ -573,15 +739,13 @@ void EigenItems::addElement(std::size_t quantity, const elements::ElementFamily&
         });
 }
 
-std::vector<std::pair<ItemKey, double>> EigenItems::elementDerivatives(const elements::ElementFamily& family,
-                                                                       const elements::FieldUse& use,
-                                                                       const ElementMatrixDerivative& stiffness,
-                                                                       const MassOf& massOf,
-                                                                       const DifferentialOf& differentialOf)
+std::vector<std::pair<ItemKey, double>> EigenItems::elementDerivatives(
+    const elements::ElementFamily& family, const elements::FieldUse& use, const ElementMatrixDerivative& stiffness,
+    const ElementMatrixDerivative& modalStiffness, const MassOf& massOf, const DifferentialOf& differentialOf)
 {
     std::vector<std::vector<double>> matrices(m_clusters.size());
     projectElement(
-        family, use, stiffness, massOf, differentialOf,
+        family, use, stiffness, modalStiffness, massOf, differentialOf,
         [&](std::size_t c) -> std::vector<double>&
         {
             const std::size_t m = m_clusters[c].modes.size();
@@ -622,17 +786,56 @@ std::vector<std::pair<ItemKey, double>> EigenItems::elementDerivatives(const ele
     return result;
 }
 
+bool EigenItems::needsPreloadRate(std::int32_t subcase) const
+{
+    if (std::any_of(m_shapeItems.begin(), m_shapeItems.end(),
+                    [&](const auto& item) { return item.solve->preloadSubcase == subcase; }))
+        return true;
+    return std::any_of(m_clusters.begin(), m_clusters.end(),
+                       [&](const Cluster& cluster)
+                       {
+                           const Solve& solve = m_solves[cluster.solve];
+                           return solve.isBuckling && solve.preloadSubcase == subcase && cluster.modes.size() > 1;
+                       });
+}
+
+void EigenItems::projectPreloadRate(std::int32_t subcase, std::span<const double> displacements, std::size_t column,
+                                    bool byQuantity)
+{
+    const auto& map = *m_in.dofMap;
+    const auto derivative =
+        elements::NodalDisplacements::ofGSet(displacements, map.gridCount(), map.scalarCount(), &map.entities());
+    for (const auto& batch : m_in.set->batches())
+    {
+        const auto& family = *batch.family;
+        if (!family.facets().has(elements::Facet::Differential) || family.isDifferentiallyInert())
+            continue;
+        elements::ElementMatrixBlock block;
+        family.computeDifferentialStiffness(batch.view, elements::wholeBatch(batch.view), derivative, block);
+        for (std::size_t e = 0; e < block.size(); ++e)
+        {
+            const auto dofs = dofsOf(block.dofs(e));
+            for (auto& item : m_shapeItems)
+                if (item.solve->preloadSubcase == subcase)
+                    (byQuantity ? item.byQuantity : item.byVariable)[column] +=
+                        shapeProduct(item, dofs, block.matrix(e));
+            for (auto& cluster : m_clusters)
+            {
+                const Solve& solve = m_solves[cluster.solve];
+                if (!solve.isBuckling || solve.preloadSubcase != subcase || cluster.modes.size() < 2)
+                    continue;
+                auto& target = byQuantity ? cluster.byQuantity[column] : cluster.preloadByVariable[column];
+                target.resize(cluster.modes.size() * cluster.modes.size(), 0.0);
+                addProjection(cluster, dofs, block.matrix(e), byQuantity ? cluster.root : 1.0, target);
+            }
+        }
+    }
+}
+
 std::int64_t EigenItems::addPreloadTerms(std::int32_t preloadSubcase, const SensitivitySystem& system,
                                          const PseudoLoads& loads, std::size_t subcase)
 {
-    std::vector<std::size_t> clusters; // the buckling clusters of several modes on this preload
-    for (std::size_t c = 0; c < m_clusters.size(); ++c)
-    {
-        const Solve& solve = m_solves[m_clusters[c].solve];
-        if (solve.isBuckling && solve.preloadSubcase == preloadSubcase && m_clusters[c].modes.size() > 1)
-            clusters.push_back(c);
-    }
-    if (clusters.empty())
+    if (!needsPreloadRate(preloadSubcase))
         return 0;
     std::vector<std::size_t> variables; // bounded by the design variables
     for (std::size_t j = 0; j < loads.variableCount(); ++j)
@@ -664,30 +867,7 @@ std::int64_t EigenItems::addPreloadTerms(std::int32_t preloadSubcase, const Sens
             for (std::size_t e = 0; e < equations; ++e)
                 column[e] = rightHandSides(e, b);
             system.fromEquations(column.span(), vectorG.span());
-            // K_d(du_j), linear in the displacements, without the temperatures (they do not move with x here).
-            const elements::NodalDisplacements derivative = elements::NodalDisplacements::ofGSet(
-                vectorG.span(), static_cast<std::size_t>(dofMap.gridCount()),
-                static_cast<std::size_t>(dofMap.scalarCount()), &dofMap.entities());
-            const std::size_t j = variables[first + b];
-            for (const assembly::AssemblyBatch& batch : m_in.set->batches())
-            {
-                const elements::ElementFamily& family = *batch.family;
-                if (!family.facets().has(elements::Facet::Differential) || family.isDifferentiallyInert())
-                    continue;
-                elements::ElementMatrixBlock block;
-                family.computeDifferentialStiffness(batch.view, elements::wholeBatch(batch.view), derivative, block);
-                for (std::size_t e = 0; e < block.size(); ++e)
-                {
-                    const std::vector<base::DofIndex> dofs = dofsOf(block.dofs(e));
-                    for (const std::size_t c : clusters)
-                    {
-                        Cluster& cluster = m_clusters[c];
-                        std::vector<double>& target = cluster.preloadByVariable[j];
-                        target.resize(cluster.modes.size() * cluster.modes.size(), 0.0);
-                        addProjection(cluster, dofs, block.matrix(e), 1.0, target);
-                    }
-                }
-            }
+            projectPreloadRate(preloadSubcase, vectorG.span(), variables[first + b], false);
         }
     }
     return solves;
@@ -695,6 +875,15 @@ std::int64_t EigenItems::addPreloadTerms(std::int32_t preloadSubcase, const Sens
 
 void EigenItems::addExplicitParts(const std::vector<FieldValue>& quantities, LinearisedItems& linearised) const
 {
+    for (const auto& item : m_shapeItems)
+    {
+        auto& row = linearised.at(item.key).explicitPart;
+        for (const auto& [q, rate] : item.byQuantity)
+            for (const auto& [column, slope] : quantities[q].gradient)
+                row.emplace_back(column, rate * slope);
+        for (const auto& [column, rate] : item.byVariable)
+            row.emplace_back(column, rate);
+    }
     for (const Item& item : m_items)
     {
         const Cluster& cluster = m_clusters[item.cluster];

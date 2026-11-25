@@ -1,3 +1,4 @@
+#include "oos/assembly/constraints/RigidShapeRate.hpp"
 #include "oos/solutions/sol144/TrimLinearisation.hpp"
 
 #include "TrimStructure.hpp"
@@ -124,7 +125,7 @@ namespace
 std::vector<double> particularPressures(const TrimLinearisation::State& state, TrimGroup& group,
                                         const TrimSubcaseState& subcase, std::span<const double> load,
                                         std::span<const double> accelerations, bool isUnrestrained,
-                                        base::MemoryBudget& budget)
+                                        base::MemoryBudget& budget, std::span<const double> slopeRate = {})
 {
     const assembly::DofMap& dofMap = state.model->dofMap();
     const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
@@ -140,18 +141,119 @@ std::vector<double> particularPressures(const TrimLinearisation::State& state, T
     linalg::DenseMatrix pressures(budget, n, 1, "trim derivative pressures");
     slopesOf(*state.splines, dofMap, std::span<const double>(&displacements(0, 0), gSize), pressures.view(), 0);
     for (std::size_t j = 0; j < n; ++j)
-        pressures(j, 0) *= subcase.feedback;
+        pressures(j, 0) = subcase.feedback * (pressures(j, 0) + (slopeRate.empty() ? 0.0 : slopeRate[j]));
     (isUnrestrained ? subcase.freeFactor : subcase.restrainedFactor)->solve(pressures.view());
     return std::vector<double>(&pressures(0, 0), &pressures(0, 0) + n);
 }
 
 } // namespace
 
-TrimLinearisation::StateDerivative TrimLinearisation::stateDerivative(std::size_t subcase,
-                                                                      std::span<const double> stiffnessLoad,
-                                                                      std::span<const double> inertialLoad,
-                                                                      bool withDisplacements,
-                                                                      base::MemoryBudget& budget)
+const assembly::ElementSet& TrimLinearisation::elementSet() const
+{
+    return m_state->model->elementSet();
+}
+
+bool TrimLinearisation::supportsTransferRates(bool movesElements) const
+{
+    if (m_state->condensed)
+        return false;
+    for (const auto& group : m_state->groups)
+    {
+        if (!group->system || group->structure->supportCount())
+            return false;
+        const auto* formulation = group->system->formulationConstraints();
+        if (movesElements && (group->structure->gm().hasFormulationRows() ||
+                              (formulation && !formulation->excludedDofs().empty())))
+            return false;
+    }
+    for (const auto& subcase : m_state->staticSubcases)
+        if (subcase.load)
+            return false;
+    for (const auto& spline : m_state->splines->splines())
+        if (!spline.geometry && !spline.beamGeometry)
+            return false;
+    const auto& snapshot = m_state->model->snapshot();
+    if (snapshot.hasTable(input::TableRole::RigidElements))
+    {
+        const auto& rigid = snapshot.rigidElements();
+        const auto types = rigid.types();
+        for (std::int64_t i = 0; i < rigid.rowCount(); ++i)
+            if (types[i] != "RigidInterpolation")
+                return false;
+    }
+    return true;
+}
+
+aero::SplineMatrix TrimLinearisation::splineRate(const aero::SplineMatrix::Velocity& velocity,
+                                                 base::MemoryBudget& budget) const
+{
+    return m_state->splines->derivative(velocity, budget);
+}
+
+TrimLinearisation::TransferRate TrimLinearisation::transferRate(std::size_t subcase, const aero::SplineMatrix& rate,
+                                                                std::span<const assembly::LocalConstraintRows> spiders,
+                                                                std::span<const double> pressures,
+                                                                base::MemoryBudget& budget) const
+{
+    const auto& state = m_state->subcases.at(subcase);
+    const auto& system = *m_state->groups[state.group]->system;
+    const auto& map = m_state->model->dofMap();
+    const auto& gm = system.gm();
+    TransferRate result;
+    result.load.resize(gSetSize());
+    std::vector<double> forces(pressures.size());
+    for (std::size_t i = 0; i < forces.size(); ++i)
+        forces[i] = state.dynamicPressure * pressures[i] * (*m_state->boxes)[i].area;
+    addPointLoads(rate.structuralLoads(forces), map, result.load);
+    linalg::DenseMatrix slopes(budget, forces.size(), 1, "explicit spline normalwash rate");
+    slopesOf(rate, map, state.displacements, slopes.view(), 0);
+    result.slopes.assign(slopes.data(), slopes.data() + forces.size());
+    if (!spiders.empty())
+    {
+        // E expands independent DOFs. du = E dv + dE v. The reduced right hand side contains
+        // dE^T(P-Ku) - E^T K dE v in addition to the derivative of the applied aero load.
+        result.imposed = assembly::imposedRate(gm, spiders, state.displacements);
+        system.fillExcluded(result.imposed);
+        std::vector<double> product(gSetSize()), residual = boxLoadsOf(*m_state, pressures, state.dynamicPressure);
+        system.kgg().multiply(result.imposed, product);
+        for (std::size_t i = 0; i < product.size(); ++i)
+            result.load[i] -= product[i];
+        system.kgg().multiply(state.displacements, product);
+        for (std::size_t i = 0; i < product.size(); ++i)
+            residual[i] -= product[i];
+        for (auto parent : gm.chainOrder())
+            for (const auto& term : gm.relationTerms(parent))
+                residual[term.dof] += term.coefficient * residual[gm.mDofs()[parent]];
+        for (const auto& spider : spiders)
+            for (std::size_t i = 0; i < spider.size(); ++i)
+                for (const auto& term : spider.row(i))
+                    result.load[term.dof] += term.coefficient * residual[spider.dependents[i]];
+        slopesOf(*m_state->splines, map, result.imposed, slopes.view(), 0);
+        for (std::size_t i = 0; i < forces.size(); ++i)
+            result.slopes[i] += slopes(i, 0);
+    }
+    return result;
+}
+
+std::vector<double> TrimLinearisation::dynamicPressureLoad(std::size_t subcase, std::span<const double> trimmed,
+                                                           std::optional<std::size_t> variable, bool unrestrained) const
+{
+    if (!variable)
+        return boxLoadsOf(*m_state, trimmed, 1.0);
+    const auto& state = m_state->subcases.at(subcase);
+    const auto& columns = unrestrained ? state.unrestrained : state.restrained;
+    return boxLoadsOf(*m_state, {columns.data() + *variable * columns.leadingDimension(), columns.rows()}, 1.0);
+}
+
+void TrimLinearisation::recoverLoadDerivative(StateDerivative& derivative, double dynamicPressure) const
+{
+    boxResultants(*m_state->boxes, derivative.pressures, dynamicPressure, derivative.boxForces, derivative.boxMoments);
+    derivative.hingeMoments = m_state->hinges->momentsOf(derivative.pressures, dynamicPressure);
+}
+
+TrimLinearisation::StateDerivative TrimLinearisation::stateDerivative(
+    std::size_t subcase, std::span<const double> stiffnessLoad, std::span<const double> inertialLoad,
+    bool withDisplacements, base::MemoryBudget& budget, const TransferRate* transfer)
 {
     TrimSubcaseState& state = m_state->subcases.at(subcase);
     TrimGroup& group = *m_state->groups[state.group];
@@ -167,8 +269,10 @@ TrimLinearisation::StateDerivative TrimLinearisation::stateDerivative(std::size_
     // D_rᵀ·(−∂M·D_r·ü_r).
     std::vector<double> load(gSize, 0.0);
     for (std::size_t dof = 0; dof < gSize; ++dof)
-        load[dof] = stiffnessLoad[dof] + inertialLoad[dof];
-    const std::vector<double> particular = particularPressures(*m_state, group, state, load, {}, false, budget);
+        load[dof] = stiffnessLoad[dof] + inertialLoad[dof] + (transfer ? transfer->load[dof] : 0.0);
+    const std::vector<double> particular =
+        particularPressures(*m_state, group, state, load, {}, false, budget,
+                            transfer ? std::span<const double>(transfer->slopes) : std::span<const double>{});
     std::vector<double> constant(r, 0.0);
     const linalg::DenseMatrix& modes = group.structure->supportModes();
     for (std::size_t k = 0; k < r; ++k)
@@ -212,6 +316,9 @@ TrimLinearisation::StateDerivative TrimLinearisation::stateDerivative(std::size_
     linalg::DenseMatrix displacements(budget, gSize, 1, "trim derivative displacements");
     group.structure->solve(loads.view(), accelerations.view(), displacements.view(), true, budget);
     derivative.displacements.assign(&displacements(0, 0), &displacements(0, 0) + gSize);
+    if (transfer && !transfer->imposed.empty())
+        for (std::size_t i = 0; i < gSize; ++i)
+            derivative.displacements[i] += transfer->imposed[i];
     return derivative;
 }
 

@@ -2088,7 +2088,8 @@ public:
     // The factorisations made so far for the sensitivities (the constraint sets the analysis did not keep).
     [[nodiscard]] std::int32_t factorisationCount() const
     {
-        std::int32_t count = 0;
+        std::int32_t count = static_cast<std::int32_t>((m_modal ? m_modal->factorisationCount() : 0) +
+                                                       (m_eigen ? m_eigen->shapeFactorisations() : 0));
         for (const std::unique_ptr<SensitivitySystem>& system : m_systems)
             count += system->factorisationCount();
         return count;
@@ -2130,8 +2131,12 @@ public:
     {
         std::map<const SensitivitySystem*, std::vector<std::size_t>> subcasesOf;
         for (std::size_t s = 0; s < m_subcases.size(); ++s)
+        {
+            if (m_subcases[s].isAeroelastic || m_subcases[s].isTermOnly)
+                continue;
             if (const SensitivitySystem& system = systemOf(m_subcases[s]); !system.isCondensed())
                 subcasesOf[&system].push_back(s);
+        }
         std::map<const SensitivitySystem*, std::unique_ptr<AdjointColumns>> reads;
         for (const auto& [system, subcases] : subcasesOf)
             reads.emplace(system, std::make_unique<AdjointColumns>(*system, *m_pseudoLoads, subcases, readsEvery,
@@ -2690,6 +2695,8 @@ public:
             };
             for (std::size_t s = 0; s < m_subcases.size(); ++s)
             {
+                if (m_subcases[s].isAeroelastic || m_subcases[s].isTermOnly)
+                    continue;
                 const std::int32_t label = m_subcases[s].subcase.label;
                 const SensitivitySystem& system = systemOf(m_subcases[s]);
                 const auto readsInSubcase = [&](std::size_t p, std::size_t i)
@@ -2839,7 +2846,8 @@ public:
             // call, only in the subcases of its computed items).
             for (std::size_t s = 0; s < m_subcases.size(); ++s)
             {
-                if (m_subcases[s].isTermOnly || (rows.isRestricted && computedOf[s].empty()))
+                if (m_subcases[s].isAeroelastic || m_subcases[s].isTermOnly ||
+                    (rows.isRestricted && computedOf[s].empty()))
                     continue;
                 const SensitivitySystem& system = systemOf(m_subcases[s]);
                 const auto equations = static_cast<std::size_t>(system.equationCount());

@@ -280,24 +280,7 @@ for (const card of ["Bar2", "Beam2"]) test(`analytic beam thermal buckling gradi
     card === "Bar2" ? { field: "area", value: 2 } : { field: "stationSection", fieldItem: 0, value: 2 },
     { field: "thermalExpansion", value: 0.001, material: true },
   ];
-  const built = build(card, fields, { thermal: "element", buckling: true, released: true, tapered: card === "Beam2" });
-  const x = fields.map(field => field.value), point = built.problem.evaluate();
-  try {
-    const gradients = point.gradients();
-    assert.equal(gradients.report.fieldPerturbations, 0);
-    assert.equal(gradients.report.analysisPerturbations, 0);
-    for (let column = 0; column < x.length; ++column) {
-      const step = 1e-4 * Math.max(0.1, Math.abs(x[column])), plus = [...x], minus = [...x];
-      plus[column] += step;
-      minus[column] -= step;
-      const positive = built.problem.evaluate(plus), negative = built.problem.evaluate(minus);
-      try {
-        near(gradients.responses[0].values[column],
-          (positive.values().responses[0].values[0] - negative.values().responses[0].values[0]) / (2 * step),
-          `thermal buckling gradient ${column}`, 5e-5);
-      } finally { positive.delete(); negative.delete(); }
-    }
-  } finally { point.delete(); built.dispose(); }
+  check(card, fields, { thermal: "element", buckling: true, released: true, tapered: card === "Beam2" });
 });
 
 for (const card of ["Bar2", "Beam2"]) for (const released of [false, true])

@@ -85,6 +85,7 @@ struct ModesOptions
     StructureCache* structures = nullptr;
     // The full path's eigenvalue solver: the block Lanczos solver, multilevel substructuring or the factor out of core.
     EigenSolverOptions eigenSolver;
+    bool usesAeroTransfer = false;
 };
 
 // The seconds spent in each stage of a real eigenvalue analysis (summed over the solves).

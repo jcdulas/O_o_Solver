@@ -1,10 +1,13 @@
 #pragma once
 
 #include "oos/base/memory/MemoryBudget.hpp"
+#include "oos/linalg/dense/DenseLu.hpp"
 #include "oos/linalg/dense/DenseMatrix.hpp"
 
 #include <array>
+#include <memory>
 #include <span>
+#include <vector>
 
 namespace oos::aero
 {
@@ -46,9 +49,18 @@ public:
         linalg::DenseMatrix slope;     // ∂h/∂x = −θ(y), targets × 3 stations
         linalg::DenseMatrix spanSlope; // ∂h/∂y = w'(y) − x θ'(y), targets × 3 stations
     };
+    struct Geometry
+    {
+        std::vector<double> stations;
+        std::vector<std::array<double, 2>> targets;
+        Flexibility flexibility;
+        std::unique_ptr<linalg::DenseLu> bending, torsion;
+        linalg::DenseMatrix bendCoefficients, twistCoefficients;
+        [[nodiscard]] Interpolation derivative(std::span<const double> velocities, base::MemoryBudget& budget) const;
+    };
     [[nodiscard]] static Interpolation interpolate(std::span<const double> stations, const Flexibility& flexibility,
                                                    std::span<const std::array<double, 2>> targets,
-                                                   base::MemoryBudget& budget);
+                                                   base::MemoryBudget& budget, Geometry* keep = nullptr);
 };
 
 } // namespace oos::aero

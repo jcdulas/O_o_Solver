@@ -59,6 +59,8 @@ enum class SolidIntegration : std::uint8_t
 struct SolidSection
 {
     Mat6 elasticity{};
+    std::int32_t materialId = 0;
+    double youngModulus = 0.0, poissonRatio = 0.0; // IsoMat only
     double density = 0.0;
     base::Mat3 axes = base::Mat3::identity();
     base::Vec3 origin{};

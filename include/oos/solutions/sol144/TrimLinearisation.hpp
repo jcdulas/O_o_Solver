@@ -3,13 +3,24 @@
 #include "oos/base/ids/EntityId.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 
+#include "oos/base/math/Vec3.hpp"
+#include <functional>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
+
+namespace oos::assembly
+{
+struct LocalConstraintRows;
+class ElementSet;
+}
+namespace oos::aero { class SplineMatrix; }
 
 namespace oos::solutions
 {
@@ -18,7 +29,8 @@ namespace oos::solutions
 // the design derivatives of SOL 200 SAERO (TrimOptions::keepsLinearisation: the derivative of the trim system). The
 // structure K, M of a design point enters the trim of TrimSolution; the aerodynamic matrices (the doublet lattice D,
 // the splines T and S, the normalwash of the variables) and the support modes D_r do not depend on a design of the
-// structure. With the trim equations of TrimSolution,
+// structure at fixed node positions. TransferRate adds the explicit normalwash, load transfer and imposed motion
+// for moving attachments in a restrained trim. With the trim equations of TrimSolution,
 //     K·u = q·T·Δcp − M·D_r·ü_r,    D·Δcp = W·x + AEQR·S·u,    D_rᵀ·(q·T·Δcp − M·D_r·ü_r) = 0,
 // differentiating along a design direction p (∂K, ∂M the derivatives of the structure's matrices) gives the same
 // equations for (du, dΔcp, dx, dü_r) with the pseudo-load Q = −∂K·u − ∂M·D_r·ü_r on the structure and the term
@@ -68,7 +80,26 @@ public:
         std::vector<double> supportAccelerations;
         std::vector<double> pressures;
         std::vector<double> displacements;
+        std::vector<double> boxForces, boxMoments, hingeMoments;
     };
+
+    using Velocity = std::function<base::Vec3(std::int32_t)>;
+    struct TransferRate
+    {
+        std::vector<double> load, slopes, imposed;
+    };
+    [[nodiscard]] bool supportsTransferRates(bool movesElements) const;
+    [[nodiscard]] const assembly::ElementSet& elementSet() const;
+    [[nodiscard]] aero::SplineMatrix splineRate(const Velocity& velocity, base::MemoryBudget& budget) const;
+    [[nodiscard]] TransferRate transferRate(std::size_t subcase, const aero::SplineMatrix& rate,
+                                            std::span<const assembly::LocalConstraintRows> spiders,
+                                            std::span<const double> pressures, base::MemoryBudget& budget) const;
+
+    // Structural right-hand side T Cp for a unit change in dynamic pressure. A coefficient direction
+    // uses its own pressure distribution; the trimmed state uses the converged distribution.
+    [[nodiscard]] std::vector<double> dynamicPressureLoad(std::size_t subcase, std::span<const double> trimmed,
+                                                          std::optional<std::size_t> variable, bool unrestrained) const;
+    void recoverLoadDerivative(StateDerivative& derivative, double dynamicPressure) const;
 
     struct CoefficientDerivative
     {
@@ -101,7 +132,7 @@ public:
     // of trimmedState(subcase). Throws std::invalid_argument for vectors not of the g set.
     [[nodiscard]] StateDerivative stateDerivative(std::size_t subcase, std::span<const double> stiffnessLoad,
                                                   std::span<const double> inertialLoad, bool withDisplacements,
-                                                  base::MemoryBudget& budget);
+                                                  base::MemoryBudget& budget, const TransferRate* transfer = nullptr);
 
     // The vectors of the elastic coefficients of variable `variable` (index into variableLabels(subcase)): u_x and
     // D_r·ü_r(x) restrained, u_x and D_r·a_x unrestrained (the class comment); computed at the first call, kept.

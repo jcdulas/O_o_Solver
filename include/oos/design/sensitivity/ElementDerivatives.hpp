@@ -53,8 +53,8 @@ class ElementDerivatives
 public:
     // `batch`: the index of the element's batch in the element sets of the perturbation.
     ElementDerivatives(const elements::ElementFamily& family, const FieldPerturbation& perturbation,
-                       std::size_t batch) noexcept
-        : m_family(&family), m_perturbation(&perturbation), m_batch(batch)
+                       std::size_t batch, elements::EntityLayout::Kind layout = elements::EntityLayout::Kind::Static) noexcept
+        : m_family(&family), m_perturbation(&perturbation), m_batch(batch), m_layout(layout)
     {
     }
 
@@ -85,14 +85,15 @@ private:
     [[nodiscard]] ElementVectorDerivative vectorDerivative(std::int64_t row, const char* what, Compute&& compute) const;
     [[nodiscard]] ElementMatrixDerivative matrixDerivative(
         std::array<elements::ElementMatrixBlock, FIELD_SIDE_COUNT>& blocks, std::int64_t row, const char* what) const;
-    [[nodiscard]] const elements::ElementBatchView& view(FieldSide side) const noexcept
+    [[nodiscard]] elements::ElementBatchView view(FieldSide side) const
     {
-        return m_perturbation->set(side).batches()[m_batch].view;
+        return m_perturbation->set(side).batches()[m_batch].view.forLayout(m_layout);
     }
 
     const elements::ElementFamily* m_family;
     const FieldPerturbation* m_perturbation;
     std::size_t m_batch;
+    elements::EntityLayout::Kind m_layout;
 };
 
 } // namespace oos::design

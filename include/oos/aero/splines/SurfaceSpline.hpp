@@ -1,10 +1,13 @@
 #pragma once
 
 #include "oos/base/memory/MemoryBudget.hpp"
+#include "oos/linalg/dense/DenseLu.hpp"
 #include "oos/linalg/dense/DenseMatrix.hpp"
 
 #include <array>
+#include <memory>
 #include <span>
+#include <vector>
 
 namespace oos::aero
 {
@@ -33,9 +36,17 @@ public:
         linalg::DenseMatrix plunge;
         linalg::DenseMatrix slope;
     };
+    struct Geometry
+    {
+        std::vector<std::array<double, 2>> points, targets;
+        std::unique_ptr<linalg::DenseLu> factor;
+        linalg::DenseMatrix coefficients;
+        [[nodiscard]] Interpolation derivative(std::span<const std::array<double, 2>> velocities,
+                                               base::MemoryBudget& budget) const;
+    };
     [[nodiscard]] static Interpolation interpolate(std::span<const std::array<double, 2>> points, double dz,
                                                    std::span<const std::array<double, 2>> targets,
-                                                   base::MemoryBudget& budget);
+                                                   base::MemoryBudget& budget, Geometry* keep = nullptr);
 
     // K(r) for r² (0 at r = 0, its limit) and ∂K/∂x for the offset (dx, dy).
     [[nodiscard]] static double kernel(double rSquared);

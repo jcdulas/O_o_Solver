@@ -4,7 +4,7 @@ export interface DesignVariable {
   id: number; label?: string; initialValue: number; lower: number; upper: number; moveLimit?: number;
 }
 export interface DesignRelation {
-  id: number; card?: string; targetKind: "property" | "material" | "element";
+  id: number; card?: string; targetKind: "property" | "material" | "element" | "trim";
   targetCard: string; targetId: number; field: string; fieldItem?: number;
   form?: "linear" | "equation" | "supplied"; constant?: number;
   terms?: { variableId: number; coefficient: number }[];
@@ -70,7 +70,7 @@ export interface OptimizationSettings {
   analyses?: { statics?: number[]; modes?: number[]; buckling?: number[]; aeroelastic?: number[] };
 }
 export interface OptimizationMetadata {
-  variables: (DesignVariable & { label: string; moveLimit: number | null })[];
+  variables: (DesignVariable & { label: string; moveLimit: number | null; scale: number })[];
   independentIndices: Float64Array; initialValues: Float64Array; maximumOutputBytes: number;
   relations: { id: number; targetCard: string; targetId: number; field: string; fieldItem: number;
     lower: number | null; upper: number | null }[];
@@ -147,7 +147,16 @@ export declare class OptimizationProblem {
 }
 export declare class OptimizationEvaluation {
   values(): OptimizationValues;
+  objective(): number | null;
+  optimizerValues(): { objective: number | null; constraints: Float64Array; partial: boolean; uncertainMode: boolean };
+  constraintJacobian(rowColumns?: Numbers[]): {
+    structure(): { rowOffsets: Float64Array; columnIndices: Float64Array; columns: number };
+    values(point: OptimizationEvaluation): Float64Array;
+    constraints(point: OptimizationEvaluation): Float64Array;
+    delete(): void;
+  };
   analysisResults(): AnalysisResult;
+  nodalCoordinateGradient(responseId: number, nodeIds?: ArrayLike<number>, item?: number): {nodeIds: Int32Array; values: Float64Array; report: {analysisPerturbations: number; shapePerturbations: number; factorisations: number; solves: number}};
   gradients(settings?: GradientSettings): DesignGradients;
   streamGradients(onBlock: (block: GradientBlock) => void, block?: number): {
     solves: number; blocks: number; rows: number; columns: number; orientation: string;

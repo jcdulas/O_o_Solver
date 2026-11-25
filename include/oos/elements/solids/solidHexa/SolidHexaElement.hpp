@@ -60,6 +60,22 @@ public:
     }
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
+    bool differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                              const DesignedField& field, const NodalDisplacements& preload,
+                                              ElementMatrixBlock& block) const override
+    {
+        return KERNEL.differentialStiffnessFieldDerivative(view, row, field, preload, block);
+    }
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                  ElementMatrixBlock& block) const override
+    {
+        return KERNEL.stiffnessFieldDerivative(view, row, field, block);
+    }
+    bool massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                             const MassOptions& options, ElementMatrixBlock& block) const override
+    {
+        return KERNEL.massFieldDerivative(view, row, field, options, block);
+    }
     void computeStiffness(const ElementBatchView& view, ElementRange range, ElementMatrixBlock& block) const override;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                      ElementMatrixBlock& block) const override;

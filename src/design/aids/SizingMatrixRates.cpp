@@ -18,8 +18,8 @@ bool SizingMatrixRates::hasPlainRelations() const
             continue;
         const auto& target = m_problem.targets()[q];
         const auto& relation = m_problem.model().relations()[q];
-        if (relation.form != RelationForm::Linear || !isDirectFieldTarget(relation, target) ||
-            m_problem.targets().hasDerivedMaterial(q) ||
+        if (relation.targetKind == TargetKind::Trim || relation.form != RelationForm::Linear ||
+            !isDirectFieldTarget(relation, target) || m_problem.targets().hasDerivedMaterial(q) ||
             m_problem.targets().derivedProperties().groupOf(q))
             return false;
     }

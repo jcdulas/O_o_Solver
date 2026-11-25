@@ -157,7 +157,7 @@ AnalysisModel::AnalysisModel(const input::ModelSnapshot& snapshot, AnalysisKind 
     : m_snapshot(&snapshot), m_registry(elements::ElementRegistry::forModel(snapshot))
 {
     base::Stopwatch watch;
-    reportSupport(snapshot, m_registry, analysis, sink);
+    reportSupport(snapshot, m_registry, analysis, sink, options.usesAeroTransfer);
     if (options.index != nullptr && &options.index->snapshot() != &snapshot)
         throw std::invalid_argument(
             "AnalysisModel: the index given indexes another snapshot; give the index of a model of the same snapshot");

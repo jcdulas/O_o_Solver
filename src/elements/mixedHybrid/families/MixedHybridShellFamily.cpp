@@ -384,6 +384,40 @@ void MixedHybridShellFamily::computeStiffness(const ElementBatchView& view, Elem
     }
 }
 
+FieldUse MixedHybridShellFamily::designFieldUse(const DesignedField& field) const
+{
+    // The surface pressure is integrated on fixed geometry for a ShellProp thickness field.
+    return isShellThickness(field) ? FieldUse::all().withoutDistributedLoads() : ElementFamily::designFieldUse(field);
+}
+
+bool MixedHybridShellFamily::stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                                      const DesignedField& field, ElementMatrixBlock& block) const
+{
+    if (!isShellThickness(field))
+        return false;
+    const MixedHybridModel& model = MixedHybridModel::of(view.index());
+    const MixedShell& shell = requiredShell(model, view, row);
+    const auto& section = shell.classicSection;
+    const auto flag = view.columns().values<std::int32_t>("thicknessFlag")[static_cast<std::size_t>(row)];
+    const auto corners = view.columns().fixedLists<double>("cornerThickness")[row].first(shell.cornerCount);
+    if (section.propId != field.id || section.hasCoupling || shell.part.offset.value_or(shell.part.section.offset) != 0.0 ||
+        !cornersFollowThickness(section, flag, corners))
+        return false;
+
+    // At fixed geometry and proportional corner thicknesses, the membrane and shear terms scale with t.
+    // For a centred uncoupled section the moment pairing G is geometric and its compliance scales with t^-3.
+    // Thus the eliminated bending term B = G^T C^-1 G scales with t^3, and dK/dt = (K + 2 B)/t.
+    const ShellElementData element = shellElementOf(model, shell, WITH_STIFFNESS);
+    const auto& matrices = element.matrices;
+    Matrix rate = matrices.stiffness;
+    if (section.hasBending)
+        rate += 2.0 * symmetricPart(transposeTimes(matrices.pairing, matrices.complianceInverse * matrices.pairing));
+    rate *= 1.0 / section.thickness;
+    const LocalMap map = shellMapOf(view, model, shell);
+    block.append(row, map.dofs, congruent(rate, map));
+    return true;
+}
+
 void MixedHybridShellFamily::computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                                          ElementMatrixBlock& block) const
 {

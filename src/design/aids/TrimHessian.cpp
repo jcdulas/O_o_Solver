@@ -19,9 +19,17 @@ namespace
 
 using CoefficientKey = std::pair<std::size_t, bool>; // variable, unrestrained
 
+struct LoadWeight
+{
+    ResponseType type;
+    std::size_t index;
+    double weight;
+};
+
 struct CaseWeights
 {
     std::vector<double> variables;
+    std::vector<LoadWeight> loads;
     std::vector<detail::WeightedRecoveredField> fields;
     std::map<CoefficientKey, std::array<double, 6>> coefficients;
 };
@@ -49,6 +57,12 @@ std::optional<std::map<std::size_t, CaseWeights>> trimWeights(
             return false;
         auto& selected = result[static_cast<std::size_t>(subcase - subcases.begin())];
         const auto type = definition->definition().type;
+        if (isTrimLoadType(type))
+        {
+            const auto index = evaluation.analysis.trim->loadIndex(label.entity, type == ResponseType::HingeMoment);
+            selected.loads.push_back({type, index, weight});
+            return true;
+        }
         if (type == ResponseType::TrimVariable || type == ResponseType::StabilityDerivative)
         {
             const auto variable = std::find_if(subcase->variables.begin(), subcase->variables.end(),
@@ -147,11 +161,11 @@ public:
             const auto base = m_trim.trimmedState(subcase);
             if (!recovery.prepare(selected.fields, matrices.targets(), base.displacements))
                 return std::nullopt;
-            if (!selected.variables.empty() || !selected.fields.empty())
-                addState(subcase, std::nullopt, selected.variables, selected.fields.empty() ? nullptr : &recovery,
-                           matrices, directions, count, values);
+            if (!selected.variables.empty() || !selected.fields.empty() || !selected.loads.empty())
+                addState(subcase, std::nullopt, selected.variables, selected.loads,
+                         selected.fields.empty() ? nullptr : &recovery, matrices, directions, count, values);
             for (const auto& [key, coefficientWeights] : selected.coefficients)
-                addState(subcase, key, coefficientWeights, nullptr, matrices, directions, count, values);
+                addState(subcase, key, coefficientWeights, {}, nullptr, matrices, directions, count, values);
         }
         m_report.usesTrimTangents = true;
         m_report.hessianBlocksReason = "analytic trim Hessian from differentiated coupled state equations";
@@ -165,10 +179,11 @@ private:
         std::vector<double> outputs;
         std::vector<double> displacements;
         std::vector<double> motions;
+        double weightedLoad = 0.0;
     };
 
-    Tangent solve(std::size_t subcase, std::optional<CoefficientKey> coefficient,
-                   std::span<const double> stiffness, std::span<const double> mass, bool withDisplacements)
+    Tangent solve(std::size_t subcase, std::optional<CoefficientKey> coefficient, std::span<const double> stiffness,
+                  std::span<const double> mass, bool withDisplacements, std::span<const LoadWeight> loads = {})
     {
         // Recovery-only parameters and zero directions have no implicit state tangent.
         const auto isZero = [](double value) { return value == 0.0; };
@@ -190,17 +205,32 @@ private:
         auto part = m_trim.stateDerivative(subcase, stiffness, mass, withDisplacements, m_budget);
         auto motions = withDisplacements ? m_trim.supportMotion(subcase, part.supportAccelerations)
                                          : std::vector<double>{};
-        return {std::move(part.variables), std::move(part.displacements), std::move(motions)};
+        double value = 0.0;
+        if (!loads.empty())
+        {
+            if (std::any_of(loads.begin(), loads.end(),
+                            [](const LoadWeight& w) {
+                                return w.type != ResponseType::AeroPressureCoefficient &&
+                                       w.type != ResponseType::AeroPressure;
+                            }))
+                m_trim.recoverLoadDerivative(part, m_evaluation.analysis.trim->subcases[subcase].dynamicPressure);
+            for (const auto& load : loads)
+            {
+                value += load.weight * trimLoadValue(load.type, part, load.index,
+                                                     m_evaluation.analysis.trim->subcases[subcase].dynamicPressure);
+            }
+        }
+        return {std::move(part.variables), std::move(part.displacements), std::move(motions), value};
     }
 
     // For K u = aero - M w, differentiating twice gives the same coupled operator with loads
     // -(K_pv u + K_p u_v + K_v u_p), -(M_pv (w-a) + M_p w_v + M_v w_p).
     // The applied inertial acceleration a and the aerodynamic/support geometry are fixed. First tangents are
     // streamed by field: memory stays independent of the number of design variables, and every solve reuses the run.
-    void addState(std::size_t subcase, std::optional<CoefficientKey> coefficient,
-                   std::span<const double> outputWeights, const detail::RecoveredFieldCurvature* recovery,
-                   const detail::SizingMatrixRates& matrices, std::span<const double> directions,
-                   std::size_t count, std::vector<double>& values)
+    void addState(std::size_t subcase, std::optional<CoefficientKey> coefficient, std::span<const double> outputWeights,
+                  std::span<const LoadWeight> loads, const detail::RecoveredFieldCurvature* recovery,
+                  const detail::SizingMatrixRates& matrices, std::span<const double> directions, std::size_t count,
+                  std::vector<double>& values)
     {
         const auto base = coefficient ? m_trim.coefficientState(subcase, coefficient->first, coefficient->second,
                                                                  m_budget)
@@ -254,8 +284,9 @@ private:
                 matrices.addMixed(q, moves.span(), base.displacements, motion.span(), stiffness.span(), mass.span());
                 matrices.addFirst(q, along.displacements, along.motions, stiffness.span(), mass.span());
                 matrices.addDirection(moves.span(), first.displacements, first.motions, stiffness.span(), mass.span());
-                const auto mixed = solve(subcase, coefficient, stiffness.span(), mass.span(), recovery != nullptr);
-                double curvature = dot(outputWeights, mixed.outputs);
+                const auto mixed =
+                    solve(subcase, coefficient, stiffness.span(), mass.span(), recovery != nullptr, loads);
+                double curvature = dot(outputWeights, mixed.outputs) + mixed.weightedLoad;
                 if (recovery)
                     curvature += dot(recovery->weights(), mixed.displacements) +
                                  dot(weightRate.span(), first.displacements) + explicitRate[q];

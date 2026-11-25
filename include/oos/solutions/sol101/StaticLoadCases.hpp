@@ -60,6 +60,7 @@ public:
         bool keepsFamilies = false;
         // The full path streamed: no mass, the inertial rows checked by StreamedLoads.
         bool checksInertialLoads = true;
+        AppliedCaseLoads appliedLoads;
     };
 
     // Where a compact row of the distributed loads acts: its element, or the grid points of a PointsPressureLoad face

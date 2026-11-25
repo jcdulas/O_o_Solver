@@ -4,6 +4,7 @@
 #include "oos/assembly/assemble/ElementVolumes.hpp"
 #include "oos/elements/core/ElementMatrixBlock.hpp"
 #include "oos/elements/core/ElementRegistry.hpp"
+#include "oos/elements/core/FormulationModel.hpp"
 #include "oos/elements/core/SnapshotIndex.hpp"
 
 #include <algorithm>
@@ -22,14 +23,68 @@ namespace
 // ElementMatrixBlock sized by the range).
 constexpr std::int64_t RANGE_ELEMENTS = 2048;
 
-constexpr std::array<std::string_view, 6> CONCENTRATED_MASS_CARDS{"PointMassMatrix", "PointMassInertia", "MassDofProperty",
-                                                                  "MassDofInline",  "MassScalarProperty",  "MassScalarInline"};
+constexpr std::array<std::string_view, 6> CONCENTRATED_MASS_CARDS{"PointMassMatrix",    "PointMassInertia",
+                                                                  "MassDofProperty",    "MassDofInline",
+                                                                  "MassScalarProperty", "MassScalarInline"};
+
+struct EntityMotions
+{
+    std::array<std::vector<double>, 6> atOrigin;
+};
+
+const elements::EntityLayout* staticLayout(const elements::SnapshotIndex& index,
+                                           const elements::ElementRegistry& registry)
+{
+    const auto* formulation = elements::formulationModelOf(index, registry);
+    return formulation ? &formulation->layout(elements::EntityLayout::Kind::Static) : nullptr;
+}
+
+// Rigid translations and rotations also move the edge and face DOFs of a mixed model.
+const EntityMotions& entityMotions(const assembly::ElementSet& set)
+{
+    static const EntityMotions empty;
+    if (set.batches().empty())
+        return empty;
+    const auto& view = set.batches().front().view;
+    if (!view.formulation() || view.entities()->empty())
+        return empty;
+    // Every material variable at a design point uses the same geometric modes.
+    return set.index().computedOnce<EntityMotions>(
+        [&view]
+        {
+            EntityMotions modes;
+            for (std::size_t mode = 0; mode < modes.atOrigin.size(); ++mode)
+            {
+                base::Vec3 axis{};
+                axis[mode % 3] = 1.0;
+                base::Mat3 gradient{};
+                if (mode >= 3)
+                    gradient = base::matrixFromRows({0.0, -axis[2], axis[1]}, {axis[2], 0.0, -axis[0]},
+                                                    {-axis[1], axis[0], 0.0});
+                auto& values = modes.atOrigin[mode];
+                values.resize(static_cast<std::size_t>(view.entities()->totalDofCount()));
+                view.formulation()->affineField(view.entities()->kind(), gradient, mode < 3 ? axis : base::Vec3{},
+                                                values);
+            }
+            return modes;
+        });
+}
 
 // The six rows of the rigid-body modes at one DOF (MassProperties class comment).
 std::array<double, 6> rigidRow(const elements::ElementBatchView& view, const elements::ElementDof& dof,
-                               base::Vec3 reference)
+                               base::Vec3 reference, const EntityMotions& modes)
 {
     std::array<double, 6> row{};
+    if (dof.kind == input::PointKind::Entity)
+    {
+        const auto offset = static_cast<std::size_t>(view.entities()->dofOffset(dof.row) + dof.component);
+        for (std::size_t mode = 0; mode < row.size(); ++mode)
+            row[mode] = modes.atOrigin[mode][offset];
+        const auto shift = base::cross(reference, {row[0], row[1], row[2]});
+        for (std::size_t axis = 0; axis < 3; ++axis)
+            row[3 + axis] -= shift[axis];
+        return row;
+    }
     if (dof.kind != input::PointKind::Grid || dof.component < 1 || dof.component > 6)
         return row;
     const base::Mat3 rotation = view.displacementFrame(dof.row);
@@ -66,14 +121,15 @@ std::int32_t propertyOf(const input::ElementBatch& batch, std::int64_t row)
 
 // MO_e(p, q) = Σ_ij D(i, p)·M(i, j)·D(j, q) of element `e` of `block`, in a fixed order.
 base::MatN<6> rigidBodyMassOfElement(const elements::ElementBatchView& view, const elements::ElementMatrixBlock& block,
-                                     std::size_t e, base::Vec3 reference, std::vector<std::array<double, 6>>& rows)
+                                     std::size_t e, base::Vec3 reference, const EntityMotions& modes,
+                                     std::vector<std::array<double, 6>>& rows)
 {
     const std::span<const elements::ElementDof> dofs = block.dofs(e);
     const std::span<const double> matrix = block.matrix(e);
     const std::size_t n = dofs.size();
     rows.resize(n);
     for (std::size_t i = 0; i < n; ++i)
-        rows[i] = rigidRow(view, dofs[i], reference);
+        rows[i] = rigidRow(view, dofs[i], reference, modes);
     base::MatN<6> element;
     for (std::size_t i = 0; i < n; ++i)
         for (std::size_t j = 0; j < n; ++j)
@@ -107,6 +163,7 @@ base::MatN<6> sumListedRigidBodyMass(const assembly::ElementSet& set,
                                      const elements::ElementRegistry& registry, base::Vec3 reference,
                                      elements::MassFormulation formulation, bool skipsConcentratedMasses)
 {
+    const auto& modes = entityMotions(set);
     base::MatN<6> total;
     elements::ElementMatrixBlock block;
     std::vector<std::array<double, 6>> rows; // bounded by the DOFs of one element
@@ -131,7 +188,7 @@ base::MatN<6> sumListedRigidBodyMass(const assembly::ElementSet& set,
         block.clear();
         family->computeMass(batch.view, {element.row, element.row + 1}, options, block);
         for (std::size_t e = 0; e < block.size(); ++e)
-            addTo(total, rigidBodyMassOfElement(batch.view, block, e, reference, rows));
+            addTo(total, rigidBodyMassOfElement(batch.view, block, e, reference, modes, rows));
     }
     return total;
 }
@@ -146,7 +203,8 @@ base::MatN<6> sumRigidBodyMass(const input::ModelSnapshot& snapshot, base::Vec3 
 {
     const elements::ElementRegistry registry = elements::ElementRegistry::forModel(snapshot);
     const elements::SnapshotIndex index(snapshot, budget);
-    const assembly::ElementSet set(index, registry);
+    const assembly::ElementSet set(index, registry, staticLayout(index, registry));
+    const auto& modes = entityMotions(set);
     base::MatN<6> total;
     elements::ElementMatrixBlock block;
     std::vector<std::array<double, 6>> rows; // bounded by the DOFs of one element
@@ -170,7 +228,7 @@ base::MatN<6> sumRigidBodyMass(const input::ModelSnapshot& snapshot, base::Vec3 
                 const std::int64_t row = block.elementRow(e);
                 if (filter && !filter(batch.view.card(), batch.view.elementId(row), propertyOf(elementBatch, row)))
                     continue;
-                const base::MatN<6> element = rigidBodyMassOfElement(batch.view, block, e, reference, rows);
+                const base::MatN<6> element = rigidBodyMassOfElement(batch.view, block, e, reference, modes, rows);
                 addTo(total, element);
                 if (perElement != nullptr)
                     (*perElement)[batch.view.elementId(row)] += element(perElementEntry.first, perElementEntry.second);
@@ -240,7 +298,7 @@ double MassProperties::volumeOf(const assembly::ElementSet& set, const std::shar
     const auto unitDensity = std::make_shared<const input::ModelSnapshot>(
         assembly::ElementVolumes::unitDensitySnapshot(set.index().snapshot(), keepAlive));
     const elements::SnapshotIndex index(*unitDensity, set.index());
-    const assembly::ElementSet unitSet(index, registry);
+    const assembly::ElementSet unitSet(index, registry, staticLayout(index, registry));
     return sumListedRigidBodyMass(unitSet, elements, registry, {0.0, 0.0, 0.0}, elements::MassFormulation::Lumped,
                                   true)(0, 0);
 }

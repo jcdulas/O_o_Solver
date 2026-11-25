@@ -39,9 +39,9 @@ void stopOnErrors(const base::DiagnosticSink& sink, const std::string& stage)
 }
 
 void reportSupport(const input::ModelSnapshot& snapshot, const elements::ElementRegistry& registry,
-                   AnalysisKind analysis, base::DiagnosticSink& sink)
+                   AnalysisKind analysis, base::DiagnosticSink& sink, bool usesAeroTransfer)
 {
-    const base::SupportReport report = checkSupport(snapshot, registry, analysis);
+    const base::SupportReport report = checkSupport(snapshot, registry, analysis, usesAeroTransfer);
     for (const base::Diagnostic& diagnostic : report.ignored)
         sink.report(diagnostic);
     if (report.isComplete())

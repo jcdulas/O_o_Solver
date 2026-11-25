@@ -248,7 +248,25 @@ export interface AeroelasticResult {
   monitorPoints3: { name: string; label: string; positionFrameId: number; displacementFrameId: number; point: Float64Array }[];
 }
 
+export interface BoxMotion { plunge: Float64Array; slope: Float64Array }
+export interface AeroStaticPreload { readonly __aeroStaticPreload: unique symbol; delete(): void }
+export interface AeroModalBasis {
+  generalizedLoads(boxForces: Float64Array | readonly number[]): Float64Array;
+  delete(): void;
+}
+export interface AeroTransfer {
+  solveStatic(subcase: number, boxForces: Float64Array | readonly number[]): AnalysisResult & { boxMotions: BoxMotion[]; preload: AeroStaticPreload };
+  solveModes(subcase: number): AnalysisResult & { boxMotions: BoxMotion[]; modalBasis: AeroModalBasis };
+  solveBuckling(subcase: number, preload: AeroStaticPreload): AnalysisResult & { boxMotions: BoxMotion[] };
+  readonly nodeIds: Int32Array;
+  readonly boxIds: Int32Array;
+  boxMotion(nodalMotion: Float64Array | readonly number[]): { plunge: Float64Array; slope: Float64Array };
+  structuralLoads(boxForces: Float64Array | readonly number[]): Float64Array;
+  delete(): void;
+}
+
 export interface Model {
+  aeroTransfer(): AeroTransfer;
   tableNames(): string[];
   checkSupport(analysis: Analysis): SupportCheck;
   // What MixedHybridFormulation read at every edge of the surface of the shells and of the skin of the solids; every
@@ -262,7 +280,7 @@ export interface OptimizationCapabilities {
   analyses: { analysis: Analysis; solution: 101 | 103 | 105 | 144; sizingFirstOrder: boolean;
     shapeFirstOrder: boolean; secondOrder: boolean; restrictions: string[] }[];
   responses: string[];
-  fields: { targetKind: "property" | "material" | "element"; targetCard: string; field: string;
+  fields: { targetKind: "property" | "material" | "element" | "trim"; targetCard: string; field: string;
     type: string; requiresItem: boolean }[];
 }
 export interface OptimizationPreparation {
@@ -299,6 +317,8 @@ export declare class OosSolver {
   createOptimization(model: Model, declarations?: OptimizationDeclarations, settings?: OptimizationSettings): OptimizationProblem;
   // `modelOptions`: those of modelFromReader (a model in MixedHybridFormulation: elementFormulation and
   // formulationGeometry).
+  prepareOptimization(oor: unknown, deck: unknown, declarations?: OptimizationDeclarations,
+    settings?: OptimizationSettings, modelOptions?: ModelOptions): OptimizationProblem;
   optimizationFromReader(oor: unknown, deck: unknown, declarations?: OptimizationDeclarations,
     settings?: OptimizationSettings, modelOptions?: ModelOptions): OptimizationProblem;
 

@@ -38,8 +38,12 @@ using Mat24x8 = base::MatN<DOFS, CORNERS>;
 // Engineering strain of the symmetric product of two parent-coordinate gradients.
 [[nodiscard]] Voigt6 strainDirection(const base::Vec3& a, const base::Vec3& b)
 {
-    return {a[0] * b[0], a[1] * b[1], a[2] * b[2], a[0] * b[1] + a[1] * b[0],
-            a[1] * b[2] + a[2] * b[1], a[0] * b[2] + a[2] * b[0]};
+    return {a[0] * b[0],
+            a[1] * b[1],
+            a[2] * b[2],
+            a[0] * b[1] + a[1] * b[0],
+            a[1] * b[2] + a[2] * b[1],
+            a[0] * b[2] + a[2] * b[0]};
 }
 
 // What one Gauss point contributes: B (compatible strains), G (strains of the modes), N (to interpolate ΔT) and
@@ -216,7 +220,7 @@ void fillRecovery(std::span<const base::Vec3> x, const Mat6& d, const std::array
 } // namespace
 
 void buildSolidHexaIncompatibleModesResponse(std::span<const base::Vec3> positions, const Mat6& elasticity,
-                                            const Voigt6& expansion, SolidResponseParts parts, SolidResponse& response)
+                                             const Voigt6& expansion, SolidResponseParts parts, SolidResponse& response)
 {
     const std::array<GaussPoint, GAUSS_POINTS> points = gaussPointsOf(positions);
     const Condensation condensation = condense(points, elasticity, expansion);
@@ -225,6 +229,23 @@ void buildSolidHexaIncompatibleModesResponse(std::span<const base::Vec3> positio
         fillStiffness(condensation, response);
     else
         fillRecovery(positions, elasticity, points, condensation, response);
+}
+
+void incompatibleHexaStiffnessRate(std::span<const base::Vec3> positions, const Mat6& elasticity, const Mat6& rate,
+                                   SolidMatrix& stiffness)
+{
+    const auto points = gaussPointsOf(positions);
+    const auto condensation = condense(points, elasticity, {});
+    Mat24 derivative;
+    for (const auto& point : points)
+    {
+        const auto strain = point.compatible - point.modes * condensation.modesOfU;
+        derivative += point.weight * (strain.transposed() * (rate * strain));
+    }
+    stiffness.reset(DOFS);
+    for (std::size_t i = 0; i < DOFS; ++i)
+        for (std::size_t j = 0; j < DOFS; ++j)
+            stiffness(i, j) = derivative(i, j);
 }
 
 } // namespace oos::elements

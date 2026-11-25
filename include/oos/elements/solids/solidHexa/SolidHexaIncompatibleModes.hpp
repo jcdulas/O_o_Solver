@@ -23,4 +23,8 @@ namespace oos::elements
 void buildSolidHexaIncompatibleModesResponse(std::span<const base::Vec3> positions, const Mat6& elasticity,
                                             const Voigt6& expansion, SolidResponseParts parts, SolidResponse& response);
 
+// Stationary energy derivative of the condensed brick for a constitutive matrix rate in material axes.
+void incompatibleHexaStiffnessRate(std::span<const base::Vec3> positions, const Mat6& elasticity,
+                                   const Mat6& rate, SolidMatrix& stiffness);
+
 } // namespace oos::elements

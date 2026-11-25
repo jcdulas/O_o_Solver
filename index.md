@@ -11,7 +11,7 @@ Run static, modal, buckling and aeroelastic analyses through the O_o_Solver API 
 - [Project overview](README.md): capabilities, repository layout and build commands.
 - [API reference](docs/api.rst): JavaScript and Python operations, TypeScript declarations and C++ headers.
 - [WebAssembly threads](docs/threading.md): shared-memory builds, runtime settings and browser Workers.
-- [Optimization with JavaScript and Python](docs/optimization.md): design points, derivatives and model updates.
+- [External optimizer API for JavaScript, Python and C++](docs/optimization.md) covers retained points, batched derivatives and CSR callbacks.
 - [External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, workers and archives.
 - [Derivative coverage](docs/derivatives.md): analytic paths, numerical fallbacks and diagnostic reports.
 - [Architecture with diagrams](docs/architecture.md): module dependencies, data ownership and execution flow.
@@ -65,6 +65,7 @@ docs/naming
 :caption: Optimization and derivatives
 
 docs/optimization
+docs/benchmarks/optimizer-api/README
 docs/external-optimization
 docs/derivatives
 docs/beam-derivatives

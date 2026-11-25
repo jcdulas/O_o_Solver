@@ -187,6 +187,7 @@ struct ElementFormulations
 // a geometry declaration that names no edge, and the elements it cannot compute), which a run reports before it
 // assembles anything.
 [[nodiscard]] SupportCheck checkSupport(const input::ModelSnapshot& snapshot, Analysis analysis);
+[[nodiscard]] SupportCheck checkTrimPreloadedBuckling(const input::ModelSnapshot& snapshot);
 
 // Runs the analysis on the model. Throws UnsupportedCardError when a card is refused (checkSupport lists them all),
 // SolverError for a problem of the model (a mechanism, a singular matrix, a missing card), MemoryBudgetError when the

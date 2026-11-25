@@ -73,7 +73,9 @@ public:
     void add(const ItemKey& key, ResponseType type, const ResponseItem& label);
     // Registers a static item of a SAERO subcase whose displacement weights the static linearisation gave.
     void addStaticItem(const ItemKey& key, std::int32_t subcase);
-    [[nodiscard]] bool isEmpty() const noexcept { return m_items.empty() && m_staticItems.empty(); }
+    using PreloadRate = std::function<void(std::size_t, std::span<const double>)>;
+    void addPreload(std::int32_t subcase, PreloadRate rate);
+    [[nodiscard]] bool isEmpty() const noexcept { return m_directions.empty(); }
     [[nodiscard]] std::size_t itemCount() const noexcept { return m_items.size() + m_staticItems.size(); }
 
     // The vectors of the directions; call once every item is added.
@@ -86,6 +88,8 @@ public:
     void addElement(std::size_t quantity, const elements::ElementFamily& family, base::EntityId elementId,
                     const elements::FieldUse& use, const ElementMatrixDerivative& stiffness, const MassOf& massOf);
     // Once every element of the quantity is added: the derivatives of every item along it.
+    void addTransferRate(const solutions::TrimLinearisation::Velocity& velocity, std::span<const assembly::LocalConstraintRows> spiders, bool movesElements);
+    void addPressureRate(std::int32_t trimSet);
     void finishQuantity(std::size_t quantity, const LinearisedItems& linearised);
     // The derivatives into the explicit parts of the items, the static items' weights cleared.
     void addExplicitParts(const std::vector<FieldValue>& quantities, LinearisedItems& linearised) const;
@@ -105,6 +109,8 @@ private:
         base::BudgetedBuffer<double> stiffnessLoad; // −∂K/∂v·u of the current quantity (g set)
         base::BudgetedBuffer<double> inertialLoad;  // −∂M/∂v·w
         bool isTouched = false;
+        bool changesPressure = false;
+        std::optional<solutions::TrimLinearisation::TransferRate> transfer;
     };
     struct Item
     {
@@ -131,6 +137,7 @@ private:
     std::vector<Direction> m_directions;
     std::vector<Item> m_items;
     std::vector<StaticItem> m_staticItems;
+    std::map<std::size_t, PreloadRate> m_preloadRates;
     std::vector<elements::MassOptions> m_massOptions; // per subcase
     std::vector<double> m_weightToMass;               // per subcase
     std::vector<std::vector<double>> m_appliedAccelerations; // a in the applied inertial load M*a; empty without one

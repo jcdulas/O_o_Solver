@@ -158,7 +158,7 @@ public:
 
     bool buildRigidBody(ConstraintSource source);
     bool buildRigidRod();
-    bool buildRigidInterpolation();
+    bool buildRigidInterpolation(const RigidElementEquations::GridVelocity* velocity);
 
 private:
     void report(std::string code, std::string field, std::string message)
@@ -360,7 +360,7 @@ bool ElementBuilder::buildRigidRod()
     return true;
 }
 
-bool ElementBuilder::buildRigidInterpolation()
+bool ElementBuilder::buildRigidInterpolation(const RigidElementEquations::GridVelocity* velocity)
 {
     // The rows: the weighted independent points, then the reference point (REFC), then the UM DOFs.
     std::vector<const PointRow*> independents;
@@ -422,6 +422,9 @@ bool ElementBuilder::buildRigidInterpolation()
         const base::Vec3 arm = m_dofMap.positionInBasic(gridRow) - referencePosition;
         return base::norm(arm) <= coincidence ? base::Vec3{} : arm;
     };
+    const auto relativeVelocity = [&](const PointRow& point)
+    { return (*velocity)(point.nodeId) - (*velocity)(reference.nodeId); };
+    double distanceRate = 0.0;
     double distanceSum = 0.0;
     std::size_t distinctCount = 0;
     for (std::size_t i = 0; i < independents.size(); ++i)
@@ -431,7 +434,21 @@ bool ElementBuilder::buildRigidInterpolation()
             isRepeated = isRepeated || independents[j]->gridRow == independents[i]->gridRow;
         if (isRepeated)
             continue;
-        distanceSum += base::norm(armOf(independents[i]->gridRow));
+        const base::Vec3 arm = armOf(independents[i]->gridRow);
+        const double length = base::norm(arm);
+        if (velocity)
+        {
+            const base::Vec3 rate = relativeVelocity(*independents[i]);
+            if (length == 0.0 && rate != base::Vec3{})
+            {
+                report("rigid-interpolation-shape-coincidence", "referenceNode",
+                       "the shape separates coincident interpolation points");
+                return false;
+            }
+            if (length > 0.0)
+                distanceRate += base::dot(arm, rate) / length;
+        }
+        distanceSum += length;
         ++distinctCount;
     }
     const double characteristicLength = distanceSum > 0.0 ? distanceSum / static_cast<double>(distinctCount) : 1.0;
@@ -440,6 +457,11 @@ bool ElementBuilder::buildRigidInterpolation()
     // s' = s·D⁻¹, and with the rotational weights scaled by Lc² every term of M' = Σ w·s'ᵀ·s' is of the order of the
     // weights.
     const base::Mat3 referenceRotation = m_dofMap.cdToBasic(reference.gridRow);
+    // Freeze the numerical DOF scaling D at this point. The physical rotational weights W still vary with Lc.
+    const double lengthRate = distanceRate / static_cast<double>(distinctCount);
+    base::MatN<6> normalRate;
+    std::vector<Row6> rhsRate(velocity ? columns.size() : 0);
+    std::vector<Row6> observationRates;
     base::MatN<6> normal;
     std::vector<Row6> rightHandSide(columns.size(), Row6{}); // H' column by column
     for (const PointRow* point : independents)
@@ -455,7 +477,27 @@ bool ElementBuilder::buildRigidInterpolation()
                 s[j] /= characteristicLength;
             const double weight =
                 component <= 3 ? point->weight : point->weight * characteristicLength * characteristicLength;
-            Row6& h = rightHandSide[columnOf({point->gridRow, component})];
+            const auto col = columnOf({point->gridRow, component});
+            if (velocity && weight > 0.0)
+            {
+                Row6 ds{};
+                if (component <= 3)
+                {
+                    const auto change =
+                        transferredRow(rigidRow(rotation, component, relativeVelocity(*point), 1.0), referenceRotation);
+                    for (std::size_t j = 3; j < 6; ++j)
+                        ds[j] = change[j] / characteristicLength;
+                }
+                observationRates.push_back(ds);
+                const double dw = component <= 3 ? 0.0 : 2.0 * point->weight * characteristicLength * lengthRate;
+                for (std::size_t i = 0; i < 6; ++i)
+                {
+                    rhsRate[col][i] += dw * s[i] + weight * ds[i];
+                    for (std::size_t j = 0; j < 6; ++j)
+                        normalRate(i, j) += dw * s[i] * s[j] + weight * (ds[i] * s[j] + s[i] * ds[j]);
+                }
+            }
+            Row6& h = rightHandSide[col];
             for (std::size_t i = 0; i < 6; ++i)
             {
                 h[i] += weight * s[i];
@@ -522,6 +564,58 @@ bool ElementBuilder::buildRigidInterpolation()
         }
     }
 
+    // M X = H, M dX = dH - dM X on the identifiable rigid motions.
+    // For deficient spiders accept directions preserving the null space of the observations.
+    auto dg = std::vector<std::vector<double>>{};
+    if (velocity)
+    {
+        base::MatN<6> inverse;
+        for (std::size_t k = 0; k < 6; ++k)
+        {
+            if (isNull[k])
+            {
+                for (const Row6& ds : observationRates)
+                {
+                    double projection = 0.0, scale = 0.0;
+                    for (std::size_t j = 0; j < 6; ++j)
+                    {
+                        projection += ds[j] * eigen.vectors(j, k);
+                        scale += std::abs(ds[j]);
+                    }
+                    if (std::abs(projection) >
+                        RigidElementEquations::RIGID_INTERPOLATION_NULL_COMPONENT_TOLERANCE * scale)
+                    {
+                        report("rigid-interpolation-shape-rank", "referenceComponents",
+                               "the shape changes the undetermined rigid motions of this interpolation");
+                        return false;
+                    }
+                }
+                continue;
+            }
+            for (std::size_t i = 0; i < 6; ++i)
+                for (std::size_t j = 0; j < 6; ++j)
+                    inverse(i, j) += eigen.vectors(i, k) * eigen.vectors(j, k) / eigen.values[k];
+        }
+        dg.assign(referenceDofs.size(), std::vector<double>(columns.size()));
+        for (std::size_t col = 0; col < columns.size(); ++col)
+        {
+            Row6 x{}, rhs = rhsRate[col];
+            for (std::size_t i = 0; i < 6; ++i)
+                for (std::size_t j = 0; j < 6; ++j)
+                    x[i] += inverse(i, j) * rightHandSide[col][j];
+            for (std::size_t i = 0; i < 6; ++i)
+                for (std::size_t j = 0; j < 6; ++j)
+                    rhs[i] -= normalRate(i, j) * x[j];
+            for (std::size_t r = 0; r < referenceDofs.size(); ++r)
+            {
+                const auto c = static_cast<std::size_t>(referenceDofs[r].component - 1);
+                for (std::size_t j = 0; j < 6; ++j)
+                    dg[r][col] += inverse(c, j) * rhs[j];
+                if (c >= 3)
+                    dg[r][col] /= characteristicLength;
+            }
+        }
+    }
     const std::size_t equationCount = referenceDofs.size();
     std::vector<ConstraintTerm> terms;
     if (dependents.size() == 1)
@@ -531,7 +625,7 @@ bool ElementBuilder::buildRigidInterpolation()
         {
             terms.clear();
             for (std::size_t col = 0; col < columns.size(); ++col)
-                terms.push_back({dofOf(columns[col]), g[r][col]});
+                terms.push_back({dofOf(columns[col]), velocity ? dg[r][col] : g[r][col]});
             m_rows.addRow(dofOf(referenceDofs[r]), terms);
         }
         return true;
@@ -601,6 +695,14 @@ bool ElementBuilder::buildRigidInterpolation()
                "RigidInterpolation.dependentMarker DOFs");
         return false;
     }
+    // If B u_m + A u_n = 0, differentiate the UM elimination B T = -A column by column.
+    std::vector<std::vector<double>> transfer(equationCount, std::vector<double>(dofCount));
+    for (std::size_t k = 0; k < equationCount; ++k)
+        for (std::size_t e = 0; e < dofCount; ++e)
+            for (std::size_t r = 0; r < equationCount; ++r)
+                transfer[k][e] -= mBlock[k * equationCount + r] * equations[r * dofCount + e];
+    const auto equationRate = [&](std::size_t r, std::size_t e)
+    { return e < equationCount ? 0.0 : -dg[r][e - equationCount]; };
     for (std::size_t k = 0; k < equationCount; ++k)
     {
         terms.clear();
@@ -608,10 +710,19 @@ bool ElementBuilder::buildRigidInterpolation()
         {
             if (std::find(mPositions.begin(), mPositions.end(), e) != mPositions.end())
                 continue;
-            double sum = 0.0;
-            for (std::size_t r = 0; r < equationCount; ++r)
-                sum += mBlock[k * equationCount + r] * equations[r * dofCount + e];
-            terms.push_back({dofOf(elementDofs[e]), -sum});
+            double value = transfer[k][e];
+            if (velocity)
+            {
+                value = 0.0;
+                for (std::size_t r = 0; r < equationCount; ++r)
+                {
+                    double rhs = equationRate(r, e);
+                    for (std::size_t j = 0; j < equationCount; ++j)
+                        rhs += equationRate(r, mPositions[j]) * transfer[j][e];
+                    value -= mBlock[k * equationCount + r] * rhs;
+                }
+            }
+            terms.push_back({dofOf(elementDofs[e]), value});
         }
         m_rows.addRow(dofOf(elementDofs[mPositions[k]]), terms);
     }
@@ -671,6 +782,20 @@ std::optional<ConstraintSource> RigidElementEquations::findSource(std::string_vi
 
 bool RigidElementEquations::build(const input::RigidTable& table, std::int64_t beginRow, std::int64_t endRow,
                                   LocalConstraintRows& rows, base::DiagnosticSink& sink) const
+{
+    return buildRows(table, beginRow, endRow, rows, sink, nullptr);
+}
+
+bool RigidElementEquations::interpolationDerivative(const input::RigidTable& table, std::int64_t beginRow,
+                                                    std::int64_t endRow, const GridVelocity& velocity,
+                                                    LocalConstraintRows& rows, base::DiagnosticSink& sink) const
+{
+    return buildRows(table, beginRow, endRow, rows, sink, &velocity);
+}
+
+bool RigidElementEquations::buildRows(const input::RigidTable& table, std::int64_t beginRow, std::int64_t endRow,
+                                      LocalConstraintRows& rows, base::DiagnosticSink& sink,
+                                      const GridVelocity* velocity) const
 {
     rows.clear();
     const base::DictionaryView types = table.types();
@@ -736,6 +861,8 @@ bool RigidElementEquations::build(const input::RigidTable& table, std::int64_t b
     }
     if (!isValid)
         return false;
+    if (velocity && *source != ConstraintSource::RigidInterpolation)
+        throw std::invalid_argument("interpolationDerivative requires a RigidInterpolation element");
     ElementBuilder builder(*m_dofMap, card, elementId, std::move(points), rows, sink);
     bool isBuilt = false;
     switch (*source)
@@ -749,7 +876,7 @@ bool RigidElementEquations::build(const input::RigidTable& table, std::int64_t b
         isBuilt = builder.buildRigidRod();
         break;
     case ConstraintSource::RigidInterpolation:
-        isBuilt = builder.buildRigidInterpolation();
+        isBuilt = builder.buildRigidInterpolation(velocity);
         break;
     case ConstraintSource::Mpc:
     case ConstraintSource::Fastener:

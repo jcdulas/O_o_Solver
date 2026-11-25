@@ -51,6 +51,7 @@ struct AnalysisModelOptions
     // the model of an element formulation and the kernels of its elements, the costliest part of a model in
     // MixedHybridFormulation); null: a new index. Throws std::invalid_argument when it indexes another snapshot.
     std::shared_ptr<const elements::SnapshotIndex> index;
+    bool usesAeroTransfer = false;
 };
 
 // The model of an analysis, the part that does not depend on the subcase: the support check of the analysis

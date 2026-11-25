@@ -969,6 +969,7 @@ LoadBasisPlan planLoadBasis(const input::ModelSnapshot& snapshot, const StaticOp
             caseInputs.spcs.push_back(&spcSets[s]);
         }
         caseInputs.mass = mass;
+        caseInputs.appliedLoads = options.appliedLoads;
         caseInputs.tolerance = options.loadBasisTolerance;
         caseInputs.pool = options.pool;
         caseInputs.kernel = options.kernel;
@@ -1140,6 +1141,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
     // The external units (ExternalUnitPath), made with the element set before the connectivity pass.
     std::unique_ptr<ExternalUnitPath> externalPath;
     AnalysisModelOptions modelOptions;
+    modelOptions.usesAeroTransfer = m_options.usesAeroTransfer;
     modelOptions.index = m_options.snapshotIndex;
     modelOptions.checkCases = [&](base::DiagnosticSink& caseSink)
     {
@@ -2686,6 +2688,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                 caseInputs.spcs.push_back(&spcSets[s]);
             }
             caseInputs.mass = mass.get();
+            caseInputs.appliedLoads = m_options.appliedLoads;
             caseInputs.tolerance = m_options.loadBasisTolerance;
             caseInputs.pool = pool;
             caseInputs.kernel = m_options.kernel;

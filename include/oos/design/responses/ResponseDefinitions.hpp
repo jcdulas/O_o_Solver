@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -56,7 +57,13 @@ enum class ResponseType : std::uint8_t
     BucklingFactor,         // LAMA: the load factor of a buckling mode (ATTA) of a BUCK subcase
     TrimVariable, // TRIM: the value of a trim variable (ATTA its AeroRigidTrimVariable or AeroControlSurface) of a
                   // SAERO subcase
-    StabilityDerivative // STABDER: an elastic stability derivative coefficient of a trim variable
+    StabilityDerivative, // STABDER: an elastic stability derivative coefficient of a trim variable
+    AeroPressureCoefficient,
+    AeroBoxForce,
+    AeroBoxMoment,
+    HingeMoment,
+    AeroPressure,
+    BucklingDisplacement
 };
 
 // The response type of an RTYPE ("Weight", "Displacement"...), or nothing for a type that is not a static DesignResp1
@@ -82,6 +89,27 @@ enum class ResponseType : std::uint8_t
 [[nodiscard]] bool isModalType(ResponseType type) noexcept;
 [[nodiscard]] bool isEigenType(ResponseType type) noexcept;
 // Whether the type is a response of the SAERO analysis only (TRIM, STABDER): one item per subcase of that analysis.
+// The same linear load recovery applies to the primal, tangent and mixed tangent at fixed dynamic pressure.
+template <class TrimState>
+[[nodiscard]] double trimLoadValue(ResponseType type, const TrimState& state, std::size_t index, double q)
+{
+    switch (type)
+    {
+    case ResponseType::AeroPressureCoefficient:
+        return state.pressures.at(index);
+    case ResponseType::AeroPressure:
+        return q * state.pressures.at(index);
+    case ResponseType::AeroBoxForce:
+        return state.boxForces.at(index);
+    case ResponseType::AeroBoxMoment:
+        return state.boxMoments.at(index);
+    case ResponseType::HingeMoment:
+        return state.hingeMoments.at(index);
+    default:
+        throw std::invalid_argument("expected a trim load response");
+    }
+}
+[[nodiscard]] bool isTrimLoadType(ResponseType type) noexcept;
 [[nodiscard]] bool isAeroelasticType(ResponseType type) noexcept;
 
 // The analysis of a subcase (Case Control ANALYSIS = STATICS, MODES, BUCK, SAERO): a response is evaluated in the

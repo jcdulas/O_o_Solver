@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -122,7 +123,15 @@ public:
     // The source of a card type name of the table; nothing for a card that this class does not eliminate.
     [[nodiscard]] static std::optional<ConstraintSource> findSource(std::string_view type) noexcept;
 
+    // Differentiate the eliminated RBE3 rows along basic-frame grid velocities with fixed CD axes.
+    using GridVelocity = std::function<base::Vec3(base::EntityId)>;
+    bool interpolationDerivative(const input::RigidTable& table, std::int64_t beginRow, std::int64_t endRow,
+                                 const GridVelocity& velocity, LocalConstraintRows& rates,
+                                 base::DiagnosticSink& sink) const;
+
 private:
+    bool buildRows(const input::RigidTable& table, std::int64_t beginRow, std::int64_t endRow,
+                   LocalConstraintRows& rows, base::DiagnosticSink& sink, const GridVelocity* velocity) const;
     const DofMap* m_dofMap;
 };
 

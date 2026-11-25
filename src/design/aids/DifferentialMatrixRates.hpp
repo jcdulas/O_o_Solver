@@ -10,22 +10,29 @@ namespace oos::design::detail
 class DifferentialMatrixRates
 {
 public:
-    DifferentialMatrixRates(const solutions::AnalysisModel& model, std::span<const RecoveredFieldTarget> targets);
-    [[nodiscard]] bool prepare(std::span<const double> preload) const;
+    DifferentialMatrixRates(const solutions::AnalysisModel& model, std::span<const RecoveredFieldTarget> targets,
+                            const elements::ElementTemperatures* temperatures = nullptr);
+    [[nodiscard]] bool prepare(std::span<const double> preload);
+    void addThermalLoad(std::size_t quantity, std::span<double> into, double scale = 1.0) const;
+    void addMixedThermalLoad(std::size_t quantity, std::span<const double> moves, std::span<double> into) const;
     void addPreload(std::span<const double> preload, std::span<const double> vector, std::span<double> into) const;
     void addField(std::size_t quantity, std::span<const double> preload, std::span<const double> vector,
-                   std::span<double> into, double factor = 1.0) const;
-    void addDirection(std::span<const double> moves, std::span<const double> preload,
-                       std::span<const double> vector, std::span<double> into) const;
+                  std::span<double> into, double factor = 1.0, bool includesInitialStrain = true) const;
+    void addDirection(std::span<const double> moves, std::span<const double> preload, std::span<const double> vector,
+                      std::span<double> into, bool includesInitialStrain = true) const;
     void addMixed(std::size_t quantity, std::span<const double> moves, std::span<const double> preload,
                    std::span<const double> vector, std::span<double> into) const;
 
 private:
-    [[nodiscard]] elements::NodalDisplacements nodal(std::span<const double> vector) const;
+    [[nodiscard]] elements::NodalDisplacements nodal(std::span<const double> vector, bool includesInitialStrain) const;
     void action(const elements::ElementMatrixBlock& matrices, double factor, std::span<const double> vector,
                  std::span<double> into) const;
     [[nodiscard]] bool isActive(const RecoveredFieldTarget& target) const;
 
+    using NodalLoad = std::vector<std::pair<base::DofIndex, double>>;
+    std::map<std::size_t, NodalLoad> m_thermalLoads;
+    std::map<std::size_t, std::map<std::size_t, NodalLoad>> m_mixedThermalLoads;
+    const elements::ElementTemperatures* m_temperatures;
     const solutions::AnalysisModel& m_model;
     std::span<const RecoveredFieldTarget> m_targets;
     std::map<ElementRef, std::vector<std::size_t>> m_byElement;

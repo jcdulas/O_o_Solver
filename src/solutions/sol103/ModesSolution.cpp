@@ -387,6 +387,7 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
     // 1. The checks, the model, the subcases with their methods and outputs.
     base::ProgressCounter* progress = beginStage(m_options.monitor, "connectivity", 1);
     AnalysisModelOptions modelOptions;
+    modelOptions.usesAeroTransfer = m_options.usesAeroTransfer;
     modelOptions.index = m_options.snapshotIndex;
     const AnalysisModel model(snapshot, AnalysisKind::Modes, budget, pool, cancellation, sink, modelOptions);
     if (progress != nullptr)

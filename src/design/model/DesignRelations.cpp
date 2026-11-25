@@ -82,6 +82,8 @@ std::string_view targetKindName(TargetKind kind) noexcept
 {
     switch (kind)
     {
+    case TargetKind::Trim:
+        return "trim";
     case TargetKind::Property:
         return "property";
     case TargetKind::Material:
@@ -94,7 +96,7 @@ std::string_view targetKindName(TargetKind kind) noexcept
 
 std::optional<TargetKind> findTargetKind(std::string_view name) noexcept
 {
-    for (const TargetKind kind : {TargetKind::Property, TargetKind::Material, TargetKind::Element})
+    for (const TargetKind kind : {TargetKind::Property, TargetKind::Material, TargetKind::Element, TargetKind::Trim})
     {
         if (targetKindName(kind) == name)
             return kind;

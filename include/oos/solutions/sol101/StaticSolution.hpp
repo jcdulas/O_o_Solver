@@ -242,6 +242,8 @@ struct StaticOptions
     // by StreamedStatics.
     bool isStreamed = false;
     StreamedOptions streamed;
+    bool usesAeroTransfer = false;
+    AppliedCaseLoads appliedLoads;
 };
 
 // The g-set displacements of one subcase (one value per DOF of assembly::DofMap), kept on request.

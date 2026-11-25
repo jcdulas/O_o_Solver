@@ -34,6 +34,29 @@ struct OptimizationSettings
     bool deckOutputs = false;
 };
 
+// Suggested scale only. Optimizers receive all values and derivatives in physical units.
+[[nodiscard]] inline double variableReferenceScale(const design::DesignVariable& variable) noexcept
+{
+    if (variable.initialValue == 0.)
+        return 1.;
+    return variable.initialValue < 0. ? -variable.initialValue : variable.initialValue;
+}
+
+struct OptimizerValues
+{
+    std::optional<double> objective;
+    std::vector<double> constraints; // normalized, feasible at <= 0
+    bool partial = false;            // at least one response item failed
+    bool uncertainMode = false;
+};
+
+struct NodalCoordinateGradient
+{
+    std::vector<std::int32_t> nodeIds;
+    std::vector<double> values; // node-major XYZ in the basic frame
+    design::SensitivityReport report;
+};
+
 class OptimizationEvaluation;
 
 // A fixed model and declarations. Rebuild it after changing the reader's model.
@@ -67,6 +90,7 @@ public:
     OptimizationEvaluation(std::shared_ptr<OptimizationProblem> owner, std::vector<double> x,
                            const design::ModeReferences& references = {});
     [[nodiscard]] const design::DesignEvaluation& evaluation() const noexcept { return m_evaluation; }
+    [[nodiscard]] OptimizerValues optimizerValues() const;
     [[nodiscard]] const std::vector<double>& x() const noexcept { return m_x; }
     [[nodiscard]] const OptimizationProblem& owner() const noexcept { return *m_owner; }
     [[nodiscard]] std::shared_ptr<OptimizationEvaluation> evaluateAt(
@@ -74,6 +98,9 @@ public:
     {
         return m_owner->evaluate(std::move(x), references);
     }
+    [[nodiscard]] NodalCoordinateGradient nodalCoordinateGradient(std::int32_t responseId,
+                                                                  std::span<const std::int32_t> nodes = {},
+                                                                  std::size_t item = 0);
     [[nodiscard]] design::DesignGradients gradients(const design::GradientOptions& options = {});
     [[nodiscard]] design::GradientStreamReport streamGradients(design::GradientSink& sink, std::size_t block);
     [[nodiscard]] design::ProductReport jvp(std::span<const double> directions, std::size_t count, std::size_t block,

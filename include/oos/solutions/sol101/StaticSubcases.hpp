@@ -18,6 +18,14 @@
 namespace oos::solutions
 {
 
+// Additional concentrated loads for one static case, in structural g-set coordinates.
+struct AppliedCaseLoads
+{
+    struct Entry { base::DofIndex dof; double value; };
+    base::EntityId subcase = 0;
+    std::span<const Entry> entries;
+};
+
 // One subcase of a static analysis (Case Control SUBCASE, SUBCOM): the ID its results carry, the row of
 // subcasesTable its selections come from (0 for the global section of a deck without SUBCASE), its selections, and
 // for a SUBCOM the subcases it combines with their coefficients (SUBSEQ).

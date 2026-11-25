@@ -179,6 +179,9 @@ public:
     // Reference: volume::VolumeKernel::geometric
     [[nodiscard]] SolidResult<Matrix> geometric(std::span<const double> beta) const;
 
+    // Isotropic Poisson derivative at fixed nodal displacements, temperatures and body forces.
+    [[nodiscard]] SolidResult<Matrix> geometricPoissonRate(std::span<const double> beta, const SolidMaterial& material,
+                                                           double young) const;
     // The gradient of φᵀ·K_g(β(q))·φ with respect to the parameters q, φ on the parameters (its first
     // parameterCount() values), β(q) = stressOperator q: entry k is φᵀ·K_g(β(e_k))·φ (the particular stresses of the
     // loads, constant in q, are left out). K_g is linear in β, so this is stressOperatorᵀ applied to the products of

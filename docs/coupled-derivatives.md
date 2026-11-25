@@ -13,14 +13,11 @@ console.log(product.report.usesBucklingTangents, product.report.usesTrimTangents
 
 **Python / native C++**
 
-The Hessian-vector product and its tangent report are exposed by JavaScript. For a buckling model with response 10, Python exposes its first-order sensitivity.
+Numbers are NumPy arrays. Each key in the weights dictionary is a response ID.
 
 ```python
-from oo_solver import optimization_from_reader
-
-problem = optimization_from_reader(deck, analysis="buckling")
-point = problem.evaluate(problem.initial_values)
-load_factor_gradient = point.gradients()["responses"][10]
+product = point.hessian_vector({10: [1.]}, direction)
+print(product["report"]["uses_buckling_tangents"], product["report"]["uses_trim_tangents"])
 ```
 
 Both paths require linear sizing relations and closed first, second and mixed element rates. They assemble actions
@@ -44,8 +41,7 @@ the aerodynamic feedback, free trim variables and support equilibrium to these l
 For free-body stability coefficients the motion tangent also differentiates
 `m_rr * acceleration = D_r^T * aerodynamicLoad`, including the mass projection's derivative.
 
-Supported weighted responses are `TrimVariable`, `StabilityDerivative`, `Displacement`, `Stress`, `Strain` and
-`Force`. Recovered outputs include their displacement Hessians, mixed displacement/field blocks and field curvature;
+Supported weighted responses include trim variables, stability derivatives, box pressures and resultants, hinge moments, and structural displacement, stress, strain and force. Recovered outputs include their displacement Hessians, mixed displacement/field blocks and field curvature;
 supported von Mises columns use their full chain rule. Recovery blocks are shared with the modal implementation in
 `RecoveredFieldCurvature`. Dense and sparse response weights have the same meaning.
 
@@ -96,14 +92,18 @@ bordered factor; repeated uses of the same root share it. Repeated or numericall
 
 ## Remaining numerical paths
 
-Shape designs that move aerodynamic splines or support geometry continue to use complete trim differences.
+For restrained full-path trim with purely aerodynamic loads, the first derivative of the transfer includes the movement
+of structural spline points. If the interpolation solves `A C = B`, its coefficients satisfy `A dC = -dA C` at fixed B.
+The pressure tangent includes the change of the slope operator acting on the converged structural displacements.
+The structural tangent includes the transpose transfer acting on the converged box forces. Moving RBE3 rows contribute
+to both the imposed displacement and the redistributed residual, including chained rows. This derivative also enters
+the geometric stiffness of a trim-preloaded buckling subcase. See the [RBE3 benchmark](external-optimization.md#rbe3-wing-benchmark).
+Free-body support motion and shape curvature retain numerical paths.
 Derived/nonlinear relations, equation responses, unavailable element/recovery curvature, condensed analyses and
 unsupported load changes keep the existing difference-of-native-gradients path. Its tangent flags remain false.
-Buckling with thermal/deformation preloads, inertia relief, combined subcases or mass-dependent applied loads also
-keeps that general path. These restrictions are checked before using the closed product; no missing term is set
+Fixed thermal and imposed-deformation preloads use analytic curvature when the affected elements supply both equivalent-load and geometric-stiffness rates. A full-path trim preload differentiates the coupled trim equations for its first and mixed displacements, including changes to the mass on the supported motions. Inertia-relieved structural preloads, combined subcases and mass-dependent static loads use numerical curvature. A dynamic-pressure design variable also uses numerical curvature. These restrictions are checked before using the closed product; no missing term is set
 to zero as a substitute.
 
 Tests compare closed load-sharing formulas of a rod, positive/negative buckling factors, quadrilateral/triangular
 shells, restrained/free-body trim coefficients, recovered von Mises fields and inertial loads against independent
-analysis/gradient differences. Shell cases include warped geometry and both drilling variants. Every test runs
-under the existing one-second ceiling.
+analysis/gradient differences. Shell cases include warped geometry and both drilling variants.

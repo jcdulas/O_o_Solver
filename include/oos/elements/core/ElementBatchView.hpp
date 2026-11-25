@@ -47,6 +47,7 @@ public:
     [[nodiscard]] const input::ElementBatch& batch() const noexcept { return *m_batch; }
     // The entities of the analysis (null without).
     [[nodiscard]] const EntityLayout* entities() const noexcept { return m_entities; }
+    [[nodiscard]] ElementBatchView forLayout(EntityLayout::Kind kind) const;
     // The model of the formulation whose entities these are (null without).
     [[nodiscard]] const FormulationModel* formulation() const noexcept { return m_formulation; }
     [[nodiscard]] const SnapshotIndex& index() const noexcept { return *m_index; }

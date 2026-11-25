@@ -66,7 +66,7 @@ double SurfaceSpline::kernelSlope(double dx, double dy)
 
 SurfaceSpline::Interpolation SurfaceSpline::interpolate(std::span<const std::array<double, 2>> points, double dz,
                                                         std::span<const std::array<double, 2>> targets,
-                                                        base::MemoryBudget& budget)
+                                                        base::MemoryBudget& budget, Geometry* keep)
 {
     const std::size_t n = points.size();
     if (n < POLYNOMIAL_TERMS || areOnALine(points))
@@ -94,7 +94,7 @@ SurfaceSpline::Interpolation SurfaceSpline::interpolate(std::span<const std::arr
         }
         system(POLYNOMIAL_TERMS + j, POLYNOMIAL_TERMS + j) += dz;
     }
-    const linalg::DenseLu factor(std::move(system), budget);
+    linalg::DenseLu factor(std::move(system), budget);
     if (factor.isSingular())
         throw base::SolverError(
             "the structural points of a surface spline are repeated (two at the same place): its "
@@ -126,7 +126,71 @@ SurfaceSpline::Interpolation SurfaceSpline::interpolate(std::span<const std::arr
             result.slope(t, i) = slope;
         }
     }
+    if (keep)
+    {
+        keep->points.assign(points.begin(), points.end());
+        keep->targets.assign(targets.begin(), targets.end());
+        keep->factor = std::make_unique<linalg::DenseLu>(std::move(factor));
+        keep->coefficients = std::move(coefficients);
+    }
     return result;
+}
+
+SurfaceSpline::Interpolation SurfaceSpline::Geometry::derivative(std::span<const std::array<double, 2>> velocities,
+                                                                 base::MemoryBudget& budget) const
+{
+    const auto n = points.size(), order = coefficients.rows();
+    // A C = [0;I]. Differentiate at fixed interpolation data: A dC = -dA C.
+    linalg::DenseMatrix dc(budget, order, n, "surface spline coefficient rates");
+    for (std::size_t j = 0; j < n; ++j)
+    {
+        const auto [vx, vy] = velocities[j];
+        const auto row = j + POLYNOMIAL_TERMS;
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            dc(1, i) -= vx * coefficients(row, i);
+            dc(2, i) -= vy * coefficients(row, i);
+            dc(row, i) -= vx * coefficients(1, i) + vy * coefficients(2, i);
+        }
+        for (std::size_t k = 0; k < n; ++k)
+        {
+            const double x = points[j][0] - points[k][0], y = points[j][1] - points[k][1];
+            const double dk = kernelSlope(x, y) * (vx - velocities[k][0]) + kernelSlope(y, x) * (vy - velocities[k][1]);
+            for (std::size_t i = 0; i < n; ++i)
+                dc(row, i) -= dk * coefficients(POLYNOMIAL_TERMS + k, i);
+        }
+    }
+    factor->solve(dc.view());
+    Interpolation out{linalg::DenseMatrix(budget, targets.size(), n, "plunge rates"),
+                      linalg::DenseMatrix(budget, targets.size(), n, "slope rates")};
+    for (std::size_t t = 0; t < targets.size(); ++t)
+    {
+        const auto [tx, ty] = targets[t];
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            out.plunge(t, i) = dc(0, i) + tx * dc(1, i) + ty * dc(2, i);
+            out.slope(t, i) = dc(1, i);
+        }
+        for (std::size_t j = 0; j < n; ++j)
+        {
+            const double x = tx - points[j][0], y = ty - points[j][1], r2 = x * x + y * y;
+            const auto [vx, vy] = velocities[j];
+            const double radial = x * vx + y * vy;
+            const double k = kernel(r2), slope = kernelSlope(x, y);
+            const double dk = -slope * vx - kernelSlope(y, x) * vy;
+            if (r2 == 0 && vx != 0)
+                throw base::SolverError(
+                    "undefined surface spline slope derivative at a moving point coincident with a box centre");
+            const double ds = r2 > 0 ? -2.0 * (vx * (std::log(r2) + 1.0) + 2 * x * radial / r2) / PLATE_FACTOR : 0;
+            for (std::size_t i = 0; i < n; ++i)
+            {
+                const auto row = j + POLYNOMIAL_TERMS;
+                out.plunge(t, i) += dk * coefficients(row, i) + k * dc(row, i);
+                out.slope(t, i) += ds * coefficients(row, i) + slope * dc(row, i);
+            }
+        }
+    }
+    return out;
 }
 
 } // namespace oos::aero

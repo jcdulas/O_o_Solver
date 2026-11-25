@@ -227,8 +227,10 @@ StaticDesignEvaluation DesignProblem::evaluateStatics(std::span<const double> x,
 bool DesignProblem::hasBucklingResponses() const
 {
     return std::any_of(m_responses.parts().designResp1.begin(), m_responses.parts().designResp1.end(),
-                       [](const DesignResp1Definition& definition)
-                       { return definition.type == ResponseType::BucklingFactor; });
+                       [](const DesignResp1Definition& definition) {
+                           return definition.type == ResponseType::BucklingFactor ||
+                                  definition.type == ResponseType::BucklingDisplacement;
+                       });
 }
 
 StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x, const DesignAnalyses& analyses,
@@ -283,11 +285,53 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         eigen.recoversDrivenUnits = true;
         eigen.alsoRecoveredUnits = options.alsoRecoveredUnits;
     };
+    if (analyses.aeroelastic)
+    {
+        // The trim of the SAERO subcases, kept as a function of the structure for the gradients; on the
+        // condensed path the plan keeps the spline nodes on the units' boundaries (the caller retains them).
+        solutions::TrimOptions trimOptions;
+        trimOptions.subcases.assign(analyses.aeroelastic->begin(), analyses.aeroelastic->end());
+        trimOptions.links = analyses.links;
+        trimOptions.pool = options.pool;
+        trimOptions.kernel = options.kernel;
+        trimOptions.cancellation = options.cancellation;
+        trimOptions.monitor = options.monitor;
+        trimOptions.requiredOutputs = statics.options.requiredOutputs;
+        trimOptions.keepsLinearisation = needsDisplacements && analyses.keepsTrimLinearisation;
+        // The trim sensitivity solves on its kept structural factor. A condensed unit does not expose
+        // the interior factor needed for a design pseudo-load, so use the full trim path when one is driven.
+        bool drivenUnitIsCondensed = false;
+        if (isCondensed && trimOptions.keepsLinearisation)
+        {
+            const std::vector<std::int64_t> driven = drivenUnits();
+            for (const reduction::UnitPlan& unit : options.condensation->units())
+                if (unit.decision == reduction::UnitDecision::Condensed &&
+                    std::find(driven.begin(), driven.end(), unit.unitId) != driven.end())
+                    drivenUnitIsCondensed = true;
+        }
+        if (isCondensed && !drivenUnitIsCondensed)
+        {
+            trimOptions.condensation = options.condensation;
+            if (analyses.buckling)
+            {
+                trimOptions.recoveredUnits.emplace();
+                for (const auto& unit : options.condensation->units())
+                    if (unit.decision == reduction::UnitDecision::Condensed)
+                        trimOptions.recoveredUnits->push_back(unit.unitId);
+            }
+            trimOptions.cache = options.cache;
+            trimOptions.cacheModelTag = options.cacheModelTag;
+        }
+        evaluation.trim.emplace(solutions::TrimSolution(overlaid, trimOptions).run(budget));
+    }
     if (analyses.buckling)
     {
         // The buckling solution solves the static subcases as its preloads, with the options of the responses.
         solutions::BucklingOptions bucklingOptions;
         bucklingOptions.subcases = *analyses.buckling;
+        if (evaluation.trim)
+            for (const auto& subcase : evaluation.trim->subcases)
+                bucklingOptions.trimPreloads.emplace(subcase.subcase, subcase.displacements.span());
         bucklingOptions.pool = options.pool;
         bucklingOptions.kernel = options.kernel;
         bucklingOptions.cancellation = options.cancellation;
@@ -305,6 +349,12 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
                 if (unit.decision == reduction::UnitDecision::Condensed)
                     bucklingOptions.alsoRecoveredUnits.push_back(unit.unitId);
         }
+        for (const auto& definition : m_responses.parts().designResp1)
+            if (definition.type == ResponseType::BucklingDisplacement)
+            {
+                m_responses.findDesignResp1(definition.id)->addRequiredOutputs(bucklingOptions.requiredOutputs);
+                bucklingOptions.condensation.reset();
+            }
         bucklingOptions.preloadOptions = statics.options;
         solutions::BucklingResults buckling = solutions::BucklingSolution(overlaid, bucklingOptions).run(budget);
         evaluation.results = std::move(buckling.preload);
@@ -335,7 +385,7 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         modesOptions.refusesSelectedMassSets = true;
         condensedOptions(modesOptions);
         for (const auto& definition : m_responses.parts().designResp1)
-            if (definition.mode)
+            if (definition.mode && definition.type != ResponseType::BucklingDisplacement)
             {
                 m_responses.findDesignResp1(definition.id)->addRequiredOutputs(modesOptions.requiredOutputs);
                 // The bordered modal derivative uses the original pencil, including every interior DOF.
@@ -354,37 +404,9 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         modes.arrays = output::ResultArrays{};
         evaluation.modes.emplace(std::move(modes));
     }
-    if (analyses.aeroelastic)
+    if (evaluation.trim)
     {
-        // The trim of the SAERO subcases, kept as a function of the structure for the gradients; on the
-        // condensed path the plan keeps the spline nodes on the units' boundaries (the caller retains them).
-        solutions::TrimOptions trimOptions;
-        trimOptions.subcases.assign(analyses.aeroelastic->begin(), analyses.aeroelastic->end());
-        trimOptions.links = analyses.links;
-        trimOptions.pool = options.pool;
-        trimOptions.kernel = options.kernel;
-        trimOptions.cancellation = options.cancellation;
-        trimOptions.monitor = options.monitor;
-        trimOptions.requiredOutputs = statics.options.requiredOutputs;
-        trimOptions.keepsLinearisation = needsDisplacements && analyses.keepsTrimLinearisation;
-        // The trim sensitivity solves on its kept structural factor. A condensed unit does not expose
-        // the interior factor needed for a design pseudo-load, so use the full trim path when one is driven.
-        bool drivenUnitIsCondensed = false;
-        if (isCondensed && trimOptions.keepsLinearisation)
-        {
-            const std::vector<std::int64_t> driven = drivenUnits();
-            for (const reduction::UnitPlan& unit : options.condensation->units())
-                if (unit.decision == reduction::UnitDecision::Condensed &&
-                    std::find(driven.begin(), driven.end(), unit.unitId) != driven.end())
-                    drivenUnitIsCondensed = true;
-        }
-        if (isCondensed && !drivenUnitIsCondensed)
-        {
-            trimOptions.condensation = options.condensation;
-            trimOptions.cache = options.cache;
-            trimOptions.cacheModelTag = options.cacheModelTag;
-        }
-        solutions::TrimResults trim = solutions::TrimSolution(overlaid, trimOptions).run(budget);
+        auto& trim = *evaluation.trim;
         for (const solutions::TrimSubcaseResult& subcase : trim.subcases)
             evaluation.aeroelasticSubcases.push_back(subcase.subcase);
         output::ResultArrays& arrays = evaluation.results.arrays;
@@ -397,7 +419,6 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         trim.arrays = output::ResultArrays{};
         evaluation.results.diagnostics.insert(evaluation.results.diagnostics.end(), trim.diagnostics.begin(),
                                               trim.diagnostics.end());
-        evaluation.trim.emplace(std::move(trim));
     }
     if (evaluation.buckling)
         evaluation.results.diagnostics.insert(evaluation.results.diagnostics.end(),
@@ -484,7 +505,7 @@ namespace
 // The g-set shapes of the modes of a subcase of an eigenvalue analysis (null when the subcase has none).
 const linalg::DenseMatrix* shapesOf(const StaticDesignEvaluation& analysis, ResponseType type, std::int32_t subcase)
 {
-    if (type == ResponseType::BucklingFactor)
+    if (type == ResponseType::BucklingFactor || type == ResponseType::BucklingDisplacement)
     {
         if (!analysis.buckling)
             return nullptr;

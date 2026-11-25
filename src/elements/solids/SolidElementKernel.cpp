@@ -4,6 +4,7 @@
 #include "oos/elements/solids/SolidIsoparametric.hpp"
 #include "oos/elements/solids/SolidPressure.hpp"
 #include "oos/elements/solids/SolidRecovery.hpp"
+#include "oos/elements/solids/solidHexa/SolidHexaIncompatibleModes.hpp"
 
 #include <algorithm>
 #include <array>
@@ -330,6 +331,93 @@ void SolidElementKernel::computeStiffness(const ElementBatchView& view, ElementR
     }
 }
 
+namespace
+{
+void appendMass(std::int64_t row, const SolidElementData& data, double density, const MassOptions& options,
+                ElementMatrixBlock& block, SolidMatrix& scalar, SolidMatrix& mass, std::vector<double>& values)
+{
+    const std::size_t n = data.nodes.count;
+    buildScalarMass(data.nodes.shape, data.positionsInMaterialSystem(), density, solidMassRule(data.nodes.shape),
+                    scalar);
+    if (options.formulation == MassFormulation::Lumped)
+        lumpSolidMass(scalar, data.positionsInMaterialSystem());
+    mass.reset(3 * n);
+    for (std::size_t a = 0; a < n; ++a)
+        for (std::size_t b = 0; b < n; ++b)
+            for (std::size_t i = 0; i < 3; ++i)
+                mass(3 * a + i, 3 * b + i) = scalar(a, b);
+    toDisplacementSystems(data, mass, values);
+    block.append(row, translationDofs(data.nodes), values);
+}
+Mat6 poissonElasticityRate(double young, double nu)
+{
+    const double denominator = (1.0 + nu) * (1.0 - 2.0 * nu);
+    const double lambdaRate = young * (1.0 + 2.0 * nu * nu) / (denominator * denominator);
+    const double muRate = -young / (2.0 * (1.0 + nu) * (1.0 + nu));
+    Mat6 rate;
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        for (std::size_t j = 0; j < 3; ++j)
+            rate(i, j) = lambdaRate;
+        rate(i, i) += 2.0 * muRate;
+        rate(i + 3, i + 3) = muRate;
+    }
+    return rate;
+}
+} // namespace
+
+bool SolidElementKernel::stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                                  const DesignedField& field, ElementMatrixBlock& block) const
+{
+    if (field.card != "IsoMat" || (field.column != "youngsModulus" && field.column != "poissonRatio"))
+        return false;
+    auto data = resolve(view, Columns(view), row).required();
+    const double young = data.section.youngModulus;
+    if (field.id != data.section.materialId || !(young > 0.0))
+        return false;
+    const double nu = data.section.poissonRatio;
+    auto response = std::make_unique<SolidResponse>();
+    if (field.column == "youngsModulus")
+    {
+        // At fixed nu the whole element energy is homogeneous of degree one in E, including EAS condensation.
+        data.section.elasticity = isotropicSolidMatrix(1.0, nu);
+        formulate(m_formulation, data, SolidResponseParts::Stiffness, *response);
+    }
+    else
+    {
+        const Mat6 rate = poissonElasticityRate(young, nu);
+        if (data.nodes.shape == SolidShape::Hexa8 && data.section.integration == SolidIntegration::Standard)
+            incompatibleHexaStiffnessRate(data.positionsInMaterialSystem(), data.section.elasticity, rate,
+                                          response->stiffness);
+        else
+        {
+            data.section.elasticity = rate;
+            formulate(m_formulation, data, SolidResponseParts::Stiffness, *response);
+        }
+    }
+    std::vector<double> values;
+    toDisplacementSystems(data, response->stiffness, values);
+    block.append(row, translationDofs(data.nodes), values);
+    return true;
+}
+
+bool SolidElementKernel::massFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                             const MassOptions& options, ElementMatrixBlock& block) const
+{
+    if (field.card == "IsoMat" && (field.column == "youngsModulus" || field.column == "poissonRatio"))
+        return true; // fixed geometry: the classic mass depends only on density
+    if ((field.card != "IsoMat" && field.card != "AnisoMat3D") || field.column != "density")
+        return false;
+    const auto data = resolve(view, Columns(view), row).required();
+    if (field.id != data.section.materialId)
+        return false;
+    const auto scalar = std::make_unique<SolidMatrix>();
+    const auto mass = std::make_unique<SolidMatrix>();
+    std::vector<double> values;
+    appendMass(row, data, 1.0, options, block, *scalar, *mass, values);
+    return true;
+}
+
 void SolidElementKernel::computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                                      ElementMatrixBlock& block) const
 {
@@ -340,18 +428,7 @@ void SolidElementKernel::computeMass(const ElementBatchView& view, ElementRange 
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         const SolidElementData data = resolve(view, columns, row).required();
-        const std::size_t n = data.nodes.count;
-        buildScalarMass(data.nodes.shape, data.positionsInMaterialSystem(), data.section.density,
-                        solidMassRule(data.nodes.shape), *scalar);
-        if (options.formulation == MassFormulation::Lumped)
-            lumpSolidMass(*scalar, data.positionsInMaterialSystem());
-        mass->reset(3 * n);
-        for (std::size_t a = 0; a < n; ++a)
-            for (std::size_t b = 0; b < n; ++b)
-                for (std::size_t i = 0; i < 3; ++i)
-                    (*mass)(3 * a + i, 3 * b + i) = (*scalar)(a, b);
-        toDisplacementSystems(data, *mass, values);
-        block.append(row, translationDofs(data.nodes), values);
+        appendMass(row, data, data.section.density, options, block, *scalar, *mass, values);
     }
 }
 
@@ -479,6 +556,21 @@ void SolidElementKernel::computeDifferentialStiffness(const ElementBatchView& vi
                                                       const NodalDisplacements& preload,
                                                       ElementMatrixBlock& block) const
 {
+    differential(view, range, preload, nullptr, block);
+}
+
+bool SolidElementKernel::differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                                              const DesignedField& field,
+                                                              const NodalDisplacements& preload,
+                                                              ElementMatrixBlock& block) const
+{
+    return differential(view, {row, row + 1}, preload, &field, block);
+}
+
+bool SolidElementKernel::differential(const ElementBatchView& view, ElementRange range,
+                                      const NodalDisplacements& preload, const DesignedField* field,
+                                      ElementMatrixBlock& block) const
+{
     const Columns columns(view);
     const auto response = std::make_unique<SolidResponse>();
     const auto differential = std::make_unique<SolidMatrix>();
@@ -486,8 +578,24 @@ void SolidElementKernel::computeDifferentialStiffness(const ElementBatchView& vi
     std::vector<double> values;
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
-        const SolidElementData data = resolve(view, columns, row).required();
+        auto data = resolve(view, columns, row).required();
+        if (field != nullptr && (field->card == "IsoMat" || field->card == "AnisoMat3D") &&
+            field->column == "density" && field->id == data.section.materialId)
+            continue;
+        // The enhanced strains of HEXA8 vanish at the centre, including the thermal mode. The
+        // recovered centre strain is independent of the elastic constants for all classic solids.
         formulate(m_formulation, data, SolidResponseParts::Recovery, *response);
+        if (field != nullptr)
+        {
+            if (field->id != data.section.materialId || field->card != "IsoMat" || !(data.section.youngModulus > 0.0))
+                return false;
+            if (field->column == "youngsModulus")
+                data.section.elasticity = isotropicSolidMatrix(1.0, data.section.poissonRatio);
+            else if (field->column == "poissonRatio")
+                data.section.elasticity = poissonElasticityRate(data.section.youngModulus, data.section.poissonRatio);
+            else
+                return false;
+        }
         for (std::size_t a = 0; a < data.nodes.count; ++a)
         {
             base::Vec3 cd{};
@@ -499,7 +607,9 @@ void SolidElementKernel::computeDifferentialStiffness(const ElementBatchView& vi
         }
         // Point 0 of the recovery is the centre (SolidResponse); the thermal stress of a preload with temperatures
         // subtracted, as the recovery does.
-        Voigt6 stress = response->stress[0].apply(std::span<const double>(u.data(), 3 * data.nodes.count));
+        const auto displacement = std::span<const double>(u.data(), 3 * data.nodes.count);
+        Voigt6 stress = field ? stressOf(data.section, response->strain[0].apply(displacement))
+                              : response->stress[0].apply(displacement);
         if (preload.temperatures != nullptr)
         {
             const NodeTemperatureChanges changes =
@@ -522,6 +632,7 @@ void SolidElementKernel::computeDifferentialStiffness(const ElementBatchView& vi
         toDisplacementSystems(data, *differential, values);
         block.append(row, translationDofs(data.nodes), values);
     }
+    return true;
 }
 
 void SolidElementKernel::checkPressureLoads(const ElementBatchView& view, std::span<const ElementPressure> pressures,

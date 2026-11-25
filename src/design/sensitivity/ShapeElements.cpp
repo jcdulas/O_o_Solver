@@ -301,7 +301,8 @@ std::vector<DeformedRigidElement> ShapeElements::deformedRigidElements(std::size
             {
                 const bool isFirstMoving = reference != std::array<double, 3>{};
                 deformed.push_back({element.first, element.second,
-                                    nodeIds[static_cast<std::size_t>(isFirstMoving ? rows.front() : row)]});
+                                    nodeIds[static_cast<std::size_t>(isFirstMoving ? rows.front() : row)], rows.front(),
+                                    rows.back() + 1});
                 break;
             }
     }

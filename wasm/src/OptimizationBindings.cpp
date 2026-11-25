@@ -1,5 +1,6 @@
 // Conversion only: the design and derivative computations live in oos::api and oos::design.
 #include "Model.hpp"
+#include "oos/api/ConstraintJacobian.hpp"
 #include "oos/api/Optimization.hpp"
 
 #include <emscripten/bind.h>
@@ -80,8 +81,8 @@ std::vector<T> numbers(const val& value)
     }
     return emscripten::convertJSArrayToNumberVector<T>(value);
 }
-template <typename T>
-val array(const std::vector<T>& values, const char* kind = "Float64Array")
+template <typename Range>
+val array(const Range& values, const char* kind = "Float64Array")
 {
     // Copy: callers may retain this after the evaluation is deleted or its memory grows.
     const auto view = val(emscripten::typed_memory_view(values.size(), values.data()));
@@ -495,6 +496,7 @@ val metadata(api::OptimizationProblem& owner)
                 v.set("id", variable.id);
                 v.set("label", variable.label);
                 v.set("initialValue", variable.initialValue);
+                v.set("scale", api::variableReferenceScale(variable));
                 v.set("lower", variable.lower);
                 v.set("upper", variable.upper);
                 v.set("moveLimit", variable.moveLimit ? val(*variable.moveLimit) : val::null());
@@ -611,6 +613,76 @@ val itemObject(const design::ResponseItem& item)
         result.set("mode", item.mode);
     return result;
 }
+std::shared_ptr<api::ConstraintJacobian> constraintJacobian(api::OptimizationEvaluation& point, const val& rows)
+{
+    return guarded(
+        [&]
+        {
+            std::optional<std::vector<std::vector<std::size_t>>> columns;
+            if (present(rows))
+            {
+                columns.emplace();
+                each(rows, [&](const val& row) { columns->push_back(numbers<std::size_t>(row)); });
+            }
+            return std::make_shared<api::ConstraintJacobian>(point, columns);
+        });
+}
+
+val csrStructure(api::ConstraintJacobian& layout)
+{
+    return guarded(
+        [&]
+        {
+            auto out = val::object();
+            const auto& offsets = layout.rowOffsets();
+            const auto& indices = layout.columnIndices();
+            out.set("rowOffsets", array(std::vector<double>(offsets.begin(), offsets.end())));
+            out.set("columnIndices", array(std::vector<double>(indices.begin(), indices.end())));
+            out.set("columns", double(layout.variableCount()));
+            return out;
+        });
+}
+
+val csrValues(api::ConstraintJacobian& layout, api::OptimizationEvaluation& point)
+{
+    return guarded(
+        [&]
+        {
+            std::vector<double> out(layout.columnIndices().size());
+            layout.values(point, out);
+            return array(out);
+        });
+}
+
+val csrConstraints(api::ConstraintJacobian& layout, api::OptimizationEvaluation& point)
+{
+    return guarded(
+        [&]
+        {
+            std::vector<double> out(layout.rowOffsets().size() - 1);
+            layout.constraints(point, out);
+            return array(out);
+        });
+}
+
+// The immutable point layout is sufficient to size a product, even for a modal point
+// whose full values include a mode shape for every tracked response.
+val responseSizes(api::OptimizationEvaluation& point)
+{
+    return guarded(
+        [&]
+        {
+            std::vector<double> sizes;
+            sizes.reserve(2 * point.evaluation().responses.size());
+            for (const auto& response : point.evaluation().responses)
+            {
+                sizes.push_back(response.id);
+                sizes.push_back(static_cast<double>(response.itemCount()));
+            }
+            return array(sizes);
+        });
+}
+
 val evaluationValues(api::OptimizationEvaluation& point)
 {
     return guarded(
@@ -671,6 +743,26 @@ val evaluationValues(api::OptimizationEvaluation& point)
                 constraints.call<void>("push", value);
             }
             result.set("constraints", constraints);
+            return result;
+        });
+}
+
+val nodalCoordinateGradient(api::OptimizationEvaluation& point, const val& response, const val& nodes, const val& item)
+{
+    return guarded(
+        [&]
+        {
+            const auto gradient =
+                point.nodalCoordinateGradient(idOf(response), numbers<std::int32_t>(nodes), countOf(item));
+            auto result = val::object();
+            result.set("nodeIds", array(gradient.nodeIds, "Int32Array"));
+            result.set("values", array(gradient.values));
+            auto report = val::object();
+            report.set("analysisPerturbations", double(gradient.report.analysisPerturbations));
+            report.set("shapePerturbations", double(gradient.report.shapePerturbations));
+            report.set("factorisations", gradient.report.factorisations);
+            report.set("solves", double(gradient.report.solves));
+            result.set("report", report);
             return result;
         });
 }
@@ -774,7 +866,7 @@ public:
         value.set("count", double(block.count));
         value.set("rows", double(block.rows));
         value.set("columns", double(block.columns));
-        value.set("values", array(std::vector<double>(block.values.begin(), block.values.end())));
+        value.set("values", array(block.values));
         m_callback(value);
     }
 
@@ -834,7 +926,7 @@ public:
         value.set("rowCount", double(block.rowCount));
         value.set("columnBegin", double(block.columnBegin));
         value.set("columnCount", double(block.columnCount));
-        value.set("values", array(std::vector<double>(block.values.begin(), block.values.end())));
+        value.set("values", array(block.values));
         m_callback(value);
     }
 
@@ -933,9 +1025,38 @@ EMSCRIPTEN_BINDINGS(oos_optimization)
         .function("metadata", &metadata)
         .function("designPoint", &designPoint)
         .function("evaluate", &evaluate);
+    class_<api::ConstraintJacobian>("ConstraintJacobian")
+        .smart_ptr<std::shared_ptr<api::ConstraintJacobian>>("ConstraintJacobianPointer")
+        .function("structure", &csrStructure)
+        .function("values", &csrValues)
+        .function("constraints", &csrConstraints);
     class_<api::OptimizationEvaluation>("OptimizationEvaluation")
         .smart_ptr<std::shared_ptr<api::OptimizationEvaluation>>("OptimizationEvaluationPointer")
         .function("values", &evaluationValues)
+        .function("optimizerValues", optional_override(
+                                         [](api::OptimizationEvaluation& point)
+                                         {
+                                             return guarded(
+                                                 [&]
+                                                 {
+                                                     const auto v = point.optimizerValues();
+                                                     auto out = val::object();
+                                                     out.set("objective",
+                                                             v.objective ? val(*v.objective) : val::null());
+                                                     out.set("constraints", array(v.constraints));
+                                                     out.set("partial", v.partial);
+                                                     out.set("uncertainMode", v.uncertainMode);
+                                                     return out;
+                                                 });
+                                         }))
+        .function("responseSizes", &responseSizes)
+        .function("constraintJacobian", &constraintJacobian)
+        .function("objective", optional_override(
+                                   [](api::OptimizationEvaluation& p)
+                                   {
+                                       const auto f = p.evaluation().objective;
+                                       return f ? val(*f) : val::null();
+                                   }))
         .function("evaluateAt", &evaluateAt)
         .function("analysisResults", &wasm::optimizationResults)
         .function("gradients", &gradients)
@@ -945,5 +1066,6 @@ EMSCRIPTEN_BINDINGS(oos_optimization)
         .function("hessianVector", &hessianVector)
         .function("hessian", &hessian)
         .function("blocks", &blocks)
+        .function("nodalCoordinateGradient", &nodalCoordinateGradient)
         .function("clearLinearisation", &api::OptimizationEvaluation::clearLinearisation);
 }

@@ -11,8 +11,8 @@
 #include "oos/design/responses/ResponseDefinitions.hpp"
 #include "oos/design/responses/ResponseValues.hpp"
 #include "oos/design/sensitivity/DesignGradients.hpp"
-#include "oos/design/sensitivity/FieldPerturbation.hpp"
 #include "oos/design/sensitivity/ElementDerivatives.hpp"
+#include "oos/design/sensitivity/FieldPerturbation.hpp"
 #include "oos/design/sensitivity/PseudoLoads.hpp"
 #include "oos/design/sensitivity/ResponseLinearisation.hpp"
 #include "oos/design/sensitivity/SensitivitySystem.hpp"
@@ -87,6 +87,7 @@ public:
         const solutions::ModesResults* modes = nullptr;
         const solutions::BucklingResults* buckling = nullptr;
         const assembly::DofMap* dofMap = nullptr;
+        const assembly::DofMap* modalDofMap = nullptr;
         const assembly::ElementSet* set = nullptr; // the design point's
         // the design point's PARAMs (CoupledMass, WeightToMass of the MODES subcases)
         const input::ParamTable* params = nullptr;
@@ -100,10 +101,10 @@ public:
 
     explicit EigenItems(const Inputs& inputs);
 
-    [[nodiscard]] bool isEmpty() const noexcept { return m_items.empty(); }
+    [[nodiscard]] bool isEmpty() const noexcept { return m_items.empty() && m_shapeItems.empty(); }
     [[nodiscard]] bool hasModalItems() const noexcept { return m_hasModal; }
     [[nodiscard]] bool hasBucklingItems() const noexcept { return m_hasBuckling; }
-    [[nodiscard]] std::size_t itemCount() const noexcept { return m_items.size(); }
+    [[nodiscard]] std::size_t itemCount() const noexcept { return m_items.size() + m_shapeItems.size(); }
     [[nodiscard]] std::size_t repeatedClusterCount() const noexcept;
 
     // The static subcase whose displacements the LAMA items of a BUCK subcase read (its preload), or nothing.
@@ -115,6 +116,10 @@ public:
     void add(const ItemKey& key, ResponseType type, const ResponseItem& label, double value);
     // Groups the roots of the items into clusters; call once every item is added.
     void formClusters();
+    void addBucklingShape(ItemKey key, const ResponseItem& label, double value);
+    void prepareBucklingShapes(linalg::KernelKind kernel, bool hasTrim);
+    [[nodiscard]] std::size_t shapeFactorisations() const { return m_shapeFactorisations; }
+    [[nodiscard]] std::size_t shapeSolves() const { return m_shapeItems.size(); }
 
     // The preload displacements (and temperatures) of a static subcase, for the differential stiffness at fixed u, and
     // the same displacements on the g set (the static solution's, which must outlive the items).
@@ -133,21 +138,22 @@ public:
     // `stiffness` its dK/dv as the caller differentiated it (empty when the quantity does not change the stiffness),
     // `massOf` and `differentialOf` its dM/dv and dK_d/dv.
     void addElement(std::size_t quantity, const elements::ElementFamily& family, const elements::FieldUse& use,
-                    const ElementMatrixDerivative& stiffness, const MassOf& massOf,
-                    const DifferentialOf& differentialOf);
+                    const ElementMatrixDerivative& stiffness, const ElementMatrixDerivative& modalStiffness,
+                    const MassOf& massOf, const DifferentialOf& differentialOf);
     // The derivative of every item with respect to one element's own value (a sensitivity map, design/aids): its
     // matrices' derivatives, `stiffness` and those `massOf`, `differentialOf` give, without the preload part of the
     // LAMA items (their weights' adjoint gives it). A repeated vibration root takes the eigenvalues of its subspace
     // problem along that one direction; a repeated buckling root is refused (OptimisationError).
-    [[nodiscard]] std::vector<std::pair<ItemKey, double>> elementDerivatives(const elements::ElementFamily& family,
-                                                                             const elements::FieldUse& use,
-                                                                             const ElementMatrixDerivative& stiffness,
-                                                                             const MassOf& massOf,
-                                                                             const DifferentialOf& differentialOf);
+    [[nodiscard]] std::vector<std::pair<ItemKey, double>> elementDerivatives(
+        const elements::ElementFamily& family, const elements::FieldUse& use, const ElementMatrixDerivative& stiffness,
+        const ElementMatrixDerivative& modalStiffness, const MassOf& massOf, const DifferentialOf& differentialOf);
 
     // The preload part of the LAMA clusters of several modes (the direct method): for every variable with a
     // pseudo-load in the preload subcase (`loads`, its index `subcase`), du_j = K⁻¹·b_j on `system`, then
     // Φᵀ·K_d(du_j)·Φ. Returns the solves made.
+    [[nodiscard]] bool needsPreloadRate(std::int32_t subcase) const;
+    void projectPreloadRate(std::int32_t subcase, std::span<const double> displacements, std::size_t column,
+                            bool byQuantity);
     std::int64_t addPreloadTerms(std::int32_t preloadSubcase, const SensitivitySystem& system, const PseudoLoads& loads,
                                  std::size_t subcase);
 
@@ -159,6 +165,7 @@ public:
     // the derivative of φ_nᵀ·Tᵀ·A·T·φ_n beyond φᵀ·∂A·φ (R is the force of the relations on the mode: zero off their
     // dependent DOFs); and the Rayleigh parts of a single vibration root 2·D·K·φ and 2·D·M·φ. The constraints of each
     // solve (its constraint set with the formulation's, Kgg, Mgg or K_d) are made at the first shape.
+    void addRigidShapeTerms(std::size_t quantity, std::span<const assembly::LocalConstraintRows> rates);
     void addFormulationShapeTerms(std::size_t quantity, const FieldPerturbation& perturbation,
                                   const std::array<const elements::FormulationModel*, FIELD_SIDE_COUNT>& models);
 
@@ -212,7 +219,8 @@ private:
     // Φᵀ·A·Φ of an element matrix A (row-major over `dofs`) into `target` (m × m), scaled by `factor`.
     void addProjection(const Cluster& cluster, std::span<const base::DofIndex> dofs, std::span<const double> matrix,
                        double factor, std::vector<double>& target) const;
-    [[nodiscard]] std::vector<base::DofIndex> dofsOf(std::span<const elements::ElementDof> dofs) const;
+    [[nodiscard]] std::vector<base::DofIndex> dofsOf(std::span<const elements::ElementDof> dofs,
+                                                     bool modal = false) const;
     // The share of the element of batch row `row` in the weights of the LAMA items (bucklingWeights) from its
     // family's product differentialStiffnessPreloadGradient, `shapes` the items' columns as displacements; false
     // (nothing added) when the family has none.
@@ -226,8 +234,9 @@ private:
     using TargetOf = std::function<std::vector<double>&(std::size_t)>;
     using EnergiesOf = std::function<void(std::size_t, double, double)>;
     void projectElement(const elements::ElementFamily& family, const elements::FieldUse& use,
-                        const ElementMatrixDerivative& stiffness, const MassOf& massOf,
-                        const DifferentialOf& differentialOf, const TargetOf& targetOf, const EnergiesOf& energiesOf);
+                        const ElementMatrixDerivative& stiffness, const ElementMatrixDerivative& modalStiffness,
+                        const MassOf& massOf, const DifferentialOf& differentialOf, const TargetOf& targetOf,
+                        const EnergiesOf& energiesOf);
 
     // The constraints of a solve for addFormulationShapeTerms: its analysis model and constraint set, and per mode
     // column K·φ and M·φ (vibration) or K_d·φ (buckling) on the g set; no system when the formulation has no relation
@@ -242,6 +251,22 @@ private:
     // φ of a mode on the g set, normalised.
     [[nodiscard]] std::vector<double> normalisedShape(const Solve& solve, std::size_t mode) const;
 
+    struct ShapeItem
+    {
+        ItemKey key;
+        const solutions::BucklingSolve* solve;
+        std::size_t mode;
+        base::DofIndex dof;
+        std::span<const double> shape;
+        base::BudgetedBuffer<double> adjoint;
+        double metricMultiplier = 0.0;
+        std::map<std::size_t, double> byQuantity, byVariable;
+    };
+    [[nodiscard]] double shapeProduct(const ShapeItem& item, std::span<const base::DofIndex> dofs,
+                                      std::span<const double> matrix, bool metric = false) const;
+    std::vector<ShapeItem> m_shapeItems;
+    bool m_hasTrim = false;
+    std::size_t m_shapeFactorisations = 0;
     Inputs m_in;
     std::vector<Solve> m_solves;
     std::vector<Item> m_items;

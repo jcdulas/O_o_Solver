@@ -167,6 +167,7 @@ struct TrimTimings
 
 struct TrimResults
 {
+    [[nodiscard]] std::size_t loadIndex(base::EntityId id, bool hinge) const;
     // The structural tables of the trimmed states, as each subcase's output plan asks (displacements, applied loads,
     // SPC and MPC forces, element results, grid point forces, strain energy).
     output::ResultArrays arrays;

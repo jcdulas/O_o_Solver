@@ -244,7 +244,8 @@ double ModalItems::explicitRate(Item& item, const ElementRef& element, const ele
     for (std::size_t side = 0; side < values.size(); ++side)
     {
         const auto which = static_cast<FieldSide>(side);
-        const auto& moved = differences.set(which).batches()[element.batch].view;
+        const auto moved =
+            differences.set(which).batches()[element.batch].view.forLayout(elements::EntityLayout::Kind::Modal);
         values[side] = item.function->values(moved, differences.snapshot(which), nodal(shape), *m_in.budget).front();
     }
     return differences.derivative(values[0], values[1], values[2], values[3]);

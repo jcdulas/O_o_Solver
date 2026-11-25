@@ -20,7 +20,21 @@ export class OptimizationEvaluation {
     try { return work(); } finally { this.busy = false; }
   }
   values() { return this.operation(() => this.handle.values()); }
+  optimizerValues() { return this.operation(() => this.handle.optimizerValues()); }
+  objective() { return this.operation(() => this.handle.objective()); }
+  constraintJacobian(rowColumns) {
+    const csr = this.operation(() => this.handle.constraintJacobian(rowColumns));
+    return {
+      structure: () => csr.structure(),
+      values: point => point.operation(() => csr.values(point.handle)),
+      constraints: point => point.operation(() => csr.constraints(point.handle)),
+      delete: () => csr.delete(),
+    };
+  }
   analysisResults() { return this.operation(() => this.handle.analysisResults()); }
+  nodalCoordinateGradient(responseId, nodeIds = [], item = 0) {
+    return this.operation(() => this.handle.nodalCoordinateGradient(responseId, nodeIds, item));
+  }
   gradients(settings = {}) {
     return this.operation(() => settings.method === "finiteDifference"
       ? numericalOptimizationGradients({ info: this.info, evaluate: (x, refs) =>
@@ -32,22 +46,34 @@ export class OptimizationEvaluation {
   }
   product(kind, input, { count = 1, block = 32, onBlock, ...selection } = {}) {
     return this.operation(() => {
-      const snapshot = this.handle.values();
-      const rows = kind === "jvp" ? snapshot.responses.filter(r => !selection.responseIds?.length ||
-        selection.responseIds.includes(r.id)).reduce((n, r) => n + r.values.length, 0) : input.rows ?? 1;
-      const columns = kind === "jvp" ? count : snapshot.x.length;
+      let rows = input.rows ?? 1;
+      if (kind === "jvp") {
+        const sizes = this.responseSizes ??= this.handle.responseSizes();
+        const ids = selection.responseIds?.length ? new Set(selection.responseIds) : null;
+        rows = 0;
+        for (let i = 0; i < sizes.length; i += 2)
+          if (!ids || ids.has(sizes[i])) rows += sizes[i + 1];
+      }
+      const columns = kind === "jvp" ? count : this.info.initialValues.length;
       if (![rows, columns, block].every(n => Number.isSafeInteger(n) && n >= 0) || block === 0 || columns === 0)
         throw new RangeError("product dimensions and block must be positive safe integers");
       if (!onBlock && rows * columns * 8 > this.info.maximumOutputBytes)
         throw new RangeError("derivative output exceeds maximumOutputBytes; provide onBlock");
-      const values = onBlock ? undefined : new Float64Array(rows * columns);
+      let values;
       const consume = onBlock ?? (part => {
+        // The binding transfers an owned typed array. A complete block is already the requested result.
+        if (part.first === 0 && part.rows === rows && part.columns === columns) {
+          values = part.values;
+          return;
+        }
+        values ??= new Float64Array(rows * columns);
         if (kind === "vjp") values.set(part.values, part.first * columns);
         else for (let r = 0; r < part.rows; ++r)
           values.set(part.values.subarray(r * part.columns, (r + 1) * part.columns), r * columns + part.first);
       });
       const report = kind === "jvp" ? this.handle.jvp(input, count, consume, { block, ...selection }) :
         this.handle.vjp(input, consume, { block });
+      if (!onBlock && !values) values = new Float64Array(rows * columns);
       return { rows, columns, values, report };
     });
   }

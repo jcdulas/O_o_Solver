@@ -22,6 +22,8 @@
 
 #include <cstdint>
 #include <optional>
+#include <map>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -84,6 +86,12 @@ struct BucklingOptions
     StructureCache* structures = nullptr;
     // The full path's eigenvalue solver: the block Lanczos solver, multilevel substructuring or the factor out of core.
     EigenSolverOptions eigenSolver;
+    // Equilibrated trim states on this snapshot, borrowed during run(). A StaticSubcaseSelection
+    // naming one uses its g-set displacements as the geometric-stiffness preload.
+    std::map<base::EntityId, std::span<const double>> trimPreloads;
+    std::array<output::OutputRequestPlan, output::OUTPUT_KIND_COUNT> requiredOutputs{};
+    // Explicit external coupling requires the selected case to consume this exact equilibrated state.
+    std::optional<base::EntityId> requiredPreload;
 };
 
 // The seconds spent in each stage of a buckling analysis (summed over the solves).

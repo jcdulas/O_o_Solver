@@ -14,6 +14,10 @@ class DerivedMaterials
 public:
     void bind(const DesignModel& model, const input::ModelSnapshot& snapshot);
     [[nodiscard]] bool reaches(std::size_t relation) const noexcept;
+    [[nodiscard]] bool derivesOnlyShearModulus(std::size_t relation) const noexcept
+    {
+        return reaches(relation) && m_groups[*m_relationGroups[relation]].blank == 2;
+    }
     void addCells(input::ColumnOverlay& overlay, std::span<const double> fields,
                   std::optional<std::size_t> relation = {}) const;
 

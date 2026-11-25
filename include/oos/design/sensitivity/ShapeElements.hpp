@@ -51,12 +51,13 @@ inline constexpr double SHAPE_STEP_AT_ZERO_SIZE = 1.0e-3;
 
 // A rigid element whose grid points a shape variable moves relative to each other: its equations
 // (RigidElimination, the lever arms and the RigidInterpolation weights) change with the positions, a derivative of Gm
-// the sensitivities do not form.
+// supplied to the sensitivity assembly for supported element and response types.
 struct DeformedRigidElement
 {
     std::string type; // RigidBodyStar, RigidInterpolation, RigidBar ...
     std::int32_t elementId = 0;
-    std::int32_t gridId = 0; // a grid point that moves relative to another of the element
+    std::int32_t gridId = 0;               // a grid point that moves relative to another of the element
+    std::int64_t beginRow = 0, endRow = 0; // contiguous rows in the rigid table
 };
 
 // The elements each shape variable reaches, and the step of its shape value (the element

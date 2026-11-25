@@ -72,18 +72,20 @@ LocalMap solidMapOf(const ElementBatchView& view, const MixedHybridModel& model,
 
 // Thermal loads require a temperature at every corner. Mid-side values are optional.
 std::optional<base::Diagnostic> missingCornerTemperature(const ElementBatchView& view, std::int64_t row,
-                                                         const MixedSolid& solid, const ElementTemperatures& temperatures)
+                                                         const MixedSolid& solid,
+                                                         const ElementTemperatures& temperatures)
 {
     if (temperatures.hasTemperatureLoad)
         for (const auto node : solid.cornerRows)
             if (!temperatures.load.atGridRow(node))
                 return elementProblem(
                     view, row, problem_code::INVALID_FIELD, "TemperatureSelection(LOAD)",
-                    base::concatenate({"expected a temperature at grid point ",
-                                       std::to_string(view.snapshot().nodes().ids()[static_cast<std::size_t>(node)]),
-                                       " of the solid in the thermal load set, found none (no NodeTemperatureLoad, no "
-                                       "DefaultTemperatureLoad); give the grid point a NodeTemperatureLoad or the set a "
-                                       "DefaultTemperatureLoad"}));
+                    base::concatenate(
+                        {"expected a temperature at grid point ",
+                         std::to_string(view.snapshot().nodes().ids()[static_cast<std::size_t>(node)]),
+                         " of the solid in the thermal load set, found none (no NodeTemperatureLoad, no "
+                         "DefaultTemperatureLoad); give the grid point a NodeTemperatureLoad or the set a "
+                         "DefaultTemperatureLoad"}));
     return std::nullopt;
 }
 
@@ -141,6 +143,118 @@ void MixedHybridSolidFamily::computeMass(const ElementBatchView& view, ElementRa
         const LocalMap map = solidMapOf(view, model, solid, kind);
         block.append(row, map.dofs, congruent(model.solidPart()->localMass(solid.partIndex, *kernel, kind), map));
     }
+}
+
+namespace
+{
+bool isSolidDensity(const DesignedField& field)
+{
+    return (field.card == "IsoMat" || field.card == "AnisoMat3D") && field.column == "density";
+}
+// At stationary bubble displacement the condensed stiffness rate is -Sigma^T (dS/dnu) Sigma.
+// The scalar stress basis is orthonormal on the solid. In engineering Voigt notation, E*dS/dnu
+// has -1 in the off-diagonal normal entries and 2 on the three shear diagonals.
+Matrix poissonStiffnessRate(const VolumeKernel& kernel, double young)
+{
+    const auto& stress = kernel.stressOperator();
+    const auto count = kernel.stressFunctionCount();
+    Matrix weighted(stress.rows(), stress.columns());
+    for (std::size_t k = 0; k < count; ++k)
+        for (std::size_t j = 0; j < stress.columns(); ++j)
+            for (std::size_t c = 0; c < 3; ++c)
+            {
+                weighted(c * count + k, j) =
+                    stress(((c + 1) % 3) * count + k, j) + stress(((c + 2) % 3) * count + k, j);
+                weighted((c + 3) * count + k, j) = -2.0 * stress((c + 3) * count + k, j);
+            }
+    return symmetricPart(transposeTimes(stress, weighted)) * (1.0 / young);
+}
+} // namespace
+
+bool MixedHybridSolidFamily::stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                                      const DesignedField& field, ElementMatrixBlock& block) const
+{
+    const bool young = field.card == "IsoMat" && field.column == "youngsModulus";
+    const bool poisson = field.card == "IsoMat" && field.column == "poissonRatio";
+    if (!young && !poisson && !isSolidDensity(field))
+        return false;
+    const auto& model = MixedHybridModel::of(view.index());
+    const auto& solid = requiredSolid(model, view, row);
+    const auto& section = solid.classicSection;
+    if (field.id != section.materialId || ((young || poisson) && !(section.youngModulus > 0.0)))
+        return false;
+    const auto kind = kindOf(view);
+    const bool interior = kind == EntityLayout::Kind::Modal && model.solidPart()->interiorEntity(solid.partIndex);
+    if (poisson && interior)
+        return false; // a change in nu also changes the retained modal interior basis
+    if (!young && !poisson && !interior)
+        return true;
+    const auto kernel = kernelOf(model, solid, kind, poisson ? AS_KEPT : WITH_STIFFNESS);
+    Matrix rate;
+    if (poisson)
+        rate = poissonStiffnessRate(*kernel, section.youngModulus);
+    else if (young)
+        rate = model.solidPart()->localStiffness(solid.partIndex, *kernel, kind) * (1.0 / section.youngModulus);
+    else
+    {
+        rate = model.solidPart()->localStiffness(solid.partIndex, *kernel, kind);
+        // At fixed stiffness the boundary entries are independent of rho. Each retained, mass-normalised
+        // interior eigenvector scales as rho^-1/2, so its diagonal stiffness scales as rho^-1.
+        const auto boundary = kernel->parameterCount();
+        if (rate.rows() == boundary)
+            return true;
+        if (!(section.density > 0.0))
+            return false;
+        for (std::size_t i = 0; i < rate.rows(); ++i)
+            for (std::size_t j = 0; j < rate.columns(); ++j)
+                rate(i, j) = i == j && i >= boundary ? -rate(i, j) / section.density : 0.0;
+    }
+    const auto map = solidMapOf(view, model, solid, kind);
+    block.append(row, map.dofs, congruent(rate, map));
+    return true;
+}
+
+bool MixedHybridSolidFamily::massFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                                 const DesignedField& field, const MassOptions&,
+                                                 ElementMatrixBlock& block) const
+{
+    if (field.card == "IsoMat" && field.column == "youngsModulus")
+        return true; // uniform elasticity scaling leaves static bubble extension and mass-normalised fields invariant
+    if (!isSolidDensity(field))
+        return false;
+    const auto& model = MixedHybridModel::of(view.index());
+    const auto& solid = requiredSolid(model, view, row);
+    const auto& section = solid.classicSection;
+    if (field.id != section.materialId)
+        return false;
+    const auto kind = kindOf(view);
+    const auto kernel = kernelOf(model, solid, kind, WITH_MASS);
+    Matrix rate;
+    if (section.density == 0.0)
+    {
+        if (kind == EntityLayout::Kind::Modal)
+            return false; // mass-normalised interior fields require positive density
+        auto unitMass = kernel->withMass(1.0);
+        if (!unitMass.ok())
+            throw base::SolverError(unitMass.refusal());
+        rate = model.solidPart()->localMass(solid.partIndex, unitMass.value(), kind);
+    }
+    else
+    {
+        rate = model.solidPart()->localMass(solid.partIndex, *kernel, kind);
+        rate *= 1.0 / section.density;
+        const auto boundary = kernel->parameterCount();
+        for (std::size_t i = boundary; i < rate.rows(); ++i)
+        {
+            // Boundary/interior coupling scales as sqrt(rho); the interior mass is the identity.
+            rate(i, i) = 0.0;
+            for (std::size_t j = 0; j < boundary; ++j)
+                rate(i, j) = rate(j, i) = 0.5 * rate(i, j);
+        }
+    }
+    const auto map = solidMapOf(view, model, solid, kind);
+    block.append(row, map.dofs, congruent(rate, map));
+    return true;
 }
 
 bool MixedHybridSolidFamily::computeVolumes(const ElementBatchView& view, ElementRange range,
@@ -239,8 +353,10 @@ void MixedHybridSolidFamily::computePressureLoads(const ElementBatchView& view,
             // The unit direction in the basic system (the element frame of pressureDirectionOf taken as the basic one).
             const base::Vec3 unit = *pressureDirectionOf(view, pressure, base::Mat3::identity()).inElementFrame;
             const double p = pressure.cornerPressures[0];
-            onParameters = part.faceTractionLoad(
-                *kernel, face, [&](const SolidPoint&) { return SolidPoint{p * unit[0], p * unit[1], p * unit[2]}; });
+            onParameters = part.faceTractionLoad(*kernel, face,
+                                                 [&](const SolidPoint&) {
+                                                     return SolidPoint{p * unit[0], p * unit[1], p * unit[2]};
+                                                 });
         }
         const LocalMap map = solidMapOf(view, model, solid, kind);
         Vector local(map.toLocal.rows(), 0.0);
@@ -334,6 +450,49 @@ void MixedHybridSolidFamily::computeDifferentialStiffness(const ElementBatchView
     }
 }
 
+bool MixedHybridSolidFamily::differentialStiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row,
+                                                                  const DesignedField& field,
+                                                                  const NodalDisplacements& preload,
+                                                                  ElementMatrixBlock& block) const
+{
+    const bool density = isSolidDensity(field);
+    const bool poisson = field.card == "IsoMat" && field.column == "poissonRatio";
+    if (!density && !poisson && !(field.card == "IsoMat" && field.column == "youngsModulus"))
+        return false;
+    const auto& model = MixedHybridModel::of(view.index());
+    const auto& solid = requiredSolid(model, view, row);
+    if (solid.classicSection.materialId != field.id)
+        return false;
+    if (density && (preload.bodyAcceleration == nullptr || preload.bodyAcceleration->isZero()))
+        return true;
+    const auto kind = kindOf(view);
+    auto homogeneous = preload;
+    homogeneous.bodyAcceleration = nullptr;
+    auto stresses = model.solidStresses(solid, kind, poisson ? preload : homogeneous);
+    if (density)
+    {
+        std::fill(stresses.beta.begin(), stresses.beta.end(), 0.0);
+        MixedHybridModel::addBodyForceStresses(1.0, preload.bodyAcceleration, *stresses.kernel, stresses.beta);
+    }
+    else if (!poisson)
+    {
+        if (!(solid.classicSection.youngModulus > 0.0))
+            return false;
+        for (double& coefficient : stresses.beta)
+            coefficient /= solid.classicSection.youngModulus;
+    }
+    const auto result = poisson ? stresses.kernel->geometricPoissonRate(stresses.beta, solid.part.material,
+                                                                        solid.classicSection.youngModulus)
+                                : SolidPart::geometricStiffness(*stresses.kernel, stresses.beta);
+    if (!result.ok())
+        throw std::logic_error(result.refusal());
+    const auto map = solidMapOf(view, model, solid, kind);
+    Matrix local(map.toLocal.rows(), map.toLocal.rows());
+    local.setBlock(0, 0, result.value());
+    block.append(row, map.dofs, congruent(local, map));
+    return true;
+}
+
 bool MixedHybridSolidFamily::differentialStiffnessPreloadGradient(const ElementBatchView& view, std::int64_t row,
                                                                   const NodalDisplacements& shape,
                                                                   ElementVectorBlock& block) const
@@ -403,7 +562,8 @@ void MixedHybridSolidFamily::recover(const ElementBatchView& view, ElementRange 
         if (output == ElementOutput::Strains && !stresses.nodalChanges.empty())
         {
             const auto& geometry = stresses.kernel->geometry();
-            centreChange = model.solidTemperatureField(solid, stresses.nodalChanges)(geometry.at(shapeCentre(geometry.shape)));
+            centreChange =
+                model.solidTemperatureField(solid, stresses.nodalChanges)(geometry.at(shapeCentre(geometry.shape)));
         }
         appendPlace(0, points.centre, centreChange);
         for (std::size_t a = 0; a < points.corners.size(); ++a)

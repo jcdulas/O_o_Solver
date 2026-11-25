@@ -767,10 +767,9 @@ SolidLoad MixedHybridModel::solidThermalLoad(const MixedSolid& solid, std::span<
     return m_solidPart->thermalLoad(solid.partIndex, solidTemperatureField(solid, changes));
 }
 
-void MixedHybridModel::addBodyForceStresses(const MixedSolid& solid, const BodyAcceleration* acceleration,
+void MixedHybridModel::addBodyForceStresses(double density, const BodyAcceleration* acceleration,
                                             const VolumeKernel& kernel, Vector& beta)
 {
-    const double density = solid.part.material.density;
     if (acceleration == nullptr || density == 0.0 || acceleration->isZero())
         return;
     // The body force ρ a(x), affine in the position (basic axes): its constants, then its gradient by columns
@@ -845,7 +844,7 @@ MixedHybridModel::SolidCaseStresses MixedHybridModel::solidStresses(const MixedS
         out.kernel = std::get<SolidPart::SharedKernel>(std::move(kernel));
         out.beta = SolidPart::stressCoefficients(*out.kernel, x, {});
     }
-    addBodyForceStresses(solid, displacements.bodyAcceleration, *out.kernel, out.beta);
+    addBodyForceStresses(solid.part.material.density, displacements.bodyAcceleration, *out.kernel, out.beta);
     return out;
 }
 

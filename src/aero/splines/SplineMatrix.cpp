@@ -93,7 +93,7 @@ std::vector<std::int32_t> aelistItems(const input::ModelSnapshot& snapshot, std:
 } // namespace
 
 SplineMatrix::SplineMatrix(const input::ModelSnapshot& snapshot, const AeroReference& reference, const AeroBoxes& boxes,
-                           base::MemoryBudget& budget)
+                           base::MemoryBudget& budget, bool keepGeometry)
     : m_boxes(&boxes), m_reference(reference)
 {
     if (!snapshot.hasTable(input::TableRole::Splines))
@@ -214,8 +214,9 @@ SplineMatrix::SplineMatrix(const input::ModelSnapshot& snapshot, const AeroRefer
         }
         const double dz = realOr(table, "dz", row, 0.0);
         flexibility.dz = dz;
-        const auto local = [&](base::Vec3 p)
-        { return std::array<double, 2>{base::dot(p - origin, x), base::dot(p - origin, y)}; };
+        const auto local = [&](base::Vec3 p) {
+            return std::array<double, 2>{base::dot(p - origin, x), base::dot(p - origin, y)};
+        };
         std::vector<std::array<double, 2>> targets;
         for (const std::size_t box : spline.boxes)
             targets.push_back(local(boxes[box].center));
@@ -229,7 +230,12 @@ SplineMatrix::SplineMatrix(const input::ModelSnapshot& snapshot, const AeroRefer
             std::vector<std::array<double, 2>> coordinates;
             for (const base::Vec3& p : pointPositions)
                 coordinates.push_back(local(p));
-            SurfaceSpline::Interpolation interpolation = SurfaceSpline::interpolate(coordinates, dz, targets, budget);
+            if (keepGeometry)
+                spline.geometry = std::make_unique<SurfaceSpline::Geometry>();
+            spline.xAxis = x;
+            spline.yAxis = y;
+            SurfaceSpline::Interpolation interpolation =
+                SurfaceSpline::interpolate(coordinates, dz, targets, budget, spline.geometry.get());
             spline.matrix = linalg::DenseMatrix(budget, 2 * spline.boxes.size(), points.size(), "spline matrix");
             for (std::size_t b = 0; b < spline.boxes.size(); ++b)
                 for (std::size_t i = 0; i < points.size(); ++i)
@@ -246,7 +252,14 @@ SplineMatrix::SplineMatrix(const input::ModelSnapshot& snapshot, const AeroRefer
             std::vector<double> stations;
             for (const base::Vec3& p : pointPositions)
                 stations.push_back(base::dot(p - origin, y));
-            BeamSpline::Interpolation interpolation = BeamSpline::interpolate(stations, flexibility, targets, budget);
+            if (keepGeometry)
+                spline.beamGeometry = std::make_unique<BeamSpline::Geometry>();
+            spline.xAxis = x;
+            spline.yAxis = y;
+            spline.alongX = alongX;
+            spline.alongY = alongY;
+            BeamSpline::Interpolation interpolation =
+                BeamSpline::interpolate(stations, flexibility, targets, budget, spline.beamGeometry.get());
             const std::size_t unknowns = 3 * points.size();
             spline.matrix = linalg::DenseMatrix(budget, 2 * spline.boxes.size(), unknowns, "spline matrix");
             for (std::size_t b = 0; b < spline.boxes.size(); ++b)
@@ -265,6 +278,58 @@ SplineMatrix::SplineMatrix(const input::ModelSnapshot& snapshot, const AeroRefer
         }
         m_splines.push_back(std::move(spline));
     }
+}
+
+SplineMatrix SplineMatrix::derivative(const Velocity& velocity, base::MemoryBudget& budget) const
+{
+    SplineMatrix out(*m_boxes, m_reference);
+    for (const auto& spline : m_splines)
+    {
+        if (std::none_of(spline.nodes.begin(), spline.nodes.end(),
+                         [&](auto id) { return base::norm(velocity(id)) != 0; }))
+            continue;
+        auto& rate = out.m_splines.emplace_back();
+        rate.nodes = spline.nodes;
+        rate.boxes = spline.boxes;
+        rate.movesBoxes = spline.movesBoxes;
+        rate.loadsStructure = spline.loadsStructure;
+        rate.isRotation = spline.isRotation;
+        rate.directions = spline.directions;
+        rate.matrix = linalg::DenseMatrix(budget, 2 * rate.boxes.size(), rate.nodes.size(), "spline transfer rates");
+        if (spline.geometry)
+        {
+            std::vector<std::array<double, 2>> speeds;
+            for (auto id : spline.nodes)
+            {
+                const auto v = m_reference.directionInAeroFrame(velocity(id));
+                speeds.push_back({base::dot(v, spline.xAxis), base::dot(v, spline.yAxis)});
+            }
+            const auto rates = spline.geometry->derivative(speeds, budget);
+            for (std::size_t b = 0; b < rate.boxes.size(); ++b)
+                for (std::size_t i = 0; i < rate.nodes.size(); ++i)
+                {
+                    rate.matrix(2 * b, i) = rates.plunge(b, i);
+                    rate.matrix(2 * b + 1, i) = rates.slope(b, i);
+                }
+        }
+        else if (spline.beamGeometry)
+        {
+            std::vector<double> speeds;
+            for (std::size_t i = 0; i < spline.nodes.size(); i += 3)
+                speeds.push_back(base::dot(m_reference.directionInAeroFrame(velocity(spline.nodes[i])), spline.yAxis));
+            const auto rates = spline.beamGeometry->derivative(speeds, budget);
+            for (std::size_t b = 0; b < rate.boxes.size(); ++b)
+                for (std::size_t i = 0; i < rate.nodes.size(); ++i)
+                {
+                    rate.matrix(2 * b, i) = rates.plunge(b, i);
+                    rate.matrix(2 * b + 1, i) =
+                        spline.alongX * rates.slope(b, i) + spline.alongY * rates.spanSlope(b, i);
+                }
+        }
+        else
+            throw base::SolverError("spline interpolation factors were not retained");
+    }
+    return out;
 }
 
 BoxMotion SplineMatrix::boxMotion(const std::function<PointMotion(std::int32_t)>& motionOf) const

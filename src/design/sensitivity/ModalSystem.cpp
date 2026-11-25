@@ -42,8 +42,8 @@ std::optional<std::size_t> modalNormalisationPivot(const solutions::EigenMethod&
     return pivot;
 }
 
-ModalSystem::ModalSystem(const solutions::AnalysisModel& model, std::int32_t subcase,
-                         base::MemoryBudget& budget, base::ThreadPool* pool)
+ModalSystem::ModalSystem(const solutions::AnalysisModel& model, std::int32_t subcase, base::MemoryBudget& budget,
+                         base::ThreadPool* pool, bool needsMass)
 {
     base::DiagnosticSink sink;
     const auto subcases = solutions::staticSubcasesOf(model.snapshot(), {subcase}, sink);
@@ -51,15 +51,18 @@ ModalSystem::ModalSystem(const solutions::AnalysisModel& model, std::int32_t sub
     const solutions::ConstraintSelection selection{selected.label, selected.spc, selected.mpc, std::nullopt,
                                                    selected.contact};
     m_constraints = std::make_unique<solutions::ConstrainedSystem>(model, selection, budget, pool, nullptr, sink);
-    m_massOptions = assembly::MassAssemblyOptions::fromParams(model.params(), subcase, sink);
-    linalg::BlockSparseMatrix mgg(m_constraints->pattern(), budget, "modal derivative mass Mgg");
-    const assembly::NonStructuralMassShares shares(model.elementSet());
-    assembly::MassAssembler(model.elementSet(), model.dofMap(), shares, m_massOptions).assemble(mgg, pool);
-    const auto mnn = m_constraints->reduce(mgg, budget, "modal derivative mass Mnn");
     m_ordering = std::make_unique<solutions::FsetOrdering>(m_constraints->graph(), model.dofMap(),
         m_constraints->solveSets(), assembly::DofSet::F, linalg::OrderingMethod::Automatic, budget, pool);
     m_stiffness = linalg::SymmetricCsc::fromBlocks(m_constraints->knn(), m_ordering->selection(), budget, pool);
-    m_mass = linalg::SymmetricCsc::fromBlocks(mnn, m_ordering->selection(), budget, pool);
+    if (needsMass)
+    {
+        m_massOptions = assembly::MassAssemblyOptions::fromParams(model.params(), subcase, sink);
+        linalg::BlockSparseMatrix mgg(m_constraints->pattern(), budget, "modal derivative mass Mgg");
+        const assembly::NonStructuralMassShares shares(model.elementSet());
+        assembly::MassAssembler(model.elementSet(), model.dofMap(), shares, m_massOptions).assemble(mgg, pool);
+        const auto mnn = m_constraints->reduce(mgg, budget, "modal derivative mass Mnn");
+        m_mass = linalg::SymmetricCsc::fromBlocks(mnn, m_ordering->selection(), budget, pool);
+    }
 }
 
 } // namespace oos::design::detail

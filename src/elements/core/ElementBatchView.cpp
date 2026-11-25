@@ -3,6 +3,8 @@
 #include "oos/base/errors/ContractError.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
 
+#include "oos/elements/core/FormulationModel.hpp"
+
 #include <string>
 
 namespace oos::elements
@@ -14,6 +16,13 @@ namespace
 constexpr std::size_t ROTATION_TERMS = 9; // one 3 x 3 rotation per grid point, row-major
 
 } // namespace
+
+ElementBatchView ElementBatchView::forLayout(EntityLayout::Kind kind) const
+{
+    if (!m_formulation || (m_entities && m_entities->kind() == kind))
+        return *this;
+    return {batch(), index(), &m_formulation->layout(kind), m_formulation};
+}
 
 base::Vec3 ElementBatchView::positionInBasic(std::int32_t gridRow) const
 {

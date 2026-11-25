@@ -1,6 +1,7 @@
 #include "oos/api/ModelFromDeck.hpp"
 
 #include "oor/api/CardTables.hpp"
+#include "oor/api/Design.hpp"
 #include "oor/api/Queries.hpp"
 #include "oor/query/table/ArrowExport.hpp"
 #include "oos/input/snapshot/SnapshotBuilder.hpp"
@@ -162,4 +163,28 @@ std::shared_ptr<const input::ModelSnapshot> modelFromDeck(const std::shared_ptr<
     return std::make_shared<const input::ModelSnapshot>(builder.build());
 }
 
+std::shared_ptr<OptimizationProblem> prepareOptimization(const std::shared_ptr<oor::api::Deck>& deck,
+                                                         OptimizationSettings settings, const DeckOptions& options,
+                                                         OptimizationInput declarations)
+{
+    if (!deck)
+        throw std::invalid_argument("prepareOptimization requires a deck");
+    const auto design = oor::api::designModel(*deck);
+    if (!design.problems().empty())
+        throw std::invalid_argument(design.problems().front());
+    if (!design.notApplied().empty())
+    {
+        const auto& entry = design.notApplied().front();
+        throw std::invalid_argument(entry.card + " " + std::to_string(entry.id) + ": " + entry.reason);
+    }
+    std::map<std::string, base::ImportedTable> tables;
+    for (const char* name : {"designVariablesTable", "designLinksTable", "designRelationsTable", "designConstantsTable",
+                             "shapeVariablesTable", "designEquationSymbols", "designEquationInstructions",
+                             "designResponsesTable", "designResponseArgumentsTable", "designConstraintsTable",
+                             "designConstraintSetsTable", "designSubcasesTable", "designScreeningTable"})
+        tables.emplace(name,
+                       importTable(oor::api::runQuery(name, deck, nullptr, oor::api::argumentsFromJson(name, "{}"))));
+    return std::make_shared<OptimizationProblem>(modelFromDeck(deck, options), std::move(declarations),
+                                                 std::move(settings), std::move(tables));
+}
 } // namespace oos::api

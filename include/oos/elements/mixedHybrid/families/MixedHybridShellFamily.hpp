@@ -45,6 +45,9 @@ public:
 
     void check(const ElementBatchView& view, base::DiagnosticSink& sink) const override;
     void computeStiffness(const ElementBatchView& view, ElementRange range, ElementMatrixBlock& block) const override;
+    [[nodiscard]] FieldUse designFieldUse(const DesignedField& field) const override;
+    bool stiffnessFieldDerivative(const ElementBatchView& view, std::int64_t row, const DesignedField& field,
+                                 ElementMatrixBlock& block) const override;
     void computeMass(const ElementBatchView& view, ElementRange range, const MassOptions& options,
                      ElementMatrixBlock& block) const override;
     // ∫ t μ0 dA on the rule of the element: the thickness of the section over the surface of the element (μ0 the area

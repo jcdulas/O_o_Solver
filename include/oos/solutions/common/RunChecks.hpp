@@ -23,7 +23,7 @@ void stopOnErrors(const base::DiagnosticSink& sink, const std::string& stage);
 // The support check of a run (checkSupport): the ignored cards become warnings of the run (reported to `sink`), and a
 // refusal stops it with UnsupportedCardError listing every unsupported card or field.
 void reportSupport(const input::ModelSnapshot& snapshot, const elements::ElementRegistry& registry,
-                   AnalysisKind analysis, base::DiagnosticSink& sink);
+                   AnalysisKind analysis, base::DiagnosticSink& sink, bool usesAeroTransfer = false);
 
 // A factor kept with failed pivots (PARAM SingularityBailOut -1; a stopping policy throws SingularityError instead):
 // the run goes on, and a warning of `subcase` names the ill-conditioned DOFs (through `namer`), so that an inaccurate

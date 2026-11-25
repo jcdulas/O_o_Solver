@@ -1,7 +1,8 @@
 #pragma once
-
 #include "oos/aero/geometry/AeroBoxes.hpp"
 #include "oos/aero/geometry/AeroReference.hpp"
+#include "oos/aero/splines/BeamSpline.hpp"
+#include "oos/aero/splines/SurfaceSpline.hpp"
 #include "oos/base/math/Vec3.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/input/snapshot/ModelSnapshot.hpp"
@@ -65,13 +66,19 @@ public:
         std::vector<std::int32_t> nodes;      // the grid point of each unknown
         std::vector<base::Vec3> directions;   // in the aerodynamic frame
         std::vector<std::uint8_t> isRotation; // per unknown
-        linalg::DenseMatrix matrix;           // 2 · boxes × unknowns
+        std::unique_ptr<SurfaceSpline::Geometry> geometry;
+        std::unique_ptr<BeamSpline::Geometry> beamGeometry;
+        base::Vec3 xAxis, yAxis;
+        double alongX = 1, alongY = 0;
+        linalg::DenseMatrix matrix; // 2 · boxes × unknowns
     };
 
     // Throws SolverError for a spline without boxes or structural points, a point that is not a grid point, a box
     // splined twice; UnsupportedCardError for the methods and cards above.
     SplineMatrix(const input::ModelSnapshot& snapshot, const AeroReference& reference, const AeroBoxes& boxes,
-                 base::MemoryBudget& budget);
+                 base::MemoryBudget& budget, bool keepGeometry = false);
+    using Velocity = std::function<base::Vec3(std::int32_t)>;
+    [[nodiscard]] SplineMatrix derivative(const Velocity& velocity, base::MemoryBudget& budget) const;
 
     [[nodiscard]] const std::vector<Spline>& splines() const noexcept { return m_splines; }
 
@@ -91,6 +98,7 @@ public:
     [[nodiscard]] std::vector<PointLoad> structuralLoads(std::span<const double> boxForces) const;
 
 private:
+    SplineMatrix(const AeroBoxes& boxes, const AeroReference& reference) : m_boxes(&boxes), m_reference(reference) {}
     const AeroBoxes* m_boxes;
     AeroReference m_reference;
     std::vector<Spline> m_splines; // bounded by the SPLINE cards

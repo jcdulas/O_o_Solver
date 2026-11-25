@@ -26,7 +26,7 @@ class ModalSystem
 {
 public:
     ModalSystem(const solutions::AnalysisModel& model, std::int32_t subcase, base::MemoryBudget& budget,
-                base::ThreadPool* pool);
+                base::ThreadPool* pool, bool needsMass = true);
 
     [[nodiscard]] const solutions::ConstrainedSystem& constraints() const noexcept { return *m_constraints; }
     [[nodiscard]] const linalg::DofSelection& selection() const noexcept { return m_ordering->selection(); }

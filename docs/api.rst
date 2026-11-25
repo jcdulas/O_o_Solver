@@ -38,6 +38,144 @@ The `standalone rod example <https://github.com/jcdulas/O_o_vcpkg/tree/main/exam
      - ``problem.evaluate(x)``
      - ``problem.evaluate(x)``
 
+.. _spline-transfer-for-an-external-solver:
+
+Spline transfer for an external solver
+--------------------------------------
+
+Prepare one transfer from the structural model and reuse it throughout a coupling loop.
+The transfer owns the spline matrices and remains usable after the model is released.
+Prepare a new transfer when the geometry, spline membership or coordinate systems change.
+
+* ``nodeIds`` / ``node_ids`` lists distinct spline attachment node IDs in increasing order.
+  Supply six components per node in the basic frame, translations XYZ followed by small rotations XYZ in radians.
+  Use the physical motion of each attachment, including any dependent RBE3 node.
+* ``boxIds`` / ``box_ids`` gives the aerodynamic box order. The motion output contains the normal
+  displacement at each box centre (``plunge``, in length units) and the dimensionless chordwise ``slope``.
+* Supply one signed normal **force** per box, positive along the box normal and acting at its force point.
+  For pressure jumps use force = pressure jump times box area. The returned node rows contain force XYZ
+  followed by moment XYZ in the basic frame. Shared attachments accumulate contributions. A structural
+  solve distributes the loads applied at dependent nodes through its constraint equations.
+* Each spline honours its force or displacement usage. Boxes without a motion spline have zero output motion.
+  A box contributes structural load only through a force-enabled spline.
+
+**JavaScript / WebAssembly**
+
+.. code-block:: javascript
+
+   const transfer = model.aeroTransfer();
+   try {
+     const nodeIds = transfer.nodeIds, boxIds = transfer.boxIds;
+     const u = new Float64Array(6 * nodeIds.length);
+     for (let i = 0; i < nodeIds.length; ++i) u[6*i + 2] = 0.01;
+     const { plunge, slope } = transfer.boxMotion(u);
+     const forces = new Float64Array(boxIds.length).fill(1);
+     const loads = transfer.structuralLoads(forces); // six consecutive values per node
+   } finally { transfer.delete(); }
+
+**Python / native C++**
+
+.. code-block:: python
+
+   import numpy as np
+
+   transfer = model.aero_transfer()
+   u = np.zeros((len(transfer.node_ids), 6))
+   u[:, 2] = 0.01
+   motion = transfer.box_motion(u)  # motion["plunge"], motion["slope"]
+   forces = np.ones(len(transfer.box_ids))
+   loads = transfer.structural_loads(forces)  # shape (nodes, 6)
+
+**C++20**
+
+.. code-block:: cpp
+
+   #include <oos/api/AeroTransfer.hpp>
+
+   // snapshot is the model returned by oos::api::modelFromDeck(deck).
+   oos::api::AeroTransfer transfer(*snapshot);
+   std::vector<double> u(6 * transfer.nodeIds().size());
+   for (std::size_t i = 0; i < transfer.nodeIds().size(); ++i) u[6*i + 2] = 0.01;
+   const auto motion = transfer.boxMotion(u);
+   std::vector<double> forces(transfer.boxIds().size(), 1.0);
+   const auto loads = transfer.structuralLoads(forces);
+
+The examples use a uniform basic-Z translation and a unit normal force on each box. In a coupled run,
+fill the same arrays from the structural and aerodynamic solutions using the returned IDs. The external
+driver controls the coupling iterations and convergence criterion.
+
+Coupling SOL 101, 103 and 105
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use the applied box forces in SOL 101 to equilibrate the structure. They add to the selected
+mechanical loads. The result includes the usual structural tables, the box motion and an opaque
+preload containing the full displacement field. SOL 105 accepts that state on the same snapshot
+when its case control selects the same static subcase. Initial strains still come from that subcase.
+
+SOL 103 returns the dry structural modes, their frequencies and generalized masses in the eigenvalue
+table, and the plunge and slope of each mode in the same order. Its retained modal basis projects new
+box forces onto those modes as generalized loads, using the force-enabled splines and the mode
+normalisation of the eigensolution. This projection can be repeated throughout a coupling loop.
+
+These examples use static subcase 1 and eigenvalue subcase 2, whose static subcase selection is 1.
+
+**JavaScript / WebAssembly**
+
+.. code-block:: javascript
+
+   const t = model.aeroTransfer();
+   try {
+     const forces = new Float64Array(t.boxIds.length).fill(1);
+     const state = t.solveStatic(1, forces);
+     try {
+       const motion = state.boxMotions[0];
+       const buckling = t.solveBuckling(2, state.preload);
+       const factors = buckling.eigenvalues[0].rows.map(row => row.eigenvalue);
+     } finally { state.preload.delete(); }
+     const modes = t.solveModes(2);
+     try {
+       const q = modes.modalBasis.generalizedLoads(forces);
+       const firstMode = modes.boxMotions[0];
+     } finally { modes.modalBasis.delete(); }
+   } finally { t.delete(); }
+
+**Python**
+
+.. code-block:: python
+
+   import numpy as np
+
+   t = model.aero_transfer()
+   forces = np.ones(len(t.box_ids))
+   state = t.solve_static(1, forces)
+   motion = state["box_motions"][0]
+   buckling = t.solve_buckling(2, state["preload"])
+   factors = buckling["eigenvalues"][0]["rows"]["eigenvalue"]
+   modes = t.solve_modes(2)
+   q = modes["modal_basis"].generalized_loads(forces)
+   first_mode = modes["box_motions"][0]
+
+**C++20**
+
+.. code-block:: cpp
+
+   #include <oos/api/AeroCoupling.hpp>
+
+   oos::api::AeroCoupling t(snapshot);
+   std::vector<double> forces(t.boxIds().size(), 1.);
+   auto state = t.solveStatic(1, forces);
+   const auto& motion = state.boxMotions.at(0);
+   auto buckling = t.solveBuckling(2, *state.preload);
+   const auto& factors = buckling.analysis.eigenvalues.at(0).rows;
+   auto modes = t.solveModes(2);
+   auto q = modes.modalBasis->generalizedLoads(forces);
+   const auto& firstMode = modes.boxMotions.at(0);
+
+The external driver updates the forces and calls SOL 101 at each static equilibrium iteration.
+Pass the converged state to SOL 105. The load factors refer to this reference preload.
+Create a new model snapshot and transfer when the geometry changes. The built-in SOL 144 trim uses
+the same displacement and force operators internally.
+
 JavaScript and TypeScript
 -------------------------
 
@@ -49,6 +187,12 @@ Load the built package from ``build/wasm/dist/index.js``. The declarations below
 
 Optimization declarations
 ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``point.nodalCoordinateGradient(responseId, nodeIds, item)`` in JavaScript and
+``point.nodal_coordinate_gradient(response_id, node_ids, item)`` in Python return the basic-frame XYZ
+derivatives for a scalar response item at the evaluated point. Node IDs follow the requested order.
+The optional item index starts at zero. See :doc:`external-optimization` for paired examples and
+the C++ entry point.
 
 ``DesignResponse.mode`` selects a modal field with a positive, one-based mode number. A modal result item includes
 its ``mode`` label. ``ProductReport`` distinguishes static Hessian blocks from modal, buckling and trim tangent
@@ -75,7 +219,7 @@ Python
 ------
 
 Import ``model_from_reader(deck, *, formulation=None)`` and
-``optimization_from_reader(deck, *, analysis="statics", formulation=None, threads=1)`` from ``oo_solver``.
+``prepare_optimization(deck, *, analysis="statics", formulation=None, threads=1)`` from ``oo_solver``.
 
 * ``Model.run(analysis="statics", *, threads=1, subcases=[])`` returns a dictionary with
   read-only NumPy result arrays. Analyses are ``statics``, ``modes``, ``buckling`` and ``aeroelastic``.
@@ -83,7 +227,14 @@ Import ``model_from_reader(deck, *, formulation=None)`` and
   ``problem.evaluate(x)`` returns a retained ``DesignPoint``.
 * ``point.objective``, ``point.constraints`` and ``point.responses`` describe that evaluation.
   ``point.gradients()``, ``point.jvp(direction)`` and ``point.vjp(weights)`` reuse it.
+* ``analysis={"aeroelastic": [1], "buckling": [2]}`` selects a trim and a buckling
+  subcase in one design problem. Set ``StaticSubcaseSelection`` in the buckling
+  subcase to select its preload.
+* ``point.hessian_vector(weights, direction)`` returns a dictionary with a NumPy
+  array of products and a tangent report. Directions have shape (variables,) or
+  (variables, directions). Weights map response IDs to vectors of item weights.
 
+See :doc:`optimization` for batched NumPy inputs, reusable output buffers and CSR layouts.
 See :doc:`python` for paired examples and installation details. The public
 `Python module <https://github.com/jcdulas/O_o_Solver/blob/main/python/oo_solver/__init__.py>`_ and
 `native bindings <https://github.com/jcdulas/O_o_Solver/blob/main/python/bindings.cpp>`_ define the available calls.
@@ -111,6 +262,15 @@ Optimization.hpp
 .. literalinclude:: ../include/oos/api/Optimization.hpp
    :language: cpp
    :linenos:
+
+ModelFromDeck.hpp and ConstraintJacobian.hpp
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. literalinclude:: ../include/oos/api/ModelFromDeck.hpp
+   :language: cpp
+
+.. literalinclude:: ../include/oos/api/ConstraintJacobian.hpp
+   :language: cpp
 
 Capabilities.hpp
 ~~~~~~~~~~~~~~~~

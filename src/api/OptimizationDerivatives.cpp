@@ -221,8 +221,7 @@ design::ProductReport nativeGradientHessian(OptimizationEvaluation& point, const
     return report;
 }
 
-// A moved grid changes trim splines and the rigid-body support modes of inertia relief. The structural
-// linearisation holds these fixed, so complete analyses provide the affected shape column.
+// Complete-analysis fallback for shape columns outside the retained transfer or support tangents.
 FullShapeColumn fullShapeColumn(OptimizationEvaluation& point, std::size_t column)
 {
     const auto& x = point.x();

@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25)
+project(optimizer_api_benchmark LANGUAGES CXX)
+find_package(oo-solver CONFIG REQUIRED)
+add_executable(optimizer_api native.cpp)
+target_link_libraries(optimizer_api PRIVATE oos::api)

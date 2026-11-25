@@ -240,6 +240,7 @@ Resolution<SolidSection> resolveSolidSection(const ElementBatchView& view, const
                 {"expected the ID of a material card, found ", std::to_string(matId),
                  ", which the model does not define; define the IsoMat or AnisoMat3D or correct the SolidProp"})));
     const std::string_view type = columns.isotropic.types[*materialRow];
+    section.materialId = matId;
     if (type == "IsoMat")
     {
         Resolution<IsotropicMaterial> material =
@@ -259,6 +260,8 @@ Resolution<SolidSection> resolveSolidSection(const ElementBatchView& view, const
                      "; a solid needs both (an incompressible IsoMat.poissonRatio = 0.5 is not supported): "
                      "correct the "
                      "IsoMat"})));
+        section.youngModulus = e;
+        section.poissonRatio = nu;
         section.elasticity = isotropicSolidMatrix(e, nu);
         section.density = material.value->density;
         section.expansion = {

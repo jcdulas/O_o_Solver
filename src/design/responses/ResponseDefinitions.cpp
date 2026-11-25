@@ -13,7 +13,7 @@ namespace
 // The name of each type, as the responseKind of a DesignResp1 gives it; the extension types of the optimisation aids
 // and of the sizing tools get names of O_o_Solver's own, which the screening (DesignConstrScreen types) and the
 // messages use.
-constexpr std::array<std::pair<std::string_view, ResponseType>, 26> RESPONSE_TYPES{{
+constexpr std::array<std::pair<std::string_view, ResponseType>, 32> RESPONSE_TYPES{{
     {"Weight", ResponseType::Weight},
     {"Volume", ResponseType::Volume},
     {"FractionalMass", ResponseType::FractionalMass},
@@ -39,6 +39,12 @@ constexpr std::array<std::pair<std::string_view, ResponseType>, 26> RESPONSE_TYP
     {"Frequency", ResponseType::Frequency},
     {"BucklingFactor", ResponseType::BucklingFactor},
     {"TrimVariable", ResponseType::TrimVariable},
+    {"AeroPressureCoefficient", ResponseType::AeroPressureCoefficient},
+    {"AeroBoxForce", ResponseType::AeroBoxForce},
+    {"AeroBoxMoment", ResponseType::AeroBoxMoment},
+    {"BucklingDisplacement", ResponseType::BucklingDisplacement},
+    {"AeroPressure", ResponseType::AeroPressure},
+    {"HingeMoment", ResponseType::HingeMoment},
     {"StabilityDerivative", ResponseType::StabilityDerivative},
 }};
 
@@ -104,16 +110,23 @@ bool isEigenType(ResponseType type) noexcept
     return isModalType(type) || type == ResponseType::BucklingFactor;
 }
 
+bool isTrimLoadType(ResponseType type) noexcept
+{
+    return type == ResponseType::AeroPressure || type == ResponseType::AeroPressureCoefficient ||
+           type == ResponseType::AeroBoxForce || type == ResponseType::AeroBoxMoment ||
+           type == ResponseType::HingeMoment;
+}
+
 bool isAeroelasticType(ResponseType type) noexcept
 {
-    return type == ResponseType::TrimVariable || type == ResponseType::StabilityDerivative;
+    return isTrimLoadType(type) || type == ResponseType::TrimVariable || type == ResponseType::StabilityDerivative;
 }
 
 SubcaseAnalysis analysisOfType(ResponseType type) noexcept
 {
     if (isModalType(type))
         return SubcaseAnalysis::Modes;
-    if (type == ResponseType::BucklingFactor)
+    if (type == ResponseType::BucklingFactor || type == ResponseType::BucklingDisplacement)
         return SubcaseAnalysis::Buckling;
     if (isAeroelasticType(type))
         return SubcaseAnalysis::Aeroelastic;

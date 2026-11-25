@@ -5,6 +5,7 @@
 // subcases with their displacements and factorised systems, the pseudo-loads. Not part of the public headers: it is
 // included by the sources of the design module only.
 
+#include "oos/assembly/assemble/ElementVolumes.hpp"
 #include "EigenItems.hpp"
 #include "FormulationShape.hpp"
 #include "ModalItems.hpp"
@@ -12,6 +13,7 @@
 #include "oos/assembly/assemble/ElementSet.hpp"
 #include "oos/assembly/assemble/MassAssembler.hpp"
 #include "oos/assembly/assemble/NonStructuralMassShares.hpp"
+#include "oos/assembly/constraints/RigidElementEquations.hpp"
 #include "oos/assembly/constraints/SpcSet.hpp"
 #include "oos/assembly/dofs/DofMap.hpp"
 #include "oos/assembly/loads/LoadVectorBuilder.hpp"
@@ -406,14 +408,25 @@ public:
           m_variableCount(inputs.model->independentCount()),
           m_quantities(quantitiesOf(*inputs.design))
     {
+        // Modal entities extend the static layout only when a solid retains interior fields.
+        if (inputs.modes && m_formulation &&
+            m_formulation->layout(elements::EntityLayout::Kind::Modal).count() !=
+                m_formulation->layout(elements::EntityLayout::Kind::Static).count())
+        {
+            const auto kind = elements::EntityLayout::Kind::Modal;
+            m_modalSet.emplace(m_index, m_replaced ? m_replaced->registry() : m_registry, &m_formulation->layout(kind));
+            m_modalDofMap.emplace(inputs.overlaid->nodes(), m_index.points(), m_formulation, kind);
+        }
+        const auto* modalMap = m_modalDofMap ? &*m_modalDofMap : &m_dofMap;
         // The eigenvalue items of the MODES and BUCK subcases (EigenItems).
         if (inputs.modes != nullptr || inputs.buckling != nullptr)
             m_eigen = std::make_unique<EigenItems>(EigenItems::Inputs{
-                inputs.modes, inputs.buckling, &m_dofMap, &m_set,
+                inputs.modes, inputs.buckling, &m_dofMap, modalMap, &m_set,
                 inputs.overlaid->hasTable(input::TableRole::Params) ? &inputs.overlaid->params() : nullptr,
                 m_variableCount, &budget, inputs.overlaid.get(), inputs.pool});
         if (inputs.modes != nullptr)
-            m_modal = std::make_unique<ModalItems>(ModalItems::Inputs{inputs.overlaid, inputs.modes, &m_set, &m_dofMap,
+            m_modal = std::make_unique<ModalItems>(ModalItems::Inputs{inputs.overlaid, inputs.modes,
+                                                                      m_modalSet ? &*m_modalSet : &m_set, modalMap,
                                                                       inputs.kernel, inputs.pool, &budget});
         // The items of the SAERO subcases (TrimItems), on the trim's linearisation.
         if (inputs.trim != nullptr)
@@ -599,8 +612,10 @@ protected:
                     item.subcase = 0; // the modal adjoint supplies the complete explicit row
                 // A LAMA item reads the displacements of its preload subcase (EigenItems: the weights of K_d(u)).
                 if (const DesignResp1Response* response = m_in.responses->findDesignResp1(values[p].id);
-                    m_eigen && response != nullptr && response->definition().type == ResponseType::BucklingFactor)
-                    if (const std::optional<std::int32_t> preload = m_eigen->preloadOf(item.subcase))
+                    m_eigen && response != nullptr &&
+                    (response->definition().type == ResponseType::BucklingFactor ||
+                     response->definition().type == ResponseType::BucklingDisplacement))
+                    if (const std::optional<std::int32_t> preload = m_eigen->preloadOf(values[p].items[i].subcase))
                         item.subcase = *preload;
                 // An item that failed or was not evaluated has no gradient.
                 item.isWanted = isWanted(p, i) && values[p].isOk(i);
@@ -1203,33 +1218,42 @@ protected:
         std::vector<double> residual;
     };
 
-    void addFormulationShapeTerms(std::size_t q, const FieldValue& quantity, const FieldPerturbation& perturbation,
+    void addFormulationShapeTerms(std::size_t q, const FieldValue& quantity, const LazyFieldPerturbation& lazy,
                                   const std::vector<ElementRef>& reached)
     {
-        const bool reachesFormulation =
-            std::any_of(reached.begin(), reached.end(), [&](const ElementRef& element)
-                        { return m_set.batches()[element.batch].view.formulation() != nullptr; });
+        const bool reachesFormulation = std::any_of(
+            reached.begin(), reached.end(),
+            [&](const ElementRef& element) { return m_set.batches()[element.batch].view.formulation() != nullptr; });
         if (!reachesFormulation)
             return;
+        const auto& perturbation = lazy.get();
         const std::array<const elements::FormulationModel*, FIELD_SIDE_COUNT> models =
             sideFormulationModels(perturbation);
         if (m_eigen)
             m_eigen->addFormulationShapeTerms(q, perturbation, models);
+        addConstraintShapeTerms(
+            q, quantity,
+            [&](const SubcaseState& state, const SensitivitySystem& system, const input::ParamTable* params)
+            {
+                const auto* formulation = system.formulation();
+                if (formulation == nullptr || (formulation->relations().empty() && formulation->excludedDofs().empty()))
+                    return FormulationShapeTerms{};
+                return formulationTermsOf(state, system, *formulation, perturbation, models, params);
+            });
+    }
+
+    template <class MakeTerms>
+    void addConstraintShapeTerms(std::size_t q, const FieldValue& quantity, MakeTerms makeTerms)
+    {
         const std::size_t size = gSize();
-        // Per subcase (empty: nothing of the formulation moves there).
         std::vector<FormulationShapeTerms> terms(m_subcases.size());
         const input::ParamTable* params =
             m_in.overlaid->hasTable(input::TableRole::Params) ? &m_in.overlaid->params() : nullptr;
         for (std::size_t s = 0; s < m_subcases.size(); ++s)
         {
-            const SubcaseState& state = m_subcases[s];
-            if (state.isCombination() || state.isAeroelastic || state.group == NO_GROUP)
-                continue;
-            const SensitivitySystem& system = *m_systems[state.group];
-            const assembly::FormulationConstraints* formulation = system.formulation();
-            if (formulation == nullptr || (formulation->relations().empty() && formulation->excludedDofs().empty()))
-                continue;
-            terms[s] = formulationTermsOf(state, system, *formulation, perturbation, models, params);
+            const auto& state = m_subcases[s];
+            if (!state.isCombination() && !state.isAeroelastic && state.group != NO_GROUP)
+                terms[s] = makeTerms(state, *m_systems[state.group], params);
         }
         // A SUBCOM: the sums of its terms' (each linear in its displacements and loads).
         for (std::size_t s = 0; s < m_subcases.size(); ++s)
@@ -1320,9 +1344,36 @@ protected:
                 d[x] = filled[x] + perturbation.derivative(fills[0][x], fills[1][x], fills[2][x], fills[3][x]);
             }
         }
+        return completeConstraintTerms(state, system, std::move(made), params,
+                                       [&](const std::vector<double>& multipliers, std::vector<double>& load)
+                                       {
+                                           // E = −Σ_m λ_m·∂c_mj/∂v at the DOFs j, by differences of the sides' −Σ_m
+                                           // λ_m·c_mj.
+                                           std::array<std::vector<double>, FIELD_SIDE_COUNT> forces;
+                                           for (std::size_t side = 0; side < FIELD_SIDE_COUNT; ++side)
+                                           {
+                                               forces[side].assign(size, 0.0);
+                                               for (std::size_t k = 0; k < base.rowCount(); ++k)
+                                                   if (rowOf[k] != SIZE_MAX)
+                                                       for (const assembly::ConstraintTerm& term : sides[side].row(k))
+                                                           forces[side][static_cast<std::size_t>(term.dof)] -=
+                                                               multipliers[rowOf[k]] * term.coefficient;
+                                           }
+                                           perturbation.derivatives(forces[0], forces[1], forces[2], forces[3], load);
+                                       });
+    }
+
+    template <class ForceRate>
+    FormulationShapeTerms completeConstraintTerms(const SubcaseState& state, const SensitivitySystem& system,
+                                                  FormulationShapeTerms made, const input::ParamTable* params,
+                                                  ForceRate forceRate)
+    {
+        const std::size_t size = gSize();
+        const auto& gm = system.gm();
+        base::DiagnosticSink sink;
         // K·u − P (the forces of the relations on the dependent DOFs) and λ, the multiplier of each row of Gm.
         std::vector<double> ku(size, 0.0);
-        system.kgg().multiply(u, ku);
+        system.kgg().multiply(state.displacements.span(), ku);
         std::vector<double> loads(size, 0.0);
         if (state.subcase.load)
         {
@@ -1349,20 +1400,10 @@ protected:
             for (const assembly::ConstraintTerm& term : gm.relationTerms(static_cast<std::size_t>(parent)))
                 if (const std::optional<std::size_t> child = gm.findRow(term.dof))
                     multipliers[*child] += term.coefficient * multipliers[static_cast<std::size_t>(parent)];
-        // E = −Σ_m λ_m·∂c_mj/∂v at the DOFs j, by differences of the sides' −Σ_m λ_m·c_mj.
-        std::array<std::vector<double>, FIELD_SIDE_COUNT> forces;
-        for (std::size_t side = 0; side < FIELD_SIDE_COUNT; ++side)
-        {
-            forces[side].assign(size, 0.0);
-            for (std::size_t k = 0; k < base.rowCount(); ++k)
-                if (rowOf[k] != SIZE_MAX)
-                    for (const assembly::ConstraintTerm& term : sides[side].row(k))
-                        forces[side][static_cast<std::size_t>(term.dof)] -= multipliers[rowOf[k]] * term.coefficient;
-        }
-        perturbation.derivatives(forces[0], forces[1], forces[2], forces[3], made.load);
+        forceRate(multipliers, made.load);
         // L = E − K·D.
         std::vector<double> kd(size, 0.0);
-        system.kgg().multiply(d, kd);
+        system.kgg().multiply(made.d, kd);
         for (std::size_t g = 0; g < size; ++g)
             made.load[g] -= kd[g];
         if (sink.hasErrors())
@@ -1413,6 +1454,13 @@ protected:
                 ItemLinearisation& item = m_linearised.at(key);
                 if (!item.isWanted)
                     continue;
+                if (type == ResponseType::BucklingDisplacement)
+                {
+                    if (!m_eigen)
+                        throw base::OptimisationError("a buckling displacement requires a buckling solve");
+                    m_eigen->addBucklingShape(key, label, values.values[i]);
+                    continue;
+                }
                 if (response->definition().mode)
                 {
                     if (!m_modal)
@@ -1468,6 +1516,11 @@ protected:
                              "subcases of the response"}));
                     m_eigen->add(key, type, label, values.values[i]);
                     break;
+                case ResponseType::AeroPressure:
+                case ResponseType::AeroPressureCoefficient:
+                case ResponseType::AeroBoxForce:
+                case ResponseType::AeroBoxMoment:
+                case ResponseType::HingeMoment:
                 case ResponseType::TrimVariable:
                 case ResponseType::StabilityDerivative:
                     if (!m_trim)
@@ -2660,6 +2713,12 @@ protected:
             }
     }
 
+    [[nodiscard]] bool isSolidElement(const ElementRef& ref) const
+    {
+        const auto card = m_set.batches()[ref.batch].family->card();
+        return card == "SolidTetra" || card == "SolidHexa" || card == "SolidPenta" || card == "SolidPyramid";
+    }
+
     void differenceFields()
     {
         const std::vector<FieldValue>& fields = m_in.design->fields;
@@ -2699,6 +2758,15 @@ protected:
             for (std::size_t r = 0; r < fields.size(); ++r)
             {
                 const FieldValue& field = fields[r];
+                if (m_in.model->relations()[r].targetKind == TargetKind::Trim)
+                {
+                    if (m_trim && !field.gradient.empty() && isFieldWanted(field))
+                    {
+                        m_trim->addPressureRate(m_in.model->relations()[r].targetId);
+                        m_trim->finishQuantity(r, m_linearised);
+                    }
+                    continue;
+                }
                 const std::vector<ElementRef>& elements = affected.of(r);
                 if (field.gradient.empty() || elements.empty())
                     continue;
@@ -2759,8 +2827,13 @@ protected:
                 // Derived section cells and scaled targets need their own chain rule. A laminate's ply
                 // thickness is its card's cell; LaminateRate follows the derived stack.
                 const std::optional<std::size_t> derivedGroup = m_in.targets->derivedProperties().groupOf(r);
+                // SolidProp resolves isotropic elasticity from E and nu. A defaulted G changes no solid facet.
+                // When the material also reaches a beam or shell its G contribution must still be propagated.
+                const bool onlyUnusedShear = m_in.targets->derivesOnlyShearModulus(r) && !elements.empty() &&
+                    !hasExternalUnits() && std::all_of(elements.begin(), elements.end(),
+                                                      [&](const ElementRef& ref) { return isSolidElement(ref); });
                 const bool isPlainCell = isDirectFieldTarget(relation, (*m_in.targets)[r]) &&
-                                         !m_in.targets->hasDerivedMaterial(r) &&
+                                         (!m_in.targets->hasDerivedMaterial(r) || onlyUnusedShear) &&
                                          (!derivedGroup || m_in.targets->derivedProperties().isLaminate(*derivedGroup));
                 if (isWaved)
                 {
@@ -2879,6 +2952,85 @@ protected:
         return result;
     }
 
+    // Differentiate each affected spider once per basis, then reuse its row rates across static subcases.
+    void addRigidShapeTerms(std::size_t q, const FieldValue& shape, const ShapeBasis& basis,
+                            const std::vector<DeformedRigidElement>& deformed, bool movesElements)
+    {
+        std::vector<assembly::LocalConstraintRows> rates;
+        const auto velocity = [&](base::EntityId id)
+        {
+            const auto it = std::lower_bound(basis.moves.begin(), basis.moves.end(), id,
+                                             [](const ShapeMove& move, auto grid) { return move.gridId < grid; });
+            if (it == basis.moves.end() || it->gridId != id)
+                return base::Vec3{};
+            return base::Vec3{it->move[0], it->move[1], it->move[2]};
+        };
+        const auto& table = m_in.overlaid->rigidElements();
+        for (const auto& element : deformed)
+        {
+            const auto unsupported = [&](const std::string& why)
+            {
+                throw base::OptimisationError(base::concatenate(
+                    {"the sensitivities of the DesignNodeMove of DesignVar ", std::to_string(basis.variableId),
+                     ": grid point ", std::to_string(element.gridId), " of ", element.type, " ",
+                     std::to_string(element.elementId), " moves relative to its other grid points: ", why}));
+            };
+            if (element.type != "RigidInterpolation" || (m_eigen && !m_trim) || m_modal || !m_spcItems.empty() ||
+                !m_zoneItems.empty() || hasExternalUnits())
+                unsupported("the derivative of its moving constraint equations is unavailable for these responses");
+            base::DiagnosticSink sink;
+            if (!assembly::RigidElementEquations(m_dofMap).interpolationDerivative(
+                    table, element.beginRow, element.endRow, velocity, rates.emplace_back(), sink))
+                unsupported(base::formatDiagnostic(sink.diagnostics().front()));
+        }
+        if (m_trim && !m_trim->isEmpty())
+        {
+            m_trim->addTransferRate(velocity, rates, movesElements);
+            if (m_eigen && !rates.empty())
+                m_eigen->addRigidShapeTerms(q, rates);
+        }
+        if (rates.empty())
+            return;
+        addConstraintShapeTerms(
+            q, shape,
+            [&](const SubcaseState& state, const SensitivitySystem& system, const input::ParamTable* params)
+            {
+                const auto& gm = system.gm();
+                const auto u = state.displacements.span();
+                const auto size = u.size();
+                FormulationShapeTerms made{std::vector<double>(size), std::vector<double>(size),
+                                           std::vector<double>(size)};
+                for (const auto& spider : rates)
+                    for (std::size_t i = 0; i < spider.size(); ++i)
+                    {
+                        if (!gm.findRow(spider.dependents[i]))
+                            throw base::OptimisationError(
+                                "the moving RBE3 row is absent from the retained static constraint system");
+                        for (const auto& t : spider.row(i))
+                            made.d[spider.dependents[i]] += t.coefficient * u[t.dof];
+                    }
+                // Carry the imposed motion through every dependent-on-dependent relation (children first).
+                const auto order = gm.chainOrder();
+                for (auto it = order.rbegin(); it != order.rend(); ++it)
+                {
+                    const auto row = static_cast<std::size_t>(*it);
+                    for (const auto& t : gm.relationTerms(row))
+                        made.d[gm.mDofs()[row]] += t.coefficient * made.d[t.dof];
+                }
+                if (system.formulation())
+                    system.formulation()->fillExcluded(made.d);
+                return completeConstraintTerms(
+                    state, system, std::move(made), params,
+                    [&](const std::vector<double>& multipliers, std::vector<double>& load)
+                    {
+                        for (const auto& spider : rates)
+                            for (std::size_t i = 0; i < spider.size(); ++i)
+                                for (const auto& t : spider.row(i))
+                                    load[t.dof] -= multipliers[*gm.findRow(spider.dependents[i])] * t.coefficient;
+                    });
+            });
+    }
+
     // The shape variables: each basis moved along its vector (FieldPerturbation), on the elements its moves
     // reach (ShapeElements); every computation of those elements may change (FieldUse::all()), and the distributed
     // loads of every subcase that has some (a PointsPressureLoad on moved grid points has no element) are differenced
@@ -2897,20 +3049,18 @@ protected:
             const std::string label =
                 base::concatenate({"the DesignNodeMove of DesignVar ", std::to_string(basis.variableId)});
             const std::vector<DeformedRigidElement> deformed = reached.deformedRigidElements(b);
-            if (!deformed.empty())
-                throw base::OptimisationError(base::concatenate(
-                    {"the sensitivities of ", label, ": they move grid point ", std::to_string(deformed.front().gridId),
-                     " of ", deformed.front().type, " ", std::to_string(deformed.front().elementId),
-                     " relative to its other grid points (", std::to_string(deformed.size()),
-                     " rigid element(s) so deformed), which changes its constraint equations; their derivative is "
-                     "not formed in this version. Move every grid point of the rigid element together "
-                     "(the same DesignNodeMove vector), or leave them out of the shape"}));
-            const LazyFieldPerturbation perturbation(FieldPerturbation(m_in.base, *m_in.model, *m_in.targets,
-                                                                       *m_in.design, fieldCount + b, reached.step(b),
-                                                                       elementRegistry(), m_budget));
-            ++m_report.shapePerturbations;
+            if (!deformed.empty() || (m_trim && !m_trim->isEmpty()))
+                addRigidShapeTerms(fieldCount + b, shape, basis, deformed, !reached.of(b).empty());
+            const LazyFieldPerturbation perturbation(
+                [&]
+                {
+                    return FieldPerturbation(m_in.base, *m_in.model, *m_in.targets, *m_in.design, fieldCount + b,
+                                             reached.step(b), elementRegistry(), m_budget);
+                });
             differenceQuantity(fieldCount + b, shape, perturbation, reached.of(b), label, nullptr,
                                [](const elements::ElementFamily&) { return elements::FieldUse::all(); });
+            if (perturbation.isBuilt())
+                ++m_report.shapePerturbations;
         }
     }
 
@@ -2977,8 +3127,7 @@ protected:
         std::set<std::pair<std::string, std::int32_t>> affectedIds;
         std::set<ElementRef> affectedSet(elements.begin(), elements.end());
         std::vector<std::uint8_t> needsDistributed(m_subcases.size(), 0);
-        // A shape moves the trim's splines, its rigid-body modes and its support modes with the grid points, which the
-        // derivatives of TrimItems (∂K and ∂M at fixed geometry) do not hold.
+        // The restrained trim already carries the spline and RBE3 transfer rates of a shape.
         // Under inertia relief the support motions D are those of the grid points as they are.
         if (isShape && std::any_of(m_subcases.begin(), m_subcases.end(),
                                    [](const SubcaseState& state) { return state.relief != nullptr; }))
@@ -2987,12 +3136,6 @@ protected:
                  ": expected a property, material or connection variable, found a shape, which moves the rigid-body "
                  "motions of the supports this version keeps fixed; evaluate the shape design without gradients, or "
                  "without PARAM InertiaRelief"}));
-        if (isShape && m_trim && !m_trim->isEmpty())
-            throw base::OptimisationError(base::concatenate(
-                {"the sensitivities of the SAERO subcases along ", label,
-                 ": expected a property, material or connection variable, found a shape, whose derivative of the trim "
-                 "(the splines, rigid-body modes and support modes moved with the grid points) this version does not "
-                 "give; evaluate the shape design without gradients, or remove the responses of the SAERO subcases"}));
         if (wave == nullptr)
             prepareLoadRates(elements, useOf, isShape);
         // The jobs' rates the wave made with the element terms (copied: a later chunk may replace them).
@@ -3013,43 +3156,34 @@ protected:
                     jobRatesOf.emplace(job, rates);
                 continue;
             }
-            ElementTerms terms = elementTermsOf(element, perturbation, designed, useOf, isShape, m_eigen || m_trim);
+            ElementTerms terms = elementTermsOf(element, perturbation, designed, useOf, isShape,
+                                                (m_eigen && (!m_modalSet || m_eigen->hasBucklingItems())) || m_trim);
             applyElementTerms(q, terms);
             if (m_eigen || m_trim)
             {
                 const elements::FieldUse use = useOf(family);
                 const ElementDifferences differences(family, perturbation, element.batch);
+                const auto& modalView = m_modalSet ? m_modalSet->batches()[element.batch].view : batch.view;
+                const ElementDifferences modalDifferences(family, perturbation, element.batch,
+                                                          elements::EntityLayout::Kind::Modal);
+                const ElementMatrices modalMatrices{family, modalView, element.row, designed, modalDifferences};
+                const bool usesModal = (m_eigen && m_eigen->hasModalItems()) || (m_modal && !m_modal->isEmpty());
+                DerivativeCounts modalCounts;
+                ElementMatrixDerivative enriched;
+                if (usesModal && m_modalSet && use.changesStiffness && family.facets().has(elements::Facet::Stiffness))
+                    enriched = stiffnessDerivativeOf(modalMatrices, modalCounts);
+                const auto& modalStiffness = m_modalSet ? enriched : terms.stiffness;
+                const auto modalMass = [&](const elements::MassOptions& options)
+                { return massDerivativeOf(modalMatrices, options, modalCounts); };
                 if (m_eigen)
-                    m_eigen->addElement(
-                        q, family, use, terms.stiffness,
-                        [&](const elements::MassOptions& options)
-                        {
-                            const ElementMatrices matrices{family, batch.view, element.row, designed, differences};
-                            DerivativeCounts ignored;
-                            ElementMatrixDerivative mass = massDerivativeOf(matrices, options, ignored);
-                            m_report.analyticDerivatives += ignored.analytic;
-                            return mass;
-                        },
-                        [&](const elements::NodalDisplacements& preload)
-                        {
-                            return differentialDerivativeOf(family, batch.view, element.row, designed, differences,
-                                                            preload);
-                        });
+                    m_eigen->addElement(q, family, use, terms.stiffness, modalStiffness, modalMass,
+                                        [&](const elements::NodalDisplacements& preload) {
+                                            return differentialDerivativeOf(family, batch.view, element.row, designed,
+                                                                            differences, preload);
+                                        });
                 if (m_trim)
-                    m_trim->addElement(q, family, batch.view.elementId(element.row), use, terms.stiffness,
-                                       [&](const elements::MassOptions& options)
-                                       {
-                                           const ElementMatrices matrices{family, batch.view, element.row, designed,
-                                                                          differences};
-                                           DerivativeCounts counts;
-                                           auto mass = massDerivativeOf(matrices, options, counts);
-                                           m_report.analyticDerivatives += counts.analytic;
-                                           m_report.elementDerivatives += counts.differenced;
-                                           return mass;
-                                       });
-                if (m_modal && !m_modal->isEmpty())
-                    m_modal->addElement(
-                        q, element, use, terms.stiffness,
+                    m_trim->addElement(
+                        q, family, batch.view.elementId(element.row), use, terms.stiffness,
                         [&](const elements::MassOptions& options)
                         {
                             const ElementMatrices matrices{family, batch.view, element.row, designed, differences};
@@ -3058,8 +3192,11 @@ protected:
                             m_report.analyticDerivatives += counts.analytic;
                             m_report.elementDerivatives += counts.differenced;
                             return mass;
-                        },
-                        designed, perturbation);
+                        });
+                if (m_modal && !m_modal->isEmpty())
+                    m_modal->addElement(q, element, use, modalStiffness, modalMass, designed, perturbation);
+                m_report.analyticDerivatives += modalCounts.analytic;
+                m_report.elementDerivatives += modalCounts.differenced;
             }
         }
         if (m_trim)
@@ -3082,7 +3219,7 @@ protected:
         }
         // A shape that moves the relations and the excluded DOFs of an element formulation.
         if (isShape)
-            addFormulationShapeTerms(q, quantity, perturbation.get(), elements);
+            addFormulationShapeTerms(q, quantity, perturbation, elements);
         m_pseudoLoads->finish(q);
         // The SUBCOMs' pseudo-loads: their stiffness terms (above) and their terms' load parts.
         for (std::size_t s = 0; s < m_subcases.size(); ++s)
@@ -3179,7 +3316,7 @@ protected:
             isShape || std::any_of(elements.begin(), elements.end(), [&](const ElementRef& element)
                                    { return useOf(*m_set.batches()[element.batch].family).changesMass; });
         if (changesMass)
-            differenceMassItems(quantity, perturbation, affectedSet, isShape);
+            differenceMassItems(quantity, perturbation, affectedSet, isShape, designed);
         differenceSelfAdjointItems(q, quantity);
         differencePointItems(quantity, perturbation, affectedIds);
         differenceSectionItems(quantity, perturbation, affectedSet, designed);
@@ -3458,7 +3595,8 @@ protected:
         const elements::FieldUse use = useOf(family);
         const ElementDifferences derivatives(family, perturbation, element.batch);
         const ElementMatrices matrices{family, batch.view, element.row, designed, derivatives};
-        if (use.changesStiffness && family.facets().has(elements::Facet::Stiffness))
+        if ((keepsStiffness || !m_subcases.empty()) && use.changesStiffness &&
+            family.facets().has(elements::Facet::Stiffness))
         {
             // `closedStiffness`: the family's closed form, made with those of other fields (FieldWave::computeGroup).
             ElementMatrixDerivative stiffness = closedStiffness != nullptr
@@ -3554,14 +3692,15 @@ protected:
     {
     public:
         ElementDifferences(const elements::ElementFamily& family, const LazyFieldPerturbation& perturbation,
-                           std::size_t batch) noexcept
-            : m_family(&family), m_perturbation(&perturbation), m_batch(batch)
+                           std::size_t batch,
+                           elements::EntityLayout::Kind layout = elements::EntityLayout::Kind::Static) noexcept
+            : m_family(&family), m_perturbation(&perturbation), m_batch(batch), m_layout(layout)
         {
         }
         [[nodiscard]] const ElementDerivatives& operator()() const
         {
             if (!m_derivatives)
-                m_derivatives.emplace(*m_family, m_perturbation->get(), m_batch);
+                m_derivatives.emplace(*m_family, m_perturbation->get(), m_batch, m_layout);
             return *m_derivatives;
         }
 
@@ -3569,6 +3708,7 @@ protected:
         const elements::ElementFamily* m_family;
         const LazyFieldPerturbation* m_perturbation;
         std::size_t m_batch;
+        elements::EntityLayout::Kind m_layout;
         mutable std::optional<ElementDerivatives> m_derivatives;
     };
 
@@ -3690,6 +3830,9 @@ protected:
         m_eigen->formClusters();
         for (const SubcaseState& state : m_subcases)
             m_eigen->setPreload(state.subcase.label, state.nodal(m_dofMap), state.displacements.span());
+        m_eigen->prepareBucklingShapes(m_in.kernel, m_trim != nullptr);
+        m_report.factorisations += static_cast<std::int32_t>(m_eigen->shapeFactorisations());
+        m_report.solves += static_cast<std::int64_t>(m_eigen->shapeSolves());
         for (auto& [key, weights] : m_eigen->bucklingWeights())
             m_linearised.at(key).weights = std::move(weights);
         m_report.eigenvalueItems = static_cast<std::int64_t>(m_eigen->itemCount());
@@ -3703,7 +3846,7 @@ protected:
         if (!m_eigen || m_eigen->isEmpty())
             return;
         for (std::size_t s = 0; s < m_subcases.size(); ++s)
-            if (!m_subcases[s].isAeroelastic)
+            if (!m_subcases[s].isAeroelastic && m_eigen->needsPreloadRate(m_subcases[s].subcase.label))
                 m_report.solves +=
                     m_eigen->addPreloadTerms(m_subcases[s].subcase.label, systemOf(m_subcases[s]), *m_pseudoLoads, s);
         m_eigen->addExplicitParts(m_quantities, m_linearised);
@@ -3723,6 +3866,11 @@ protected:
                     m_trim->isTrimSubcase(item.subcase))
                     m_trim->addStaticItem({p, i}, item.subcase);
             }
+        if (m_eigen)
+            for (const auto subcase : m_trim->subcases())
+                if (m_eigen->needsPreloadRate(subcase))
+                    m_trim->addPreload(subcase, [this, subcase](std::size_t q, std::span<const double> du)
+                                       { m_eigen->projectPreloadRate(subcase, du, q, true); });
         m_trim->prepare();
     }
 
@@ -3823,7 +3971,7 @@ protected:
     // that moves the reference point of WEIGHT (PARAM WeightReferenceNode) changes the moments of every element about
     // it: then every element is taken, about the reference of each side.
     void differenceMassItems(const FieldValue& quantity, const LazyFieldPerturbation& perturbation,
-                             const std::set<ElementRef>& affectedSet, bool isShape)
+                             const std::set<ElementRef>& affectedSet, bool isShape, const elements::DesignedField* designed)
     {
         if (m_massItems.empty())
             return;
@@ -3843,6 +3991,13 @@ protected:
                     DesignResp1Response::weightReference(*perturbation.get().snapshot(static_cast<FieldSide>(side)));
                 movesReference = movesReference || !(references[side] == reference);
             }
+        const bool solidMaterial = designed && (designed->card == "IsoMat" || designed->card == "AnisoMat3D") &&
+                                   !affectedSet.empty() &&
+                                   std::all_of(affectedSet.begin(), affectedSet.end(),
+                                               [&](const ElementRef& ref) { return isSolidElement(ref); });
+        std::shared_ptr<const input::ModelSnapshot> unitDensity;
+        std::optional<elements::SnapshotIndex> unitIndex;
+        std::optional<assembly::ElementSet> unitSet;
         const auto isAny = [](std::string_view, std::int32_t, std::int32_t) { return true; };
         for (const MassItem& item : m_massItems)
         {
@@ -3885,6 +4040,33 @@ protected:
                                                        m_in.massFormulation)(0, 0) /
                        (item.currentMass / value);
             };
+            if (solidMaterial)
+            {
+                if (type == ResponseType::Volume)
+                    continue; // geometry is fixed
+                if (designed->column == "density")
+                {
+                    // Only the solids reached by this material enter propertyOn. They carry no additive NSM.
+                    if (quantity.value > 0.0)
+                        addExplicit(item.key, quantity, propertyOn(m_set, m_in.overlaid, reference) / quantity.value);
+                    else
+                    {
+                        if (!unitSet)
+                        {
+                            unitDensity = std::make_shared<const input::ModelSnapshot>(
+                                assembly::ElementVolumes::unitDensitySnapshot(*m_in.overlaid, m_in.overlaid));
+                            unitIndex.emplace(*unitDensity, m_index);
+                            const auto* model = elements::formulationModelOf(*unitIndex, m_registry);
+                            unitSet.emplace(*unitIndex, m_registry,
+                                            model ? &model->layout(elements::EntityLayout::Kind::Static) : nullptr);
+                        }
+                        addExplicit(item.key, quantity, propertyOn(*unitSet, unitDensity, reference));
+                    }
+                    continue;
+                }
+                if (designed->column == "youngsModulus" || designed->column == "poissonRatio")
+                    continue; // physical rigid-body inertia at fixed geometry and density
+            }
             std::array<double, FIELD_SIDE_COUNT> sides{};
             for (std::size_t side = 0; side < FIELD_SIDE_COUNT; ++side)
             {
@@ -4259,7 +4441,8 @@ protected:
             m_report.subcases.push_back(choice);
         }
         solveGathered();
-        m_report.factorisations = m_modal ? static_cast<std::int32_t>(m_modal->factorisationCount()) : 0;
+        m_report.factorisations = static_cast<std::int32_t>((m_modal ? m_modal->factorisationCount() : 0) +
+                                                            (m_eigen ? m_eigen->shapeFactorisations() : 0));
         for (const std::unique_ptr<SensitivitySystem>& system : m_systems)
             m_report.factorisations += system->factorisationCount();
         collectCondensedStatistics(m_report);
@@ -4329,6 +4512,8 @@ protected:
     const elements::FormulationModel* m_formulation; // lives in m_index; null without an element formulation
     assembly::ElementSet m_set;
     assembly::DofMap m_dofMap;
+    std::optional<assembly::DofMap> m_modalDofMap;
+    std::optional<assembly::ElementSet> m_modalSet;
     std::size_t m_variableCount;
     // The designed quantities as the pseudo-loads index them: the fields (one per relation), then the shapes (one per
     // shape basis).

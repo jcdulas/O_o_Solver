@@ -15,6 +15,10 @@ Run static, modal, buckling and aeroelastic analyses through the O_o_Solver API 
 | Python / native C++ | Run `python -m pip install oo-solver==0.2.1` to get the Solver and its `oo-model` dependency. |
 | C++20 / vcpkg | Add `oo-solver` from the [O_o vcpkg registry](https://github.com/jcdulas/O_o_vcpkg) and link `oos::api`. [Native CMake example](https://github.com/jcdulas/O_o_vcpkg/tree/main/examples/rod) |
 
+Applications building from source can link an external optimizer to the [JavaScript, Python or C++ evaluation API](docs/optimization.md). The [client benchmark](docs/benchmarks/optimizer-api/README.md) exercises all three interfaces on identical inputs.
+
+For aeroelastic coupling from source, [transfer nodal motions and aerodynamic box forces](docs/api.rst) directly between O_o_Solver and an external solver in JavaScript, Python or C++. The same interface applies box forces in SOL 101, projects SOL 103 modes and generalized loads, and passes the equilibrated preload to SOL 105.
+
 ## Run linear statics
 
 Build a two-node rod in memory. Its length is 3, its area is 2, and its Young’s modulus is 1000. A force of 10 at the free end gives an axial displacement of `FL/(EA) = 0.015`. Both examples find the displacement by node ID.

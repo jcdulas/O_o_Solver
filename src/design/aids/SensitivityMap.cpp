@@ -504,11 +504,11 @@ private:
             const auto viewOf = [&](std::size_t side) -> const elements::ElementBatchView&
             { return m_column->set(SIDES[side]).batches()[element.ref.batch].view; };
             // A matrix facet on the four sides of the column, differenced for this element's value.
-            const auto differenced = [&](const auto& compute)
+            const auto differenced = [&](elements::EntityLayout::Kind kind, const auto& compute)
             {
                 std::array<elements::ElementMatrixBlock, FIELD_SIDE_COUNT> blocks;
                 for (std::size_t side = 0; side < FIELD_SIDE_COUNT; ++side)
-                    compute(viewOf(side), blocks[side]);
+                    compute(viewOf(side).forLayout(kind), blocks[side]);
                 ElementMatrixDerivative derivative;
                 if (blocks[0].empty())
                     return derivative;
@@ -521,18 +521,30 @@ private:
             ElementMatrixDerivative stiffness;
             stiffness.dofs = element.elementDofs;
             stiffness.values = element.stiffness;
+            ElementMatrixDerivative modalStiffness;
+            if (m_modalSet && m_eigen->hasModalItems() && family.designFieldUse(designed).changesStiffness)
+                modalStiffness =
+                    differenced(elements::EntityLayout::Kind::Modal,
+                                [&](const elements::ElementBatchView& view, elements::ElementMatrixBlock& block) {
+                                    family.computeStiffness(view, {row, row + 1}, block);
+                                });
             const auto massOf = [&](const elements::MassOptions& options)
             {
-                return differenced([&](const elements::ElementBatchView& view, elements::ElementMatrixBlock& block)
-                                   { family.computeMass(view, {row, row + 1}, options, block); });
+                return differenced(elements::EntityLayout::Kind::Modal,
+                                   [&](const elements::ElementBatchView& view, elements::ElementMatrixBlock& block) {
+                                       family.computeMass(view, {row, row + 1}, options, block);
+                                   });
             };
             const auto differentialOf = [&](const elements::NodalDisplacements& preload)
             {
-                return differenced([&](const elements::ElementBatchView& view, elements::ElementMatrixBlock& block)
-                                   { family.computeDifferentialStiffness(view, {row, row + 1}, preload, block); });
+                return differenced(elements::EntityLayout::Kind::Static,
+                                   [&](const elements::ElementBatchView& view, elements::ElementMatrixBlock& block) {
+                                       family.computeDifferentialStiffness(view, {row, row + 1}, preload, block);
+                                   });
             };
-            for (const auto& [key, derivative] : m_eigen->elementDerivatives(family, family.designFieldUse(designed),
-                                                                             stiffness, massOf, differentialOf))
+            for (const auto& [key, derivative] :
+                 m_eigen->elementDerivatives(family, family.designFieldUse(designed), stiffness,
+                                             m_modalSet ? modalStiffness : stiffness, massOf, differentialOf))
                 explicitOf(key)[e] += derivative;
         }
     }

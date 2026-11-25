@@ -34,8 +34,8 @@ OptimizationCapabilities optimizationCapabilities(const input::ModelSnapshot* sn
                         true,
                         true,
                         true,
-                        {"Native responses differentiate load factors including the static preload.",
-                         "Closed mechanical-preload sizing products use shape and preload tangents; "
+                        {"Native gradients cover load factors and simple-mode displacements with static or trim preloads.",
+                         "Closed sizing products use mechanical, supported thermal or trimmed preload tangents; "
                          "usesBucklingTangents identifies this path.",
                          "Other second-order products difference native gradients at tracked buckling points.",
                          "Repeated roots return one-sided coordinate derivatives; they are not a smooth Jacobian.",
@@ -45,7 +45,7 @@ OptimizationCapabilities optimizationCapabilities(const input::ModelSnapshot* sn
                         true,
                         true,
                         true,
-                        {"Native gradients differentiate structural sizing at fixed aerodynamic geometry.",
+                        {"Native gradients cover structural sizing and dynamic pressure, including box pressures, resultants and hinge moments.",
                          "Closed sizing products differentiate the coupled trim state and stability coefficients; "
                          "usesTrimTangents identifies this path.",
                          "Other second-order products difference supported native trim gradients.",
@@ -53,7 +53,7 @@ OptimizationCapabilities optimizationCapabilities(const input::ModelSnapshot* sn
                          "Native trim linearisation includes applied inertial load mass derivatives on the full path.",
                          "A plan that condenses a driven unit uses the full trim path when gradients are retained; "
                          "applied loads still require the full path."}}};
-    for (unsigned value = 0; value <= static_cast<unsigned>(design::ResponseType::StabilityDerivative); ++value)
+    for (unsigned value = 0; value <= static_cast<unsigned>(design::ResponseType::BucklingDisplacement); ++value)
         result.responses.emplace_back(design::responseTypeName(static_cast<design::ResponseType>(value)));
     if (snapshot == nullptr)
         return result;
@@ -78,6 +78,8 @@ OptimizationCapabilities optimizationCapabilities(const input::ModelSnapshot* sn
                 result.fields.push_back({kind, name.substr(slash + 1), field, type, type != "float64"});
         }
     }
+    if (snapshot->findTable("aeroTrimCasesTable"))
+        result.fields.push_back({"trim", "AeroTrim", "dynamicPressure", "float64", false});
     return result;
 }
 } // namespace oos::api

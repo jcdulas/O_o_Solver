@@ -2524,3 +2524,49 @@ test("a sandwich of 2D orthotropic plies without transverse shear moduli is solv
   const [classic, mixed] = [deflection({}), deflection(SHELL_OPTIONS)];
   assert.ok(Math.abs(classic / mixed - 1) < 0.03, `deflection ${classic} in ClassicFormulation, ${mixed} in MixedHybridFormulation`);
 });
+
+for (const shape of ["ShellTria3", "ShellQuad4"]) {
+  for (const regime of ["membrane", "bending", "distorted pressure", "fixed corner", "offset"]) {
+    test(`mixed hybrid ${shape} property thickness in ${regime}`, () => {
+      const membrane = regime === "membrane";
+      const strip = designStrip({ load: membrane ? "1.;1.;0.;0." : "1.;0.;0.;1." });
+      if (regime === "distorted pressure")
+        strip.text = strip.text.replace("Node;4;;0.5;1.;0.", "Node;4;;0.62;0.91;0.03")
+          .replace(/^PointForceLoad;.*$/gm, "");
+      const propertyFields = regime === "fixed corner" ? ";;;;0;0.08"
+        : regime === "offset" ? ";;;0.015"
+        : regime === "distorted pressure" ? ";;;;1;0.85;1.10;0.95" : "";
+      strip.text = strip.text.replace(/^ShellQuad4;(.*)$/gm, (line, record) => {
+        const [id, prop, a, b, c, d] = record.split(";");
+        if (shape === "ShellQuad4") return line + propertyFields;
+        return [`ShellTria3;${2 * id - 1};${prop};${a};${b};${c}${propertyFields}`,
+          `ShellTria3;${2 * id};${prop};${a};${c};${d}${propertyFields}`].join("\n");
+      });
+      if (regime === "distorted pressure")
+        strip.text += `ShellPressureLoad;2;1.;1;Through;${shape === "ShellQuad4" ? 2 : 4}\n`;
+      withDesign(strip, [{ id: 10, type: "Displacement", attributeA: membrane ? 1 : 3, targets: [strip.tip] }],
+        {}, problem => {
+          const t = 0.12, h = 1e-5;
+          const point = problem.evaluate([t]);
+          try {
+            const result = point.gradients();
+            const gradient = result.responses[0].values[0];
+            const fallback = regime === "fixed corner" || regime === "offset";
+            assert.equal(result.report.fieldPerturbations, fallback ? 1 : 0);
+            assert.equal(result.report.analysisPerturbations, 0);
+            const above = problem.evaluate([t + h]), below = problem.evaluate([t - h]);
+            try {
+              const displacement = p => p.values().responses[0].values[0];
+              const check = (displacement(above) - displacement(below)) / (2 * h);
+              assert.ok(Math.abs(check) > 1e-8 && Math.abs(gradient - check) < 2e-5 * Math.abs(check),
+                `native ${gradient}, independent ${check}`);
+            } finally { below.delete(); above.delete(); }
+            if (regime === "bending") {
+              assert.ok(Math.abs(point.jvp([1]).values[0] - gradient) < 1e-10 * Math.abs(gradient));
+              assert.ok(Math.abs(point.vjp({ responses: { 10: [1] } }).values[0] - gradient) < 1e-10 * Math.abs(gradient));
+            }
+          } finally { point.delete(); }
+        });
+    });
+  }
+}

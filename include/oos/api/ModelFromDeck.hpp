@@ -1,5 +1,7 @@
 #pragma once
 
+#include "oos/api/Optimization.hpp"
+
 #include <memory>
 #include <string>
 
@@ -18,4 +20,9 @@ struct DeckOptions
 // the caller may edit or release its deck once the snapshot has been built.
 [[nodiscard]] std::shared_ptr<const input::ModelSnapshot> modelFromDeck(
     const std::shared_ptr<oor::api::Deck>& deck, const DeckOptions& options = {});
+// Prepare once and retain each evaluated point for subsequent derivative requests.
+[[nodiscard]] std::shared_ptr<OptimizationProblem> prepareOptimization(const std::shared_ptr<oor::api::Deck>& deck,
+                                                                       OptimizationSettings settings = {},
+                                                                       const DeckOptions& options = {},
+                                                                       OptimizationInput declarations = {});
 } // namespace oos::api

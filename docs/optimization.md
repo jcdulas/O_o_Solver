@@ -1,4 +1,4 @@
-# Optimization from JavaScript and Python
+# External optimizer API for JavaScript, Python and C++
 
 The examples assume a loaded model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_model.read_model`. See [Getting started](getting-started.md) for package setup.
 
@@ -14,6 +14,97 @@ their numerical fallbacks and the report fields that identify the calculation ac
 In WebAssembly, Model and Solver have independent memories. Model exports owned table packages, Solver keeps an immutable model
 snapshot, and each evaluation keeps its own analysis factors and memory budget. Evaluating a trial point does not edit
 the model. Apply the accepted point explicitly when the iteration ends.
+
+## Callbacks for an external optimizer
+
+Prepare the problem once per model and retain the evaluation until the optimizer changes its candidate.
+Use the same point for value and derivative callbacks. A regenerated mesh starts a new problem.
+For a derivative-free optimizer, the compact values contain the raw objective, normalized constraints
+(feasible at zero or below), a partial-response flag and a mode-tracking uncertainty flag.
+A failed solve raises an exception. A partial point can have fewer constraint rows.
+The initial variable magnitude (one for an initial zero) is available as a suggested scale.
+The API takes physical coordinates. Response derivatives use those coordinates. Constraint derivatives include their normalization. The objective sense and selected response are available in JavaScript problem metadata and in Python `problem.objective_definition`.
+
+**JavaScript / WebAssembly**
+
+```js
+const problem = solver.prepareOptimization(oor, deck);
+try {
+  const point = problem.evaluate();
+  try {
+    const { objective, constraints, partial, uncertainMode } = point.optimizerValues();
+    const csr = point.constraintJacobian();
+    try {
+      const pattern = csr.structure();       // export once
+      const derivatives = csr.values(point); // same order as pattern.columnIndices
+    } finally { csr.delete(); }
+  } finally { point.delete(); }
+} finally { problem.delete(); }
+```
+
+**Python / NumPy**
+
+```python
+from oo_solver import prepare_optimization
+
+problem = prepare_optimization(deck)
+point = problem.evaluate(problem.initial_values)
+values = point.optimizer_values()
+csr = point.constraint_jacobian()
+offsets, columns = csr.row_offsets, csr.column_indices
+jacobian_data = csr.values(point)
+next_point = problem.evaluate(next_x)
+csr.values(next_point, out=jacobian_data)
+```
+
+**C++20**
+
+```cpp
+#include <oos/api/ConstraintJacobian.hpp>
+#include <oos/api/ModelFromDeck.hpp>
+
+auto problem = oos::api::prepareOptimization(deck);
+auto point = problem->evaluate(problem->problem().initialValues());
+auto values = point->optimizerValues();
+oos::api::ConstraintJacobian csr(*point);
+std::vector<double> data(csr.columnIndices().size());
+csr.values(*point, data);
+```
+
+All three return the same zero-based CSR layout for the normalized constraints. Without dependency information
+the layout conservatively includes every variable. If structural dependencies are known, supply one sorted list
+of variable columns per constraint at construction. A derivative that is zero at a single point can become
+nonzero later. A nonzero outside the supplied pattern, a different problem, or a change of constraint identity/order
+raises an error. Discard the output buffer of a failed call. Use the layout's `constraints(point)` to check row
+identity on a values-only trial. The CSR API streams native response derivatives in blocks. A model requiring full finite differences through external remeshing can use the values-only interface.
+
+**JavaScript / WebAssembly**
+
+```js
+// Two independent variables, two simultaneous directions (columns of the identity).
+const J = point.jvp(new Float64Array([1, 0, 0, 1]), { count: 2 });
+const JT = point.vjp({ rows: 2, responses: { 10: [1, 2] } }); // response 10 has one item
+```
+
+**Python / NumPy**
+
+```python
+import numpy as np
+
+directions = np.eye(2)
+jv = point.jvp(directions)                # (response items, directions)
+point.jvp(directions, out=jv)             # reuse a writable C-contiguous float64 array
+jt = point.vjp({10: np.array([[1.], [2.]])})  # (weighted sums, variables)
+```
+
+A one-dimensional Python argument keeps the existing vector result. In a batched VJP each response's
+weights have shape `(sums, items)`. JVP input and output buffers must be disjoint. The C++ equivalents
+accept row-major spans and a product sink. Python and JavaScript both enter the native kernel once per batch.
+For the capability catalogue use `solver.capabilities(model)`, `problem.capabilities` or
+`oos::api::optimizationCapabilities(&snapshot)`. These describe candidate fields and analysis restrictions.
+The gradient report records the perturbations used at the evaluated point.
+
+[Run the three client benchmarks](benchmarks/optimizer-api/README.md).
 
 ## Create and evaluate a problem
 
@@ -176,6 +267,44 @@ An imposed axial deformation (`DeformationLoadSelection`) contributes to native 
 equivalent element load and the element recovery.
 
 Gradients use closed forms where element families provide them and numerical element derivatives elsewhere.
+
+For tetrahedra, hexahedra, wedges and pyramids, both formulations differentiate the static
+stiffness with respect to isotropic Young's modulus and Poisson's ratio. This includes internal
+displacements eliminated by the classic HEXA8 and the mixed solids. Both formulations also
+differentiate the mass matrix with respect to material density. An omitted shear modulus is
+supported when all affected elements are solids. If Poisson's ratio is instead inferred from a
+fixed shear modulus, the material relation uses local perturbations to include that dependency.
+Frequencies use the modal element matrices, including the retained interior fields of mixed
+solids. Changes in Young's modulus and density can therefore be evaluated without perturbing a
+material field. Mixed-solid mass dependence on Poisson's ratio, and the effect of this ratio
+on the retained modal interior fields, still use local matrix perturbations. These first-order
+rates are shared by the Jacobian and its products.
+
+On a solid cantilever with one shared Young's modulus and a fixed nodal force, the following
+local WASM times measure only the tip displacement gradient. Each value is the median of five
+freshly evaluated points after two warm-ups. All four cases went from one field perturbation to
+zero. [Reproduce the solid benchmark](benchmarks/optimizer-api/solid-material.mjs).
+
+| Mesh | Formulation | Before | After |
+| --- | --- | ---: | ---: |
+| 8 HEXA8 | Classic | 4.43 ms | 0.99 ms |
+| 8 HEXA8 | Mixed | 2,072 ms | 429 ms |
+| 48 TETRA4 | Classic | 5.10 ms | 1.42 ms |
+| 48 TETRA4 | Mixed | 1,617 ms | 300 ms |
+
+For centred, uncoupled mixed shells, the stiffness derivative with respect to `ShellProp.thickness`
+uses the membrane and shear terms (linear in thickness) and the eliminated bending term (cubic).
+Blank corner thicknesses and proportional corner thicknesses are supported. An offset, membrane–bending
+coupling or absolute corner thicknesses select the existing local derivative. Stress recovery, thermal
+loads and mass can require their own derivatives. A displacement gradient under fixed nodal forces
+or surface pressure can use the closed stiffness rate alone.
+
+On a distorted cantilever with one shared thickness, the local WASM median time for the displacement
+gradient fell from 477 to 111 ms for 32 QUAD4s and from 245 to 55 ms for 64 TRIA3s. The measurement
+times only `point.gradients()` on a newly evaluated point, with two warm-ups and seven timed samples.
+Both meshes reported zero field perturbations and zero additional factorisations.
+[Reproduce the panel benchmark](benchmarks/optimizer-api/shell-thickness.mjs).
+
 The C++ element layer supplies exact sizing rates for scalar springs and masses, bushings, fasteners and the
 gap spring rates within their initial branch, as well as concentrated mass matrices and rigid-body mass/inertia.
 Supported mixed field derivatives also feed the static Hessian blocks when several fields reach one element.
@@ -199,8 +328,19 @@ as tracking references. An ambiguous mode match stops the product. Reports expos
 `hessianBlocksReason`. These are numerical engineering derivatives, not a guarantee of exact arithmetic or
 differentiability at a response's branch changes.
 
-The native optimization API combines structural gradients with complete-analysis differences for shape columns
-when trim or static inertia relief moves splines or rigid-body support modes.
+In restrained trim, the first derivative of local aero loads and trim-preloaded buckling factors includes the
+analytic spline and RBE3 transfer rates. The optimization API uses complete-analysis differences for other trim
+configurations and for moving inertia-relief support modes. The [nodal API and benchmark](external-optimization.md#gradients-with-respect-to-nodal-coordinates)
+give the coordinate conventions, examples and measured cost.
+
+For static displacement sensitivities, moving the reference node or a weighted node of a
+`RigidInterpolation` (RBE3) differentiates the constraint coefficients directly, including the
+optional UM dependent DOFs. Gradients, JVPs and VJPs use the same derivative. Moving only the
+reference node of an otherwise unchanged structure requires no finite differences when the loads
+are geometry-independent. If the move also deforms a structural element, its own shape derivative
+can still use local perturbations. The native derivative reports a diagnostic for a motion that
+changes the spider's undetermined rigid motions or separates coincident points.
+
 `report.analysisPerturbations` counts the added analyses.
 `jvp`, `vjp` and `streamGradients` use these completed columns too. Streaming keeps structural columns in blocks and
 releases each completed shape column after emitting its block, so it can exceed the dense Jacobian output limit.
@@ -246,3 +386,7 @@ Build both modules and run `node --test --test-concurrency=1 wasm/test/*.test.mj
 check an original axial bar against `u = P L / (E A)`, direct and adjoint gradients, mixed Hessian entries, dense and
 sparse products, streamed Jacobians, a nonlinear JavaScript callback, modal gradients, memory limits and atomic Model
 updates. A JavaScript iteration also reaches the active displacement bound and saves the accepted design.
+
+
+The [trim and buckling example](external-optimization.md#trim-loads-and-trim-preloaded-buckling) shows how to request
+a signed box pressure, hinge moment, load factor and modal displacement on one design point in JavaScript and Python.

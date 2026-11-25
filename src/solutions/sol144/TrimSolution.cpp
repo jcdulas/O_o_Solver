@@ -8,6 +8,25 @@ namespace oos::solutions
 
 using namespace trim;
 
+std::size_t TrimResults::loadIndex(base::EntityId id, bool hinge) const
+{
+    if (hinge)
+    {
+        const auto found = std::find_if(surfaceDefinitions.begin(), surfaceDefinitions.end(),
+                                        [id](const auto& surface) { return surface.id == id; });
+        if (found != surfaceDefinitions.end())
+            return static_cast<std::size_t>(found - surfaceDefinitions.begin());
+    }
+    else
+    {
+        const auto found = std::find(boxIds.begin(), boxIds.end(), id);
+        if (found != boxIds.end())
+            return static_cast<std::size_t>(found - boxIds.begin());
+    }
+    throw std::invalid_argument(std::string("unknown trim ") + (hinge ? "control surface " : "box ") +
+                                std::to_string(id));
+}
+
 namespace
 {
 
@@ -125,9 +144,10 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
     kept->boxes = std::make_unique<const aero::AeroBoxes>(snapshot, reference, budget);
     const aero::AeroBoxes& boxes = *kept->boxes;
     const aero::TrimVariables variables(snapshot, reference, boxes);
-    kept->splines = std::make_unique<const aero::SplineMatrix>(snapshot, reference, boxes, budget);
+    kept->splines = std::make_unique<const aero::SplineMatrix>(snapshot, reference, boxes, budget, m_options.keepsLinearisation);
     const aero::SplineMatrix& splines = *kept->splines;
-    const aero::HingeMoments hinges(boxes, variables);
+    kept->hinges = std::make_unique<const aero::HingeMoments>(boxes, variables);
+    const auto& hinges = *kept->hinges;
     const std::size_t n = boxes.size();
     // The direct matrix input: DownwashMatrix's normalwash and AeroPressureMatrix's pressures, a fixed trim variable
     // INTERCEPT of value 1; nothing below is computed without them. Their design derivatives are the linearisation's as
@@ -821,12 +841,7 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
             // The forces of the boxes at their aerodynamic grid points, the box centers (AEROF): the normal force
             // q·Δcp·A and its moment about the spanwise axis of the box, F·(x_c − x_f) (positive for a force along
             // the normal ahead of the center).
-            for (std::size_t j = 0; j < n; ++j)
-            {
-                const double force = q * result.pressures[j] * boxes[j].area;
-                result.boxForces.push_back(force);
-                result.boxMoments.push_back(force * base::dot(boxes[j].center - boxes[j].forcePoint, FLOW_AXIS));
-            }
+            boxResultants(boxes, result.pressures, q, result.boxForces, result.boxMoments);
             if (!monitors.empty())
             {
                 // The rigid air: the pressures of the rigid configuration at the trimmed variables; the elastic

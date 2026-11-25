@@ -31,14 +31,14 @@ const readerSupport = oor.designCapabilities(deck); // editable cards and Model 
 
 **Python / native C++**
 
-The capability catalogue and preflight report belong to the JavaScript API. For a deck with design cards, Python validates the declarations and exposes the independent variables.
+Python exposes the capability catalogue on the prepared problem. The JavaScript preflight report additionally checks declarations before problem construction.
 
 ```python
 from oo_solver import optimization_from_reader
 
 deck.validate_design()
 problem = optimization_from_reader(deck)
-print(problem.variables)
+print(problem.variables, problem.capabilities["analyses"])
 ```
 
 `checkOptimization` checks construction and analysis support without solving. It cannot promise convergence or a
@@ -51,8 +51,8 @@ trim variables, stability derivatives, hinge moments and monitoring loads.
 | --- | --- | --- |
 | 101 static | Supported sizing and shape responses; selected second order products | Any stable numeric table/query result, full analysis differences |
 | 103 modes | Eigenvalue, frequency and mode-selected field gradients; analytic Hessian-vector products where element second derivatives are closed | Eigenvalues, eigenvectors and modal stresses; mode references and full analysis differences |
-| 105 buckling | Load factor gradients including the static preload; analytic Hessian products for closed mechanical-preload sizing formulations | Load factors and result fields, full analysis differences |
-| 144 static aeroelastic | Native sizing gradients and analytic Hessian products for closed trim/state/coefficient formulations; shape columns from complete trim differences | Trim and structural outputs, including driven load changes, full analysis differences |
+| 105 buckling | Load factor gradients including static or trim preload, with analytic curvature for supported sizing variables | Load factors and result fields, full analysis differences |
+| 144 static aeroelastic | Sizing and dynamic-pressure gradients, restrained spline/RBE3 shape tangents, and analytic Hessian products for supported structural sizing | Trim and structural outputs, including driven load changes, full analysis differences |
 
 The [native design module](../src/design/README.md) details the exact response formulations and restrictions.
 The [derivative coverage guide](derivatives.md) explains how to distinguish analytic and numerical paths in reports.
@@ -250,6 +250,136 @@ problem = optimization_from_reader(accepted)  # uses design cards in the model
 The study definition is stored as the Model document `oos.optimization.study`. Model preserves such documents
 in the model part of `.ooh5` and reports their omission when exporting model text. Named result arrays and their
 text labels are available through `results.named()` and `results.readNamed(index)`.
+
+## Trim loads and trim-preloaded buckling
+
+Use `StaticSubcaseSelection;1` in buckling subcase 2 to select the equilibrated state of trim subcase 1.
+The solver uses its displacements to assemble geometric stiffness and differentiates the preload when computing a
+buckling factor or a component of a simple buckling mode. The same design point can expose all of the following responses.
+
+| Native response | Selection | Quantity |
+| --- | --- | --- |
+| `AeroPressureCoefficient` | Box ID in attribute A | Signed pressure jump coefficient, ΔCp |
+| `AeroPressure` | Box ID | Pressure jump, q ΔCp |
+| `AeroBoxForce` | Box ID | Signed normal force, q ΔCp times box area |
+| `AeroBoxMoment` | Box ID | Box pitching moment from that force and the chordwise arm between its force point and centre |
+| `HingeMoment` | Control surface ID | Sum of the selected box moments about the hinge axis |
+| `BucklingFactor` | Mode number in attribute A | Load factor of the selected buckling subcase |
+| `BucklingDisplacement` | Node targets, component digits in attribute A, mode number | Signed component of the recovered mode under the eigensolver's normalisation |
+
+In model design cards, write `DesignResp1;6;PHI;Displacement;Buckling;;3;1;4` to select component 3 of mode 1
+at node 4. This spelling preserves node references when Model exports its design tables. The native declaration
+accepts `{ id: 6, type: "BucklingDisplacement", attributeA: 3, mode: 1, targets: [4] }`. Individual shape
+derivatives require a simple root and a locally unique normalisation. The mode is not a physical displacement amplitude.
+
+**JavaScript / WebAssembly**
+
+```js
+const problem = solver.optimizationFromReader(modelApi, deck, {}, {
+  analyses: { aeroelastic: [1], buckling: [2] }
+});
+try {
+  const point = problem.evaluate([0.1]);
+  try {
+    const rates = point.gradients().responses;
+    console.log(rates.find(row => row.id === 4).values); // hinge moment
+    console.log(rates.find(row => row.id === 5).values); // load factor
+  } finally { point.delete(); }
+} finally { problem.delete(); }
+```
+
+**Python / native C++**
+
+```python
+from oo_solver import prepare_optimization
+
+problem = prepare_optimization(deck, analysis={"aeroelastic": [1], "buckling": [2]})
+point = problem.evaluate([0.1])
+rates = point.gradients()["responses"]
+print(rates[4], rates[5])  # hinge moment and buckling factor
+```
+
+The [wing model](../wasm/test/fixtures/trim-preloaded-wing.oos) used by both examples has one thickness variable.
+To design dynamic pressure as well, append the two records below. They add a variable in the model's pressure
+units and bind it to trim set 5. The native relation uses `targetKind: "trim"`, `targetCard: "AeroTrim"`,
+`targetId: 5` and `field: "dynamicPressure"`.
+
+```text
+DesignVar;2;Q;10.;5.;15.
+DesignElemRelation1;2;AeroTrim;5;dynamicPressure;;;;2;1.
+```
+
+At thickness 0.1 and dynamic pressure 10, the fixture gives a positive factor of 1084.08554.
+The derivatives of that factor with respect to thickness and dynamic pressure are approximately 14641.8270
+and −116.270805. The corresponding hinge moment is −0.91111645, with derivatives 0.84832933 and −0.09490853.
+These values are regression checks for this mesh.
+[Independent reanalysis tests](../wasm/test/validation/trim-buckling-sensitivities.test.mjs)
+
+## Gradients with respect to nodal coordinates
+
+At a retained design point, request a scalar response and a list of structural node IDs. The solver returns one
+row per ID in the supplied order. Its three entries differentiate that response with respect to basic-frame X, Y
+and Z with the other nodes and design fields fixed. Omit the list to request every structural node. The optional
+zero-based item index selects one component when a response has multiple items. No shape variables or CAD
+directions need to be declared. A deck containing only response declarations can evaluate an empty design vector.
+The mesh connectivity and aerodynamic boxes stay fixed.
+
+**JavaScript / WebAssembly**
+
+```js
+const g = point.nodalCoordinateGradient(4, [6, 4]); // hinge moment on the reference wing
+const [dx, dy, dz] = g.values.subarray(0, 3);       // derivatives at node 6
+console.log(g.nodeIds, dx, dy, dz, g.report.analysisPerturbations);
+```
+
+**Python / native C++**
+
+```python
+g = point.nodal_coordinate_gradient(4, [6, 4])
+dx, dy, dz = g["values"][0]  # node 6
+print(g["node_ids"], dx, dy, dz, g["report"]["analysis_perturbations"])
+```
+
+**C++**
+
+```cpp
+const std::array<std::int32_t, 2> nodes{6, 4};
+const auto g = point.nodalCoordinateGradient(4, nodes);
+const double dMomentDx6 = g.values[0];
+```
+
+For a known physical displacement per unit change of a CAD parameter, contract these rows with those displacement
+vectors and sum over the nodes. A remesh with different node correspondence requires a transfer from the caller.
+Primary physical response items are supported. Fractional mass needs the original reference mass and a repeated
+eigenvalue can require a directional derivative. Use the native design-variable API for response equations.
+
+### RBE3 wing benchmark
+
+The [six-node wing](../wasm/test/fixtures/trim-rbe3-wing.oos) has a shell, a compressive strut, four aerodynamic
+boxes and a spline attachment at node 6. A four-leg RBE3 connects the attachment to the shell. Trim subcase 1
+preloads buckling subcase 2. At thickness 0.1 and dynamic pressure 10 the two response derivatives are:
+
+| Variable | Hinge moment derivative | First buckling factor derivative | Extra coupled analyses before → after | Gradient time before → after (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| Thickness | 0.72621246 | 14453.7648 | 0 → 0 | 2.39 → 1.61 |
+| Dynamic pressure | −0.09393312 | −117.64074 | 0 → 0 | 1.85 → 1.81 |
+| Attachment 6, X | −0.05032213 | −35.537126 | 2 → 0 | 14.80 → 2.60 |
+| Shell node 4, Y | −0.02791353 | 415.59990 | 0 after | 4.23 after |
+
+The two responses together took 14.8 ms before and 2.6 ms after for attachment X on a local single-threaded
+WASM64 run (median of five gradient calls after one warm-up, primal evaluation excluded). The new route used two
+structural right-hand-side solves and zero new structural factorizations. For shell node 4, the element geometry
+also changed and the report counted one local shape perturbation. Timings depend on the mesh and runtime.
+The [regression](../wasm/test/validation/trim-rbe3-transfer.test.mjs) checks both responses against independent
+positive and negative evaluations. It also checks an XYZ contraction on a different thickness using newly read meshes.
+
+The first-order transfer differentiates surface and beam splines and both directions of each affected RBE3.
+It reuses the spline, structural and pressure factors on restrained, full-path trim cases with fixed aerodynamic
+geometry and purely aerodynamic loading, for local aerodynamic loads, trim variables and trim-preloaded factors.
+An isolated RBE3 attachment can move while the mixed shell geometry stays fixed. Free-body support motion,
+stability coefficient shape derivatives, moving mixed element geometry with formulation constraints and other
+unsupported coupled configurations use the complete-analysis route. The report separates local geometry
+perturbations and additional coupled analyses. At a moving interpolation kink a two-sided derivative can be undefined.
 
 ## Verification
 

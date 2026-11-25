@@ -70,6 +70,18 @@ inline constexpr const auto& AERODYNAMIC_LABELS = aero::AERODYNAMIC_RIGID_BODY_L
 inline constexpr const auto& ACCELERATION_LABELS = aero::RIGID_ACCELERATION_LABELS;
 // The flow, the x axis of the aerodynamic frame.
 const base::Vec3 FLOW_AXIS{1.0, 0.0, 0.0};
+
+inline void boxResultants(const aero::AeroBoxes& boxes, std::span<const double> pressures, double q,
+                          std::vector<double>& forces, std::vector<double>& moments)
+{
+    forces.resize(boxes.size());
+    moments.resize(boxes.size());
+    for (std::size_t j = 0; j < boxes.size(); ++j)
+    {
+        forces[j] = q * pressures[j] * boxes[j].area;
+        moments[j] = forces[j] * base::dot(boxes[j].center - boxes[j].forcePoint, FLOW_AXIS);
+    }
+}
 // The share of its own length below which a rigid-body direction, seen at the supports, is taken as dependent on
 // those chosen before it (geometricSupportModes): the columns are normalised, and a rounding of their sums is near
 // 1e-15. Two directions whose shares differ by less are a tie, which goes to the lower direction (TX before RX), not
@@ -926,6 +938,7 @@ struct TrimLinearisation::State
     std::unique_ptr<const AnalysisModel> model;
     std::unique_ptr<const aero::AeroBoxes> boxes;
     std::unique_ptr<const aero::SplineMatrix> splines;
+    std::unique_ptr<const aero::HingeMoments> hinges;
     aero::AeroReference reference;
     std::unique_ptr<const assembly::RigidBodyModes> rigidModes;
     std::unique_ptr<const linalg::DenseKernels> kernels;

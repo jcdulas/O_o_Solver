@@ -735,3 +735,113 @@ test("a modal design exposes frequency gradients and native-gradient curvature",
       [0, 1]), /sparse weights/);
   } finally { point.delete(); problem.delete(); deck.delete(); }
 });
+
+test("external optimizer callbacks reuse layout and avoid exporting full response values", () => {
+  const deck = makeDeck("optimizer-callbacks");
+  const problem = solver.prepareOptimization(oor, deck, declarations);
+  const point = problem.evaluate();
+  const next = problem.evaluate([3, 1000]);
+  const csr = point.constraintJacobian([[0, 1], [0, 1]]);
+  try {
+    const sizes = point.handle.responseSizes.bind(point.handle);
+    let reads = 0;
+    point.handle.responseSizes = () => { ++reads; return sizes(); };
+    point.handle.values = () => { throw new Error("unexpected full value export"); };
+    vectorNear(point.vjp({responses: {10: [1]}}).values, [-0.0075, -0.000015]);
+    assert.equal(reads, 0);
+    for (let i = 0; i < 2; ++i)
+      vectorNear(point.jvp([1, 0], {responseIds: [10]}).values, [-0.0075]);
+    assert.equal(reads, 1);
+    near(point.objective(), 6);
+    const summary = point.optimizerValues();
+    near(summary.objective, 6);
+    assert.equal(summary.partial, false);
+    assert.equal(summary.uncertainMode, false);
+    vectorNear(summary.constraints, csr.constraints(point));
+    assert.deepEqual(Array.from(csr.structure().rowOffsets), [0, 2, 4]);
+    const expected = next.gradients().constraints.flatMap(row => Array.from(row));
+    vectorNear(csr.values(next), expected);
+    const incomplete = point.constraintJacobian([[], []]);
+    try { assert.throws(() => incomplete.values(point), /outside/); }
+    finally { incomplete.delete(); }
+  } finally { csr.delete(); next.delete(); point.delete(); problem.delete(); deck.delete(); }
+});
+
+test("moving an RBE3 uses its analytic constraint derivative in the gradient and both products", () => {
+  const input = `[executive]
+SolutionSequence;101
+[case]
+SinglePointConstrSelection;1
+DisplacementOutput;All
+SubcaseStart;1
+StaticLoadSelection;2
+[model]
+Node;1;;0;-1;0
+Node;2;;0;1;0
+Node;3;;0;0.25;0
+Node;4;;-1;-1;0
+Node;5;;-1;1;0
+IsoMat;1;100;;0.3;1
+RodProp;1;1;1
+RodProp;2;1;4
+Rod2;1;1;4;1
+Rod2;2;2;5;2
+RigidInterpolation;70;3;1;1;1.;1;2;1;2
+SinglePointConstrList;1;123456;4;5
+SinglePointConstrList;1;23456;1;2;3
+PointForceLoad;2;3;0;10;1;0;0
+DesignVar;1;MOVE;0.;-0.2;0.2
+DesignNodeMove;1;3;0;1.;0.;1.;0.
+DesignVar;2;AREA;1.;0.5;2.
+DesignPropRelation1;11;RodProp;1;area;;;;2;1.
+DesignResp1;10;TIP;Displacement;;;1;;3
+`;
+  for (const variant of ["reference", "leg", "full rank with UM", "chain", "changing null space"]) {
+    let model = input;
+    if (variant === "changing null space")
+      model = model.replace("DesignNodeMove;1;3;0;1.;0.;1.;0.", "DesignNodeMove;1;3;0;1.;0.;0.;1.");
+    if (variant === "leg")
+      model = model.replace("DesignNodeMove;1;3", "DesignNodeMove;1;1");
+    if (variant === "full rank with UM")
+      model = model.replace("Node;3;;0;", "Node;3;;0.4;")
+        .replace("70;3;1;1;1.;1;2;1;2", "70;3;1;1;1.;123456;2;1;2;DependentDofs;1;1;1");
+    if (variant === "chain")
+      model = model.replace("IsoMat;", "Node;6;;0;0.25;0\nIsoMat;")
+        .replace("PointForceLoad;2;3", "RigidInterpolation;71;6;1;1;1.;123456;1;3\nPointForceLoad;2;6")
+        .replace("23456;1;2;3", "23456;1;2;3;6")
+        .replace("DesignVar;2;", "DesignNodeMove;1;6;0;1.;0.;1.;0.\nDesignVar;2;")
+        .replace(";;;1;;3", ";;;1;;6");
+    oor.writeFile("/work/rbe3-gradient.oos", model);
+    const deck = oor.readModel("/work/rbe3-gradient.oos", { strict: true });
+    const problem = solver.optimizationFromReader(oor, deck, {});
+    try {
+      for (const dy of [0, 0.1]) {
+        const point = problem.evaluate([dy, 1]);
+        try {
+          if (variant === "changing null space") {
+            assert.throws(() => point.gradients(), /undetermined rigid motions/);
+            break;
+          }
+          const result = point.gradients();
+          const gradient = result.responses[0].values;
+          const independent = point.gradients({ method: "finiteDifference" }).responses[0].values;
+          assert.ok(Math.abs(point.jvp([1, 0]).values[0] - gradient[0]) < 1e-11);
+          const reverse = point.vjp({ responses: { 10: [1] } }).values;
+          for (let j = 0; j < 2; ++j)
+            assert.ok(Math.abs(reverse[j] - gradient[j]) < 1e-11);
+          assert.equal(result.report.analysisPerturbations, 0);
+          if (variant !== "leg")
+            assert.equal(result.report.shapePerturbations, 0);
+          for (let j = 0; j < 2; ++j)
+            assert.ok(Math.abs(gradient[j] - independent[j]) < 1e-8, variant);
+          if (variant === "reference" || variant === "chain") {
+            // The two axial stiffnesses are 100 and 400. The reference motion is
+            // 10 * (w1*w1/100 + w2*w2/400), with w1=(1-y)/2 and w2=(1+y)/2.
+            const expected = dy === 0 ? -0.021875 : -0.015625;
+            assert.ok(Math.abs(gradient[0] - expected) < 1e-12);
+          }
+        } finally { point.delete(); }
+      }
+    } finally { problem.delete(); deck.delete(); }
+  }
+});

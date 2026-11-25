@@ -107,6 +107,8 @@ AffectedElements::AffectedElements(const DesignModel& model, const assembly::Ele
             }
             break;
         }
+        case TargetKind::Trim:
+            break; // the pressure drives the trim equilibrium directly
         case TargetKind::Element:
             if (const ElementEntry* entry = catalog.find(relation.targetId);
                 entry != nullptr && entry->card == relation.targetCard)

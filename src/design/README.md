@@ -505,7 +505,7 @@ system.
   h = SHAPE_STEP_RELATIVE·L/|T|max (L the smallest element reached); `deformedRigidElements` lists the rigid elements
   whose grid points the basis moves relative to each other.
 - **`sensitivity/StaticSensitivity`** — the designed quantities are the fields, then the shapes (`PseudoLoads` indexes
-  them so): each basis is one `FieldPerturbation` (every grid point of the basis moved together: the derivative along
+  them so): each basis builds at most one `FieldPerturbation` (every grid point of the basis moved together: the derivative along
   the basis vector, one perturbation whatever the number of grid points), the element stiffness and thermal loads of
   the reached elements differenced (`ElementDerivatives`, FieldUse::all()), the distributed loads (PointsPressureLoad on grid
   points, BeamDistributedLoad, ShellPressureLoad, FacePressureLoad) and the inertial loads (GravityLoad, AccelFieldLoad, RotationalForceLoad: the mass and the positions) of every
@@ -533,10 +533,14 @@ is handled by `model/DerivedGeometry` (below).
   (`ShapeElements.hpp` gives the table): at the field step 1e-2 the truncation dominates (1.7e-5 on rods, 2.7e-4 on
   higher-order shells, a warped ShellQuad4's stress lost); below 3e-4 the rounding of thin higher-order shells grows.
   Every displacement within 3e-7 of the finite differences of the analysis, every element item within 1e-5.
-- **Rigid elements**: a rigid element whose grid points a shape moves relative to each other changes Gm, whose
-  derivative the sensitivities do not form; they refuse it (OptimisationError naming it), its analysis being right.
-  One moved whole (the same vector on all its grid points) is accepted. MultiPointConstr equations have constant coefficients:
-  their sensitivities are correct.
+- **Rigid elements.** For static structural responses, a relative motion of the grid points of a
+  `RigidInterpolation` (RBE3) differentiates its weighted normal equations at the current design point,
+  including rotational weights and the optional UM elimination. The resulting row rates enter both the
+  dependent displacement derivative and the force transfer through the constraint chain. This reuses the
+  ordinary sensitivity solve. Motion of the reference grid alone can require zero shape perturbations.
+  Directions changing the undetermined rigid motions, separating coincident interpolation points, or
+  deforming another rigid element still raise a diagnostic. SPC force, zone force, external-unit and
+  modal responses are outside this static derivative path. Uniform motion preserves the spider relations.
 - **Derived tables** (refusals): fastener piercing points, glued contact and curvilinear CD stay as O_o_Model read
   them; a shape that moves such a grid point is refused at its declaration.
 - **Writing a design** makes x the XINIT of the shaped variables in the problem too, as O_o_Model does for the deck's:
@@ -973,9 +977,10 @@ applied load.
 - **A trim with a driven condensed unit uses the full path when gradients are retained**. Its condensed factor has no
   interior solve for the design pseudo-load. The automatic plan still keeps driven units full and remains condensed.
   A caller's explicit plan that condenses one uses more memory for the trim analysis.
-- **`TrimItems` refuses a shape variable**: a shape moves the splines, the rigid-body modes and the support modes of
-  the trim with its grid points, which its ∂K and ∂M at fixed geometry do not hold. The public optimization API
-  completes those columns by differencing the whole trim.
+- **Moving spline attachments in restrained trim** use the derivatives of the surface or beam interpolation,
+  the transposed load transfer and any RBE3 row rates. Complete-analysis differences cover free-body support
+  geometry and other configurations outside the retained tangent. See the
+  [RBE3 wing benchmark](../../docs/external-optimization.md#rbe3-wing-benchmark).
 
 ## Shape basis vectors from auxiliary models, and the directions and frames a shape moves
 

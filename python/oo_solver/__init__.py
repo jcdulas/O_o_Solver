@@ -1,7 +1,7 @@
 """Native structural analyses and design evaluations using oo_model decks."""
 from oo_model import card_columns
 
-from ._native import DesignPoint, Model, OptimizationProblem, _Builder
+from ._native import AeroModalBasis, AeroStaticPreload, AeroTransfer, DesignPoint, Model, OptimizationProblem, _Builder
 
 _DESIGN_TABLES = (
     "designVariablesTable", "designLinksTable", "designRelationsTable", "designConstantsTable",
@@ -90,11 +90,14 @@ def model_from_reader(deck, *, formulation=None):
     return builder.build()
 
 
-def optimization_from_reader(deck, *, analysis="statics", formulation=None, threads=1):
-    """Prepare a reusable C++ design problem from the design declarations in the deck."""
+def prepare_optimization(deck, *, analysis="statics", formulation=None, threads=1):
+    """Prepare a C++ design problem. Select an analysis name or a map of names to subcase IDs."""
     deck.validate_design()
     model = model_from_reader(deck, formulation=formulation)
     return model._optimization({name: deck.query(name) for name in _DESIGN_TABLES}, analysis, threads)
 
 
-__all__ = ["DesignPoint", "Model", "OptimizationProblem", "model_from_reader", "optimization_from_reader"]
+optimization_from_reader = prepare_optimization
+
+
+__all__ = ["AeroModalBasis", "AeroStaticPreload", "AeroTransfer", "DesignPoint", "Model", "OptimizationProblem", "model_from_reader", "optimization_from_reader", "prepare_optimization"]

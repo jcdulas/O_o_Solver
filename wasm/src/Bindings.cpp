@@ -17,6 +17,7 @@
 
 #include "Model.hpp"
 #include "TrimResults.hpp"
+#include "oos/api/AeroCoupling.hpp"
 #include "oos/api/Analyses.hpp"
 #include "oos/api/Capabilities.hpp"
 #include "oos/api/ModelInput.hpp"
@@ -93,6 +94,30 @@ std::vector<double> numbersOf(const val& array)
 
 // A built model: the snapshot the analyses read (immutable, shared).
 using oos::wasm::Model;
+
+std::shared_ptr<api::AeroCoupling> aeroTransfer(Model& model)
+{
+    return guarded([&] { return std::make_shared<api::AeroCoupling>(model.snapshot); });
+}
+
+val boxMotion(const api::AeroCoupling& transfer, const val& nodalMotion)
+{
+    return guarded([&] {
+        const auto motion = transfer.boxMotion(numbersOf(nodalMotion));
+        auto result = val::object();
+        result.set("plunge", typedArray("Float64Array", motion.plunge.data(), motion.plunge.size()));
+        result.set("slope", typedArray("Float64Array", motion.slope.data(), motion.slope.size()));
+        return result;
+    });
+}
+
+val structuralLoads(const api::AeroCoupling& transfer, const val& boxForces)
+{
+    return guarded([&] {
+        const auto loads = transfer.structuralLoads(numbersOf(boxForces));
+        return typedArray("Float64Array", loads.data(), loads.size());
+    });
+}
 
 val capabilitiesObject(const api::OptimizationCapabilities& source)
 {
@@ -318,7 +343,8 @@ val checkSupport(Model& model, const std::string& analysis)
     return guarded(
         [&]
         {
-            const api::SupportCheck check = api::checkSupport(*model.snapshot, analysisNamed(analysis));
+            const api::SupportCheck check = analysis == "trimPreloadedBuckling"
+                ? api::checkTrimPreloadedBuckling(*model.snapshot) : api::checkSupport(*model.snapshot, analysisNamed(analysis));
             val result = val::object();
             result.set("supported", textArray(check.supported));
             result.set("refusals", diagnosticArray(check.refusals));
@@ -602,6 +628,68 @@ val envelopeTableObject(const output::EnvelopeTable& table)
     return object;
 }
 
+val analysisObject(const api::AnalysisOutput& output)
+{
+    val nodal = val::array();
+    for (const output::NodalResultTable& table : output.tables.nodalTables)
+        nodal.call<void>("push", nodalTableObject(table));
+    val elements = val::array();
+    for (const output::ElementResultTable& table : output.tables.elementTables)
+        elements.call<void>("push", elementTableObject(table));
+    val forces = val::array();
+    for (const output::GridPointForceTable& table : output.tables.gridPointForceTables)
+        forces.call<void>("push", gridPointForceObject(table));
+    val eigenvalues = val::array();
+    for (const output::EigenvalueTable& table : output.eigenvalues)
+        eigenvalues.call<void>("push", eigenvalueTableObject(table));
+    val envelopes = val::array();
+    for (const output::EnvelopeTable& table : output.envelopes)
+        envelopes.call<void>("push", envelopeTableObject(table));
+
+    val result = val::object();
+    if (output.selectedQuarticShells)
+        result.set("selectedQuarticShells", numberArray(*output.selectedQuarticShells));
+    result.set("nodalTables", nodal);
+    result.set("elementTables", elements);
+    result.set("gridPointForces", forces);
+    result.set("eigenvalues", eigenvalues);
+    result.set("envelopes", envelopes);
+    result.set("aeroelastic", output.aeroelastic ? wasm::trimResultsObject(*output.aeroelastic) : val::null());
+    result.set("diagnostics", diagnosticArray(output.diagnostics));
+    if (output.condensation)
+    {
+        val condensation = val::object();
+        condensation.set("condensedUnits", numberArray(output.condensation->condensedUnits));
+        condensation.set("fullUnits", numberArray(output.condensation->fullUnits));
+        condensation.set("interfaceDofs", static_cast<double>(output.condensation->interfaceDofs));
+        condensation.set("note", output.condensation->note);
+        condensation.set("unitByUnit", output.condensation->isUnitByUnit);
+        result.set("condensation", condensation);
+    }
+    else
+    {
+        result.set("condensation", val::null());
+    }
+    return result;
+}
+
+val coupledObject(const api::AeroCoupledResult& run)
+{
+    auto result = analysisObject(run.analysis);
+    auto motions = val::array();
+    for (const auto& motion : run.boxMotions)
+    {
+        auto field = val::object();
+        field.set("plunge", typedArray("Float64Array", motion.plunge.data(), motion.plunge.size()));
+        field.set("slope", typedArray("Float64Array", motion.slope.data(), motion.slope.size()));
+        motions.call<void>("push", field);
+    }
+    result.set("boxMotions", motions);
+    if (run.preload) result.set("preload", val(run.preload));
+    if (run.modalBasis) result.set("modalBasis", val(run.modalBasis));
+    return result;
+}
+
 // runAnalysis(model, analysis, settings): settings is { subcases?: number[], memoryBytes?: number, threads?: number,
 // condensation?: see condensationSettingsOf, streamed?: boolean, externalUnits?: see externalUnitsOf, envelopes?: see
 // envelopesOf, keepsCaseTables?: boolean }.
@@ -636,47 +724,7 @@ val runAnalysis(Model& model, const std::string& analysis, const val& settings)
             }
             const api::AnalysisOutput output = api::runAnalysis(*model.snapshot, analysisNamed(analysis), chosen);
 
-            val nodal = val::array();
-            for (const output::NodalResultTable& table : output.tables.nodalTables)
-                nodal.call<void>("push", nodalTableObject(table));
-            val elements = val::array();
-            for (const output::ElementResultTable& table : output.tables.elementTables)
-                elements.call<void>("push", elementTableObject(table));
-            val forces = val::array();
-            for (const output::GridPointForceTable& table : output.tables.gridPointForceTables)
-                forces.call<void>("push", gridPointForceObject(table));
-            val eigenvalues = val::array();
-            for (const output::EigenvalueTable& table : output.eigenvalues)
-                eigenvalues.call<void>("push", eigenvalueTableObject(table));
-            val envelopes = val::array();
-            for (const output::EnvelopeTable& table : output.envelopes)
-                envelopes.call<void>("push", envelopeTableObject(table));
-
-            val result = val::object();
-            if (output.selectedQuarticShells)
-                result.set("selectedQuarticShells", numberArray(*output.selectedQuarticShells));
-            result.set("nodalTables", nodal);
-            result.set("elementTables", elements);
-            result.set("gridPointForces", forces);
-            result.set("eigenvalues", eigenvalues);
-            result.set("envelopes", envelopes);
-            result.set("aeroelastic", output.aeroelastic ? wasm::trimResultsObject(*output.aeroelastic) : val::null());
-            result.set("diagnostics", diagnosticArray(output.diagnostics));
-            if (output.condensation)
-            {
-                val condensation = val::object();
-                condensation.set("condensedUnits", numberArray(output.condensation->condensedUnits));
-                condensation.set("fullUnits", numberArray(output.condensation->fullUnits));
-                condensation.set("interfaceDofs", static_cast<double>(output.condensation->interfaceDofs));
-                condensation.set("note", output.condensation->note);
-                condensation.set("unitByUnit", output.condensation->isUnitByUnit);
-                result.set("condensation", condensation);
-            }
-            else
-            {
-                result.set("condensation", val::null());
-            }
-            return result;
+            return analysisObject(output);
         });
 }
 
@@ -845,8 +893,41 @@ EMSCRIPTEN_BINDINGS(oos_solver)
         .function("setFormulationGeometry", &setFormulationGeometry)
         .function("build", &buildModel);
 
+    class_<api::AeroStaticPreload>("AeroStaticPreload")
+        .smart_ptr<std::shared_ptr<api::AeroStaticPreload>>("AeroStaticPreloadPointer");
+    class_<api::AeroModalBasis>("AeroModalBasis")
+        .smart_ptr<std::shared_ptr<api::AeroModalBasis>>("AeroModalBasisPointer")
+        .function("generalizedLoads", optional_override([](const api::AeroModalBasis& basis, const val& forces) {
+            return guarded([&] {
+                const auto q = basis.generalizedLoads(numbersOf(forces));
+                return typedArray("Float64Array", q.data(), q.size());
+            });
+        }));
+    class_<api::AeroCoupling>("AeroTransfer")
+        .smart_ptr<std::shared_ptr<api::AeroCoupling>>("AeroTransferPointer")
+        .property("nodeIds", optional_override([](const api::AeroCoupling& transfer) {
+            const auto ids = transfer.nodeIds();
+            return typedArray("Int32Array", ids.data(), ids.size());
+        }))
+        .property("boxIds", optional_override([](const api::AeroCoupling& transfer) {
+            const auto ids = transfer.boxIds();
+            return typedArray("Int32Array", ids.data(), ids.size());
+        }))
+        .function("solveStatic", optional_override([](const api::AeroCoupling& t, int subcase, const val& forces) {
+            return guarded([&] { return coupledObject(t.solveStatic(subcase, numbersOf(forces))); });
+        }))
+        .function("solveModes", optional_override([](const api::AeroCoupling& t, int subcase) {
+            return guarded([&] { return coupledObject(t.solveModes(subcase)); });
+        }))
+        .function("solveBuckling", optional_override([](const api::AeroCoupling& t, int subcase, const api::AeroStaticPreload& preload) {
+            return guarded([&] { return coupledObject(t.solveBuckling(subcase, preload)); });
+        }))
+        .function("boxMotion", &boxMotion)
+        .function("structuralLoads", &structuralLoads);
+
     class_<Model>("Model")
         .smart_ptr<std::shared_ptr<Model>>("ModelPointer")
+        .function("aeroTransfer", &aeroTransfer)
         .function("tableNames", &modelTableNames)
         .function("checkSupport", &checkSupport)
         .function("surfaceEdges", &surfaceEdges);

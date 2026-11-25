@@ -114,7 +114,8 @@ const mh::MixedHybridModel& installLayout(solutions::StaticOptions& options, con
 
 solutions::StaticResults runStaticSolution(const input::ModelSnapshot& snapshot, solutions::StaticOptions options,
                                            base::MemoryBudget& budget,
-                                           std::optional<std::vector<std::int32_t>>& selected)
+                                           std::optional<std::vector<std::int32_t>>& selected,
+                                           std::shared_ptr<const elements::SnapshotIndex>* finalIndex)
 {
     const auto degree = snapshot.hasTable(input::TableRole::Params)
                             ? snapshot.params().find(mh::MIXED_HYBRID_DEGREE_PARAMETER)
@@ -126,7 +127,10 @@ solutions::StaticResults runStaticSolution(const input::ModelSnapshot& snapshot,
         return solutions::StaticSolution(snapshot, options).run(budget);
     const auto* part = installLayout(options, snapshot, nullptr, budget).shellPart();
     if (!part || !part->usable())
+    {
+        if (finalIndex) *finalIndex = options.snapshotIndex;
         return solutions::StaticSolution(snapshot, options).run(budget);
+    }
     std::set<std::int32_t> pilot;
     const auto& shells = part->input().shells;
     for (std::size_t i = 0; i < shells.size(); ++i)
@@ -154,6 +158,7 @@ solutions::StaticResults runStaticSolution(const input::ModelSnapshot& snapshot,
         installLayout(options, snapshot, &quartic, budget);
         result = solutions::StaticSolution(snapshot, options).run(budget);
     }
+    if (finalIndex) *finalIndex = options.snapshotIndex;
     selected.emplace(quartic.begin(), quartic.end());
     base::Diagnostic info;
     info.code = "mixed-hybrid-shell-adaptation";

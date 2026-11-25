@@ -20,7 +20,8 @@ enum class AnalysisKind : std::uint8_t
     Statics,
     Modes,
     Buckling,
-    StaticAeroelastic
+    StaticAeroelastic,
+    TrimPreloadedBuckling
 };
 
 // The support catalog of a linear static run: input::SupportCatalog::current(), the element, property and material
@@ -53,6 +54,6 @@ enum class AnalysisKind : std::uint8_t
 // analysis has no load). The PARAMs that change nothing in this version (none at present) are listed in
 // SupportReport::ignored as warnings ("ignored-parameter"), whether given in the Bulk Data or in the Case Control.
 [[nodiscard]] base::SupportReport checkSupport(const input::ModelSnapshot& snapshot,
-                                               const elements::ElementRegistry& registry, AnalysisKind analysis);
+                                               const elements::ElementRegistry& registry, AnalysisKind analysis, bool usesAeroTransfer = false);
 
 } // namespace oos::solutions

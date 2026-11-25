@@ -88,8 +88,8 @@ struct ShapeTarget
 // a shell element a Fastener or Weld pierces, or the GA, GB or GS of a Fastener or Weld
 // (fastenerPiercings: piercing points and shape functions); one of a glued contact (contactNodePairs: projections and
 // local coordinates). A grid point that a DesignNodeMove names with a zero move (COEFF 0) does not move and is not
-// refused. The rigid elements whose grid points move relative to each other are refused by the sensitivities only
-// (their analysis is right: the rigid element equations read the overlaid positions).
+// refused. Rigid element equations read the overlaid positions. The sensitivity assembly checks whether the
+// relative grid motion is supported for the requested response.
 //
 // The directions of PointForceLoad1, PointForceLoad2, PointMomentLoad1, PointMomentLoad2 and the frames of RectFrame1,
 // CylindricalFrame1, SphericalFrame1 whose grid points move (and what is given in those frames) are derived again at
@@ -140,6 +140,10 @@ public:
                                                  std::span<const double> reference = {}) const;
     // The derived tables of the designed laminates and sections.
     [[nodiscard]] const DerivedProperties& derivedProperties() const noexcept { return m_derivedProperties; }
+    [[nodiscard]] bool derivesOnlyShearModulus(std::size_t relation) const noexcept
+    {
+        return m_derivedMaterials.derivesOnlyShearModulus(relation);
+    }
     [[nodiscard]] bool hasDerivedMaterial(std::size_t relation) const noexcept { return m_derivedMaterials.reaches(relation); }
     // The section library of the designed sections (null without one).
     [[nodiscard]] const SectionLibrary* sectionLibrary() const noexcept { return m_sections.get(); }

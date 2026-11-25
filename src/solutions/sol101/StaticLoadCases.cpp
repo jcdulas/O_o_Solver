@@ -354,6 +354,9 @@ StaticLoadCases::StaticLoadCases(Inputs inputs, base::MemoryBudget& budget, base
     // Every load set of the cases is checked once, in the order of the cases, whatever basis the families take (a case
     // that becomes a combination is never assembled on its own).
     const std::size_t cases = caseCount();
+    for (const auto& entry : m_inputs.appliedLoads.entries)
+        if (entry.dof < 0 || entry.dof >= m_inputs.dofMap->gSetSize() || !std::isfinite(entry.value))
+            throw std::invalid_argument("external nodal load requires a valid g-set DOF and a finite value");
     const ItemRows loadSetRows = rowsByFirstAppearance(
         cases,
         [&](std::int64_t left, std::int64_t right)
@@ -559,8 +562,15 @@ void StaticLoadCases::addFamily(LoadFamily family, base::MemoryBudget& budget)
     // (assembly::LoadBasis::Input::isCombinationOfSets), never from a column per case, which would hold every value of
     // every case (6 000 cases of a pressure on the whole skin: the skin's values 6 000 times, read three times each,
     // and the rank test and the check on them). With the deck tolerance the cases are taken one column each.
+    const bool hasApplied = family == LoadFamily::Concentrated && !m_inputs.appliedLoads.entries.empty();
+    const auto applied = [&](std::size_t c) -> std::span<const AppliedCaseLoads::Entry>
+    {
+        if (hasApplied && m_inputs.cases[c]->label == m_inputs.appliedLoads.subcase)
+            return m_inputs.appliedLoads.entries;
+        return {};
+    };
     bool isCombinationOfSets = false;
-    if ((family == LoadFamily::Concentrated || family == LoadFamily::Distributed) && loadTable != nullptr)
+    if ((family == LoadFamily::Concentrated || family == LoadFamily::Distributed) && loadTable != nullptr && !hasApplied)
     {
         std::size_t sourceCount = 0;
         bool hasCombination = false;
@@ -639,6 +649,11 @@ void StaticLoadCases::addFamily(LoadFamily family, base::MemoryBudget& budget)
                         ++count;
                     }
             }
+            for (const auto& entry : applied(c))
+            {
+                rowOf(entry.dof);
+                ++count;
+            }
             caseNonzeros += static_cast<std::int64_t>(count);
             largestColumn = std::max(largestColumn, count);
         }
@@ -681,10 +696,15 @@ void StaticLoadCases::addFamily(LoadFamily family, base::MemoryBudget& budget)
                         builder.add(rowOfDof[static_cast<std::size_t>(value.dof)], value.value, 0.0);
                 builder.appendTo(caseMatrix);
             }
-            else if (hasCase(c))
-                appendSet(*m_inputs.cases[c]->load, caseMatrix);
             else
-                builder.appendTo(caseMatrix);
+            {
+                for (const auto& entry : applied(c))
+                    builder.add(rowOfDof[entry.dof], entry.value, 0.0);
+                if (hasCase(c))
+                    appendSet(*m_inputs.cases[c]->load, caseMatrix);
+                else
+                    builder.appendTo(caseMatrix);
+            }
         }
         if (setCount > 0)
         {
@@ -904,6 +924,9 @@ void StaticLoadCases::addFamilyCase(LoadFamily family, std::size_t c, std::span<
                                     base::DiagnosticSink& sink) const
 {
     const StaticSubcase& subcase = *m_inputs.cases[c];
+    if (family == LoadFamily::Concentrated && subcase.label == m_inputs.appliedLoads.subcase)
+        for (const auto& entry : m_inputs.appliedLoads.entries)
+            loadsG[entry.dof] += entry.value;
     switch (family)
     {
     case LoadFamily::Concentrated:

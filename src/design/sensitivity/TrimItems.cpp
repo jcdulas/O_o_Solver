@@ -1,4 +1,5 @@
 #include "TrimItems.hpp"
+#include "oos/aero/splines/SplineMatrix.hpp"
 
 #include "oos/assembly/assemble/MassAssembler.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
@@ -83,6 +84,13 @@ void TrimItems::add(const ItemKey& key, ResponseType type, const ResponseItem& l
     item.type = type;
     item.subcase = subcaseIndex(label.subcase);
     const solutions::TrimSubcaseResult& result = m_in.trim->subcases.at(item.subcase);
+    if (isTrimLoadType(type))
+    {
+        item.component = m_in.trim->loadIndex(label.entity, type == ResponseType::HingeMoment);
+        item.direction = directionOf(item.subcase, true, 0, false);
+        m_items.push_back(item);
+        return;
+    }
     const auto found =
         std::find_if(result.variables.begin(), result.variables.end(),
                      [&](const solutions::TrimVariableValue& value) { return value.id == label.entity; });
@@ -108,6 +116,13 @@ void TrimItems::addStaticItem(const ItemKey& key, std::int32_t subcase)
     const std::size_t index = subcaseIndex(subcase);
     (void)directionOf(index, true, 0, false);
     m_staticItems.push_back({key, index});
+}
+
+void TrimItems::addPreload(std::int32_t subcase, PreloadRate rate)
+{
+    const auto s = subcaseIndex(subcase);
+    (void)directionOf(s, true, 0, false);
+    m_preloadRates.emplace(s, std::move(rate));
 }
 
 void TrimItems::prepare()
@@ -206,6 +221,40 @@ void TrimItems::addElement(std::size_t /*quantity*/, const elements::ElementFami
     }
 }
 
+void TrimItems::addTransferRate(const solutions::TrimLinearisation::Velocity& velocity,
+                               std::span<const assembly::LocalConstraintRows> spiders, bool movesElements)
+{
+    if (!m_linearisation->supportsTransferRates(movesElements))
+        throw base::OptimisationError("moving spline supports require a restrained full-path trim with fixed formulation constraints");
+    const auto rate = m_linearisation->splineRate(velocity, *m_in.budget);
+    for (auto& direction : m_directions)
+    {
+        if (!direction.isState)
+            throw base::OptimisationError("stability coefficient shape derivatives require full trim differences");
+        direction.transfer = m_linearisation->transferRate(
+            direction.subcase, rate, spiders, m_in.trim->subcases.at(direction.subcase).pressures, *m_in.budget);
+        direction.isTouched = true;
+    }
+}
+
+void TrimItems::addPressureRate(std::int32_t trimSet)
+{
+    for (Direction& direction : m_directions)
+    {
+        const auto& base = m_in.trim->subcases.at(direction.subcase);
+        if (base.trimSet != trimSet)
+            continue;
+        const std::optional<std::size_t> column = direction.isState ? std::nullopt : std::optional(direction.variable);
+        const auto loads =
+            m_linearisation->dynamicPressureLoad(direction.subcase, base.pressures, column, direction.isUnrestrained);
+        // An applied load enters the support equilibrium as well as the elastic equations.
+        for (std::size_t i = 0; i < loads.size(); ++i)
+            direction.inertialLoad[i] += loads[i];
+        direction.isTouched = true;
+        direction.changesPressure = true;
+    }
+}
+
 void TrimItems::finishQuantity(std::size_t quantity, const LinearisedItems& linearised)
 {
     for (std::size_t d = 0; d < m_directions.size(); ++d)
@@ -215,16 +264,44 @@ void TrimItems::finishQuantity(std::size_t quantity, const LinearisedItems& line
             continue;
         if (direction.isState)
         {
-            bool hasStatic = false;
+            const auto preload = m_preloadRates.find(direction.subcase);
+            bool hasStatic = preload != m_preloadRates.end();
             for (const StaticItem& item : m_staticItems)
                 hasStatic = hasStatic || item.subcase == direction.subcase;
-            const solutions::TrimLinearisation::StateDerivative derivative =
+            solutions::TrimLinearisation::StateDerivative derivative =
                 m_linearisation->stateDerivative(direction.subcase, direction.stiffnessLoad.span(),
-                                                 direction.inertialLoad.span(), hasStatic, *m_in.budget);
+                                                 direction.inertialLoad.span(), hasStatic, *m_in.budget,
+                                                 direction.transfer ? &*direction.transfer : nullptr);
+            if (std::any_of(m_items.begin(), m_items.end(),
+                            [d](const Item& item)
+                            {
+                                return item.direction == d && isTrimLoadType(item.type) &&
+                                       item.type != ResponseType::AeroPressureCoefficient &&
+                                       item.type != ResponseType::AeroPressure;
+                            }))
+                m_linearisation->recoverLoadDerivative(derivative,
+                                                       m_in.trim->subcases[direction.subcase].dynamicPressure);
+            if (preload != m_preloadRates.end())
+                preload->second(quantity, derivative.displacements);
             m_solves += hasStatic ? 2 : 1;
             for (std::size_t k = 0; k < m_items.size(); ++k)
                 if (m_items[k].direction == d)
-                    m_byQuantity[{k, quantity}] += derivative.variables[m_items[k].variable];
+                {
+                    const auto& item = m_items[k];
+                    m_byQuantity[{k, quantity}] +=
+                        isTrimLoadType(item.type)
+                            ? trimLoadValue(item.type, derivative, item.component,
+                                            m_in.trim->subcases[direction.subcase].dynamicPressure)
+                            : derivative.variables.at(item.variable);
+                    if (direction.changesPressure && isTrimLoadType(item.type) &&
+                        item.type != ResponseType::AeroPressureCoefficient)
+                    {
+                        const auto& base = m_in.trim->subcases[direction.subcase];
+                        // d(q Cp)/dq = Cp + q dCp/dq. The same product rule holds for every resultant.
+                        m_byQuantity[{k, quantity}] +=
+                            trimLoadValue(item.type, base, item.component, base.dynamicPressure) / base.dynamicPressure;
+                    }
+                }
             for (std::size_t k = 0; k < m_staticItems.size(); ++k)
             {
                 if (m_staticItems[k].subcase != direction.subcase)
@@ -248,6 +325,8 @@ void TrimItems::finishQuantity(std::size_t quantity, const LinearisedItems& line
         std::fill(direction.stiffnessLoad.data(), direction.stiffnessLoad.data() + direction.stiffnessLoad.size(), 0.0);
         std::fill(direction.inertialLoad.data(), direction.inertialLoad.data() + direction.inertialLoad.size(), 0.0);
         direction.isTouched = false;
+        direction.changesPressure = false;
+        direction.transfer.reset();
     }
 }
 

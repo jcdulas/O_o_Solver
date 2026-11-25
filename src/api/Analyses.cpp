@@ -484,15 +484,25 @@ SurfaceEdgeTable surfaceEdges(const input::ModelSnapshot& snapshot)
     return table;
 }
 
-SupportCheck checkSupport(const input::ModelSnapshot& snapshot, Analysis analysis)
+static SupportCheck checkAnalysisSupport(const input::ModelSnapshot& snapshot, Analysis analysis, solutions::AnalysisKind kind)
 {
     const elements::ElementRegistry registry = elements::ElementRegistry::forModel(snapshot);
-    base::SupportReport report = solutions::checkSupport(snapshot, registry, kindOf(analysis));
+    base::SupportReport report = solutions::checkSupport(snapshot, registry, kind);
     // Diagnostics keep the neutral names used by the model and the tables.
     // With every card supported, the formulation's own problems: an analysis would stop on them too.
     if (report.refusals.empty())
         addFormulationRefusals(snapshot, registry, analysis, report.refusals);
     return {report.supported, report.refusals, report.ignored};
+}
+
+SupportCheck checkSupport(const input::ModelSnapshot& snapshot, Analysis analysis)
+{
+    return checkAnalysisSupport(snapshot, analysis, kindOf(analysis));
+}
+
+SupportCheck checkTrimPreloadedBuckling(const input::ModelSnapshot& snapshot)
+{
+    return checkAnalysisSupport(snapshot, Analysis::Buckling, solutions::AnalysisKind::TrimPreloadedBuckling);
 }
 
 AnalysisOutput runAnalysis(const input::ModelSnapshot& snapshot, Analysis analysis, const AnalysisSettings& settings)

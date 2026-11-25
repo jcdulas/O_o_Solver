@@ -1,4 +1,7 @@
+#include "oos/api/AeroCoupling.hpp"
 #include "oos/api/Analyses.hpp"
+#include "oos/api/Capabilities.hpp"
+#include "oos/api/ConstraintJacobian.hpp"
 #include "oos/api/Optimization.hpp"
 #include "oos/input/snapshot/SnapshotBuilder.hpp"
 
@@ -6,6 +9,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <algorithm>
 #include <mutex>
 
 namespace py = pybind11;
@@ -25,7 +29,7 @@ struct Point
     std::mutex mutex;
 };
 
-using Numbers = py::array_t<double, py::array::c_style | py::array::forcecast>;
+using Numbers = py::array_t<double, py::array::c_style | py::array::forcecast | py::detail::npy_api::NPY_ARRAY_ALIGNED_>;
 
 std::span<const double> vectorOf(const Numbers& values)
 {
@@ -34,18 +38,147 @@ std::span<const double> vectorOf(const Numbers& values)
     return {values.data(), static_cast<std::size_t>(values.size())};
 }
 
-// A single direction (or a single weighted sum) is one contiguous product block.
-struct VectorSink final : design::ProductSink
+// JVP blocks contain adjacent columns, VJP blocks adjacent rows.
+struct ArraySink final : design::ProductSink
 {
-    explicit VectorSink(std::span<double> destination) : output(destination) {}
+    ArraySink(double* output, std::size_t columns, bool byColumn)
+        : data(output), stride(columns), columnBlocks(byColumn)
+    {
+    }
     void consume(const design::ProductBlock& block) override
     {
-        if (block.first != 0 || block.values.size() != output.size())
-            throw std::logic_error("Unexpected shape of a native derivative product");
-        std::copy(block.values.begin(), block.values.end(), output.begin());
+        if (block.values.empty())
+            return;
+        if (!columnBlocks || block.columns == stride)
+        {
+            std::copy(block.values.begin(), block.values.end(), data + (columnBlocks ? 0 : block.first * stride));
+            return;
+        }
+        for (std::size_t row = 0; row < block.rows; ++row)
+            std::copy_n(block.values.data() + row * block.columns, block.columns, data + row * stride + block.first);
     }
-    std::span<double> output;
+    double* data;
+    std::size_t stride;
+    bool columnBlocks;
 };
+
+py::array_t<double> productOutput(const py::object& out, const std::vector<py::ssize_t>& shape)
+{
+    if (out.is_none())
+        return py::array_t<double>(shape);
+    if (!py::isinstance<py::array_t<double>>(out))
+        throw py::value_error("out must be a float64 NumPy array");
+    auto array = py::reinterpret_borrow<py::array_t<double>>(out);
+    if (!array.writeable() || !(array.flags() & py::array::c_style) ||
+        reinterpret_cast<std::uintptr_t>(array.data()) % alignof(double) != 0 ||
+        array.ndim() != py::ssize_t(shape.size()) || !std::equal(shape.begin(), shape.end(), array.shape()))
+        throw py::value_error("out must be writable, aligned, C-contiguous and have the product shape");
+    return array;
+}
+
+py::array_t<double> jvp(Point& point, const Numbers& directions, const py::object& out)
+{
+    const auto& evaluation = *point.evaluation;
+    if ((directions.ndim() != 1 && directions.ndim() != 2) || directions.shape(0) != py::ssize_t(evaluation.x().size()))
+        throw py::value_error("directions must have shape (variables,) or (variables, directions)");
+    const bool batch = directions.ndim() == 2;
+    const py::ssize_t count = batch ? directions.shape(1) : 1;
+    if (!count)
+        throw py::value_error("at least one direction is required");
+    py::ssize_t rows = 0;
+    for (const auto& response : evaluation.evaluation().responses)
+        rows += static_cast<py::ssize_t>(response.itemCount());
+    evaluation.requireOutput(rows, count);
+    std::vector<py::ssize_t> shape{rows};
+    if (batch)
+        shape.push_back(count);
+    auto result = productOutput(out, shape);
+    if (!out.is_none() && result.size() && directions.size())
+    {
+        const auto inputStart = reinterpret_cast<std::uintptr_t>(directions.data());
+        const auto outputStart = reinterpret_cast<std::uintptr_t>(result.data());
+        if (inputStart < outputStart + result.nbytes() && outputStart < inputStart + directions.nbytes())
+            throw py::value_error("out must not overlap directions");
+    }
+    ArraySink sink(result.mutable_data(), count, true);
+    const std::span<const double> values(directions.data(), static_cast<std::size_t>(directions.size()));
+    {
+        py::gil_scoped_release unlock;
+        std::lock_guard guard(point.mutex);
+        (void)point.evaluation->jvp(values, count, std::min<py::ssize_t>(32, count), sink);
+    }
+    return result;
+}
+
+py::array_t<double> vjp(Point& point, const py::dict& weights, const py::object& out)
+{
+    design::ProductWeights native;
+    native.rows = 1;
+    bool batch = false;
+    for (auto [key, value] : weights)
+    {
+        const auto array = py::cast<Numbers>(value);
+        if (array.ndim() != 1 && array.ndim() != 2)
+            throw py::value_error("weights must have shape (items,) or (sums, items)");
+        const bool matrix = array.ndim() == 2;
+        const auto rows = matrix ? static_cast<std::size_t>(array.shape(0)) : 1;
+        if (!rows || (!native.weights.empty() && (rows != native.rows || matrix != batch)))
+            throw py::value_error("all response weights must have the same rank and positive number of sums");
+        batch = matrix;
+        native.rows = rows;
+        native.weights[py::cast<std::int32_t>(key)].assign(array.data(), array.data() + array.size());
+    }
+    const auto columns = point.evaluation->x().size();
+    point.evaluation->requireOutput(native.rows, columns);
+    std::vector<py::ssize_t> shape;
+    if (batch)
+        shape.push_back(static_cast<py::ssize_t>(native.rows));
+    shape.push_back(static_cast<py::ssize_t>(columns));
+    auto result = productOutput(out, shape);
+    ArraySink sink(result.mutable_data(), columns, false);
+    {
+        py::gil_scoped_release unlock;
+        std::lock_guard guard(point.mutex);
+        (void)point.evaluation->vjp(native, std::min<std::size_t>(32, native.rows), sink);
+    }
+    return result;
+}
+
+py::dict hessianVector(Point& point, const py::dict& weights, const Numbers& directions)
+{
+    const auto n = static_cast<py::ssize_t>(point.evaluation->x().size());
+    if ((directions.ndim() != 1 && directions.ndim() != 2) || directions.shape(0) != n)
+        throw py::value_error("directions must have shape (variables,) or (variables, directions)");
+    const auto count = directions.ndim() == 1 ? 1 : directions.shape(1);
+    if (count == 0)
+        throw py::value_error("at least one direction is required");
+    design::ProductWeights native;
+    native.rows = 1;
+    for (auto [key, entry] : weights)
+    {
+        const auto array = py::cast<Numbers>(entry);
+        const auto row = vectorOf(array);
+        native.weights[py::cast<std::int32_t>(key)].assign(row.begin(), row.end());
+    }
+    auto values = std::make_unique<std::vector<double>>();
+    const std::span<const double> input(directions.data(), static_cast<std::size_t>(directions.size()));
+    design::ProductReport report;
+    {
+        py::gil_scoped_release release;
+        std::lock_guard lock(point.mutex);
+        report = point.evaluation->hessianVector(native, input, count, *values);
+    }
+    const auto* data = values->data();
+    py::capsule owner(values.get(), [](void* pointer) { delete static_cast<std::vector<double>*>(pointer); });
+    values.release();
+    const std::vector<py::ssize_t> shape(directions.shape(), directions.shape() + directions.ndim());
+    return py::dict("values"_a = py::array_t<double>(shape, data, owner),
+                    "report"_a = py::dict("uses_buckling_tangents"_a = report.usesBucklingTangents,
+                                          "uses_trim_tangents"_a = report.usesTrimTangents,
+                                          "uses_modal_tangents"_a = report.usesModalTangents,
+                                          "perturbed_linearisations"_a = report.perturbedLinearisations,
+                                          "reason"_a = report.hessianBlocksReason));
+}
 
 base::ImportedTable importTable(const py::object& table)
 {
@@ -83,6 +216,16 @@ py::array view(const Buffer& data, const py::object& owner, std::vector<py::ssiz
     py::array_t<T> result(shape, data.data(), owner);
     result.attr("setflags")(false);
     return result;
+}
+
+// Hand the computed vector to NumPy without copying its data across the coupling interface.
+py::array_t<double> ownedArray(std::vector<double> values, std::vector<py::ssize_t> shape)
+{
+    auto storage = std::make_unique<std::vector<double>>(std::move(values));
+    const double* data = storage->data();
+    py::capsule owner(storage.get(), [](void* p) { delete static_cast<std::vector<double>*>(p); });
+    storage.release();
+    return py::array_t<double>(shape, data, owner);
 }
 
 py::dict results(api::AnalysisOutput&& run)
@@ -133,6 +276,22 @@ py::dict results(api::AnalysisOutput&& run)
     }
     return out;
 }
+py::dict coupledResults(api::AeroCoupledResult run)
+{
+    auto out = results(std::move(run.analysis));
+    py::list motions;
+    for (auto& motion : run.boxMotions)
+    {
+        const auto n = static_cast<py::ssize_t>(motion.plunge.size());
+        motions.append(py::dict("plunge"_a = ownedArray(std::move(motion.plunge), {n}),
+                                "slope"_a = ownedArray(std::move(motion.slope), {n})));
+    }
+    out["box_motions"] = motions;
+    if (run.preload) out["preload"] = py::cast(run.preload);
+    if (run.modalBasis) out["modal_basis"] = py::cast(run.modalBasis);
+    return out;
+}
+
 } // namespace
 
 PYBIND11_MODULE(_native, m)
@@ -197,7 +356,55 @@ PYBIND11_MODULE(_native, m)
              })
         .def("build",
              [](input::SnapshotBuilder& b) { return Model{std::make_shared<input::ModelSnapshot>(b.build())}; });
+    py::class_<api::AeroStaticPreload, std::shared_ptr<api::AeroStaticPreload>>(m, "AeroStaticPreload");
+    py::class_<api::AeroModalBasis, std::shared_ptr<api::AeroModalBasis>>(m, "AeroModalBasis")
+        .def("generalized_loads", [](const api::AeroModalBasis& modes, const Numbers& forces) {
+            const auto f = vectorOf(forces);
+            auto q = [&] { py::gil_scoped_release release; return modes.generalizedLoads(f); }();
+            const auto n = static_cast<py::ssize_t>(q.size());
+            return ownedArray(std::move(q), {n});
+        }, py::arg("box_forces"));
+    py::class_<api::AeroCoupling, std::shared_ptr<api::AeroCoupling>>(m, "AeroTransfer")
+        .def("solve_static", [](const api::AeroCoupling& t, int subcase, const Numbers& forces) {
+            const auto f = vectorOf(forces);
+            return coupledResults([&] { py::gil_scoped_release release; return t.solveStatic(subcase, f); }());
+        }, py::arg("subcase"), py::arg("box_forces"))
+        .def("solve_modes", [](const api::AeroCoupling& t, int subcase) {
+            return coupledResults([&] { py::gil_scoped_release release; return t.solveModes(subcase); }());
+        }, py::arg("subcase"))
+        .def("solve_buckling", [](const api::AeroCoupling& t, int subcase, const api::AeroStaticPreload& preload) {
+            return coupledResults([&] { py::gil_scoped_release release; return t.solveBuckling(subcase, preload); }());
+        }, py::arg("subcase"), py::arg("preload"))
+        .def_property_readonly("node_ids", [](const api::AeroCoupling& t) {
+            return py::array_t<std::int32_t>(t.nodeIds().size(), t.nodeIds().data());
+        })
+        .def_property_readonly("box_ids", [](const api::AeroCoupling& t) {
+            return py::array_t<std::int32_t>(t.boxIds().size(), t.boxIds().data());
+        })
+        .def("box_motion", [](const api::AeroCoupling& t, const Numbers& u) {
+            if (u.ndim() != 2 || u.shape(0) != static_cast<py::ssize_t>(t.nodeIds().size()) || u.shape(1) != 6)
+                throw py::value_error("nodal motion must have shape (number of spline nodes, 6)");
+            auto motion = [&] {
+                py::gil_scoped_release release;
+                return t.boxMotion({u.data(), static_cast<std::size_t>(u.size())});
+            }();
+            const auto n = static_cast<py::ssize_t>(t.boxIds().size());
+            return py::dict("plunge"_a = ownedArray(std::move(motion.plunge), {n}),
+                            "slope"_a = ownedArray(std::move(motion.slope), {n}));
+        }, py::arg("nodal_motion"))
+        .def("structural_loads", [](const api::AeroCoupling& t, const Numbers& forces) {
+            const auto input = vectorOf(forces);
+            auto loads = [&] {
+                py::gil_scoped_release release;
+                return t.structuralLoads(input);
+            }();
+            return ownedArray(std::move(loads), {static_cast<py::ssize_t>(t.nodeIds().size()), 6});
+        }, py::arg("box_forces"));
     py::class_<Model>(m, "Model")
+        .def("aero_transfer", [](const Model& model) {
+            py::gil_scoped_release release;
+            return std::make_shared<api::AeroCoupling>(model.snapshot);
+        })
         .def(
             "run",
             [](const Model& model, const std::string& name, std::size_t threads,
@@ -217,20 +424,27 @@ PYBIND11_MODULE(_native, m)
             py::arg("analysis") = "statics", py::kw_only(), py::arg("threads") = 1,
             py::arg("subcases") = std::vector<std::int32_t>{})
         .def("_optimization",
-             [](const Model& model, const py::dict& tables, const std::string& name, std::size_t threads)
+             [](const Model& model, const py::dict& tables, const py::object& analyses, std::size_t threads)
              {
                  api::OptimizationSettings settings;
                  settings.threads = threads;
-                 if (name != "statics")
-                     settings.analyses.statics.reset();
-                 if (name == "modes")
-                     settings.analyses.modes.emplace();
-                 else if (name == "buckling")
-                     settings.analyses.buckling.emplace();
-                 else if (name == "aeroelastic")
-                     settings.analyses.aeroelastic.emplace();
-                 else if (name != "statics")
-                     throw py::value_error("Unknown design analysis: " + name);
+                 settings.analyses.statics.reset();
+                 auto select = [&](const std::string& name, std::vector<std::int32_t> subcases)
+                 {
+                     if (name == "statics") settings.analyses.statics = std::move(subcases);
+                     else if (name == "modes") settings.analyses.modes = std::move(subcases);
+                     else if (name == "buckling") settings.analyses.buckling = std::move(subcases);
+                     else if (name == "aeroelastic") settings.analyses.aeroelastic = std::move(subcases);
+                     else throw py::value_error("Unknown design analysis: " + name);
+                 };
+                 if (py::isinstance<py::str>(analyses))
+                     select(analyses.cast<std::string>(), {});
+                 else
+                 {
+                     const auto selected = analyses.cast<std::map<std::string, std::vector<std::int32_t>>>();
+                     if (selected.empty()) throw py::value_error("Expected at least one design analysis");
+                     for (const auto& [name, cases] : selected) select(name, cases);
+                 }
                  std::map<std::string, base::ImportedTable> imported;
                  for (auto item : tables)
                      imported.emplace(py::cast<std::string>(item.first),
@@ -239,21 +453,45 @@ PYBIND11_MODULE(_native, m)
                                                                    std::move(imported));
              });
     py::class_<api::OptimizationProblem, std::shared_ptr<api::OptimizationProblem>>(m, "OptimizationProblem")
+        .def_property_readonly(
+            "capabilities",
+            [](const api::OptimizationProblem& p)
+            {
+                const auto catalog = api::optimizationCapabilities(&p.problem().snapshot());
+                py::list analyses, fields;
+                for (const auto& a : catalog.analyses)
+                    analyses.append(py::dict("analysis"_a = a.analysis, "solution"_a = a.solution,
+                                             "sizing_first_order"_a = a.sizingFirstOrder,
+                                             "shape_first_order"_a = a.shapeFirstOrder,
+                                             "second_order"_a = a.secondOrder, "restrictions"_a = a.restrictions));
+                for (const auto& f : catalog.fields)
+                    fields.append(py::dict("target_kind"_a = f.targetKind, "target_card"_a = f.targetCard,
+                                           "field"_a = f.field, "type"_a = f.type, "requires_item"_a = f.requiresItem));
+                return py::dict("version"_a = catalog.version, "analyses"_a = analyses,
+                                "responses"_a = catalog.responses, "fields"_a = fields);
+            })
+        .def_property_readonly("objective_definition", [](const api::OptimizationProblem& p) {
+            const auto& selected = p.problem().constraints().parts().selection;
+            return py::dict("response_id"_a = selected.objective, "sense"_a = (selected.isMaximised ? "max" : "min"),
+                            "subcase"_a = selected.objectiveSubcase.value_or(0));
+        })
         .def_property_readonly("initial_values",
                                [](const api::OptimizationProblem& p) { return p.problem().initialValues(); })
-        .def_property_readonly("variables",
-                               [](const api::OptimizationProblem& p)
-                               {
-                                   py::list variables;
-                                   const auto& model = p.problem().model();
-                                   for (auto index : model.independentIndices())
-                                   {
-                                       const auto& v = model.variables().all().at(index);
-                                       variables.append(py::dict("id"_a = v.id, "label"_a = v.label,
-                                                                 "lower"_a = v.lower, "upper"_a = v.upper));
-                                   }
-                                   return variables;
-                               })
+        .def_property_readonly(
+            "variables",
+            [](const api::OptimizationProblem& p)
+            {
+                py::list variables;
+                const auto& model = p.problem().model();
+                for (auto index : model.independentIndices())
+                {
+                    const auto& v = model.variables().all().at(index);
+                    variables.append(py::dict("id"_a = v.id, "label"_a = v.label, "lower"_a = v.lower,
+                                              "upper"_a = v.upper, "initial_value"_a = v.initialValue,
+                                              "scale"_a = api::variableReferenceScale(v)));
+                }
+                return variables;
+            })
         .def("evaluate",
              [](api::OptimizationProblem& p, const Numbers& x)
              {
@@ -264,7 +502,46 @@ PYBIND11_MODULE(_native, m)
                  point->evaluation = p.evaluate(std::move(owned));
                  return point;
              });
+    py::class_<api::ConstraintJacobian, std::shared_ptr<api::ConstraintJacobian>>(m, "ConstraintJacobian")
+        .def_property_readonly("row_offsets", [](py::object self)
+                               { return view(self.cast<api::ConstraintJacobian&>().rowOffsets(), self); })
+        .def_property_readonly("column_indices", [](py::object self)
+                               { return view(self.cast<api::ConstraintJacobian&>().columnIndices(), self); })
+        .def_property_readonly("columns", &api::ConstraintJacobian::variableCount)
+        .def(
+            "values",
+            [](const api::ConstraintJacobian& layout, Point& point, const py::object& out)
+            {
+                auto array = productOutput(out, {static_cast<py::ssize_t>(layout.columnIndices().size())});
+                auto data = std::span<double>(array.mutable_data(), layout.columnIndices().size());
+                {
+                    py::gil_scoped_release unlock;
+                    std::lock_guard guard(point.mutex);
+                    layout.values(*point.evaluation, data);
+                }
+                return array;
+            },
+            py::arg("point"), py::kw_only(), py::arg("out") = py::none())
+        .def(
+            "constraints",
+            [](const api::ConstraintJacobian& layout, const Point& point, const py::object& out)
+            {
+                const auto size = layout.rowOffsets().size() - 1;
+                auto array = productOutput(out, {static_cast<py::ssize_t>(size)});
+                layout.constraints(*point.evaluation, {array.mutable_data(), size});
+                return array;
+            },
+            py::arg("point"), py::kw_only(), py::arg("out") = py::none());
     py::class_<Point>(m, "DesignPoint")
+        .def("optimizer_values",
+             [](const Point& p)
+             {
+                 const auto values = p.evaluation->optimizerValues();
+                 py::array_t<double> constraints(values.constraints.size());
+                 std::copy(values.constraints.begin(), values.constraints.end(), constraints.mutable_data());
+                 return py::dict("objective"_a = values.objective, "constraints"_a = constraints,
+                                 "partial"_a = values.partial, "uncertain_mode"_a = values.uncertainMode);
+             })
         .def_property_readonly("objective", [](const Point& p) { return p.evaluation->evaluation().objective; })
         .def_property_readonly("responses",
                                [](py::object self)
@@ -282,48 +559,39 @@ PYBIND11_MODULE(_native, m)
                 for (const auto& c : p.evaluation->evaluation().constraints)
                     out.append(py::dict("set_id"_a = c.setId, "response_id"_a = c.responseId, "item"_a = c.item,
                                         "side"_a = c.side == design::BoundSide::Lower ? "lower" : "upper",
-                                        "bound"_a = c.bound, "value"_a = c.value, "normalised"_a = c.normalised));
+                                        "bound"_a = c.bound, "value"_a = c.value, "normalised"_a = c.normalised,
+                                        "derivative_scale"_a = design::ConstraintNormalisation{}.derivative(c.side, c.bound),
+                                        "subcase"_a = c.label.subcase, "entity"_a = c.label.entity,
+                                        "component"_a = c.label.component, "layer"_a = c.label.layer, "mode"_a = c.label.mode));
                 return out;
             })
-        .def("jvp",
-             [](Point& p, const Numbers& direction)
-             {
-                 auto v = vectorOf(direction);
-                 std::size_t rows = 0;
-                 for (const auto& r : p.evaluation->evaluation().responses)
-                     rows += r.itemCount();
-                 p.evaluation->requireOutput(rows, 1);
-                 py::array_t<double> out(rows);
-                 VectorSink sink({out.mutable_data(), rows});
-                 {
-                     py::gil_scoped_release unlock;
-                     std::lock_guard guard(p.mutex);
-                     (void)p.evaluation->jvp(v, 1, 1, sink);
-                 }
-                 return out;
-             })
-        .def("vjp",
-             [](Point& p, const py::dict& weights)
-             {
-                 design::ProductWeights w;
-                 w.rows = 1;
-                 for (auto [key, value] : weights)
-                 {
-                     const auto array = py::cast<Numbers>(value);
-                     const auto data = vectorOf(array);
-                     w.weights[py::cast<std::int32_t>(key)].assign(data.begin(), data.end());
-                 }
-                 const auto columns = p.evaluation->x().size();
-                 p.evaluation->requireOutput(1, columns);
-                 py::array_t<double> out(columns);
-                 VectorSink sink({out.mutable_data(), columns});
-                 {
-                     py::gil_scoped_release unlock;
-                     std::lock_guard guard(p.mutex);
-                     (void)p.evaluation->vjp(w, 1, sink);
-                 }
-                 return out;
-             })
+        .def(
+            "constraint_jacobian",
+            [](const Point& point, const std::optional<std::vector<std::vector<std::size_t>>>& rowColumns)
+            { return std::make_shared<api::ConstraintJacobian>(*point.evaluation, rowColumns); },
+            py::arg("row_columns") = py::none())
+        .def("jvp", &jvp, py::arg("direction"), py::kw_only(), py::arg("out") = py::none())
+        .def("hessian_vector", &hessianVector, py::arg("weights"), py::arg("direction"))
+        .def("vjp", &vjp, py::arg("weights"), py::kw_only(), py::arg("out") = py::none())
+        .def(
+            "nodal_coordinate_gradient",
+            [](Point& point, std::int32_t response, const std::vector<std::int32_t>& nodes, std::size_t item)
+            {
+                const auto result = [&]
+                {
+                    py::gil_scoped_release unlock;
+                    std::lock_guard guard(point.mutex);
+                    return point.evaluation->nodalCoordinateGradient(response, nodes, item);
+                }();
+                const auto n = static_cast<py::ssize_t>(result.nodeIds.size());
+                return py::dict("node_ids"_a = py::array_t<std::int32_t>(n, result.nodeIds.data()),
+                                "values"_a = py::array_t<double>(std::vector<py::ssize_t>{n, 3}, result.values.data()),
+                                "report"_a = py::dict("analysis_perturbations"_a = result.report.analysisPerturbations,
+                                                      "shape_perturbations"_a = result.report.shapePerturbations,
+                                                      "factorisations"_a = result.report.factorisations,
+                                                      "solves"_a = result.report.solves));
+            },
+            py::arg("response_id"), py::arg("node_ids") = std::vector<std::int32_t>{}, py::arg("item") = 0)
         .def("gradients",
              [](Point& p)
              {
@@ -342,8 +610,11 @@ PYBIND11_MODULE(_native, m)
                  for (const auto& row : storage->constraints)
                      constraints.append(view(row, owner));
                  py::dict out("responses"_a = responses, "constraints"_a = constraints);
-                 out["report"] = py::dict("analysis_perturbations"_a = storage->report.analysisPerturbations,
-                                          "field_perturbations"_a = storage->report.fieldPerturbations);
+                 out["report"] =
+                     py::dict("factorisations"_a = storage->report.factorisations, "solves"_a = storage->report.solves,
+                              "analysis_perturbations"_a = storage->report.analysisPerturbations,
+                              "field_perturbations"_a = storage->report.fieldPerturbations,
+                              "shape_perturbations"_a = storage->report.shapePerturbations);
                  out["objective"] = storage->objective ? py::object(view(*storage->objective, owner)) : py::none();
                  return out;
              });

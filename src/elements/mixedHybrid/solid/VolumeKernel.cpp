@@ -796,12 +796,10 @@ std::vector<SolidPoint> VolumeKernel::gradients(const SolidPoint& r) const
     return out;
 }
 
-SolidResult<Matrix> VolumeKernel::geometric(std::span<const double> beta) const
+namespace
 {
-    SolidResult<Fields> tabulated = tabulateFields(m_geometry, m_stressDegree, m_pointsPerDirection);
-    if (!tabulated.ok())
-        return SolidResult<Matrix>::refused(tabulated.refusal());
-    const Fields& fields = tabulated.value();
+Matrix fullGeometric(const VolumeKernel& kernel, const Fields& fields, std::span<const double> beta)
+{
     const RulePoints& points = fields.points;
     const std::size_t count = points.reference.size();
     const std::size_t scalars = fields.functionCount + fields.bubbleFunctionCount;
@@ -811,7 +809,7 @@ SolidResult<Matrix> VolumeKernel::geometric(std::span<const double> beta) const
         gradient[m] = sideBySide(fields.functions[1 + m], fields.bubbles[1 + m]);
     std::vector<VoigtVector> stress(count);
     for (std::size_t g = 0; g < count; ++g)
-        stress[g] = stressAt(beta, points.reference[g]);
+        stress[g] = kernel.stressAt(beta, points.reference[g]);
     // G_ij = Σ_ab ∫ σ_ab N_i,a N_j,b, the same for the three components
     Matrix scalarG(scalars, scalars);
     Vector weights(count);
@@ -824,14 +822,75 @@ SolidResult<Matrix> VolumeKernel::geometric(std::span<const double> beta) const
             scalarG += transposeTimes(gradient[a], weightedRows(gradient[b], weights));
         }
     }
-    const std::size_t nq = m_parameterCount;
-    Matrix full(nq + m_bubbleCount, nq + m_bubbleCount);
+    const std::size_t nq = kernel.parameterCount();
+    Matrix full(nq + kernel.bubbleCount(), nq + kernel.bubbleCount());
     for (std::size_t i = 0; i < scalars; ++i)
         for (std::size_t j = 0; j < scalars; ++j)
             for (std::size_t c = 0; c < COMPONENTS; ++c)
                 full(COMPONENTS * i + c, COMPONENTS * j + c) = scalarG(i, j);
+    return full;
+}
+} // namespace
+
+SolidResult<Matrix> VolumeKernel::geometric(std::span<const double> beta) const
+{
+    SolidResult<Fields> tabulated = tabulateFields(m_geometry, m_stressDegree, m_pointsPerDirection);
+    if (!tabulated.ok())
+        return SolidResult<Matrix>::refused(tabulated.refusal());
+    const Fields& fields = tabulated.value();
+    const Matrix full = fullGeometric(*this, fields, beta);
+    const std::size_t nq = m_parameterCount;
     const Matrix reduced = reduceColumns(full, nq, m_bubbleOperator);
     return symmetricPart(reduceRows(reduced, nq, m_bubbleOperator));
+}
+
+SolidResult<Matrix> VolumeKernel::geometricPoissonRate(std::span<const double> beta, const SolidMaterial& material,
+                                                       double young) const
+{
+    auto tabulated = tabulateFields(m_geometry, m_stressDegree, m_pointsPerDirection);
+    if (!tabulated.ok())
+        return SolidResult<Matrix>::refused(tabulated.refusal());
+    const auto& fields = tabulated.value();
+    const auto basis = orthonormalStressBasis(fields.points, m_geometry.shape, m_stressDegree);
+    if (!basis.ok())
+        return SolidResult<Matrix>::refused(basis.refusal());
+    const auto gradients = projectedGradients(fields, weightedRows(basis.value().values, fields.points.weights));
+    const auto strains = projectedStrains(gradients);
+    const auto stresses = stressesOf(material, strains);
+    const auto n = m_stressFunctionCount, nq = m_parameterCount, nb = m_bubbleCount;
+    Matrix bubbleStrain(beta.size(), nb), bubbleStress(beta.size(), nb);
+    for (std::size_t c = 0; c < STRESS_COMPONENTS; ++c)
+    {
+        bubbleStrain.setBlock(c * n, 0, strains[c].block(0, nq, n, nb));
+        bubbleStress.setBlock(c * n, 0, stresses[c].block(0, nq, n, nb));
+    }
+    const auto factor = EquilibratedCholesky::factor(symmetricPart(transposeTimes(bubbleStrain, bubbleStress)));
+    if (!factor)
+        return SolidResult<Matrix>::refused("singular bubble stiffness in the solid Poisson derivative");
+    // With the bubbles fixed, sigma' = -D S' sigma. Apply it to each column of the
+    // stress operator and to the loaded state. Bubble equilibrium gives Kbb b' = -Bb^T sigma'.
+    Matrix trial(beta.size(), nq + 1);
+    for (std::size_t k = 0; k < n; ++k)
+        for (std::size_t j = 0; j <= nq; ++j)
+        {
+            const auto sigma = [&](std::size_t c)
+            { return j == nq ? beta[c * n + k] : m_stressOperator(c * n + k, j); };
+            for (std::size_t c = 0; c < STRESS_COMPONENTS; ++c)
+                for (std::size_t t = 0; t < STRESS_COMPONENTS; ++t)
+                {
+                    const double minusComplianceRate =
+                        t < 3 ? (sigma((t + 1) % 3) + sigma((t + 2) % 3)) / young : -2.0 * sigma(t) / young;
+                    trial(c * n + k, j) += material.stiffness[c][t] * minusComplianceRate;
+                }
+        }
+    const Matrix bubbleRate = factor->solve(transposeTimes(bubbleStrain, trial)) * -1.0;
+    Vector stressRate = bubbleStress * bubbleRate.column(nq);
+    for (std::size_t i = 0; i < beta.size(); ++i)
+        stressRate[i] += trial(i, nq);
+    const Matrix loaded = reduceColumns(fullGeometric(*this, fields, beta), nq, m_bubbleOperator);
+    const Matrix moving = transposeTimes(bubbleRate.block(0, 0, nb, nq), loaded.block(nq, 0, nb, nq));
+    const Matrix direct = reduceColumns(fullGeometric(*this, fields, stressRate), nq, m_bubbleOperator);
+    return symmetricPart(reduceRows(direct, nq, m_bubbleOperator) + moving + moving.transposed());
 }
 
 SolidResult<Vector> VolumeKernel::geometricGradient(std::span<const double> phi) const

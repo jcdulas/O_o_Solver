@@ -361,7 +361,9 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
     // The checks, the model, the differential stiffness of every element, the subcases.
     AnalysisModelOptions modelOptions;
     modelOptions.index = m_options.snapshotIndex;
-    const AnalysisModel model(snapshot, AnalysisKind::Buckling, budget, pool, cancellation, sink, modelOptions);
+    const AnalysisKind analysis =
+        m_options.trimPreloads.empty() ? AnalysisKind::Buckling : AnalysisKind::TrimPreloadedBuckling;
+    const AnalysisModel model(snapshot, analysis, budget, pool, cancellation, sink, modelOptions);
     const assembly::DofMap& dofMap = model.dofMap();
     const auto gSize = static_cast<std::size_t>(dofMap.gSetSize());
     const assembly::DifferentialStiffnessAssembler differential(model.elementSet(), dofMap);
@@ -432,7 +434,7 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
                                    base::concatenate({"StaticSubcaseSelection = ", std::to_string(*entry.staticSubcase),
                                                       " names no static subcase of the deck; correct it"})));
         }
-        else if (hasPreload(entry.subcase))
+        else if (hasPreload(entry.subcase) || m_options.trimPreloads.contains(entry.subcase.label))
             preload = d;
         else
             for (std::size_t p = d; p-- > 0;)
@@ -450,8 +452,11 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
                                            "subcase before it (StaticSubcaseSelection); add one"));
             continue;
         }
+        if (m_options.requiredPreload && deck[*preload].subcase.label != *m_options.requiredPreload)
+            throw std::invalid_argument("the buckling subcase selects a different static preload subcase");
         item.preloadIndex = *preload;
         item.plan = output::OutputPlan::forSubcase(snapshot, entry.subcase.tableId, sink);
+        item.plan.addRequired(m_options.requiredOutputs);
         if (item.plan.of(output::OutputKind::AppliedLoads).isRequested ||
             item.plan.of(output::OutputKind::GridPointForces).isRequested)
             sink.report(subcaseProblem(entry.subcase.label, base::Severity::Information, "output-not-produced",
@@ -476,7 +481,7 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
     {
         const bool isOwnPreload = std::any_of(cases.begin(), cases.end(), [d](const BucklingCase& item)
                                               { return item.preloadIndex == d && item.deckIndex == d; });
-        if (!deck[d].method || isOwnPreload)
+        if ((!deck[d].method || isOwnPreload) && !m_options.trimPreloads.contains(deck[d].subcase.label))
             staticOptions.subcases.push_back(deck[d].subcase.label);
     }
     for (const BucklingCase& item : cases)
@@ -487,7 +492,7 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
     staticOptions.kernel = m_options.kernel;
     staticOptions.cancellation = cancellation;
     staticOptions.monitor = m_options.monitor;
-    staticOptions.analysis = AnalysisKind::Buckling;
+    staticOptions.analysis = analysis;
     staticOptions.recoveryRangeElements = m_options.recoveryRangeElements;
     staticOptions.structures = m_options.structures;
     // The condensed path: the preload on it too, every unit recovered (each unit's differential stiffness
@@ -511,7 +516,19 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
         staticOptions.designStamps = m_options.designStamps;
     }
     results.timings.assembly += watch.lap();
-    results.preload = StaticSolution(snapshot, staticOptions).run(budget);
+    if (!staticOptions.subcases.empty())
+        results.preload = StaticSolution(snapshot, staticOptions).run(budget);
+    for (const auto& [label, displacements] : m_options.trimPreloads)
+    {
+        if (std::none_of(cases.begin(), cases.end(),
+                         [&](const BucklingCase& item) { return deck[item.preloadIndex].subcase.label == label; }))
+            continue;
+        if (displacements.size() != gSize)
+            throw std::invalid_argument("trim preload and buckling problem have different DOF layouts");
+        base::BudgetedBuffer<double> kept(budget, gSize, "buckling trim preload");
+        std::copy(displacements.begin(), displacements.end(), kept.data());
+        results.preload.keptDisplacements.push_back({label, std::move(kept)});
+    }
     results.timings.preload += watch.lap();
 
     const linalg::DenseKernels kernels(m_options.kernel, linalg::DenseKernelOptions{pool});

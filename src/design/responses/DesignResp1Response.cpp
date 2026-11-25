@@ -71,6 +71,7 @@ output::OutputKind outputKindOf(ResponseType type)
 {
     switch (type)
     {
+    case ResponseType::BucklingDisplacement:
     case ResponseType::Displacement:
     case ResponseType::DeflectionToThickness:
     case ResponseType::Rotation:
@@ -138,9 +139,10 @@ DesignResp1Response::DesignResp1Response(DesignResp1Definition definition, const
     const ResponseType type = m_definition.type;
     if (m_definition.mode)
     {
-        const bool isField = type == ResponseType::Displacement || type == ResponseType::Stress ||
-                             type == ResponseType::Strain || type == ResponseType::Force ||
-                             type == ResponseType::CompositeStress || type == ResponseType::CompositeStrain;
+        const bool isField = type == ResponseType::BucklingDisplacement || type == ResponseType::Displacement ||
+                             type == ResponseType::Stress || type == ResponseType::Strain ||
+                             type == ResponseType::Force || type == ResponseType::CompositeStress ||
+                             type == ResponseType::CompositeStrain;
         if (!isField || *m_definition.mode < 1)
             problems.push_back(problem(design_code::INVALID_RESPONSE, m_definition, "mode",
                                        "expected a positive vibration mode for a displacement, stress, strain or "
@@ -189,6 +191,7 @@ DesignResp1Response::DesignResp1Response(DesignResp1Definition definition, const
     case ResponseType::FractionalMass:
         resolveMassTargets(catalog, problems);
         break;
+    case ResponseType::BucklingDisplacement:
     case ResponseType::Displacement:
     case ResponseType::SpcForce:
         resolveGridTargets(snapshot, problems);
@@ -218,6 +221,11 @@ DesignResp1Response::DesignResp1Response(DesignResp1Definition definition, const
     case ResponseType::BucklingFactor:
         resolveEigen(problems);
         break;
+    case ResponseType::AeroPressure:
+    case ResponseType::AeroPressureCoefficient:
+    case ResponseType::AeroBoxForce:
+    case ResponseType::AeroBoxMoment:
+    case ResponseType::HingeMoment:
     case ResponseType::TrimVariable:
     case ResponseType::StabilityDerivative:
         resolveAeroelastic(problems);
@@ -231,6 +239,14 @@ DesignResp1Response::DesignResp1Response(DesignResp1Definition definition, const
 void DesignResp1Response::resolveAeroelastic(std::vector<base::Diagnostic>& problems)
 {
     const ResponseType type = m_definition.type;
+    if (isTrimLoadType(type))
+    {
+        if (!m_definition.attributeA || *m_definition.attributeA < 1 || !m_definition.propertyType.empty() ||
+            !m_definition.targets.empty() || !m_definition.componentName.empty())
+            problems.push_back(problem(design_code::INVALID_RESPONSE, m_definition, "attributeA",
+                                       "expected one positive aerodynamic box ID or control surface ID in attributeA"));
+        return;
+    }
     if (!m_definition.attributeA || *m_definition.attributeA < 1)
         problems.push_back(
             problem(design_code::INVALID_RESPONSE, m_definition, "attributeA",
@@ -295,6 +311,13 @@ void DesignResp1Response::aeroelasticValues(std::int32_t subcase, ResponseContex
                                "(SubcaseDesignConstrSelection, "
                                "subcases=)"}));
     const std::int32_t variable = m_definition.attributeA.value_or(0);
+    if (isTrimLoadType(type))
+    {
+        const auto index = context.trim->loadIndex(variable, type == ResponseType::HingeMoment);
+        values.items.push_back({subcase, variable, 0, 0});
+        values.values.push_back(trimLoadValue(type, *trimmed, index, trimmed->dynamicPressure));
+        return;
+    }
     const auto found = std::find_if(trimmed->variables.begin(), trimmed->variables.end(),
                                     [&](const solutions::TrimVariableValue& value) { return value.id == variable; });
     if (found == trimmed->variables.end())
@@ -780,7 +803,7 @@ void DesignResp1Response::addRequiredOutputs(
     std::array<output::OutputRequestPlan, output::OUTPUT_KIND_COUNT>& outputs) const
 {
     const ResponseType type = m_definition.type;
-    if (isGlobalType(type) || type == ResponseType::Compliance || isEigenType(type))
+    if (isGlobalType(type) || type == ResponseType::Compliance || isEigenType(type) || isAeroelasticType(type))
         return; // the compliance reads the external work, which every analysis gives; the roots are no output
     if (type == ResponseType::MeanDisplacement)
     {
@@ -1029,11 +1052,13 @@ void DesignResp1Response::evaluate(std::int32_t subcase, ResponseContext& contex
         append({0, 0, 0, 0}, massOfSelection(*context.snapshot, context) / initial);
         return;
     }
+    case ResponseType::BucklingDisplacement:
     case ResponseType::Displacement:
     case ResponseType::SpcForce:
     {
-        const char* kind = type == ResponseType::Displacement ? (mode == 0 ? "displacements" : "eigenvectors")
-                                                             : "singlePointConstrForces";
+        const char* kind = type == ResponseType::BucklingDisplacement ? "eigenvectors"
+                           : type == ResponseType::Displacement       ? (mode == 0 ? "displacements" : "eigenvectors")
+                                                                      : "singlePointConstrForces";
         for (const std::int32_t grid : m_grids)
             for (const std::int32_t component : m_components)
             {
@@ -1070,6 +1095,11 @@ void DesignResp1Response::evaluate(std::int32_t subcase, ResponseContext& contex
     case ResponseType::BucklingFactor:
         eigenValues(subcase, context, values);
         return;
+    case ResponseType::AeroPressure:
+    case ResponseType::AeroPressureCoefficient:
+    case ResponseType::AeroBoxForce:
+    case ResponseType::AeroBoxMoment:
+    case ResponseType::HingeMoment:
     case ResponseType::TrimVariable:
     case ResponseType::StabilityDerivative:
         aeroelasticValues(subcase, context, values);

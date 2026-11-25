@@ -26,7 +26,8 @@ enum class TargetKind
 {
     Property,
     Material,
-    Element
+    Element,
+    Trim
 };
 
 // How a relation gives its field value.

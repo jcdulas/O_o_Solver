@@ -55,6 +55,20 @@ DesignResp1;10;TIP;Displacement;;;1;;2
     assert problem.variables[0]["id"] == 1
     np.testing.assert_allclose(point.jvp([3.]), derivative[:, 0] * 3)
     np.testing.assert_allclose(point.vjp({10: [4.]}), derivative[0] * 4)
+    # More directions than the native block size. Rank-two input keeps its rank even for one direction.
+    directions = np.arange(41., dtype=np.float64).reshape(1, -1)
+    out = np.empty_like(directions)
+    assert point.jvp(directions, out=out) is out
+    np.testing.assert_allclose(out, derivative @ directions)
+    weights = directions.T.copy()
+    sums = np.empty_like(weights)
+    assert point.vjp({10: weights}, out=sums) is sums
+    np.testing.assert_allclose(sums, weights @ derivative)
+    with np.testing.assert_raises(ValueError):
+        point.jvp(directions, out=directions)
+    for invalid in (out[:, ::-1], out.astype(np.float32), out.ravel()):
+        with np.testing.assert_raises(ValueError):
+            point.jvp(directions, out=invalid)
     expected = 10 * 3 / (1000 * 2)
     np.testing.assert_allclose(point.responses[10], [expected])
     np.testing.assert_allclose(problem.evaluate([4.]).responses[10], [expected / 2])
@@ -67,3 +81,93 @@ DesignResp1;10;TIP;Displacement;;;1;;2
     gc.collect()
     assert not displacement.flags.writeable
     np.testing.assert_allclose(displacement[0], expected)
+
+    tetra = directory / "tetra.oos"
+    tetra.write_text("""[executive]
+SolutionSequence;101
+[case]
+SubcaseStart;1
+SinglePointConstrSelection;1
+StaticLoadSelection;2
+[model]
+Parameter;GeometryDeclarations;Given
+Parameter;CoupledMass;1
+Node;1;;0.;0.;0.
+Node;2;;1.;0.;0.
+Node;3;;0.;1.;0.
+Node;4;;0.;0.;1.
+SolidTetra;1;1;1;2;3;4
+SolidProp;1;1
+IsoMat;1;1000.;;0.23;2.
+SinglePointConstrList;1;123456;1;3;4
+SinglePointConstrList;1;23456;2
+PointForceLoad;2;2;;1.;1.;0.;0.
+DesignVar;1;RHO;2.;0.;4.
+DesignMatRelation1;1;IsoMat;1;density;;;;1;1.
+DesignResp1;10;MASS;Weight
+DesignResp1;11;JYY;Weight;;;5;5
+DesignResp1;12;VOL;Volume
+""", encoding="utf-8")
+    deck = oo_model.read_model(tetra)
+    for formulation in ("ClassicFormulation", "MixedHybridFormulation"):
+        problem = oo_solver.prepare_optimization(deck, formulation=formulation)
+        for rho in (0., 2.):
+            point = problem.evaluate([rho])
+            # Integrals of 1 and x² + z² on the unit tetrahedron.
+            np.testing.assert_allclose(point.jvp([1.]), [1 / 6, 1 / 30, 0.], atol=1e-12)
+
+# A strut restrains the wing tip. The trim sets the strut compression for the buckling subcase.
+wing = Path(__file__).resolve().parents[2] / "wasm/test/fixtures/trim-preloaded-wing.oos"
+trimmed = oo_solver.prepare_optimization(oo_model.read_model(wing), analysis={"aeroelastic": [1], "buckling": [2]})
+base = trimmed.evaluate([0.1])
+rates = base.gradients()["responses"]
+plus, minus = trimmed.evaluate([0.10001]), trimmed.evaluate([0.09999])
+for response in range(1, 8):
+    expected = (plus.responses[response] - minus.responses[response]) / 0.00002
+    np.testing.assert_allclose(rates[response][:, 0], expected, rtol=2e-4, atol=1e-10)
+
+np.testing.assert_allclose(base.jvp([1.]), [rates[i][0, 0] for i in range(1, 8)])
+np.testing.assert_allclose(base.vjp({6: [1.]}), rates[6][0])
+curvature = base.hessian_vector({4: [1.]}, [[1.]])
+assert curvature["report"]["uses_trim_tangents"]
+np.testing.assert_allclose(curvature["values"], (plus.gradients()["responses"][4] -
+                           minus.gradients()["responses"][4]) / 0.00002, rtol=2e-5)
+
+# Physical coordinate gradients are available even when the model has no design variables.
+wing_point = oo_solver.prepare_optimization(oo_model.read_model(wing.with_name("trim-rbe3-wing.oos")),
+    analysis={"aeroelastic": [1], "buckling": [2]}).evaluate([])
+for response, expected in [(4, -0.05032213), (5, -35.537126)]:
+    xyz = wing_point.nodal_coordinate_gradient(response, [6])
+    np.testing.assert_array_equal(xyz["node_ids"], [6])
+    assert xyz["values"].shape == (1, 3)
+    np.testing.assert_allclose(xyz["values"][0, 0], expected, rtol=1e-5)
+    assert xyz["report"]["analysis_perturbations"] == 0
+
+# Standalone coupling, with both the source model and the transfer released before reading the outputs.
+transfer = oo_solver.model_from_reader(oo_model.read_model(wing.with_name("trim-rbe3-wing.oos"))).aero_transfer()
+np.testing.assert_array_equal(transfer.node_ids, [1, 2, 3, 6])
+np.testing.assert_array_equal(transfer.box_ids, [100, 101, 102, 103])
+motion = np.sin(np.arange(1, 25, dtype=np.float64)).reshape(4, 6)
+forces = np.array([1., -2., 3., 5.])
+aero = transfer.box_motion(motion)
+loads = transfer.structural_loads(forces)
+with np.testing.assert_raises(ValueError):
+    transfer.box_motion(motion.T)
+with np.testing.assert_raises(ValueError):
+    transfer.structural_loads([0., np.inf, 0., 0.])
+del transfer
+gc.collect()
+assert loads.shape == (4, 6)
+np.testing.assert_allclose(loads[:, 2].sum(), 7., atol=1e-12)
+np.testing.assert_allclose((motion * loads).sum(), forces @ (aero["plunge"] - 0.125*aero["slope"]), atol=1e-12)
+
+coupling = oo_solver.model_from_reader(oo_model.read_model(wing.with_name("trim-rbe3-wing.oos"))).aero_transfer()
+state = coupling.solve_static(1, forces)
+modes = coupling.solve_modes(2)
+buckling = coupling.solve_buckling(2, state["preload"])
+assert np.any(np.abs(state["box_motions"][0]["plunge"]) > 1e-8)
+assert len(buckling["eigenvalues"][0]["rows"]) > 0
+del coupling
+q = modes["modal_basis"].generalized_loads(forces)
+assert len(q) == len(modes["box_motions"]) == 2
+np.testing.assert_allclose(modes["modal_basis"].generalized_loads(2 * forces), 2 * q)
