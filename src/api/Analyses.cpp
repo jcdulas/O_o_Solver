@@ -35,7 +35,7 @@ namespace oos::api
 namespace
 {
 
-constexpr const char* PROGRAM_VERSION = "0.2.2";
+constexpr const char* PROGRAM_VERSION = "0.2.3";
 
 solutions::AnalysisKind kindOf(Analysis analysis)
 {

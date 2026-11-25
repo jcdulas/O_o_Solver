@@ -6,7 +6,7 @@ the native CPU kernel selection and takes its model from the separately installa
 
 ## Analyses
 
-Run `python -m pip install oo-solver==0.2.2` to get the Solver and its `oo-model` dependency. For a development build from adjacent checkouts, run `python -m pip install ../O_o_Model .` from the Solver directory.
+Run `python -m pip install oo-solver==0.2.3` to get the Solver and its `oo-model` dependency. For a development build from adjacent checkouts, run `python -m pip install ../O_o_Model .` from the Solver directory.
 Extract `frequency-8.oos` from the [benchmark inputs](https://github.com/jcdulas/O_o_Solver/raw/refs/heads/main/docs/benchmarks/structural-comparison-inputs.zip). All three examples give about **28.7583 Hz** for the first bending mode.
 Initialize `reader = await loadOoModel()` and `solver = await loadOosSolver()` with the module imports in [Getting started](getting-started.md).
 This benchmark uses the optional OOS adapter. For C++, add [O_o_OOS](https://github.com/jcdulas/O_o_OOS) to the application build after finding `oo-solver`, and include `<oor/formats/oos.hpp>`, `<oos/api/ModelFromDeck.hpp>` and `<oos/api/Analyses.hpp>`. In Node.js, copy the downloaded input into the model module with `reader.writeFile("/work/frequency-8.oos", await readFile("frequency-8.oos"))` after importing `readFile` from `node:fs/promises`. The [in-memory example](getting-started.md#run-linear-statics) supplies the deck entirely through API calls.
