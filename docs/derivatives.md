@@ -4,7 +4,7 @@ The native optimization API evaluates declared design variables and responses th
 the same implementation. A native derivative can combine analytic element formulas, adjoint solves and numerical
 element differences; its report identifies the path used for the requested point and responses.
 
-Start with [JavaScript optimization](optimization.md) to declare a problem. Use
+Start with [the optimization API](optimization.md) to declare a problem. Use
 [external studies](external-optimization.md) for arbitrary Model edits or result queries: that route obtains
 derivatives by complete analysis differences.
 
@@ -98,9 +98,9 @@ try {
 } finally { problem.delete(); }
 ```
 
-**Python / native C++**
+**Python**
 
-Define the area relation and tip response 10 in the deck. Python exposes the first derivative; the second-order examples use JavaScript.
+Define the area relation and tip response 10 in the deck. Python and C++ use these deck declarations for both derivative orders.
 
 ```python
 from oo_solver import optimization_from_reader
@@ -108,6 +108,22 @@ from oo_solver import optimization_from_reader
 problem = optimization_from_reader(deck, analysis="statics")
 point = problem.evaluate(problem.initial_values)
 displacement_gradient = point.gradients()["responses"][10]
+curvature = point.hessian_vector({10: [1.]}, [1.])
+print(curvature["report"])
+```
+
+**C++20**
+
+```cpp
+const auto problem = oos::api::prepareOptimization(deck);
+const auto point = problem->evaluate(problem->problem().initialValues());
+const auto gradient = point->gradients({.responseIds = {10}});
+const auto& displacementGradient = gradient.responses.at(0).values;
+const std::array direction{1.0};
+const oos::design::ProductWeights weights{.rows = 1, .weights = {{10, {1.0}}}};
+std::vector<double> curvature;
+const auto report = point->hessianVector(weights, direction, 1, curvature);
+std::cout << report.hasHessianBlocks << " " << report.perturbedLinearisations;
 ```
 
 The [API reference](api.rst) includes the current TypeScript declarations, including mode selectors and report flags.

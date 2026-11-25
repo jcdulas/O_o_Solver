@@ -11,13 +11,22 @@ console.log(product.report.usesBucklingTangents, product.report.usesTrimTangents
 // An analytic coupled product reports perturbedLinearisations === 0.
 ```
 
-**Python / native C++**
+**Python**
 
 Numbers are NumPy arrays. Each key in the weights dictionary is a response ID.
 
 ```python
 product = point.hessian_vector({10: [1.]}, direction)
 print(product["report"]["uses_buckling_tangents"], product["report"]["uses_trim_tangents"])
+```
+
+**C++20**
+
+```cpp
+const oos::design::ProductWeights weights{.rows = 1, .weights = {{10, {1.0}}}};
+std::vector<double> product;
+const auto report = point->hessianVector(weights, direction, 1, product);
+std::cout << report.usesBucklingTangents << " " << report.usesTrimTangents;
 ```
 
 Both paths require linear sizing relations and closed first, second and mixed element rates. They assemble actions

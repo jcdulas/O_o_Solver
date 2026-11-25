@@ -13,7 +13,7 @@ Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembl
 | Interface | Install |
 | --- | --- |
 | JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.1/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.2/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
-| Python / native C++ | Run `python -m pip install oo-solver==0.2.2` to get the Solver and its `oo-model` dependency. |
+| Python | Run `python -m pip install oo-solver==0.2.2` to get the Solver and its `oo-model` dependency. |
 | C++20 / vcpkg | Add `oo-solver` from the [O_o vcpkg registry](https://github.com/jcdulas/O_o_vcpkg) and link `oos::api`. [Native CMake example](https://github.com/jcdulas/O_o_vcpkg/tree/main/examples/rod) |
 
 Applications can link an external optimizer to the [JavaScript, Python or C++ evaluation API](docs/optimization.md). The [client benchmark](docs/benchmarks/optimizer-api/README.md) exercises all three interfaces on identical inputs.
@@ -34,7 +34,7 @@ Here `f` contains one signed normal force per box in the order reported by the t
 
 ## Run linear statics
 
-Build a two-node rod in memory. Its length is 3, its area is 2, and its Young’s modulus is 1000. A force of 10 at the free end gives an axial displacement of `FL/(EA) = 0.015`. Both examples find the displacement by node ID.
+Build a two-node rod in memory. Its length is 3, its area is 2, and its Young’s modulus is 1000. A force of 10 at the free end gives an axial displacement of `FL/(EA) = 0.015`. All three examples find the displacement by node ID.
 
 **JavaScript / WebAssembly**
 
@@ -70,7 +70,7 @@ try {
 }
 ```
 
-**Python / native C++**
+**Python**
 
 ```python
 from oo_model import create_model
@@ -99,9 +99,61 @@ u = next(table for table in result["nodal_tables"] if table["kind"] == "displace
 print(u["values"][u["ids"].tolist().index(2), 0])  # 0.015
 ```
 
-JavaScript transfers typed tables between the Model and Solver WASM memories. Python transfers Arrow buffers within one process. The result arrays are available to the caller immediately after the solve.
+**C++20**
 
-Both interfaces accept `statics` (SOL 101), `modes` (SOL 103), `buckling` (SOL 105) and `aeroelastic` (SOL 144). They use the same classic and mixed element kernels.
+```cpp
+#include <oor/api/CardEdits.hpp>
+#include <oor/api/ControlEdits.hpp>
+#include <oos/api/Analyses.hpp>
+#include <oos/api/ModelFromDeck.hpp>
+
+#include <cmath>
+#include <iostream>
+
+using Field = oor::model::FieldValue;
+Field integer(int value) { return {Field::Kind::Integer, value, 0., {}}; }
+Field real(double value) { return {Field::Kind::Real, 0, value, {}}; }
+
+int main()
+{
+    auto deck = oor::api::Deck::createModel();
+    oor::api::setSolution(*deck, "LinearStatics");
+    const oor::api::ControlRecord controls[] = {
+        {"SinglePointConstrSelection", {"1"}}, {"DisplacementOutput", {"All"}},
+        {"SubcaseStart", {"1"}}, {"StaticLoadSelection", {"2"}}
+    };
+    oor::api::setCaseControl(*deck, controls);
+    const oor::api::CardInput cards[] = {
+        {"Node", {integer(1), {}, real(0), real(0), real(0)}},
+        {"Node", {integer(2), {}, real(3), real(0), real(0)}},
+        {"Rod2", {integer(1), integer(1), integer(1), integer(2)}},
+        {"RodProp", {integer(1), integer(1), real(2)}},
+        {"IsoMat", {integer(1), real(1000), {}, real(0.3), real(1)}},
+        {"SinglePointConstrList", {integer(1), integer(123456), integer(1)}},
+        {"SinglePointConstrList", {integer(1), integer(23456), integer(2)}},
+        {"PointForceLoad", {integer(2), integer(2), integer(0), real(10), real(1), real(0), real(0)}}
+    };
+    oor::api::insertCards(*deck, cards);
+    deck->applyDefaults();
+    const auto snapshot = oos::api::modelFromDeck(deck);
+    const auto result = oos::api::runAnalysis(*snapshot, oos::api::Analysis::Statics, {});
+    for (const auto& table : result.tables.nodalTables)
+        if (table.kind == "displacements")
+            for (std::size_t row = 0; row < table.rowCount(); ++row)
+                if (table.ids[row] == 2)
+                {
+                    const double displacement = table.values[6 * row];
+                    std::cout << "Axial displacement at node 2: " << displacement << '\n';
+                    return std::abs(displacement - 0.015) < 1e-12 ? 0 : 1;
+                }
+    std::cerr << "Missing displacement at node 2\n";
+    return 1;
+}
+```
+
+JavaScript transfers typed tables between the Model and Solver WASM memories. Python and C++ transfer Arrow buffers within one process. The result arrays are available to the caller immediately after the solve.
+
+All three interfaces support `statics` (SOL 101), `modes` (SOL 103), `buckling` (SOL 105) and `aeroelastic` (SOL 144). They use the same classic and mixed element kernels.
 
 JavaScript also exposes condensation, streamed solutions, external units and superelements. The [API reference](docs/api.rst) describes these advanced analysis settings and the native Python entry points.
 
@@ -140,14 +192,14 @@ card. A choice applies to all elements of one card type. The model sets it with
 
 A program can override that choice with
 `solver.modelFromReader(oor, model, { elementFormulations: { ShellQuad4: "ClassicFormulation" } })`.
-In Python, set a per-card choice in the input model before calling `model_from_reader(deck)`.
+In Python and C++, set the per-card choice in the deck before calling `model_from_reader(deck)` or `oos::api::modelFromDeck(deck)`, respectively.
 Card names must match `solver.elementFormulations()` exactly. Unknown cards and unavailable formulations
 are reported before a calculation. Details: [src/elements/README.md](src/elements/README.md).
 
 `MixedHybridFormulation` is chosen for the whole model, never for one card: every shell, line and solid card takes it
 together, with `Parameter;ElementFormulation;MixedHybridFormulation` or
 `solver.modelFromReader(oor, model, { elementFormulation: "MixedHybridFormulation", formulationGeometry: {...} })`.
-In Python use `model_from_reader(deck, formulation="MixedHybridFormulation")` and put geometry declarations in the deck.
+In Python use `model_from_reader(deck, formulation="MixedHybridFormulation")` and in C++ use `oos::api::modelFromDeck(deck, {.elementFormulation = "MixedHybridFormulation"})`. Both read geometry declarations from the deck.
 Its shells and solids read their geometry from the mesh. The model's `ShellNormalAngle` decides where the surface
 folds, and the declarations correct it edge by edge (`formulationGeometry`, or the `SurfaceEdge`, `SurfaceFacet` and
 `SurfaceLine` cards of the deck: smooth, sharp and raw edges, raw elements, mesh lines); a declaration is mandatory,

@@ -21,7 +21,8 @@ def model_from_reader(deck, *, formulation=None):
     builder.versions(*deck.versions[:2])
     builder.table("nodes", deck.card_table("nodes", ["id", "positionFrameId", "displacementFrameId",
                                                     "permanentConstraints", "superelementId", "xyzGlobal"]))
-    builder.rotations(deck.displacement_rotations())
+    if getattr(deck, "has_displacement_frames", True):
+        builder.rotations(deck.displacement_rotations())
     points = deck.card_types("points")
     scalar = [p for p in points if p in ("ScalarPoint", "ExtraPoint")]
     if scalar:

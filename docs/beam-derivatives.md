@@ -75,9 +75,9 @@ point.delete();
 problem.delete();
 ```
 
-**Python / native C++**
+**Python**
 
-Define the beam station relation and response 10 in the deck. Python exposes the first derivative; the second-order examples use JavaScript.
+Define the beam station relation and response 10 in the deck. Python and C++ use these deck declarations for both derivative orders.
 
 ```python
 from oo_solver import optimization_from_reader
@@ -85,6 +85,22 @@ from oo_solver import optimization_from_reader
 problem = optimization_from_reader(deck, analysis="statics")
 point = problem.evaluate(problem.initial_values)
 displacement_gradient = point.gradients()["responses"][10]
+curvature = point.hessian_vector({10: [1.]}, [1.])
+print(curvature["report"])
+```
+
+**C++20**
+
+```cpp
+const auto problem = oos::api::prepareOptimization(deck);
+const auto point = problem->evaluate(problem->problem().initialValues());
+const auto gradient = point->gradients({.responseIds = {10}});
+const auto& displacementGradient = gradient.responses.at(0).values;
+const std::array direction{1.0};
+const oos::design::ProductWeights weights{.rows = 1, .weights = {{10, {1.0}}}};
+std::vector<double> curvature;
+const auto report = point->hessianVector(weights, direction, 1, curvature);
+std::cout << report.hasHessianBlocks << " " << report.perturbedLinearisations;
 ```
 
 ## Formulation and implementation

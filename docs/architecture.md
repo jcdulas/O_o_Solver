@@ -7,7 +7,7 @@ through the public entry points and shows where the implementation responsibilit
 
 In JavaScript, Model and Solver are separate WASM modules. In Python, `oo_model` and
 `oo_solver` run in one CPython process. `model_from_reader(deck)` imports Arrow buffers
-through release callbacks, and result arrays retain their native owner. The diagram below
+through release callbacks, and result arrays retain their native owner. In C++, `oos::api::modelFromDeck(deck)` retains the exported buffers and `oos::api::runAnalysis` returns the result tables. The diagram below
 shows the WebAssembly transport.
 
 ![Two independent module memories exchange table-package bytes and result arrays through JavaScript.](images/reader-solver-boundary.svg)

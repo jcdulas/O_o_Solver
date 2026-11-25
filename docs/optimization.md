@@ -1,12 +1,12 @@
 # External optimizer API for JavaScript, Python and C++
 
-The examples assume a loaded model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_model.read_model`. See [Getting started](getting-started.md) for package setup.
+The examples assume a loaded model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_model.read_model`. In C++, `deck` is a `std::shared_ptr<oor::api::Deck>`. See [Getting started](getting-started.md) for package setup.
 
 For model edits and result fields beyond native design declarations, see
 [external optimization](external-optimization.md). It covers all four solution sequences, generic Model card and
 case-control parameters, numerical derivatives, parallel workers and accepted-point archives.
 
-The application chooses the next point, convergence rules and line search. JavaScript calls the WebAssembly solver and Python calls the native solver to evaluate the same model-defined design variables, responses and first derivatives.
+The application chooses the next point, convergence rules and line search. JavaScript calls the WebAssembly solver. Python and C++ call the native solver to evaluate the same model-defined design variables, responses and first derivatives.
 
 The [derivative coverage guide](derivatives.md) summarizes first- and second-order paths for all four solutions,
 their numerical fallbacks and the report fields that identify the calculation actually used.
@@ -97,6 +97,18 @@ point.jvp(directions, out=jv)             # reuse a writable C-contiguous float6
 jt = point.vjp({10: np.array([[1.], [2.]])})  # (weighted sums, variables)
 ```
 
+**C++20**
+
+```cpp
+const std::array directions{1., 0., 0., 1.};
+SingleBlockProduct jv, jt;
+const auto forward = point->jvp(directions, 2, 2, jv);
+const oos::design::ProductWeights weights{.rows = 2, .weights = {{10, {1., 2.}}}};
+const auto adjoint = point->vjp(weights, 2, jt);
+```
+
+The C++ examples use [single_block_product.hpp](examples/single_block_product.hpp) to copy one row-major product block into a vector. Set the block size to the requested number of directions or weight rows.
+
 A one-dimensional Python argument keeps the existing vector result. In a batched VJP each response's
 weights have shape `(sums, items)`. JVP input and output buffers must be disjoint. The C++ equivalents
 accept row-major spans and a product sink. Python and JavaScript both enter the native kernel once per batch.
@@ -136,7 +148,7 @@ try {
 }
 ```
 
-**Python / native C++**
+**Python**
 
 Declare responses 101 and 102, the objective and the constraint in the input deck.
 
@@ -146,6 +158,15 @@ from oo_solver import optimization_from_reader
 problem = optimization_from_reader(deck)
 point = problem.evaluate(problem.initial_values)
 print(point.objective, point.constraints, point.gradients()["objective"])
+```
+
+**C++20**
+
+```cpp
+const auto problem = oos::api::prepareOptimization(deck);
+const auto point = problem->evaluate(problem->problem().initialValues());
+const auto values = point->optimizerValues();
+const auto objectiveGradient = point->gradients().objective;
 ```
 
 The model must contain its design variables and relations. Declarations supplied by JavaScript are appended to those
@@ -212,14 +233,27 @@ const lagrangian = point.lagrangianWeights(objectiveFactor, constraintMultiplier
 const lagrangianProduct = point.hessianVector(lagrangian, direction);
 ```
 
-**Python / native C++**
+**Python**
 
 ```python
 jt_w = point.vjp({102: [1.0]})
 j_v = point.jvp(direction)
+hv = point.hessian_vector({102: [1.]}, direction)
 ```
 
-The Hessian and Lagrangian methods shown above are specific to the JavaScript interface.
+**C++20**
+
+```cpp
+SingleBlockProduct jv, jt;
+const oos::design::ProductWeights weights{.rows = 1, .weights = {{102, {1.0}}}};
+const auto forward = point->jvp(direction, 1, 1, jv);
+const auto adjoint = point->vjp(weights, 1, jt);
+std::vector<double> hv;
+const auto report = point->hessianVector(weights, direction, 1, hv);
+const auto denseHessian = point->hessian(weights);
+```
+
+JavaScript also constructs response weights from objective and constraint multipliers. Python and C++ accept explicit item weights for Hessian-vector products.
 
 A dense weight array has `rows × response.itemCount` entries. The sparse alternative for one response is
 `{rowStart, items, values}`: `rowStart` has `rows + 1` entries, starts at zero and ends at the entry count;
@@ -354,7 +388,7 @@ is substituted. Check derivatives at representative points before relying on a r
 
 ## Save the accepted design
 
-For variables defined in the model, pass their explicit IDs in solver order:
+For variables defined in the model, pass their explicit IDs in solver order. For the C++ export below, include `<oor/api/Design.hpp>` and `<oor/formats/oos.hpp>` and link the optional OOS adapter (`oor::oos`).
 
 **JavaScript / WebAssembly**
 
@@ -364,12 +398,24 @@ oor.applyDesignPoint(deck, ids, acceptedX);
 const finalModelText = deck.toModelText();
 ```
 
-**Python / native C++**
+**Python**
 
 ```python
 ids = [v["id"] for v in problem.variables]
 accepted = deck.with_design_point(ids, accepted_x)
 accepted.write_model("accepted.oos")
+```
+
+**C++20**
+
+```cpp
+const auto& model = problem->problem().model();
+std::vector<std::int32_t> ids;
+for (const auto index : model.independentIndices())
+    ids.push_back(model.variables()[index].id);
+auto accepted = deck->copy();
+const auto update = oor::api::applyDesignPoint(*accepted, ids, acceptedX);
+const auto warnings = oor::formats::oos::write(*accepted, "accepted.oos");
 ```
 
 Model applies links, field changes and supported grid moves atomically. It rejects variable bound violations and,
@@ -389,4 +435,4 @@ updates. A JavaScript iteration also reaches the active displacement bound and s
 
 
 The [trim and buckling example](external-optimization.md#trim-loads-and-trim-preloaded-buckling) shows how to request
-a signed box pressure, hinge moment, load factor and modal displacement on one design point in JavaScript and Python.
+a signed box pressure, hinge moment, load factor and modal displacement on one design point in JavaScript, Python and C++.

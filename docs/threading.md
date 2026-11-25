@@ -32,7 +32,7 @@ The checks run real tasks on distinct threads, nested batches, task exceptions a
 compare statics, modes, gradients and a Hessian-vector product with a one-thread reference. Build the optional C++
 checks with `OOS_BUILD_WASM_TESTS=ON` when configuring without the preset.
 
-## JavaScript interface
+## Select a thread count
 
 **JavaScript / WebAssembly**
 
@@ -47,13 +47,23 @@ const results = solver.run(model, "statics", { threads: 4 });
 const problem = solver.createOptimization(model, declarations, { threads: 4 });
 ```
 
-**Python / native C++**
+**Python**
 
 ```python
 from oo_solver import model_from_reader, optimization_from_reader
 
 result = model_from_reader(deck).run("statics", threads=4)
 problem = optimization_from_reader(deck, threads=4)
+```
+
+**C++20**
+
+```cpp
+const auto model = oos::api::modelFromDeck(deck);
+const auto result = oos::api::runAnalysis(*model, oos::api::Analysis::Statics, {.threads = 4});
+oos::api::OptimizationSettings settings;
+settings.threads = 4;
+const auto problem = oos::api::prepareOptimization(deck, settings);
 ```
 
 `threads` counts the caller and its C++ workers: 4 means the calling worker plus 3 C++ workers. Without an explicit
@@ -90,9 +100,28 @@ worker.onmessage = ({ data }) => {
 };
 ```
 
-**Python / native C++**
+**Python**
 
-Browser Workers belong to the JavaScript host. In CPython, a call such as `model.run("statics", threads=4)` releases the GIL during the C++ solve.
+In CPython the native solve releases the GIL. A host thread can submit the solve and collect the result later.
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+with ThreadPoolExecutor(max_workers=1) as executor:
+    pending = executor.submit(model.run, "statics", threads=4)
+    # The calling thread can do other work here.
+    result = pending.result()
+```
+
+**C++20**
+
+```cpp
+auto pending = std::async(std::launch::async, [model] {
+    return oos::api::runAnalysis(*model, oos::api::Analysis::Statics, {.threads = 4});
+});
+// The calling thread can do other work here.
+const auto result = pending.get();
+```
 
 The [worker example](../wasm/examples/threaded-worker.js) reads and solves a model, then deletes its handles. Its
 relative imports expect the two repositories beside each other. For an optimization, create the problem and register

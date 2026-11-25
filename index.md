@@ -2,14 +2,14 @@
 
 Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembly), Python or native C++20. An application builds a deck with O_o_Model, passes it to the Solver and reads result arrays directly.
 
-**[Published documentation](https://jcdulas.github.io/O_o_Solver/)** · [JavaScript / WASM releases](https://github.com/jcdulas/O_o_Solver/releases) · [Python wheels on PyPI](https://pypi.org/project/oo-solver/)
+**[Published documentation](https://jcdulas.github.io/O_o_Solver/)** · [JavaScript / WASM releases](https://github.com/jcdulas/O_o_Solver/releases) · [Python wheels on PyPI](https://pypi.org/project/oo-solver/) | [C++ packages for vcpkg](https://github.com/jcdulas/O_o_vcpkg)
 
 ## Start here
 
-- [Getting started](docs/getting-started.md): install either package and run the same example in JavaScript and Python.
-- [JavaScript and Python analysis examples](docs/python.md) cover modal frequencies and optimization gradients.
+- [Getting started](docs/getting-started.md): install the packages and run the same example in JavaScript, Python and C++.
+- [JavaScript, Python and C++ analysis examples](docs/python.md) cover modal frequencies and optimization gradients.
 - [Project overview](README.md): capabilities, repository layout and build commands.
-- [API reference](docs/api.rst): JavaScript and Python operations, TypeScript declarations and C++ headers.
+- [API reference](docs/api.rst): JavaScript, Python and C++ operations, TypeScript declarations and C++ headers.
 - [WebAssembly threads](docs/threading.md): shared-memory builds, runtime settings and browser Workers.
 - [Couple an external aerodynamic solver](docs/external-aeroelastic-coupling.md) with SOL 101, 103 and 105, or use the built-in SOL 144 trim. The RBE3 wing example gives results for JavaScript, Python and C++.
 - [External optimizer API for JavaScript, Python and C++](docs/optimization.md) covers retained points, batched derivatives and CSR callbacks.
@@ -41,7 +41,7 @@ Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembl
 | [O_o_Model](https://github.com/jcdulas/O_o_Model/blob/main/index.md) | Model records, model queries and result storage |
 | [O_o_Solver](https://github.com/jcdulas/O_o_Solver/blob/main/index.md) | Model snapshots, finite element analyses and result arrays |
 
-JavaScript transfers typed table packages between the two WASM memories. Python passes Arrow buffers within the same process. The Solver returns arrays of results to the caller.
+JavaScript transfers typed table packages between the two WASM memories. Python and C++ pass Arrow buffers within the same process. The Solver returns arrays of results to the caller.
 
 ~~~{toctree}
 :hidden:

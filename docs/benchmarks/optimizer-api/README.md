@@ -14,10 +14,10 @@ For JavaScript set `OOR_READER_DIST` and `OOS_SOLVER_DIST` to the package direct
 python docs/benchmarks/optimizer-api/fixtures.py build/optimizer-fixtures
 cmake -S docs/benchmarks/optimizer-api -B build/optimizer-client -DCMAKE_BUILD_TYPE=Release
 cmake --build build/optimizer-client --config Release
-build/optimizer-client/optimizer_api build/optimizer-fixtures/rod.json
-build/optimizer-client/optimizer_api build/optimizer-fixtures/panel.json
 node docs/benchmarks/optimizer-api/js-client.mjs build/optimizer-fixtures/rod.json build/optimizer-fixtures/panel.json
 python docs/benchmarks/optimizer-api/python_client.py build/optimizer-fixtures/rod.json build/optimizer-fixtures/panel.json
+build/optimizer-client/optimizer_api build/optimizer-fixtures/rod.json
+build/optimizer-client/optimizer_api build/optimizer-fixtures/panel.json
 ```
 
 The timers exclude fixture I/O and model editing. They separate preparation, evaluation, the first complete gradient,

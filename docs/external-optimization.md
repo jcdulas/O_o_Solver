@@ -1,6 +1,6 @@
 # Optimization controlled by an external application
 
-The examples assume a loaded model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_model.read_model`. See [Getting started](getting-started.md) for package setup.
+The examples assume a loaded model named `deck`. In JavaScript, `oor` and `solver` are the loaded WASM modules. In Python, `deck` comes from `oo_model.read_model`. In C++, `deck` is a `std::shared_ptr<oor::api::Deck>`. Include `<oos/api/Capabilities.hpp>` for the catalogue, and `<oor/formats/oos.hpp>` for the file-based parallel example. See [Getting started](getting-started.md) for package setup.
 
 An application owns the optimizer, trial points, acceptance rule and convergence test. Model owns the editable
 model; Solver owns analysis snapshots and evaluates SOL 101, 103, 105 and 144. There are two entry points:
@@ -12,6 +12,8 @@ model; Solver owns analysis snapshots and evaluates SOL 101, 103, 105 and 144. T
   Use this for model changes or output fields outside the native design model.
 
 The two routes share Model and Solver packages. Neither route chooses a design point for the application.
+
+After a coordinate edit, build a new snapshot of the edited deck. Retained snapshots and evaluations keep their original geometry and gradients. The transfer automatically uses implicit identity rotations when all nodal displacements are in the basic frame. With local displacement frames it transfers the rotations for the edited geometry. The Model guide measures the first snapshot and successive rebuilds on a nodal mesh and a shell patch. [Snapshot benchmarks](https://jcdulas.github.io/O_o_Model/docs/model-clients.html#rebuilding-after-coordinate-edits)
 
 ## Inspect support before building an optimizer
 
@@ -29,7 +31,7 @@ try {
 const readerSupport = oor.designCapabilities(deck); // editable cards and Model design diagnostics
 ```
 
-**Python / native C++**
+**Python**
 
 Python exposes the capability catalogue on the prepared problem. The JavaScript preflight report additionally checks declarations before problem construction.
 
@@ -39,6 +41,18 @@ from oo_solver import optimization_from_reader
 deck.validate_design()
 problem = optimization_from_reader(deck)
 print(problem.variables, problem.capabilities["analyses"])
+```
+
+**C++20**
+
+```cpp
+const auto snapshot = oos::api::modelFromDeck(deck);
+const auto catalogue = oos::api::optimizationCapabilities(snapshot.get());
+for (const auto& entry : catalogue.analyses)
+    std::cout << entry.solution << " " << entry.analysis << '\n';
+const auto support = oos::api::checkSupport(*snapshot, oos::api::Analysis::Statics);
+for (const auto& refusal : support.refusals)
+    std::cerr << refusal.message << '\n';
 ```
 
 `checkOptimization` checks construction and analysis support without solving. It cannot promise convergence or a
@@ -96,7 +110,7 @@ try {
 } finally { study.delete(); }
 ```
 
-**Python / native C++**
+**Python**
 
 For an externally supplied area and load, evaluate the same tip response on a trial copy. Gradients through `optimization_from_reader` require corresponding design cards.
 
@@ -109,6 +123,21 @@ trial.set_card_value("PointForceLoad", 2, "magnitude", 10.0)
 run = model_from_reader(trial).run("statics", subcases=[1])
 u = next(t for t in run["nodal_tables"] if t["kind"] == "displacements")
 tip = u["values"][u["ids"].tolist().index(2), 0]
+```
+
+**C++20**
+
+```cpp
+auto trial = deck->copy();
+oor::api::setCardValue(*trial, "RodProp", 1, "area", "2.0");
+oor::api::setCardValue(*trial, "PointForceLoad", 2, "magnitude", "10.0");
+const auto model = oos::api::modelFromDeck(trial);
+const auto run = oos::api::runAnalysis(*model, oos::api::Analysis::Statics, {.subcases = {1}});
+for (const auto& table : run.tables.nodalTables)
+    if (table.kind == "displacements")
+        for (std::size_t row = 0; row < table.rowCount(); ++row)
+            if (table.ids[row] == 2)
+                std::cout << table.values[6 * row] << '\n';
 ```
 
 Card targets accept a persistent `key`, an `id`, a named field or a one-based raw slot, and a part descriptor. Case
@@ -134,11 +163,24 @@ const hooks = { responses: {
 // A response with { source: "callback", callback: "stressCost", id: 20 } calls this hook.
 ```
 
-**Python / native C++**
+**Python**
 
 ```python
 stress_cost = max(t["values"].max() for t in run["element_tables"]
                   if t["kind"] == "stress" and t["values"].size)
+```
+
+**C++20**
+
+```cpp
+std::optional<double> stressCost;
+for (const auto& table : run.tables.elementTables) {
+    if (table.kind != "stress") continue;
+    for (const double value : table.values.span())
+        if (!stressCost || value > *stressCost) stressCost = value;
+}
+if (!stressCost) throw std::runtime_error("request element stress output");
+std::cout << *stressCost;
 ```
 
 Request stress output in the model so the reduction has data.
@@ -164,11 +206,48 @@ const problem = solver.optimizationFromReader(oor, deck, {
 });
 ```
 
-**Python / native C++**
+**Python**
 
-The helper that derives a shape basis from an auxiliary solve is exposed in JavaScript. In Python, supply the shape variables and relations in the deck before calling `optimization_from_reader(deck)`.
+The native examples assume nodes 2 and 3 use basic displacement coordinates (CD = 0) and the auxiliary subcase requests displacement output. For other output frames, transform each translation to the basic frame before creating the shape relation. The target deck already contains the design responses.
 
-The basis converts displacement components into the basic frame. The auxiliary solve and Model geometry lookup run
+```python
+from oo_solver import model_from_reader, prepare_optimization
+
+aux = model_from_reader(auxiliary_deck).run("statics", subcases=[1])
+u = next(t for t in aux["nodal_tables"] if t["kind"] == "displacements")
+trial = deck.copy()
+trial.add_card("DesignVar", [7, "SHAPE", 0., -1., 1.])
+for node in (2, 3):
+    row = u["ids"].tolist().index(node)
+    trial.add_card("DesignNodeMove", [7, node, 0, 1., *u["values"][row, :3].tolist()])
+problem = prepare_optimization(trial)
+```
+
+**C++20**
+
+```cpp
+// integer() and real() construct typed fields as in Getting started.
+auto trial = deck->copy();
+const auto auxiliary = oos::api::modelFromDeck(auxiliaryDeck);
+const auto aux = oos::api::runAnalysis(*auxiliary, oos::api::Analysis::Statics, {.subcases = {1}});
+std::map<int, std::array<double, 3>> translations;
+for (const auto& table : aux.tables.nodalTables)
+    if (table.kind == "displacements")
+        for (std::size_t i = 0; i < table.rowCount(); ++i)
+            translations[table.ids[i]] = {table.values[6*i], table.values[6*i+1], table.values[6*i+2]};
+const Field label{Field::Kind::Text, 0, 0., "SHAPE"};
+std::vector<oor::api::CardInput> cards{
+    {"DesignVar", {integer(7), label, real(0), real(-1), real(1)}}};
+for (int node : {2, 3}) {
+    const auto [x, y, z] = translations.at(node);
+    cards.push_back({"DesignNodeMove", {integer(7), integer(node), integer(0),
+                                        real(1), real(x), real(y), real(z)}});
+}
+oor::api::insertCards(*trial, cards);
+const auto problem = oos::api::prepareOptimization(trial);
+```
+
+The JavaScript helper converts displacement components into the basic frame. The auxiliary solve and Model geometry lookup run
 once; later native evaluations consume the typed grid/direction arrays.
 
 ## Parallel evaluations and interruption
@@ -191,7 +270,7 @@ try {
 } finally { pool.close(); }
 ```
 
-**Python / native C++**
+**Python**
 
 For independent model files, schedule each solve in its own process. The worker-pool timeout and cancellation protocol above belongs to JavaScript.
 
@@ -207,6 +286,19 @@ def first_hz(path):
 if __name__ == "__main__":
     with ProcessPoolExecutor(max_workers=2) as pool:
         print(list(pool.map(first_hz, ["wing-a.oos", "wing-b.oos"])))
+```
+
+**C++20**
+
+```cpp
+const auto firstHz = [](const char* path) {
+    const auto model = oos::api::modelFromDeck(oor::formats::oos::read(path));
+    const auto modes = oos::api::runAnalysis(*model, oos::api::Analysis::Modes, {});
+    return modes.eigenvalues.at(0).rows.at(0).cycles;
+};
+auto a = std::async(std::launch::async, firstHz, "wing-a.oos");
+auto b = std::async(std::launch::async, firstHz, "wing-b.oos");
+std::cout << a.get() << " " << b.get();
 ```
 
 Each worker loads its own Model and Solver memories. `evaluateMany` queues points with backpressure; results are
@@ -235,7 +327,7 @@ try {
 } finally { accepted.delete(); archive.delete(); }
 ```
 
-**Python / native C++**
+**Python**
 
 Python reopens the accepted model from the same archive. The serialized JavaScript study state and mode-tracking helpers are specific to the WASM wrapper.
 
@@ -245,6 +337,14 @@ from oo_solver import optimization_from_reader
 
 accepted = read_model("accepted.ooh5")
 problem = optimization_from_reader(accepted)  # uses design cards in the model
+```
+
+**C++20**
+
+```cpp
+// Link the OOH5 adapter (oor::ooh5) and include <oor/formats/ooh5.hpp>.
+const auto accepted = oor::formats::ooh5::read("accepted.ooh5");
+const auto problem = oos::api::prepareOptimization(accepted); // reads the archived design cards
 ```
 
 The study definition is stored as the Model document `oos.optimization.study`. Model preserves such documents
@@ -288,7 +388,7 @@ try {
 } finally { problem.delete(); }
 ```
 
-**Python / native C++**
+**Python**
 
 ```python
 from oo_solver import prepare_optimization
@@ -299,7 +399,21 @@ rates = point.gradients()["responses"]
 print(rates[4], rates[5])  # hinge moment and buckling factor
 ```
 
-The [wing model](../wasm/test/fixtures/trim-preloaded-wing.oos) used by both examples has one thickness variable.
+**C++20**
+
+```cpp
+oos::api::OptimizationSettings settings;
+settings.analyses.statics.reset();
+settings.analyses.aeroelastic = std::vector<std::int32_t>{1};
+settings.analyses.buckling = std::vector<std::int32_t>{2};
+const auto problem = oos::api::prepareOptimization(deck, settings);
+const auto point = problem->evaluate({0.1});
+const auto gradients = point->gradients({.responseIds = {4, 5}});
+for (const auto& row : gradients.responses)
+    std::cout << row.id << " " << row.values.at(0) << '\n';
+```
+
+The [wing model](../wasm/test/fixtures/trim-preloaded-wing.oos) used by all three examples has one thickness variable.
 To design dynamic pressure as well, append the two records below. They add a variable in the model's pressure
 units and bind it to trim set 5. The native relation uses `targetKind: "trim"`, `targetCard: "AeroTrim"`,
 `targetId: 5` and `field: "dynamicPressure"`.
@@ -332,7 +446,7 @@ const [dx, dy, dz] = g.values.subarray(0, 3);       // derivatives at node 6
 console.log(g.nodeIds, dx, dy, dz, g.report.analysisPerturbations);
 ```
 
-**Python / native C++**
+**Python**
 
 ```python
 g = point.nodal_coordinate_gradient(4, [6, 4])
@@ -344,7 +458,7 @@ print(g["node_ids"], dx, dy, dz, g["report"]["analysis_perturbations"])
 
 ```cpp
 const std::array<std::int32_t, 2> nodes{6, 4};
-const auto g = point.nodalCoordinateGradient(4, nodes);
+const auto g = point->nodalCoordinateGradient(4, nodes);
 const double dMomentDx6 = g.values[0];
 ```
 

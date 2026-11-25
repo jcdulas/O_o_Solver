@@ -131,6 +131,7 @@ export class OosSolver {
   constructor(core, threads = 1) {
     this.core = core;
     this.defaultThreads = threads;
+    this.readerCatalogues = new WeakMap();
   }
 
   threading() { return { ...this.core.threadingInfo(), defaultThreads: this.defaultThreads }; }
@@ -223,11 +224,18 @@ export class OosSolver {
       }
       const versions = reader.modelVersions(deck);
       input.setVersions(versions.structure, versions.content);
-      input.setSourceCards(Object.entries(deck.cardCounts()).map(([card, count]) => ({ card, count })));
-      const catalogue = new Map(oor.queryCatalogue().map((query) => [query.name, query]));
+      const counts = deck.cardCounts();
+      input.setSourceCards(Object.entries(counts).map(([card, count]) => ({ card, count })));
+      let catalogue = this.readerCatalogues.get(reader);
+      if (!catalogue) {
+        catalogue = reader.queryParameterNames
+          ? new Map(Object.entries(reader.queryParameterNames()))
+          : new Map(oor.queryCatalogue().map(query => [query.name, query.parameters.map(p => p.name)]));
+        this.readerCatalogues.set(reader, catalogue);
+      }
       const hasQuery = (name) => catalogue.has(name);
       const takesParameter = (name, parameter) =>
-        hasQuery(name) && catalogue.get(name).parameters.some((entry) => entry.name === parameter);
+        catalogue.get(name)?.includes(parameter) ?? false;
       const query = (name, args = {}) => oor.runQuery(name, { deck, args });
       const packageOf = (table) => {
         try {
@@ -240,7 +248,8 @@ export class OosSolver {
 
       // The grid points, their displacement systems, and the scalar points.
       putTable("nodes", packageOf(reader.cardTable(deck, "nodes", NODE_COLUMNS)));
-      input.setDisplacementRotations(reader.displacementRotations(deck));
+      if (!reader.hasDisplacementFrames || reader.hasDisplacementFrames(deck))
+        input.setDisplacementRotations(reader.displacementRotations(deck));
       const points = cardTypes("points");
       const scalarPoints = points.filter((card) => SCALAR_POINT_CARDS.includes(card));
       if (scalarPoints.length > 0) {
@@ -253,14 +262,13 @@ export class OosSolver {
       }
 
       // The normals given at grid points, which the ShellQuad4 and ShellTria3 take as their directors there.
-      if (deck.cardCounts().ShellNormal > 0) {
+      if (counts.ShellNormal > 0) {
         putTable("shellNormals", packageOf(reader.cardTable(deck, "ShellNormal", ["nodeId", "frameId", "vector"])));
       }
 
       // The geometry declarations of the deck: where the surface of the shells and the skin of the solids are
       // smooth, where they fold, and which mesh line goes on into which. The formulation that reads its geometry from
       // the mesh adds them to those of `options.formulationGeometry`.
-      const counts = deck.cardCounts();
       if (counts.SurfaceEdge > 0) {
         putTable("surfaceEdges", packageOf(reader.cardTable(deck, "SurfaceEdge",
           ["id", "node1Id", "node2Id", "state", "elementId"])));
@@ -274,13 +282,13 @@ export class OosSolver {
       }
 
       // The output stations given to bars, where the Bar2 writes its forces and stresses besides its ends.
-      if (deck.cardCounts().Bar2Stations > 0) {
+      if (counts.Bar2Stations > 0) {
         putTable("barStations", packageOf(reader.cardTable(deck, "Bar2Stations",
           ["id", "stationScale", "listedStations", "stationCount", "station1", "stationSpacing"])));
       }
 
       // The offset convention the model selects (ModelParams OffsetDefinition; the last one given).
-      if (deck.cardCounts().ModelParams > 0) {
+      if (counts.ModelParams > 0) {
         const parameters = reader.cardTable(deck, "ModelParams", ["name", "text"]);
         try {
           const names = parameters.column("name").values;
@@ -352,8 +360,7 @@ export class OosSolver {
       }
 
       // The glued contact, when the Bulk Data has a contact table.
-      const cardCounts = deck.cardCounts();
-      const hasContactTable = CONTACT_TABLE_CARDS.some((card) => (cardCounts[card] ?? 0) > 0);
+      const hasContactTable = CONTACT_TABLE_CARDS.some((card) => (counts[card] ?? 0) > 0);
       if (hasContactTable && CONTACT_PAIR_QUERIES.every(hasQuery)) {
         for (const name of CONTACT_PAIR_QUERIES) {
           const args = takesParameter(name, "rule") ? { rule: CONTACT_RULE } : {};
@@ -373,13 +380,13 @@ export class OosSolver {
       }
 
       // The aeroelastic model, when the model has aerodynamic panels.
-      const hasAeroPanels = AERO_PANEL_CARDS.some((card) => (cardCounts[card] ?? 0) > 0);
+      const hasAeroPanels = AERO_PANEL_CARDS.some((card) => (counts[card] ?? 0) > 0);
       if (hasAeroPanels) {
         for (const name of AERO_TABLES) {
           if (hasQuery(name)) putTable(name, packageOf(query(name)));
         }
         for (const [card, idColumn] of Object.entries(AERO_CARDS)) {
-          if ((cardCounts[card] ?? 0) > 0)
+          if ((counts[card] ?? 0) > 0)
             input.addAeroCardTable(card, idColumn, packageOf(reader.cardTable(deck, card, null)));
         }
       }

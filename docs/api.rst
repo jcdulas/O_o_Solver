@@ -1,7 +1,7 @@
 API reference
 =============
 
-The table maps the most common operations across both packages. For Python signatures, see :ref:`native-python-api`.
+The table maps the most common operations across the three language interfaces. For Python signatures, see :ref:`native-python-api`.
 The TypeScript declarations and C++ headers below are included directly from the source tree.
 
 For a runnable example, start with :doc:`getting-started`. The module guides explain implementation details.
@@ -27,16 +27,20 @@ The `standalone rod example <https://github.com/jcdulas/O_o_vcpkg/tree/main/exam
 
    * - Operation
      - JavaScript / WebAssembly
-     - Python / native C++
+     - Python
+     - C++20
    * - Build a solver snapshot from an in-memory deck
      - ``solver.modelFromReader(reader, deck)``
      - ``oo_solver.model_from_reader(deck)``
+     - ``oos::api::modelFromDeck(deck)``
    * - Run statics
      - ``solver.run(model, "statics")``
      - ``model.run("statics")``
+     - ``oos::api::runAnalysis(*model, oos::api::Analysis::Statics, {})``
    * - Evaluate a design
      - ``problem.evaluate(x)``
      - ``problem.evaluate(x)``
+     - ``problem->evaluate(x)``
 
 .. _spline-transfer-for-an-external-solver:
 
@@ -73,7 +77,7 @@ Prepare a new transfer when the geometry, spline membership or coordinate system
      const loads = transfer.structuralLoads(forces); // six consecutive values per node
    } finally { transfer.delete(); }
 
-**Python / native C++**
+**Python**
 
 .. code-block:: python
 
@@ -148,11 +152,11 @@ Load the built package from ``build/wasm/dist/index.js``. The declarations below
 Optimization declarations
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``point.nodalCoordinateGradient(responseId, nodeIds, item)`` in JavaScript and
-``point.nodal_coordinate_gradient(response_id, node_ids, item)`` in Python return the basic-frame XYZ
+``point.nodalCoordinateGradient(responseId, nodeIds, item)`` in JavaScript,
+``point.nodal_coordinate_gradient(response_id, node_ids, item)`` in Python and
+``point->nodalCoordinateGradient(responseId, nodeIds, item)`` in C++ return the basic-frame XYZ
 derivatives for a scalar response item at the evaluated point. Node IDs follow the requested order.
-The optional item index starts at zero. See :doc:`external-optimization` for paired examples and
-the C++ entry point.
+The optional item index starts at zero. See :doc:`external-optimization` for examples in all three languages.
 
 ``DesignResponse.mode`` selects a modal field with a positive, one-based mode number. A modal result item includes
 its ``mode`` label. ``ProductReport`` distinguishes static Hessian blocks from modal, buckling and trim tangent
@@ -195,7 +199,7 @@ Import ``model_from_reader(deck, *, formulation=None)`` and
   (variables, directions). Weights map response IDs to vectors of item weights.
 
 See :doc:`optimization` for batched NumPy inputs, reusable output buffers and CSR layouts.
-See :doc:`python` for paired examples and installation details. The public
+See :doc:`python` for examples in all three languages and installation details. The public
 `Python module <https://github.com/jcdulas/O_o_Solver/blob/main/python/oo_solver/__init__.py>`_ and
 `native bindings <https://github.com/jcdulas/O_o_Solver/blob/main/python/bindings.cpp>`_ define the available calls.
 

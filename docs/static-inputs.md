@@ -33,15 +33,29 @@ try {
 }
 ~~~
 
-**Python / native C++**
+**Python**
 
-The support report is a JavaScript preflight. In Python, run the analysis and inspect its diagnostics.
+In Python, run the analysis and inspect its diagnostics.
 
 ```python
 from oo_solver import model_from_reader
 
 result = model_from_reader(deck).run("statics")
 print(result["diagnostics"])
+```
+
+**C++20**
+
+```cpp
+const auto model = oos::api::modelFromDeck(deck);
+const auto report = oos::api::checkSupport(*model, oos::api::Analysis::Statics);
+for (const auto& refusal : report.refusals)
+    std::cerr << refusal.message << '\n';
+if (report.refusals.empty()) {
+    const auto result = oos::api::runAnalysis(*model, oos::api::Analysis::Statics, {});
+    for (const auto& diagnostic : result.diagnostics)
+        std::cout << diagnostic.message << '\n';
+}
 ```
 
 ## Selecting added mass

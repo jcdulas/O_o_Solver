@@ -3,7 +3,7 @@
 ## Read online
 
 The public site is **[O_o_Solver documentation](https://jcdulas.github.io/O_o_Solver/)**.
-Start with the [paired JavaScript and Python examples](getting-started.md) or look up an operation in the [API reference](api.rst).
+Start with the [JavaScript, Python and C++ examples](getting-started.md) or look up an operation in the [API reference](api.rst).
 The [architecture guide](architecture.md) explains the modules and data flow with diagrams.
 The [source index](../index.md) and the Markdown guides can also be read directly on GitHub.
 
@@ -43,6 +43,8 @@ python -m sphinx -W --keep-going -b html -c docs -d build/docs/doctrees . build/
 python docs/check_html.py build/docs/html
 python -m http.server 8000 --bind 127.0.0.1 --directory build/docs/html
 ~~~
+
+When adding an API example, show the same model, operation and result consecutively in JavaScript, Python and C++. Identify any host-specific steps such as browser worker cancellation or loading an optional format adapter.
 
 Generated HTML stays under the ignored `build/` directory.
 

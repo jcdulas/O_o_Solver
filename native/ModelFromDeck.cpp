@@ -66,10 +66,15 @@ std::shared_ptr<const input::ModelSnapshot> modelFromDeck(const std::shared_ptr<
         put(role ? role : name, importTable(oor::api::runQuery(name, deck, nullptr, args)));
     };
 
-    put("nodes", card("nodes", {"id", "positionFrameId", "displacementFrameId", "permanentConstraints",
-                                "superelementId", "xyzGlobal"}));
-    auto rotations = std::make_shared<std::vector<double>>(oor::api::displacementRotations(*deck));
-    builder.setCdRotations({*rotations, rotations});
+    const auto nodes = oor::api::cardTable(*deck, "nodes", {"id", "positionFrameId", "displacementFrameId",
+                                                            "permanentConstraints", "superelementId", "xyzGlobal"});
+    put("nodes", importTable(nodes));
+    const auto frames = nodes->column("displacementFrameId").as<std::int32_t>();
+    if (std::any_of(frames.begin(), frames.end(), [](auto id) { return id != 0; }))
+    {
+        auto rotations = std::make_shared<std::vector<double>>(oor::api::displacementRotations(*deck));
+        builder.setCdRotations({*rotations, rotations});
+    }
     const auto points = oor::api::cardTypesOf(*deck, "points");
     std::vector<std::string> scalar;
     for (const auto& type : points)
