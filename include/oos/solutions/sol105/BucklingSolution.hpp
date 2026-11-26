@@ -153,9 +153,11 @@ struct BucklingResults
 // solver in the buckling transformation (linalg::BucklingPencil, BlockLanczos).
 //
 // The preload of a buckling subcase (STATSUB): the subcase that the column staticSubcaseSelection of subcasesTable
-// names when O_o_Model gives it; otherwise the subcase itself when it selects a LOAD or a
-// TEMPERATURE(LOAD) (a deck of one subcase with LOAD and METHOD), else the
-// static subcase just before it in the Case Control (the usual deck: SUBCASE 1 with LOAD, SUBCASE 2 with METHOD).
+// names when O_o_Model gives it; otherwise the first static subcase of the deck, the first subcase without METHOD that
+// is not a combination (the usual deck: SUBCASE 1 with LOAD, SUBCASE 2 with METHOD; with several static subcases, the
+// first one, whatever their order with the buckling subcase and whatever the buckling subcase selects itself); in a
+// deck without a static subcase, the subcase itself when it selects a LOAD or a TEMPERATURE(LOAD) (a deck of one
+// subcase with LOAD and METHOD).
 // Every static subcase of the deck (without METHOD) is solved and recovered as SOL 101 does.
 //
 // The requests (eigenRequestOf for a buckling analysis): LanczosEigenMethod V1, V2 and ND in load-factor units, or

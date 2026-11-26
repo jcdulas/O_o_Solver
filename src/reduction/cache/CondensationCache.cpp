@@ -167,6 +167,15 @@ void removeQuietly(const std::filesystem::path& path)
     std::filesystem::remove(path, error);
 }
 
+// Whether the file at `path` is an entry of `kind` stored for `key`: its header reads (this format, this byte order)
+// and names the kind and every part of the key. A file of the same name that is not (written in another format, or
+// for another key of the same hash) serves no lookup of `key`: a store replaces it.
+bool holdsEntryOf(const std::filesystem::path& path, CacheEntryKind kind, const CacheKey& key)
+{
+    const CacheFileRead<CacheFileHeader> header = CacheFile::readHeader(path);
+    return header.isRead() && header.value->kind == kind && key.matches(header.value->key);
+}
+
 } // namespace
 
 CondensationCache::CondensationCache(CacheOptions options)
@@ -263,6 +272,23 @@ void CondensationCache::touch(const std::filesystem::path& path) const
 {
     std::error_code error;
     std::filesystem::last_write_time(path, fileTimeOf(now()), error);
+}
+
+bool CondensationCache::forgetUnusableFile(const std::filesystem::path& path)
+{
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    if (error)
+        return false; // still there (Windows refuses to remove a file another process holds open)
+    // The listing without it, found by its unit's folder and its name (the names of two units' files may be equal).
+    const auto listed = std::find_if(m_listing.begin(), m_listing.end(), [&](const DiskEntry& disk)
+                                     {
+                                         return disk.path.filename() == path.filename() &&
+                                                disk.path.parent_path().filename() == path.parent_path().filename();
+                                     });
+    if (listed != m_listing.end())
+        m_listing.erase(listed);
+    return true;
 }
 
 std::string CondensationCache::missCause(CacheEntryKind kind, const CacheKey& key) const
@@ -576,10 +602,26 @@ std::vector<CacheStore> CondensationCache::storeAll(CacheEntryKind kind,
             std::error_code error;
             if (std::filesystem::exists(path, error))
             {
-                touch(path); // stored meanwhile by another process: the same bits
-                result.isStored = true;
-                isDecided[i] = 1;
-                continue;
+                if (holdsEntryOf(path, kind, key))
+                {
+                    touch(path); // stored meanwhile by another process: the same bits
+                    result.isStored = true;
+                    isDecided[i] = 1;
+                    continue;
+                }
+                // A file of this name that no lookup of the key takes (holdsEntryOf): left in place, every lookup
+                // would refuse it and every store would take it for the entry, so the unit would be condensed again
+                // by each analysis. It is removed and the entry stored in its place, as a first store.
+                if (!forgetUnusableFile(path))
+                {
+                    result.note = "not stored: a file of its name that is not its entry (another format or another "
+                                  "key) could not be removed (in use by another process?); it is computed again "
+                                  "when needed, to the same bits";
+                    isDecided[i] = 1;
+                    std::lock_guard<std::mutex> guard(m_mutex);
+                    ++m_statistics.refusedStores;
+                    continue;
+                }
             }
             CacheEntryRecord added;
             added.kind = kind;

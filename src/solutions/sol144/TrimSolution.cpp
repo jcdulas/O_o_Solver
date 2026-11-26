@@ -307,6 +307,16 @@ TrimResults TrimSolution::run(base::MemoryBudget& budget) const
     std::vector<std::vector<base::DofIndex>> supports(subcases.size());
     for (std::size_t s = 0; s < subcases.size(); ++s)
         supports[s] = assembly::supportDofsOf(snapshot, dofMap, subcases[s].tableId, sink);
+    // An enforced motion that a subcase's load set brings (EnforcedMotionConstr) is refused, subcase by subcase, as the
+    // enforced value of an SPC card is below: the constraint sets of the trim are built without the load sets, so
+    // that it would be neither applied nor seen there (its DOF held at zero, or left free, without a word).
+    const std::vector<base::EntityId> enforcedSets = assembly::SpcSet::enforcedSetIds(constraints);
+    for (const StaticSubcase& subcase : subcases)
+        if (!assembly::SpcSet::enforcedTermsOf(snapshot.findLoads(), enforcedSets, subcase.load).empty())
+            sink.report(subcaseProblem(
+                subcase.label, base::Severity::Error, "trim-enforced",
+                "enforced displacements (EnforcedMotionConstr in the StaticLoadSelection set) in a trim subcase are "
+                "not supported by this version; remove them from the load set"));
     stopOnErrors(sink, "the trim cases");
     std::vector<std::vector<std::size_t>> groups; // bounded by the subcases
     for (std::size_t s = 0; s < subcases.size(); ++s)

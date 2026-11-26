@@ -41,17 +41,9 @@ struct Rated
     return {a.value / b.value, (a.rate * b.value - a.value * b.rate) / (b.value * b.value)};
 }
 
-// The transverse shear modulus of a ply in direction d of the material frame (Laminate.cpp's plyShearModulus).
-[[nodiscard]] double plyShearModulus(const LaminatePly& ply, std::size_t d)
-{
-    const double c2 = std::cos(ply.angle) * std::cos(ply.angle);
-    const double s2 = 1.0 - c2;
-    const std::array<double, 2>& g = ply.material.transverseShear;
-    return d == 0 ? g[0] * c2 + g[1] * s2 : g[0] * s2 + g[1] * c2;
-}
-
 // The rate of H in direction d and of each ply's shear at its top per unit force: Laminate.cpp's setTransverseShear
-// (τ(z) = −S(z)/D*, 1/H = ∫ τ²/G dz by three Gauss points per ply) on rated values, the same operations.
+// (τ(z) = −S(z)/D*, 1/H = ∫ τ²/G dz by three Gauss points per ply, a ply rigid in the direction adding nothing) on
+// rated values, the same operations.
 void setTransverseShearRate(const Laminate& laminate, LaminateRate& rate, std::size_t d)
 {
     Rated a;
@@ -84,7 +76,8 @@ void setTransverseShearRate(const Laminate& laminate, LaminateRate& rate, std::s
         const Rated bottom{ply.zBottom, rate.zBottom[k]};
         const Rated half = 0.5 * (top - bottom);
         const Rated middle = 0.5 * (top + bottom);
-        for (std::size_t p = 0; p < GAUSS_POINTS.size(); ++p)
+        const bool isFlexible = g > 0.0;
+        for (std::size_t p = 0; isFlexible && p < GAUSS_POINTS.size(); ++p)
         {
             const Rated tau = (below + firstMoment(e, bottom, middle + GAUSS_POINTS[p] * half)) / reducedRigidity;
             compliance = compliance + (GAUSS_WEIGHTS[p] / g) * (half * tau * tau);
@@ -137,7 +130,7 @@ std::optional<LaminateRate> laminateThicknessRate(const Laminate& laminate, cons
         rate.d += (ply.zTop * ply.zTop * rate.zTop[k] - ply.zBottom * ply.zBottom * rate.zBottom[k]) * ply.stiffness;
         rate.massPerArea += ply.material.density * rate.plyThickness[k];
     }
-    // A direction in which a ply is rigid stays rigid (H = 0, no rate).
+    // A direction in which every ply is rigid stays rigid (H = 0, no rate).
     for (std::size_t d = 0; d < 2; ++d)
         if (laminate.transverseShear[d] > 0.0)
             setTransverseShearRate(laminate, rate, d);

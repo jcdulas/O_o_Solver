@@ -177,7 +177,10 @@ $$
   $\mathbf d_h$ the homothety of the element (the positions $\mathbf x_i$ on the translations, no rotation): a free
   thermal dilatation is the homothety $\mathbf u=\varepsilon\mathbf x$, and leaves the element without stress in
   every one of its strain measures, whatever its directors. The quadrilateral takes the same rule, so that a warped
-  mesh, or a mesh whose normals are shared, expands freely under a uniform temperature rise.
+  mesh, or a mesh whose normals are shared, expands freely under a uniform temperature rise. As the other loads, the
+  thermal loads are carried to the grids through $\mathsf T_f$ of section 11 of the quadrilateral document: an
+  element with an offset is free of stress under that rise only when the model puts the loads on the offset; by
+  default its loads are taken at the grids and it bends (section 12 of that document).
 - **Resultants** at the centroid, at the mean thickness:
   $\begin{Bmatrix}\mathbf N\\\mathbf M\end{Bmatrix}=\mathsf C\,(\mathsf B\mathbf d-\boldsymbol\varepsilon_{th})$, the
   dilatation of $\boldsymbol\varepsilon_{th}$ taken as ε times the strains of the homothety, and the transverse shear

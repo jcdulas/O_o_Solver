@@ -609,8 +609,10 @@ GlueConstraints::GlueConstraints(const input::ModelSnapshot& snapshot, std::opti
                                                       [](const PointKey& a, const PointKey& b)
                                                       { return a.pairIndex == b.pairIndex && a.nodeId == b.nodeId; }) -
                                           points.data());
-    std::sort(faceKeys.data(), faceKeys.data() + faceKeyCount,
-              [](const FaceKey& a, const FaceKey& b) { return a.tie() < b.tie(); });
+    // Two elements may give the same face (a shell on the face of a solid): they are ordered by their element, so
+    // that the one kept below (the first: the lowest ID) does not depend on the order the sort leaves equal keys in.
+    std::sort(faceKeys.data(), faceKeys.data() + faceKeyCount, [](const FaceKey& a, const FaceKey& b)
+              { return a.tie() != b.tie() ? a.tie() < b.tie() : a.elementId < b.elementId; });
     faceKeyCount =
         static_cast<std::size_t>(std::unique(faceKeys.data(), faceKeys.data() + faceKeyCount,
                                              [](const FaceKey& a, const FaceKey& b) { return a.tie() == b.tie(); }) -

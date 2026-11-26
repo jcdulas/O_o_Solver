@@ -200,6 +200,8 @@ std::string qualifiedField(const std::string& card, const char* field)
 // the model with such a range is an error diagnostic naming its fields, never an exception of the solver. A bound must
 // be finite (a blank one is no bound); the roots sought from the lowest (no lower bound, or one at or below 0) need an
 // upper bound above 0; otherwise the lower bound must be below the upper one.
+// A buckling analysis has load factors of either sign (linalg::EigenRequest): a range wholly below 0, or one that ends
+// at 0, is a request like another there, so only the order of its two bounds is checked.
 bool isRangeUsable(const EigenMethod& method, AnalysisKind analysis, base::DiagnosticSink& sink)
 {
     const auto [lowerName, upperName] = rangeFieldsOf(method.card);
@@ -220,12 +222,15 @@ bool isRangeUsable(const EigenMethod& method, AnalysisKind analysis, base::Diagn
     const linalg::EigenRequest request = eigenRequestOf(method, analysis);
     if (!request.hasUpperBound())
         return true;
-    if (!request.startsFromLowest() && !(request.upperBound > request.lowerBound))
+    const bool isBuckling = analysis == AnalysisKind::Buckling;
+    if (isBuckling && !method.lower)
+        return true; // open below: the roots nearest 0 up to the upper bound, of either sign
+    if ((isBuckling || !request.startsFromLowest()) && !(request.upperBound > request.lowerBound))
         return refuse(upperName,
                       base::concatenate({"expected ", lowerField, " below ", upperField, ", found ", lowerField, " = ",
                                          std::to_string(*method.lower), " and ", upperField, " = ",
                                          std::to_string(*method.upper), "; correct the range"}));
-    if (request.startsFromLowest() && !(request.upperBound > 0.0))
+    if (!isBuckling && request.startsFromLowest() && !(request.upperBound > 0.0))
         return refuse(upperName,
                       base::concatenate(
                           {"expected ", upperField, " above 0 when the roots are sought from the lowest (", lowerField,

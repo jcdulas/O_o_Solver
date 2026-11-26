@@ -361,6 +361,7 @@ void ShellPart::describeShells()
         for (const std::size_t ie : m_topology.edgeElements[e])
             m_edgeDegrees[e] = std::min(m_edgeDegrees[e], m_degrees[ie]);
     m_shells.resize(ne);
+    m_shellsAtGrid.assign(m_input.grids.size(), {});
     for (std::size_t ie = 0; ie < ne; ++ie)
     {
         const ShellPartShell& shell = m_input.shells[ie];
@@ -369,6 +370,8 @@ void ShellPart::describeShells()
         el.cornerCount = nv;
         el.degree = m_degrees[ie];
         el.nodes.assign(shell.corners.grids.begin(), shell.corners.grids.begin() + static_cast<std::ptrdiff_t>(nv));
+        for (std::size_t corner = 0; corner < nv; ++corner)
+            m_shellsAtGrid[el.nodes[corner]].emplace_back(ie, corner);
         for (std::size_t kk = 0; kk < nv; ++kk)
         {
             el.edges.push_back(m_topology.indexOf(el.nodes[kk], el.nodes[(kk + 1) % nv]));
@@ -796,15 +799,8 @@ std::span<const double> ShellPart::localSigns(std::size_t shell) const
 
 std::vector<std::pair<std::size_t, std::size_t>> ShellPart::shellsAt(std::size_t grid) const
 {
-    std::vector<std::pair<std::size_t, std::size_t>> at;
-    for (std::size_t ie = 0; ie < m_shells.size(); ++ie)
-    {
-        const std::vector<std::size_t>& nodes = m_shells[ie].nodes;
-        const auto found = std::find(nodes.begin(), nodes.end(), grid);
-        if (found != nodes.end())
-            at.emplace_back(ie, static_cast<std::size_t>(found - nodes.begin()));
-    }
-    return at;
+    // the index of describeShells; empty for a grid of no shell, and in a part that could not be read
+    return grid < m_shellsAtGrid.size() ? m_shellsAtGrid[grid] : std::vector<std::pair<std::size_t, std::size_t>>{};
 }
 
 ShellPartUnknown ShellPart::describe(std::size_t unknown) const

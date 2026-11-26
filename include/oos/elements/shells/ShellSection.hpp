@@ -115,6 +115,11 @@ struct ShellSection
     // The section written in the frame whose x axis is at −materialAngle from the material axis (the element frame of
     // an element whose material axis is at materialAngle from its x axis).
     [[nodiscard]] ShellSection rotatedToElementFrame(double materialAngle) const;
+    // The in-plane shear term G33 in the material frame of a matrix given in the section's frame (bendingMatrix, or
+    // its rate): the matrix was turned by Ḡ = T(φ)ᵀ G T(φ), φ = frameAngle (rotatedToElementFrame), so
+    // G = T(−φ)ᵀ Ḡ T(−φ) and its term (3, 3) is read. A modulus of the material does not depend on the direction of
+    // the element's x axis, where Ḡ33 does (for a ply of E1 = 14 E2, Ḡ33 at 45° is 7 times G12).
+    [[nodiscard]] double materialShearTermOf(const base::Mat3& matrixInSectionFrame) const;
     // The transverse shear compliance 1/(κ G) per unit thickness in the section's frame, as (xx, yy, xy): the shear
     // strain γ = (γxz, γyz) and force per thickness τ transform as vectors, so C = R diag(1/s₁, 1/s₂) Rᵀ with s the
     // two values of transverseShearStiffness and R the rotation by frameAngle; a rigid direction counts 0 (the

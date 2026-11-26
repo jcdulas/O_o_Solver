@@ -14,8 +14,15 @@ namespace oos::elements::mixedHybrid
 namespace
 {
 
-// A direction is in the span of the held axes when its components along the free axes are below this (squared).
-constexpr double SPAN_TOLERANCE_SQUARED = 1e-18;
+// A unit direction is in the span of the held axes when it leaves that span by less than this angle (radians). The
+// directions tested come from the coordinates of the grid points (the tangent, the conormal and the normal of an
+// edge), so the tolerance is that of the coordinates, not the round-off of the arithmetic: coordinates written with
+// seven significant digits put an edge a thousandth of the size of the model 1e-4 rad off the plane its grid points
+// were meant to lie in, and a round-off tolerance then left the edges of a symmetry plane free to turn. A direction
+// that turns along an edge (a displacement system that follows a circle) turns by the angle of an element, far above
+// this, and stays out of the span.
+constexpr double SPAN_ANGLE_TOLERANCE = 1e-4;
+constexpr double SPAN_TOLERANCE_SQUARED = SPAN_ANGLE_TOLERANCE * SPAN_ANGLE_TOLERANCE;
 // A direction across the edge whose slope a held rotation fixes is kept when its part independent of the earlier
 // ones is longer than this.
 constexpr double INDEPENDENT_DIRECTION = 1e-8;
@@ -83,6 +90,60 @@ bool hasSkewRotation(const ShellGridSupport& support)
 {
     return std::any_of(support.skewAxes.begin(), support.skewAxes.end(),
                        [](const ShellSkewAxis& axis) { return axis.component >= 3; });
+}
+
+// An orthonormal basis of the span of `axes` (at most three vectors).
+std::vector<SpaceVector> orthonormalBasisOf(const std::vector<SpaceVector>& axes)
+{
+    std::vector<SpaceVector> basis;
+    for (const SpaceVector& axis : axes)
+    {
+        SpaceVector rest = axis;
+        for (const SpaceVector& q : basis)
+            rest = sub3(rest, scl3(q, dot3(rest, q)));
+        if (norm3(rest) > INDEPENDENT_DIRECTION)
+            basis.push_back(unit3(rest));
+    }
+    return basis;
+}
+
+// An orthonormal basis of the directions that lie in the span of `first` and in that of `second`: what two grids
+// hold in common when one states it by basic axes and the other by directions turned from them.
+std::vector<SpaceVector> sharedSpan(const std::vector<SpaceVector>& first, const std::vector<SpaceVector>& second)
+{
+    const std::vector<SpaceVector> a = orthonormalBasisOf(first);
+    const std::vector<SpaceVector> b = orthonormalBasisOf(second);
+    if (a.empty() || b.empty())
+        return {};
+    if (a.size() == 3)
+        return b;
+    if (b.size() == 3)
+        return a;
+    if (a.size() == 1)
+        return inSpanOf(a.front(), b) ? a : std::vector<SpaceVector>{};
+    if (b.size() == 1)
+        return inSpanOf(b.front(), a) ? b : std::vector<SpaceVector>{};
+    // two planes: the same one, or the line they cross along
+    const SpaceVector line = cross3(cross3(a[0], a[1]), cross3(b[0], b[1]));
+    if (norm3(line) <= SPAN_ANGLE_TOLERANCE)
+        return a;
+    return {unit3(line)};
+}
+
+// Each of the two grids holds a direction the other does not (`first`, `second`: their held axes): a displacement
+// system that turns along the edge, which the edge does not carry.
+bool holdApart(const std::vector<SpaceVector>& first, const std::vector<SpaceVector>& second)
+{
+    const auto holdsMoreThan = [](const std::vector<SpaceVector>& own, const std::vector<SpaceVector>& other)
+    {
+        return std::any_of(own.begin(), own.end(), [&](const SpaceVector& axis) { return !inSpanOf(axis, other); });
+    };
+    return holdsMoreThan(first, second) && holdsMoreThan(second, first);
+}
+
+std::size_t heldCount(const std::array<bool, 3>& flags)
+{
+    return static_cast<std::size_t>(std::count(flags.begin(), flags.end(), true));
 }
 
 // The terms of a row kept: those whose magnitude exceeds `threshold` times the largest (every one that is not zero
@@ -215,6 +276,9 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
     // shell between them. Two grids that follow a relation of the model (a rigid element) move the edge between them
     // wherever it is.
     constexpr std::size_t READ_AS_EXTERNAL = 1;
+    // the edges whose two grids hold a rotation that the edge does not take, and the first of them
+    std::size_t untakenRotationEdges = 0;
+    std::string firstUntakenEdge;
     for (std::size_t e = 0; e < m_topology.edges.size(); ++e)
     {
         // the degree of the trace of the displacement on the edge, and that of its shear and of its rotation
@@ -230,13 +294,32 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
             edgeHeld({}, m_topology.edges[e], READ_AS_EXTERNAL, supportOf[ga].held, supportOf[gb].held, true);
         // the directions off the basic axes: the edge reads them when both its grids hold some
         const bool hasSkew = !supportOf[ga].skewAxes.empty() && !supportOf[gb].skewAxes.empty();
-        if (held == EdgeSupport{} && !hasSkew)
+        const bool readsRelation = supportOf[ga].followsRelation || supportOf[gb].followsRelation;
+        const std::vector<SpaceVector> rotationAxesA = heldAxesOf(supportOf[ga], 3);
+        const std::vector<SpaceVector> rotationAxesB = heldAxesOf(supportOf[gb], 3);
+        const std::vector<SpaceVector> translationAxesA = heldAxesOf(supportOf[ga], 0);
+        const std::vector<SpaceVector> translationAxesB = heldAxesOf(supportOf[gb], 0);
+        // One grid holds by directions off the basic axes and the other by its basic flags (a clamped grid beside a
+        // plane of symmetry turned from the basic system): the flags the two share miss the directions both hold. The
+        // spans of their held axes then say what the edge reads, where they hold more than the shared flags do (an
+        // edge the flags describe whole is read as before).
+        const bool isMixed = supportOf[ga].skewAxes.empty() != supportOf[gb].skewAxes.empty() && !readsRelation;
+        const std::vector<SpaceVector> sharedRotations =
+            isMixed ? sharedSpan(rotationAxesA, rotationAxesB) : std::vector<SpaceVector>{};
+        const std::vector<SpaceVector> sharedTranslations =
+            isMixed ? sharedSpan(translationAxesA, translationAxesB) : std::vector<SpaceVector>{};
+        const bool mixedRotations = sharedRotations.size() > heldCount(held.rotations);
+        const bool mixedTranslations = sharedTranslations.size() > heldCount(held.translations);
+        const bool mixedDiffers = isMixed && holdApart(translationAxesA, translationAxesB);
+        if (held == EdgeSupport{} && !hasSkew && !mixedRotations && !mixedTranslations)
+        {
+            out.uncarriedEdges += mixedDiffers ? 1 : 0;
             continue;
+        }
         // An edge with a grid that follows a relation of the model (a rigid element) must move with it in every rigid
         // motion, or the relation would act as a link to the ground: it follows only when its two grids have their
         // three translations, and, where it is curved, their three rotations too (the rotation about the chord, which
         // moves the points of a curved edge, is not known from two translations). Otherwise it keeps to its grids.
-        const bool readsRelation = supportOf[ga].followsRelation || supportOf[gb].followsRelation;
         const bool allTranslations = held.translations[0] && held.translations[1] && held.translations[2];
         const bool allRotations = held.rotations[0] && held.rotations[1] && held.rotations[2];
         if (readsRelation && (!allTranslations || hasSkew))
@@ -244,10 +327,7 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
         // with rotations held off the basic axes, the spans of the held rotation axes replace the flags of the basic
         // ones (the same tests when the axes are basic)
         const bool skewRotations = hasSkew && (hasSkewRotation(supportOf[ga]) || hasSkewRotation(supportOf[gb]));
-        const std::vector<SpaceVector> rotationAxesA = heldAxesOf(supportOf[ga], 3);
-        const std::vector<SpaceVector> rotationAxesB = heldAxesOf(supportOf[gb], 3);
-        const std::vector<SpaceVector> translationAxesA = heldAxesOf(supportOf[ga], 0);
-        const std::vector<SpaceVector> translationAxesB = heldAxesOf(supportOf[gb], 0);
+        const bool readsSpans = hasSkew || mixedRotations || mixedTranslations;
         const bool bothTurn = !rotationAxesA.empty() && !rotationAxesB.empty();
         const std::size_t ie = m_topology.edgeElements[e].front();
         const ShellElementData el = element(ie);
@@ -271,7 +351,7 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
             rod.ub[c] = value(gb, c);
             rod.ta[c] = held.rotations[c] ? value(ga, 3 + c) : 0.0;
             rod.tb[c] = held.rotations[c] ? value(gb, 3 + c) : 0.0;
-            if (skewRotations && bothTurn)
+            if ((skewRotations && bothTurn) || mixedRotations)
             {
                 rod.ta[c] = supportOf[ga].values[3 + c];
                 rod.tb[c] = supportOf[gb].values[3 + c];
@@ -280,7 +360,11 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
         // the directions across the edge whose slope a held rotation fixes: t × e_c (t × r for each rotation axis r
         // both grids hold, when they are off the basic axes)
         std::vector<SpaceVector> turning;
-        if (!skewRotations)
+        if (mixedRotations)
+        {
+            turning = sharedRotations;
+        }
+        else if (!skewRotations)
         {
             for (std::size_t c = 0; c < 3; ++c)
                 if (held.rotations[c])
@@ -380,7 +464,7 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                             carried.push_back({ends[end], cp, traceByTranslation[l][c][end][cp]});
                     // (off the basic axes, every component: the caller keeps those the grid holds)
                     for (std::size_t cp = 0; cp < 3; ++cp)
-                        if ((held.rotations[cp] || (skewRotations && bothTurn)) &&
+                        if ((held.rotations[cp] || (skewRotations && bothTurn) || mixedRotations) &&
                             traceByRotation[l][c][end][cp] != 0.0)
                             carried.push_back({ends[end], 3 + cp, traceByRotation[l][c][end][cp]});
                 }
@@ -392,13 +476,21 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
         bool rotationHeld = true;
         bool shearHeld = true;
         bool normalHeld = true;
+        // a rotation axis both grids hold has a part in the surface somewhere along the edge (a rotation about the
+        // normal alone turns the membrane field in its plane: the edge has nothing to take of it)
+        bool turnsSurface = false;
         for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
         {
             const PointGeometry g = edgeGeometry(def, re.h1Count, kk, gi);
             const auto tv = referenceEdgePointAndDirection(el.cornerCount, kk, re.edgeParameters[gi]).second;
             const SpaceVector t = unit3(add3(scl3(g.a[0], tv[0]), scl3(g.a[1], tv[1])));
             const SpaceVector mu = cross3(t, g.nu);
-            if (!hasSkew)
+            for (const SpaceVector& axis : turning)
+            {
+                const SpaceVector inSurface = sub3(axis, scl3(g.nu, dot3(axis, g.nu)));
+                turnsSurface = turnsSurface || dot3(inSurface, inSurface) > SPAN_TOLERANCE_SQUARED;
+            }
+            if (!readsSpans)
             {
                 rotationHeld = rotationHeld && inHeldSpan(t, held.rotations);
                 shearHeld = shearHeld && inHeldSpan(mu, held.rotations);
@@ -410,8 +502,18 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
             normalHeld = normalHeld && inSpanOf(g.nu, translationAxesA) && inSpanOf(g.nu, translationAxesB);
         }
         const bool anyRotation =
-            (hasSkew ? bothTurn : (held.rotations[0] || held.rotations[1] || held.rotations[2])) &&
+            ((hasSkew || mixedRotations) ? bothTurn
+                                         : (held.rotations[0] || held.rotations[1] || held.rotations[2])) &&
             (!readsRelation || allRotations);
+        // Both grids hold a rotation with a part in the surface, and it is neither about the edge nor about its
+        // conormal all along it (an axis oblique to the edge): the edge takes nothing of it. The grids then hold it
+        // through the mean rotation of the shells there (section 5.6), which the note below says.
+        if (anyRotation && turnsSurface && !rotationHeld && !shearHeld)
+        {
+            if (untakenRotationEdges == 0)
+                firstUntakenEdge = gridName(ga) + "-" + gridName(gb);
+            ++untakenRotationEdges;
+        }
         if (rotationHeld && anyRotation)
             for (std::size_t l = 0; l <= p; ++l)
             {
@@ -420,7 +522,8 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                 std::vector<ShellGridTerm> carried;
                 for (std::size_t end = 0; end < 2; ++end)
                     for (std::size_t cp = 0; cp < 3; ++cp)
-                        if ((held.rotations[cp] || skewRotations) && rotationByRotation[l][end][cp] != 0.0)
+                        if ((held.rotations[cp] || skewRotations || mixedRotations) &&
+                            rotationByRotation[l][end][cp] != 0.0)
                             carried.push_back({ends[end], 3 + cp, scale * rotationByRotation[l][end][cp]});
                 hold(first + edgeRotationDof(e, l), scale * rotationMoments[l], std::move(carried));
             }
@@ -434,8 +537,40 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                                     ": rotation across the edge held with the normal displacement free: not "
                                     "represented");
         }
+        // A direction d that one grid holds off the basic axes and the other by its basic flags: the same row as
+        // below, the grid of the flags entering by its basic components (d · u = Σ_c d_c u_c). A direction the flags
+        // of both grids hold is held component by component above.
+        if (mixedTranslations)
+        {
+            const std::size_t skewEnd = supportOf[ga].skewAxes.empty() ? 1 : 0;
+            const ShellGridSupport& skewGrid = supportOf[ends[skewEnd]];
+            const ShellGridSupport& flagGrid = supportOf[ends[1 - skewEnd]];
+            const std::array<bool, 3> flags{flagGrid.held[0], flagGrid.held[1], flagGrid.held[2]};
+            for (const ShellSkewAxis& axis : skewGrid.skewAxes)
+            {
+                if (axis.component >= 3 || !inHeldSpan(axis.direction, flags) ||
+                    inHeldSpan(axis.direction, held.translations))
+                    continue;
+                for (std::size_t l = 0; l + 1 < k; ++l)
+                {
+                    ShellSupportRow row;
+                    for (std::size_t c = 0; c < 3; ++c)
+                        if (axis.direction[c] != 0.0)
+                            row.unknowns.push_back({first + 3 * l + c, axis.direction[c]});
+                    row.grids.push_back({skewGrid.grid, axis.component, -linearMoments[l][skewEnd]});
+                    for (std::size_t c = 0; c < 3; ++c)
+                        if (flags[c] && axis.direction[c] != 0.0)
+                            row.basicGrids.push_back(
+                                {flagGrid.grid, c, -axis.direction[c] * linearMoments[l][1 - skewEnd]});
+                    out.rows.push_back(std::move(row));
+                }
+            }
+        }
         if (!hasSkew)
+        {
+            out.uncarriedEdges += mixedDiffers ? 1 : 0;
             continue;
+        }
         // the translations held along a direction d off the basic axes, the same at both grids: the trace of the
         // displacement along d is that of the chord, Σ_c d_c q_(l, c) = m_l(a) (u_a · d) + m_l(b) (u_b · d) for each
         // moment l (m_l the moments of the two linear functions of the chord, u · d the held component of the grid)
@@ -507,6 +642,12 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
         out.notes.push_back(std::to_string(rotationsAtGrids) +
                             " rotation components held at grids act only through the edges that hold them (grids " +
                             named + ")");
+    if (untakenRotationEdges > 0)
+        out.notes.push_back(std::to_string(untakenRotationEdges) +
+                            " edges have both their grids holding a rotation that is neither about the edge nor "
+                            "about its conormal (an axis oblique to the edge): the edge does not take it, and the "
+                            "grids hold it through the mean rotation of the shells there (the first is edge " +
+                            firstUntakenEdge + ")");
 
     out.held.reserve(fixed.size());
     for (auto& [unknown, support] : fixed)

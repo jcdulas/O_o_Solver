@@ -61,6 +61,25 @@ node wasm/test/run.mjs --test-name-pattern="analytic (bar sizing|beam)"
 The timing report records the tested revision's local execution. Use representative models to assess larger
 optimization workloads; the small derivative fixtures verify formulas and interactions.
 
+## Review regression cases
+
+Each case of these suites guards one defect a review of the code found, on a model small enough to be checked by
+hand. They run in the fast suite with its watchdog.
+
+| Suite | Main checks |
+| --- | --- |
+| [Input and assembly](../wasm/test/cases/review-assembly.mjs) | Selected constraint, multipoint constraint, load and temperature sets that no card defines; a pressure written as a line load; the thermal expansion of a rigid element; a non-structural mass by property card; the system of a beam spline |
+| [Elements](../wasm/test/cases/review-elements.mjs) | The transverse shear of a laminate whose plies leave their shear moduli blank, of a `ShellQuad8` without shear material and of a ply |
+| [Solutions](../wasm/test/cases/review-solutions.mjs) | Enforced displacements subcase by subcase on the streamed path and in a trim, the grouping of the subcases of a superelement run, the default preload of a buckling subcase, a buckling range below zero |
+| [Condensation](../wasm/test/cases/review-reduction.mjs) | The cache key of a unit whose shells share their normals, the element tables of a model with an external unit |
+| [Design](../wasm/test/cases/review-design.mjs) | The gradients of modes with a selected mass set, differenced Hessian-vector products at bounds, a mass fraction by property, an objective that is one item of its response, refused responses |
+| [JavaScript interface](../wasm/test/cases/review-bindings.mjs) | The grid point forces of a study archive, option objects with a key the interface does not have, a deleted design problem |
+
+The native checks (`checks/`, built with `-DOOS_BUILD_NATIVE_CHECKS=ON`) cover what the package does not reach from
+JavaScript: the block Lanczos solver at the edges of its request, the pivot test and the out-of-core solve of the
+factor, the files and locks of the condensation cache, the supports of the mixed hybrid shells, the transverse shear
+modulus of a ply and the footprint weights of a fastener.
+
 ## Validation of the mixed hybrid formulation
 
 The [structural benchmark comparison](structural-benchmark-comparison.md) reports both formulations on the same meshes,

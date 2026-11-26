@@ -107,12 +107,17 @@ public:
     ScratchSpool& operator=(const ScratchSpool&) = delete;
 
     [[nodiscard]] bool isOnDisk() const noexcept { return m_file.isOpen(); }
+    // On disk without the system's file cache: a read whose offset, size and buffer are multiples of
+    // base::ScratchFile::ALIGNMENT then goes straight into the caller's buffer; any other through a bounce buffer of
+    // the read's size, reserved in the budget for the time of the read.
+    [[nodiscard]] bool isUnbuffered() const noexcept { return m_file.isOpen() && m_file.isUnbuffered(); }
     [[nodiscard]] const std::filesystem::path& path() const noexcept { return m_file.path(); }
     [[nodiscard]] std::size_t blockBytes() const noexcept { return m_blockBytes; }
 
     // Copies a record. Throws FileError.
     void read(const SpoolRecord& record, void* into) const;
-    // Copies `bytes` bytes from `offset` (within one flushed block). Throws FileError, std::out_of_range.
+    // Copies `bytes` bytes from `offset` (within one flushed block; on disk any bytes below heldBytes(), the blocks'
+    // padding included). Throws FileError, std::out_of_range.
     void readSpan(std::uint64_t offset, std::uint64_t bytes, void* into) const;
 
     // The bytes the spool holds (its address space, the blocks' padding included), and the bytes written and read so

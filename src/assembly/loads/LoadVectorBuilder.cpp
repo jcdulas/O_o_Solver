@@ -1,5 +1,6 @@
 #include "oos/assembly/loads/LoadVectorBuilder.hpp"
 
+#include "oos/assembly/constraints/SpcSet.hpp"
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/math/Mat3.hpp"
 #include "oos/elements/core/ElementVectorBlock.hpp"
@@ -40,6 +41,15 @@ constexpr std::array<std::string_view, 1> LINE_LOAD_CARDS{"BeamDistributedLoad"}
 constexpr std::array<std::string_view, 4> INERTIAL_CARDS{"GravityLoad", "AccelFieldLoad", "AccelNodeLoad",
                                                          "RotationalForceLoad"};
 
+// The Case Control command that selects the load set of a subcase, and the card that combines load sets: what the
+// diagnostic of a set no card defines names.
+constexpr std::string_view LOAD_SELECTION_COMMAND = "StaticLoadSelection";
+constexpr std::string_view LOAD_COMBINATION_CARD = "LoadCombination";
+// The tables that can carry a load set, as the diagnostic of a set none of them holds lists them.
+constexpr std::string_view LOAD_SET_TABLES =
+    "loadsTable, pressureTable, lineLoadsTable, inertialLoadsTable, temperatureTable nor an EnforcedMotionConstr of "
+    "singlePointConstrTable";
+
 bool isOneOf(std::string_view card, std::span<const std::string_view> cards)
 {
     return std::find(cards.begin(), cards.end(), card) != cards.end();
@@ -64,6 +74,61 @@ std::array<double, 3> intoCd(const base::Mat3& cdToBasic, double x, double y, do
         for (std::size_t i = 0; i < 3; ++i)
             cd[k] += cdToBasic(i, k) * basic[i];
     return cd;
+}
+
+// The distinct values of a column of set IDs, increasing (bounded by the sets: the rows of a set follow one another in
+// O_o_Model's tables, and a run of one ID is taken once).
+std::vector<base::EntityId> distinctSetIds(std::span<const std::int32_t> setIds)
+{
+    std::vector<base::EntityId> distinct;
+    for (const std::int32_t setId : setIds)
+        if (distinct.empty() || distinct.back() != setId)
+            distinct.push_back(setId);
+    std::sort(distinct.begin(), distinct.end());
+    distinct.erase(std::unique(distinct.begin(), distinct.end()), distinct.end());
+    return distinct;
+}
+
+// Reports the rigid elements whose card gives a thermal expansion coefficient (rigidElementsTable's `alpha`), under a
+// thermal load: their relations are those of a rigid body (u_m = Gm·u_n, RigidElimination), without the growth of
+// the element under its temperature, so the results would lack it. One diagnostic names the first of them and
+// their number. Nothing for a table without the column.
+void reportRigidExpansion(const input::ModelSnapshot& snapshot, base::DiagnosticSink& sink)
+{
+    if (!snapshot.hasTable(input::TableRole::RigidElements) || !snapshot.rigidElements().hasExpansionCoefficients())
+        return;
+    const input::RigidTable& rigid = snapshot.rigidElements();
+    const std::span<const std::int32_t> elementIds = rigid.ids();
+    const base::DictionaryView types = rigid.types();
+    const std::span<const double> coefficients = rigid.expansionCoefficients();
+    const base::ValidityView isGiven = rigid.expansionValidity();
+    std::int64_t elementCount = 0;
+    std::int64_t firstRow = -1;
+    for (std::int64_t row = 0; row < rigid.rowCount(); ++row)
+    {
+        const auto index = static_cast<std::size_t>(row);
+        // The coefficient is repeated on every row of its element: the first row of each element counts.
+        if (row > 0 && elementIds[index] == elementIds[index - 1])
+            continue;
+        if (!isGiven.isValid(row) || !std::isfinite(coefficients[index]) || coefficients[index] == 0.0)
+            continue;
+        if (elementCount++ == 0)
+            firstRow = row;
+    }
+    if (elementCount == 0)
+        return;
+    const std::string_view card = types[firstRow];
+    const std::int32_t elementId = elementIds[static_cast<std::size_t>(firstRow)];
+    base::Diagnostic diagnostic = loadProblem(
+        "rigid-expansion-unsupported", card, elementId,
+        base::concatenate(
+            {std::to_string(elementCount), elementCount == 1 ? " rigid element has" : " rigid elements have",
+             " a thermal expansion coefficient (the first, ", card, " ", std::to_string(elementId),
+             ") in a subcase with a thermal load (TemperatureSelection(LOAD)): this version of O_o_Solver keeps a "
+             "rigid element rigid under its temperature and does not compute its expansion; set ",
+             card, ".alphaCoefficient to 0 (or leave it blank) on these elements, or remove the thermal load"}));
+    diagnostic.field = "alphaCoefficient";
+    sink.report(std::move(diagnostic));
 }
 
 // Adds the equivalent nodal loads of a facet's block to the g-set vector.
@@ -117,6 +182,10 @@ LoadVectorBuilder::LoadVectorBuilder(const ElementSet& set, const DofMap& dofMap
         m_lineCards = snapshot.loads().lineLoads().dictionaryTexts("card");
         m_lineLoadTypes = snapshot.loads().lineLoads().dictionaryTexts("loadType");
         m_lineScaleTypes = snapshot.loads().lineLoads().dictionaryTexts("scaleType");
+        // The sets the other tables define (isDefinedSet): the thermal sets, and the sets of enforced displacements.
+        m_temperatureSets = distinctSetIds(snapshot.loads().temperatures().values<std::int32_t>("setId"));
+        if (snapshot.hasTable(input::TableRole::Spc))
+            m_enforcedSets = SpcSet::enforcedSetIds(&snapshot.constraints());
         const auto isConcentrated = [&](std::span<const std::int64_t> rows)
         {
             return std::any_of(rows.begin(), rows.end(),
@@ -309,6 +378,37 @@ bool LoadVectorBuilder::holdsOwnCards(base::EntityId setId) const
            m_inertial->holdsOwnRows(setId);
 }
 
+bool LoadVectorBuilder::isDefinedSet(base::EntityId setId) const
+{
+    return holdsOwnCards(setId) || std::binary_search(m_enforcedSets.begin(), m_enforcedSets.end(), setId) ||
+           std::binary_search(m_temperatureSets.begin(), m_temperatureSets.end(), setId);
+}
+
+void LoadVectorBuilder::reportUndefinedSets(base::EntityId loadSetId, base::DiagnosticSink& sink) const
+{
+    if (isDefinedSet(loadSetId))
+        return; // nearly every call: a few binary searches
+    if (!m_set->index().snapshot().loads().isCombination(loadSetId))
+    {
+        sink.report(loadProblem(
+            "load-unknown-set", LOAD_SELECTION_COMMAND, loadSetId,
+            base::concatenate({"expected the cards of load set ", std::to_string(loadSetId), ", which a ",
+                               LOAD_SELECTION_COMMAND, " or a ", LOAD_COMBINATION_CARD,
+                               " names, found none (no row of that set in ", LOAD_SET_TABLES,
+                               "): the set would load nothing; correct the set ID or add its load cards"})));
+        return;
+    }
+    // A combination is its sets: each must hold cards (one mistyped would be left out of the sum without a word).
+    for (const input::LoadTerm& term : termsOf(loadSetId))
+        if (term.set != loadSetId && !isDefinedSet(term.set))
+            sink.report(loadProblem(
+                "load-unknown-set", LOAD_COMBINATION_CARD, loadSetId,
+                base::concatenate({LOAD_COMBINATION_CARD, " ", std::to_string(loadSetId), " combines load set ",
+                                   std::to_string(term.set), ": expected its cards, found none (no row of that set in ",
+                                   LOAD_SET_TABLES, "); correct the set ID on the ", LOAD_COMBINATION_CARD,
+                                   " or add its load cards"})));
+}
+
 bool LoadVectorBuilder::hasLineLoads(base::EntityId loadSetId) const
 {
     const std::vector<input::LoadTerm> terms = termsOf(loadSetId);
@@ -325,6 +425,7 @@ void LoadVectorBuilder::addLoads(base::EntityId loadSetId, const linalg::BlockSp
                                " values (the g set), found ", std::to_string(loadsG.size())}));
     if (!m_set->index().snapshot().hasTable(input::TableRole::Loads))
         return;
+    reportUndefinedSets(loadSetId, sink);
     addConcentratedLoads(loadSetId, loadsG, sink);
     addInertialLoads(loadSetId, mass, loadsG, budget, sink);
     addPressures(loadSetId, loadsG, sink);
@@ -345,6 +446,7 @@ void LoadVectorBuilder::addFamilyLoads(base::EntityId loadSetId, LoadFamily fami
              nameOf(family), " (thermal loads come from addThermalLoads, enforced displacements from SpcSet)"}));
     if (!m_set->index().snapshot().hasTable(input::TableRole::Loads))
         return;
+    reportUndefinedSets(loadSetId, sink);
     if (family == LoadFamily::Concentrated)
     {
         addConcentratedLoads(loadSetId, loadsG, sink);
@@ -579,6 +681,7 @@ void LoadVectorBuilder::checkLoads(base::EntityId loadSetId, const linalg::Block
 {
     if (!m_set->index().snapshot().hasTable(input::TableRole::Loads))
         return;
+    reportUndefinedSets(loadSetId, sink);
     forEachConcentratedValue(loadSetId, sink, [](base::DofIndex, double, std::int64_t, const input::LoadTerm&) {});
     forEachGridPressureValue(loadSetId, sink, [](base::DofIndex, double) {});
     const std::vector<std::vector<elements::ElementPressure>> pressures = collectPressures(loadSetId, sink);
@@ -621,6 +724,23 @@ std::vector<std::vector<elements::ElementPressure>> LoadVectorBuilder::collectPr
             [&](std::int64_t, const PressureRow& row)
             {
                 const std::string_view card = row.card;
+                if (row.isLineLoad)
+                {
+                    // A load per unit length along the edges of the element is no pressure on its face: applied as
+                    // one it would be a wrong load, so the row is refused, never read as a pressure.
+                    sink.report(loadProblem(
+                        "load-unsupported", card, setId,
+                        base::concatenate(
+                            {card, " of load set ", std::to_string(setId),
+                             row.hasElement ? base::concatenate({" on element ", std::to_string(row.elementId)})
+                                            : std::string(),
+                             " is a line load (", card,
+                             ".surfaceOrLine Line: a load per unit length along the edges of the element), which this "
+                             "version of O_o_Solver does not apply (a pressure on the face, ",
+                             card, ".surfaceOrLine Surface or blank, is); write the load as forces at the grid "
+                                   "points of the edge, or remove the card"})));
+                    return;
+                }
                 if (!row.hasElement)
                 {
                     // PointsPressureLoad: a face of grid points, applied by forEachGridPressureValue, unless it is a
@@ -755,6 +875,9 @@ void LoadVectorBuilder::checkThermalLoads(const elements::ElementTemperatures& t
 {
     for (const AssemblyBatch& batch : m_set->batches())
         batch.family->checkThermalLoads(batch.view, temperatures, sink);
+    // A DEFORM alone has no temperature: the expansion of the rigid elements plays no part.
+    if (temperatures.hasTemperatureLoad)
+        reportRigidExpansion(m_set->index().snapshot(), sink);
     // The elements of the DEFORM set: one-dimensional elements of the model (DEFORM applies to those only), never left
     // out without a word.
     for (const elements::ElementDeformation& deformation : temperatures.deformations)
@@ -880,7 +1003,9 @@ std::vector<std::vector<elements::ElementLineLoad>> LoadVectorBuilder::collectLi
             load.scaleType = scaleTypes[row];
             load.x1 = x1[index];
             load.p1 = p1[index] * scale;
-            // BeamDistributedLoad: a blank X2 is a concentrated load at X1 (O_o_Model gives X2 = X1 then).
+            // BeamDistributedLoad: a blank X2 is a concentrated load at X1 (O_o_Model gives X2 = X1 then), and a blank
+            // P2 is taken as P1, also when X2 is given (a uniform load from X1 to X2): O_o_Model writes P1 there, and
+            // a table that leaves it null (built by hand) reads the same.
             load.x2 = std::isfinite(x2[index]) ? x2[index] : x1[index];
             load.p2 = (std::isfinite(p2[index]) ? p2[index] : p1[index]) * scale;
             byBatch[static_cast<std::size_t>(location->batchIndex)].push_back(load);

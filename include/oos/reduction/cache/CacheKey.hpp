@@ -76,9 +76,11 @@ inline constexpr std::string_view OFFSET_DEFINITION_PARAMETER = "ModelParams Off
 //   properties is the elements', with inputStamp's non-structural mass);
 // - inputStamp: a checksum of the unit's inputs as the solver reads them beside the stamps, so that a
 //   change no stamp sees (an overlay, a selection, a parameter) condenses again: its points in the model's order (IDs,
-//   positions, displacement systems), its elements in the order of the model's sums (batch, row, card), the relations
-//   of the units' Gm on its DOFs, the non-structural mass of its elements and the options of its assembly, its mass
-//   and its singularity processor (unitInputStamp);
+//   positions, displacement systems), its elements in the order of the model's sums (batch, row, card), the normal
+//   each grid point of its ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6 shares (elements::ShellDirectors: the
+//   mean over every element at the grid point, those of the units beside it included, or a ShellNormal card: neither
+//   is an input of the unit alone), the relations of the units' Gm on its DOFs, the non-structural mass of its
+//   elements and the options of its assembly, its mass and its singularity processor (unitInputStamp);
 // - equationStamp: the checksum of the equations the entry was condensed from (equationStampOf), stored with it and not
 //   matched: whenever a hit's equations are built they are compared with it, a difference being a key that missed an
 //   input.

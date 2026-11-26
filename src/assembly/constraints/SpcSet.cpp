@@ -18,6 +18,9 @@ namespace
 
 constexpr std::string_view PERMANENT_CARD = input::PERMANENT_CONSTRAINT_CARD; // the card of the PS rows
 constexpr std::string_view ENFORCED_MOTION_CARD = "EnforcedMotionConstr";
+// The Case Control command that selects the constraint set of a subcase: what the diagnostic of a set no card defines
+// names.
+constexpr std::string_view SPC_SELECTION_COMMAND = "SinglePointConstrSelection";
 
 constexpr std::uint8_t IN_SB = 1;
 constexpr std::uint8_t IN_SG = 2;
@@ -102,6 +105,7 @@ SpcSet::SpcSet(const input::ConstraintTable* constraints, const input::LoadTable
     }
     if (constraints != nullptr && (spcSetId || loadSetId))
     {
+        bool isSpcSetDefined = false; // a row of a constraint card names the selected set
         const std::span<const std::int32_t> setIds = constraints->spcSetIds();
         const base::ValidityView validSetIds = constraints->spcReader().validity("setId");
         const std::span<const std::int32_t> nodeIds = constraints->spcNodeIds();
@@ -127,6 +131,8 @@ SpcSet::SpcSet(const input::ConstraintTable* constraints, const input::LoadTable
             }
             else if (!spcSetId || setIds[index] != *spcSetId)
                 continue;
+            else
+                isSpcSetDefined = true;
             const base::EntityId setId = setIds[index];
             const base::EntityId nodeId = nodeIds[index];
             const std::optional<input::PointRef> point = dofMap.points().find(nodeId);
@@ -176,6 +182,15 @@ SpcSet::SpcSet(const input::ConstraintTable* constraints, const input::LoadTable
                     if (code.contains(component))
                         constrain(dofMap.gridDof(point->row, component));
         }
+        // A selected set that no card defines (a mistyped ID) would hold nothing without a word.
+        if (spcSetId && !isSpcSetDefined)
+            sink.report(spcDiagnostic(
+                "spc-unknown-set", SPC_SELECTION_COMMAND, *spcSetId, "",
+                base::concatenate({"expected the cards of constraint set ", std::to_string(*spcSetId), ", which a ",
+                                   SPC_SELECTION_COMMAND,
+                                   " selects, found none (no SinglePointConstr, SinglePointConstrList or "
+                                   "SinglePointConstrUnion row of that set in singlePointConstrTable): the set would "
+                                   "hold nothing; correct the set ID or add its constraint cards"})));
     }
     std::size_t sbCount = 0;
     std::size_t sgCount = 0;

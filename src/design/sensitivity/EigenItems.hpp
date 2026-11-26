@@ -5,6 +5,7 @@
 
 #include "oos/assembly/assemble/ElementSet.hpp"
 #include "oos/assembly/assemble/MassAssembler.hpp"
+#include "oos/assembly/assemble/NonStructuralMassShares.hpp"
 #include "oos/assembly/dofs/DofMap.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/design/model/DesignRelations.hpp"
@@ -93,8 +94,9 @@ public:
         const input::ParamTable* params = nullptr;
         std::size_t variableCount = 0;
         base::MemoryBudget* budget = nullptr;
-        // The design point's snapshot and the pool, for the constraints of the solves under a shape that moves the
-        // relations of an element formulation (addFormulationShapeTerms).
+        // The design point's snapshot and the pool, for the non-structural mass set a MODES subcase selects (the mass
+        // of its derivatives) and for the constraints of the solves under a shape that moves the relations of an
+        // element formulation (addFormulationShapeTerms).
         const input::ModelSnapshot* snapshot = nullptr;
         base::ThreadPool* pool = nullptr;
     };
@@ -188,6 +190,7 @@ private:
         std::vector<double> roots; // λ in the solve's order (bounded by the modes found)
         const linalg::DenseMatrix* shapes = nullptr;
         const std::vector<double>* scales = nullptr; // φ_normalised = shapes(:, m) / scales[m]
+        // The mass formulation of a MODES subcase; the added non-structural mass is per element batch: massOptionsOf.
         elements::MassOptions massOptions;
         double weightToMass = 1.0;
     };
@@ -216,6 +219,15 @@ private:
     };
 
     [[nodiscard]] double shapeValue(const Solve& solve, std::size_t mode, base::DofIndex dof) const;
+    // Reads the non-structural mass set the MODES subcase `subcase` selects (NonStructMassSelection; the subcases of
+    // one solve select the same) and keeps the mass it adds to each element for the solve `solveIndex` (m_addedMass):
+    // the modal solution assembles its mass with it, so the pencil K − λ·M of the derivatives must too.
+    void readAddedMass(std::size_t solveIndex, std::int32_t subcase);
+    // The mass options of an element of `family` for a modal solve: its formulation and the mass the selected set adds
+    // to the rows of the element's batch (per unit length or area: the same on every side of a perturbation, each
+    // side multiplying it by its own length or area, so that dM_e/dv carries the share's change with a shape).
+    [[nodiscard]] elements::MassOptions massOptionsOf(std::size_t solveIndex,
+                                                      const elements::ElementFamily& family) const;
     // Φᵀ·A·Φ of an element matrix A (row-major over `dofs`) into `target` (m × m), scaled by `factor`.
     void addProjection(const Cluster& cluster, std::span<const base::DofIndex> dofs, std::span<const double> matrix,
                        double factor, std::vector<double>& target) const;
@@ -274,6 +286,9 @@ private:
     std::map<std::int32_t, elements::NodalDisplacements> m_preloads;
     std::map<std::int32_t, std::span<const double>> m_preloadVectors;
     std::map<std::size_t, SolveConstraints> m_solveConstraints; // by solve
+    // By modal solve whose subcase selects a non-structural mass set: the mass it adds to the rows of each batch of
+    // the design point's element set (Inputs::set).
+    std::map<std::size_t, assembly::NonStructuralMassShares> m_addedMass;
     bool m_hasModal = false;
     bool m_hasBuckling = false;
 };

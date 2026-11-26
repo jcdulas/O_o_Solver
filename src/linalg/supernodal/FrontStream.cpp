@@ -614,13 +614,16 @@ void FrontStream::testRatios(const FrontLayout& layout, ConstDenseMatrixView pan
             ratios.largestRatio = ratio;
             ratios.equationOfLargest = equation;
         }
-        if (ratio > m_options.pivotPolicy.maxRatio || ratio < 0.0)
+        // A negative pivot is tested on the pivot itself (MultifrontalDriver::finish): with a zero or negative
+        // diagonal its ratio is −0 or positive, and would pass.
+        const bool isNegative = ratio < 0.0 || pivot < 0.0;
+        if (ratio > m_options.pivotPolicy.maxRatio || isNegative)
         {
             ++ratios.issueCount;
             if (ratios.issues.size() < PivotDiagnostics::RECORDED_ISSUE_COUNT)
                 ratios.issues.push_back(
                     {equation, diagonal[j], pivot, ratio,
-                     ratio < 0.0 ? PivotIssueKind::NegativePivot : PivotIssueKind::RatioAboveMaximum});
+                     isNegative ? PivotIssueKind::NegativePivot : PivotIssueKind::RatioAboveMaximum});
         }
     }
 }

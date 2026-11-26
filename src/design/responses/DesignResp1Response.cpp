@@ -21,7 +21,9 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <limits>
 #include <map>
+#include <memory>
 #include <set>
 #include <unordered_set>
 #include <utility>
@@ -59,6 +61,15 @@ base::Diagnostic problem(const char* code, const DesignResp1Definition& definiti
                          std::string message)
 {
     return designProblem(code, CARD, definition.id, std::move(field), std::move(message));
+}
+
+// Whether a real attribute (ATTB arrives as a float64) holds an integer of [lowest, largest]. Tested before any
+// conversion: converting a NaN or a value beyond the range of the integer type is undefined behaviour, and a
+// truncation would read another column or ply than the one asked (2.7 as 2).
+[[nodiscard]] bool isIntegerWithin(double value, std::int32_t lowest, std::int32_t largest)
+{
+    return std::isfinite(value) && value == std::floor(value) && value >= static_cast<double>(lowest) &&
+           value <= static_cast<double>(largest);
 }
 
 bool isComposite(ResponseType type)
@@ -150,12 +161,15 @@ DesignResp1Response::DesignResp1Response(DesignResp1Definition definition, const
     }
     const bool takesAttributeB = type == ResponseType::Weight || isComposite(type) || isEigenType(type) ||
                                  type == ResponseType::StabilityDerivative;
+    // A positive integer ATTB of a displacement, stress, strain or force field was taken as its vibration mode
+    // (DesignResponses) before this point: a value still here is not one (2.5, 0, a NaN) or the type takes none.
     if (m_definition.attributeB && !takesAttributeB)
         problems.push_back(
             problem(design_code::UNSUPPORTED_RESPONSE, m_definition, "attributeB",
                     base::concatenate({"expected DesignResp1.attributeB blank on a ", responseTypeName(type),
-                                       " response, found a value; use the mode selector for a vibration field "
-                                       "response"})));
+                                       " response, found ", std::to_string(*m_definition.attributeB),
+                                       "; only a positive integer there selects the vibration mode of a "
+                                       "displacement, stress, strain or force field (or use the mode selector)"})));
     if (m_definition.region && (isGlobalType(type) || isEigenType(type) || isAeroelasticType(type)))
         problems.push_back(
             problem(design_code::INVALID_RESPONSE, m_definition, "regionId",
@@ -170,13 +184,15 @@ DesignResp1Response::DesignResp1Response(DesignResp1Definition definition, const
         {
             m_weightRow = m_definition.attributeA.value_or(DEFAULT_WEIGHT_ENTRY);
             const double column = m_definition.attributeB.value_or(DEFAULT_WEIGHT_ENTRY);
-            m_weightColumn = static_cast<std::int32_t>(column);
-            if (m_weightRow < 1 || m_weightRow > RIGID_BODY_SIZE || column != std::floor(column) ||
-                m_weightColumn < 1 || m_weightColumn > RIGID_BODY_SIZE)
+            // The column stays at its default when it is refused (isIntegerWithin: no conversion before the test).
+            const bool isColumn = isIntegerWithin(column, 1, RIGID_BODY_SIZE);
+            if (isColumn)
+                m_weightColumn = static_cast<std::int32_t>(column);
+            if (m_weightRow < 1 || m_weightRow > RIGID_BODY_SIZE || !isColumn)
                 problems.push_back(
                     problem(design_code::INVALID_RESPONSE, m_definition, "attributeA",
                             base::concatenate({"expected DesignResp1.attributeA and "
-                                               "DesignResp1.attributeB of WEIGHT from 1 to 6 (a row "
+                                               "DesignResp1.attributeB of WEIGHT as integers from 1 to 6 (a row "
                                                "and a column of the rigid-body weight matrix), found ",
                                                std::to_string(m_weightRow), " and ", std::to_string(column)})));
         }
@@ -674,16 +690,27 @@ void DesignResp1Response::resolveMassTargets(const ElementCatalog& catalog, std:
                         (m_definition.propertyType.empty() ? std::string("blank") : m_definition.propertyType)));
         return;
     }
+    // The elements of the properties, resolved once: a property is known by its card and its ID together (property
+    // IDs are unique within a property card only), which a filter cannot tell from an element's card and property ID.
+    // Bounded by the elements of the model.
+    std::vector<std::int32_t> selected;
     for (const std::int32_t propId : m_definition.targets)
     {
         if (!catalog.hasProperty(m_definition.propertyType, propId))
+        {
             problems.push_back(
                 problem(design_code::MISSING_RESPONSE_TARGET, m_definition, "attributes",
                         base::concatenate({"expected a ", m_definition.propertyType, " of the model, found ",
                                            std::to_string(propId), ", which the model does not have"})));
-        else
-            m_properties.emplace_back(m_definition.propertyType, propId);
+            continue;
+        }
+        m_properties.emplace_back(m_definition.propertyType, propId);
+        for (const ElementEntry* entry : catalog.elementsOfProperty(m_definition.propertyType, propId))
+            selected.push_back(entry->elementId);
     }
+    std::sort(selected.begin(), selected.end());
+    selected.erase(std::unique(selected.begin(), selected.end()), selected.end());
+    m_massElements = std::make_shared<const std::vector<std::int32_t>>(std::move(selected));
 }
 
 void DesignResp1Response::resolveElementTargets(const ElementCatalog& catalog, std::vector<base::Diagnostic>& problems)
@@ -704,10 +731,20 @@ void DesignResp1Response::resolveElementTargets(const ElementCatalog& catalog, s
                                    "found it blank"));
     if (isComposite(type))
     {
+        // ATTB, the lamina: a ply number, an integer of at least 1 (isIntegerWithin: no conversion before the test).
+        const double lamina = m_definition.attributeB.value_or(DEFAULT_LAMINA);
         if (!m_definition.plies.empty())
             m_plies = m_definition.plies;
+        else if (isIntegerWithin(lamina, 1, std::numeric_limits<std::int32_t>::max()))
+            m_plies.push_back(static_cast<std::int32_t>(lamina));
         else
-            m_plies.push_back(static_cast<std::int32_t>(m_definition.attributeB.value_or(DEFAULT_LAMINA)));
+            problems.push_back(
+                problem(design_code::INVALID_RESPONSE, m_definition, "attributeB",
+                        base::concatenate({"expected the lamina of ", responseTypeName(type),
+                                           " in DesignResp1.attributeB as an integer of at least 1 (the number of a "
+                                           "ply of the laminate), found ",
+                                           std::to_string(lamina),
+                                           "; give the number of one ply, or several with the plies selector"})));
     }
     // The elements, in the order of the ATTi (the elements of a property in increasing ID).
     std::vector<const ElementEntry*> selected;
@@ -737,6 +774,14 @@ void DesignResp1Response::resolveElementTargets(const ElementCatalog& catalog, s
             continue;
         }
         const std::vector<const ElementEntry*> elements = catalog.elementsOfProperty(m_definition.propertyType, target);
+        // A property no element references would give no item, and a constraint on it would constrain nothing.
+        if (elements.empty())
+            problems.push_back(
+                problem(design_code::MISSING_RESPONSE_TARGET, m_definition, "attributes",
+                        base::concatenate({"expected the elements of ", m_definition.propertyType, " ",
+                                           std::to_string(target), " for ", responseTypeName(type),
+                                           ", found no element that references this property; name a property the "
+                                           "elements of the model use, or remove it from DesignResp1.attributes"})));
         selected.insert(selected.end(), elements.begin(), elements.end());
     }
     const elements::ElementRegistry registry = elements::ElementRegistry::forModel(catalog.snapshot());
@@ -824,12 +869,12 @@ void DesignResp1Response::addRequiredOutputs(
 
 ElementFilter DesignResp1Response::massFilter() const
 {
+    // The elements of the properties (resolveMassTargets), shared by the copies of the filter: a search by element ID
+    // in the sorted list. The card and the property ID a filter receives are the element's, and a property ID alone
+    // does not name a property (ShellProp 1 and BarProp 1 are two properties).
     if (!m_properties.empty())
-        return [properties = m_properties](std::string_view, std::int32_t, std::int32_t propId)
-        {
-            return std::any_of(properties.begin(), properties.end(),
-                               [propId](const auto& property) { return property.second == propId; });
-        };
+        return [elements = m_massElements](std::string_view, std::int32_t elementId, std::int32_t)
+        { return std::binary_search(elements->begin(), elements->end(), elementId); };
     return [](std::string_view card, std::int32_t, std::int32_t) { return !MassProperties::isConcentratedMass(card); };
 }
 

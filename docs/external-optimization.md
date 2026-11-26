@@ -301,8 +301,11 @@ auto b = std::async(std::launch::async, firstHz, "wing-b.oos");
 std::cout << a.get() << " " << b.get();
 ```
 
-Each worker loads its own Model and Solver memories. `evaluateMany` queues points with backpressure; results are
-owned typed arrays. Cancellation or timeout terminates the busy worker and starts a replacement. Named hooks in a
+Each worker loads its own Model and Solver memories. `evaluateMany` takes any number of points with backpressure: a
+point is sent when a worker is free for it, so the `maximumQueuedPoints` limit of `evaluate` does not apply. Its first
+failure rejects the call and no further point is started; the points already running end on their own unless the
+`signal` aborts them. Results are owned typed arrays. Cancellation or timeout terminates the busy worker and starts a
+replacement, as does a WebAssembly trap in a worker, whose module is not used again. Named hooks in a
 worker must be exported by a `hooksURL` module because functions cannot cross the worker boundary. A pool also
 supports `mode: "native"` with native optimization declarations and settings. Keep model and worker count within the
 application's memory budget.

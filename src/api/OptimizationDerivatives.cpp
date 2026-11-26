@@ -321,14 +321,20 @@ void completeShapeGradients(OptimizationEvaluation& point, const design::Gradien
     }
     if (gradients.objective)
     {
-        const auto id = point.owner().problem().constraints().objective();
-        if (id)
+        const auto& problemConstraints = point.owner().problem().constraints();
+        if (const auto id = problemConstraints.objective())
         {
             const auto response = std::find_if(gradients.responses.begin(), gradients.responses.end(),
                                                [&](const auto& entry) { return entry.id == *id; });
-            if (response != gradients.responses.end() && response->itemCount == 1)
+            const auto values = std::find_if(original.responses.begin(), original.responses.end(),
+                                             [&](const auto& entry) { return entry.id == *id; });
+            // The objective is one item of its response (DesignConstraints::objectiveItem), not always item 0: the
+            // response may be constrained in other subcases too.
+            const std::optional<std::size_t> item =
+                values != original.responses.end() ? problemConstraints.objectiveItem(*values) : std::nullopt;
+            if (response != gradients.responses.end() && item)
                 for (const auto column : shapeColumns)
-                    (*gradients.objective)[column] = response->values[column];
+                    (*gradients.objective)[column] = response->values[*item * n + column];
         }
     }
 }

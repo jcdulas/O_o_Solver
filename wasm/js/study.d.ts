@@ -21,6 +21,8 @@ export interface StudyResponse {
     "stabilityDerivative" | "pressure" | "boxForce" | "boxMoment" | "hingeMoment" | "callback" | "query";
   query?: string; column?: string; idColumn?: string; args?: Record<string, unknown>;
   kind?: string; subcase?: number; elementType?: string; ids?: number[]; nodeIds?: number[]; layers?: number[];
+  // The Case Control section the output request of the response is written in, in place of `subcase`.
+  sectionKey?: number;
   components?: string | number | (string | number)[]; rowNames?: string[];
   step?: number; mode?: number; tracksMode?: boolean; minimumMac?: number;
   variable?: string; derivativeColumn?: "rigidUnsplined" | "rigidSplined" | "elasticRestrained" |
@@ -28,6 +30,8 @@ export interface StudyResponse {
   reduce?: "none" | "sum" | "mean" | "max" | "min" | "maxAbs" | "norm";
   scale?: number; callback?: string;
 }
+// Every level of a definition takes the keys declared here only: another key (a misspelt `components`, for
+// instance, which would select every component) throws a TypeError that lists the keys of its level.
 export interface StudyDefinition {
   version: 1; variables: StudyVariable[]; parameters?: StudyParameter[];
   analyses: { analysis: Analysis; subcases?: number[] }[];

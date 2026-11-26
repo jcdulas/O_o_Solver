@@ -7,7 +7,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
+#include <span>
 #include <string>
+#include <utility>
 
 namespace oos::elements
 {
@@ -51,6 +54,36 @@ double smallestRelativePivot(base::MatN<UNKNOWNS> a)
     return smallest / largest;
 }
 
+// Whether values that must be the weights of a mean sum to 1 within PIERCING_WEIGHT_SUM_TOLERANCE (a NaN does not).
+bool sumsToOne(double sum)
+{
+    return std::abs(sum - 1.0) <= PIERCING_WEIGHT_SUM_TOLERANCE;
+}
+
+// The problem of a footprint whose weights do not make a mean, or nothing: the weights w_k of its auxiliary points
+// must sum to 1, and so must the shape functions N_kj of each point. ū = Σ w_k Σ N_kj u_j is otherwise not the
+// translation of a rigid translation of the grid points, and the fastener would carry a force under a rigid motion.
+std::optional<std::string> footprintWeightProblem(std::span<const AuxiliaryPoint> points)
+{
+    double weightSum = 0.0;
+    for (const AuxiliaryPoint& point : points)
+    {
+        weightSum += point.weight;
+        double shapeSum = 0.0;
+        for (const double value : point.shapeValues)
+            shapeSum += value;
+        if (!sumsToOne(shapeSum))
+            return base::concatenate(
+                {"expected the shape functions of the shell element at an auxiliary point of the fastener to sum "
+                 "to 1, found ",
+                 std::to_string(shapeSum), "; the piercing table does not hold an interpolation"});
+    }
+    if (!sumsToOne(weightSum))
+        return base::concatenate({"expected the weights of the auxiliary points of the fastener to sum to 1, found ",
+                                  std::to_string(weightSum), "; the piercing table does not hold a mean"});
+    return std::nullopt;
+}
+
 // The weights w_i = max(N_i, f·max N) of the interpolation (PIERCING_WEIGHT_FLOOR), or a problem.
 std::variant<std::vector<double>, std::string> weightsOf(std::span<const PiercedGrid> grids)
 {
@@ -61,7 +94,7 @@ std::variant<std::vector<double>, std::string> weightsOf(std::span<const Pierced
         sum += grid.shapeValue;
         largest = std::max(largest, grid.shapeValue);
     }
-    if (!(std::abs(sum - 1.0) <= PIERCING_WEIGHT_SUM_TOLERANCE))
+    if (!sumsToOne(sum))
         return base::concatenate(
             {"expected the shape functions of the pierced element at the piercing point to sum to "
              "1, found ",
@@ -232,6 +265,8 @@ std::variant<PiercingMap, std::string> interpolateFootprint(base::Vec3 piercingP
 {
     if (points.empty())
         return std::string("expected the auxiliary points of the fastener on the shells, found none");
+    if (std::optional<std::string> problem = footprintWeightProblem(points))
+        return std::move(*problem);
     // The auxiliary points where the shape functions put them, X_k = Σ N_kj·x_j: a rigid motion of the grid points
     // is then the same rigid motion of the auxiliary points.
     std::vector<base::Vec3> positions; // the corners of one footprint

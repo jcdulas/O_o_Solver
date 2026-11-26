@@ -1551,6 +1551,20 @@ void MixedHybridModel::shellSupports(const std::map<std::int32_t, BasicSupport>&
         for (const ShellAxisTerm& term : row.grids)
             terms.push_back({ElementDof::grid(m_gridRows[term.grid], static_cast<int>(term.component) + 1),
                              term.coefficient});
+        // A basic component of a grid that holds it by its flags: u_basic(b) = Σ_s R(b, s) u_CD(s), on the components
+        // the grid point holds (the flag says that the basic axis lies in their span).
+        for (const ShellGridTerm& term : row.basicGrids)
+        {
+            const base::Mat3& frame = m_gridFrames[term.grid];
+            const std::array<bool, 6>& isHeldInCd = perGrid.at(static_cast<std::int32_t>(term.grid)).isHeldInCd;
+            const std::size_t b = term.component % 3;
+            const std::size_t firstOfGroup = term.component < 3 ? 0 : 3;
+            for (std::size_t s = 0; s < 3; ++s)
+                if (frame(b, s) != 0.0 && isHeldInCd[firstOfGroup + s])
+                    terms.push_back(
+                        {ElementDof::grid(m_gridRows[term.grid], static_cast<int>(firstOfGroup + s) + 1),
+                         term.coefficient * frame(b, s)});
+        }
         rows->push_back(std::move(terms));
     }
     if (supports == nullptr)

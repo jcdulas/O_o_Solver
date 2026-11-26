@@ -337,9 +337,8 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         bucklingOptions.cancellation = options.cancellation;
         bucklingOptions.monitor = options.monitor;
         bucklingOptions.structures = options.structures;
-        // The derivatives of the load factors and of the modes form the mass of the elements without a selected
-        // non-structural mass set: such a selection is refused rather than analysed with it and differentiated
-        // without it.
+        // The derivatives of the load factors form the mass of the elements without a selected non-structural mass
+        // set: such a selection is refused rather than analysed with it and differentiated without it.
         bucklingOptions.refusesSelectedMassSets = true;
         condensedOptions(bucklingOptions);
         if (isCondensed && hasBucklingResponses())
@@ -382,7 +381,10 @@ StaticDesignEvaluation DesignProblem::evaluateAnalyses(std::span<const double> x
         modesOptions.cancellation = options.cancellation;
         modesOptions.monitor = options.monitor;
         modesOptions.structures = options.structures;
-        modesOptions.refusesSelectedMassSets = true;
+        // A non-structural mass set the MODES subcase selects is analysed, not refused: the derivatives of the roots
+        // and of the mode shapes form their mass and its element rates with that set (EigenItems::readAddedMass,
+        // ModalSystem, ModalItems, ModalHessian), the mass of the analysis. The condensed path still refuses it
+        // (CondensedStatics).
         condensedOptions(modesOptions);
         for (const auto& definition : m_responses.parts().designResp1)
             if (definition.mode && definition.type != ResponseType::BucklingDisplacement)
@@ -779,9 +781,21 @@ DesignGradients DesignProblem::gradients(const DesignEvaluation& evaluation, con
         }
         gradients.constraints.push_back(std::move(row));
     }
+    // The objective is one item of its response (DesignConstraints::objectiveItem), not always item 0 nor the only
+    // one: the same response may be constrained in other subcases, where it has other items. Its gradient is the row
+    // of that item, when it was differentiated.
     if (const std::optional<std::int32_t> objective = m_constraints.objective())
-        if (const auto found = byId.find(*objective); found != byId.end() && found->second->itemCount == 1)
-            gradients.objective = found->second->values;
+        if (const auto found = byId.find(*objective); found != byId.end())
+        {
+            const auto values = std::find_if(evaluation.responses.begin(), evaluation.responses.end(),
+                                             [&](const ResponseValues& response) { return response.id == *objective; });
+            const std::optional<std::size_t> item =
+                values != evaluation.responses.end() ? m_constraints.objectiveItem(*values) : std::nullopt;
+            const std::vector<double>& rows = found->second->values;
+            if (item && (*item + 1) * n <= rows.size() && isItemDifferentiated(options, *objective, *item))
+                gradients.objective.emplace(rows.begin() + static_cast<std::ptrdiff_t>(*item * n),
+                                            rows.begin() + static_cast<std::ptrdiff_t>((*item + 1) * n));
+        }
     return gradients;
 }
 

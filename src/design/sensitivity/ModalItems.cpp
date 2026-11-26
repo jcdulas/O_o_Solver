@@ -130,6 +130,10 @@ void ModalItems::prepare()
         const auto n = static_cast<std::size_t>(selection.keptDofCount());
         const auto& stiffness = pencil.stiffness();
         const auto& mass = pencil.mass();
+        // The selected non-structural mass of the pencil, per element of the set the designed elements are numbered
+        // in, for the rates of their masses (the analysis reported the problems of the set).
+        if (pencil.selectedNonStructuralMass())
+            m_addedMass.try_emplace(solveIndex, *m_in.set, pencil.selectedNonStructuralMass(), budget, sink);
         for (std::size_t modeIndex = 0; modeIndex < m_modes.size(); ++modeIndex)
         {
             Mode& mode = m_modes[modeIndex];
@@ -251,11 +255,20 @@ double ModalItems::explicitRate(Item& item, const ElementRef& element, const ele
     return differences.derivative(values[0], values[1], values[2], values[3]);
 }
 
+elements::MassOptions ModalItems::massOptionsOf(const Mode& mode, const ElementRef& element) const
+{
+    elements::MassOptions options = mode.massOptions;
+    if (const auto added = m_addedMass.find(mode.solve); added != m_addedMass.end())
+        options.addedNonStructuralMass = added->second.sharesOf(element.batch);
+    return options;
+}
+
 void ModalItems::addElement(std::size_t quantity, const ElementRef& element, const elements::FieldUse& use,
                             const ElementMatrixDerivative& stiffness, const MassOf& massOf,
                             const elements::DesignedField* field, const LazyFieldPerturbation& perturbation)
 {
-    std::map<elements::MassFormulation, ElementMatrixDerivative> masses;
+    // ∂M_e/∂v by solve: its mass formulation and the non-structural mass set its subcases select.
+    std::map<std::size_t, ElementMatrixDerivative> masses;
     for (Item& item : m_items)
     {
         const Mode& mode = m_modes[item.mode];
@@ -263,9 +276,9 @@ void ModalItems::addElement(std::size_t quantity, const ElementRef& element, con
         double rate = -product(stiffness, item.adjoint.span(), shape);
         if (use.changesMass)
         {
-            auto [found, isNew] = masses.try_emplace(mode.massOptions.formulation);
+            auto [found, isNew] = masses.try_emplace(mode.solve);
             if (isNew)
-                found->second = massOf(mode.massOptions);
+                found->second = massOf(massOptionsOf(mode, element));
             const auto& mass = found->second;
             const double root = m_in.results->solves[mode.solve].eigenvalues[mode.column];
             rate += mode.weightToMass * (root * product(mass, item.adjoint.span(), shape) -

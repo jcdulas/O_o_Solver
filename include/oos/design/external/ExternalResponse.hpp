@@ -60,7 +60,9 @@ struct ExternalArgumentBlock
 // - its labels are its zones; per zone and subcase it has one item per output of the plugin (entity the zone ID,
 //   component the output number from 1), the zones in order, then the subcases, then the outputs;
 // - select=: the evaluator gives the subcases of each zone to evaluate (the responses evaluated so far at hand), the
-//   others are not_evaluated (NaN), as the subcases of a zone whose data the analysis did not give;
+//   others are not_evaluated (NaN), as the subcases of a zone whose data the analysis did not give; with select= the
+//   number of outputs of every zone is declared (`outputs`, at least 1 each: a zone whose selection keeps no case is
+//   not called and its items could not be counted otherwise);
 // - a callback that is not linear is called per zone and per batch of at most `blockItems` of its selected cases, with
 //   the zone data of each case (rows: the cases; columns: the contour or interior DOFs of the zone, unpadded);
 // - a linear callback is called per zone, constraint set and batch of basis vectors with their zone data; its outputs

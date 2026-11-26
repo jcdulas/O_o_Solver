@@ -61,7 +61,9 @@ struct DerivedSupportDof
 //
 // A scalar point is constrained with component 0 or blank. Problems are Diagnostics: an unknown point
 // ("spc-unknown-point"), a component the point does not have ("spc-bad-component"), two different SPC values on one
-// DOF ("spc-conflicting-values", the first is kept).
+// DOF ("spc-conflicting-values", the first is kept), and a selected SPC set that no row of a constraint card of the
+// table names ("spc-unknown-set": the set would hold nothing; not checked without constraint tables). The load set is
+// checked by LoadVectorBuilder, which reads the other tables that can carry it.
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns its arrays (budgeted); the budget must outlive
 // it. Copyable: its arrays shared (withLoadSet).

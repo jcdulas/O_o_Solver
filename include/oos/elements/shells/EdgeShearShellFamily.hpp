@@ -20,16 +20,19 @@
 // - the design derivatives in closed form, by the complex step (ShellScalar.hpp) through the same kernels.
 //
 // Choices of this project:
-// - mass: the lumped mass of the element on the grid points through the rotations alone, and the pressure loads
-//   without the offset, unless ModelParams OffsetDefinition asks for them on the offset (ShellNodeFrames), as the other
-//   shells; the thermal loads always through the offset, consistently with the stiffness;
+// - mass: the lumped mass of the element on the grid points through the rotations alone, and the pressure and thermal
+//   loads without the offset, unless ModelParams OffsetDefinition asks for them on the offset (ShellNodeFrames), as
+//   the other shells, the bars and the beams;
 // - thermal loads: the dilatation of the free strain (its mean in-plane strain) loads the element as K q, q its
 //   homothety, so that a uniform temperature rise leaves a warped mesh, or one whose normals are shared, without
-//   stress (DirectorShellKinematics.hpp, addDilatationLoads);
+//   stress (DirectorShellKinematics.hpp, addDilatationLoads). An element with an offset is free of stress under that
+//   rise only when OffsetDefinition puts the loads on the offset (ElemOffsetZ): under ElemOffsetsOnly, the default,
+//   its loads leave out the moments ZOFFS·n × F that the stiffness Tᵀ K T has;
 // - THETA and MCID: the material axis is measured and applied in one frame, the element frame;
 // - ShellProp T without MID1: the bending-only section keeps its thickness;
-// - a section without MID3 (or a laminate whose plies give no transverse shear modulus) has no transverse shear
-//   flexibility: the kernels take the shear stiffness of section 4 of the ShellQuad4 document;
+// - a section without MID3 (or a laminate none of whose plies gives a transverse shear modulus: one that does is
+//   enough for the laminate to shear, Laminate.hpp) has no transverse shear flexibility: the kernels take the shear
+//   stiffness of section 4 of the ShellQuad4 document;
 // - the recovery: the forces and moments of a coupled section (MID4, an unsymmetric laminate) take the coupling, and
 //   the thermal strain and curvature are subtracted, so that the forces balance the loads; the fibre stresses are
 //   those of a plate of bending material G2 (without 12I/T³); the transverse shear forces are those conjugate to

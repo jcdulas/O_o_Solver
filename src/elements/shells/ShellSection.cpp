@@ -110,6 +110,12 @@ ShellSection ShellSection::rotatedToElementFrame(double materialAngle) const
     return rotated;
 }
 
+double ShellSection::materialShearTermOf(const base::Mat3& matrixInSectionFrame) const
+{
+    constexpr std::size_t SHEAR = 2; // the row and column of γxy in (εx, εy, γxy)
+    return rotateToElementFrame(matrixInSectionFrame, -frameAngle)(SHEAR, SHEAR);
+}
+
 std::array<double, 3> ShellSection::transverseShearCompliance() const
 {
     std::array<double, 2> principal{};

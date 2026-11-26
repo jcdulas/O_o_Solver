@@ -1105,6 +1105,14 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             "sections, zones, MonitorNodeForceSum3, external units or kept displacements (its regions keep nothing "
             "after the "
             "solve); ask for those on the full path or the condensed path");
+    // The loads the caller adds to one case (StaticOptions::appliedLoads) enter the load basis of the full path alone:
+    // the units of the condensed path and the fronts of the streamed path make their loads from the model's cards, and
+    // would solve the case without them.
+    if (!m_options.appliedLoads.entries.empty() &&
+        (m_options.isStreamed || (m_options.condensation && !m_options.condensation->isFullPath())))
+        throw std::invalid_argument(
+            "StaticSolution: the loads added to a case (StaticOptions::appliedLoads) are taken on the full path only, "
+            "not streamed nor condensed; run that case on the full path");
     if (m_options.keepsThermalUnits && (!m_options.keepsLoadBasis || m_options.isStreamed ||
                                         (m_options.condensation && !m_options.condensation->isFullPath())))
         throw std::invalid_argument(
@@ -2079,6 +2087,28 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         }
     };
 
+    // The grid point weight generator (PARAM WeightReferenceNode) and the UserDofSet table (PARAM DofSetPrint) are made
+    // from the mass and the solved sets of the full path, which the condensed and streamed paths do not form: an
+    // information diagnostic says so (the weight once per run, the table per constraint set that asks for it), as the
+    // condensed eigenvalue solution does.
+    bool isWeightNoteMade = false;
+    const auto reportFullPathOutputs = [&](const StaticSubcase& firstOfSet, const char* pathName, const char* remedy)
+    {
+        if (weightReferenceNode != NO_WEIGHT_REFERENCE_NODE && !isWeightNoteMade)
+        {
+            sink.report(subcaseProblem(
+                firstOfSet.label, base::Severity::Information, "output-not-produced",
+                base::concatenate({"PARAM WeightReferenceNode: the grid point weight generator is not produced on ",
+                                   pathName, " of this version; ", remedy, " for it"})));
+            isWeightNoteMade = true;
+        }
+        if (assembly::findIntegerParam(params, "DofSetPrint", firstOfSet.label, sink).value_or(-1) >= 0)
+            sink.report(subcaseProblem(
+                firstOfSet.label, base::Severity::Information, "output-not-produced",
+                base::concatenate({"PARAM DofSetPrint: the UserDofSet table is not produced on ", pathName,
+                                   " of this version; ", remedy, " for it"})));
+    };
+
     for (std::size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex)
     {
         const std::vector<std::size_t>& group = groups[groupIndex];
@@ -2150,6 +2180,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
                                        "case's vectors to combine); solve it on the full path "
                                        "(not streamed) or the condensed path"));
             stopOnErrors(sink, "the assembly");
+            reportFullPathOutputs(first, "the full path streamed", "run the full path (not streamed)");
             // The load basis: no output of the cases, the declared quantities and cuts of the vectors.
             const std::vector<output::OutputPlan> noOutputs(results.loadBasis ? subcases.size() : 0);
             StreamedStatics::GroupInputs streamedInputs;
@@ -2165,6 +2196,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
             streamedInputs.bodyAccelerations = streamedAccelerations;
             streamedInputs.plans = plans;
             streamedInputs.spc = &groupSpc;
+            streamedInputs.spcSets = spcSets;
             streamedInputs.supports = userSupports;
             streamedInputs.relief = reliefMode;
             streamedInputs.selection =
@@ -2234,6 +2266,7 @@ StaticResults StaticSolution::runOnPath(base::MemoryBudget& budget) const
         if (condensed)
         {
             stopOnErrors(sink, "the assembly");
+            reportFullPathOutputs(first, "the condensed path", "run the full path (no condensation)");
             CondensedStatics::GroupInputs groupInputs;
             groupInputs.constraintSet = static_cast<std::int32_t>(groupIndex);
             groupInputs.cases = group;

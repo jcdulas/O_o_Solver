@@ -308,6 +308,13 @@ ApproximateProblem ApproximateProblem::fromDesign(const DesignProblem& problem, 
             throw base::OptimisationError(
                 base::concatenate({"approximate problem: the objective (response ", std::to_string(*objective),
                                    ") has no gradient; compute the gradients with the retained responses' options"}));
+        // The item of its response the objective is (DesignConstraints::objectiveItem): the eigenvalue form is that
+        // item's, not item 0's, when the response has items in other subcases too.
+        const auto objectiveValues = valuesOf.find(*objective);
+        const std::size_t objectiveItem =
+            objectiveValues != valuesOf.end()
+                ? problem.constraints().objectiveItem(*objectiveValues->second).value_or(0)
+                : 0;
         inputs.objective = {true,
                             *objective,
                             screeningTypeOf(problem.responses(), *objective),
@@ -315,7 +322,7 @@ ApproximateProblem ApproximateProblem::fromDesign(const DesignProblem& problem, 
                             *evaluation.objective,
                             *gradients.objective,
                             powersOf(*objective),
-                            eigenFormOf(problem, *objective, 0, gradients, settings.kind)};
+                            eigenFormOf(problem, *objective, objectiveItem, gradients, settings.kind)};
     }
     return {std::move(inputs), settings, budget};
 }

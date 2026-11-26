@@ -56,7 +56,8 @@ export interface SurfaceEdges {
   rounding: Float64Array;
 }
 
-// The options of modelFromReader.
+// The options of modelFromReader. Another key throws a TypeError that lists these (a misspelt option would
+// otherwise leave its default in force), as does a key of formulationGeometry that is not one of its lists.
 export interface ModelOptions {
   // The formulation of the elements of some card types ({ ShellQuad4: "ClassicFormulation" }).
   elementFormulations?: Record<string, string>;
@@ -64,7 +65,8 @@ export interface ModelOptions {
   elementFormulation?: string;
   // Mandatory for a model with shells or solids in MixedHybridFormulation.
   formulationGeometry?: FormulationGeometry;
-  // Also take the component tables of the reader, which a condensed static analysis reads.
+  // Also take the component tables of the reader, which a condensed static analysis reads. A boolean: the units to
+  // condense are given to run (settings.condensation).
   condensation?: boolean;
 }
 
@@ -326,6 +328,7 @@ export declare class OosSolver {
   // does not take, then what the element formulation of the model refuses (a geometry declaration that names no
   // edge, an element it cannot compute).
   checkSupport(model: Model, analysis?: Analysis): SupportCheck;
+  // A key of `settings`, or of a condensation given as an object, that is not listed here throws a TypeError.
   run(model: Model, analysis?: Analysis,
       settings?: { subcases?: number[]; memoryBytes?: number; threads?: number;
                    condensation?: CondensationSettings; streamed?: boolean;

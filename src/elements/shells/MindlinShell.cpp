@@ -332,7 +332,11 @@ template <typename Shape>
 MindlinShell<Shape>::MindlinShell(const std::array<base::Vec3, N>& position, const std::array<base::Vec3, N>& director,
                                   const ShellSection& section, const std::array<double, C>& thickness,
                                   double drillingFactor)
-    : m_position(position), m_director(director), m_section(section), m_drillingFactor(drillingFactor)
+    : m_position(position),
+      m_director(director),
+      m_section(section),
+      m_bendingShearModulus(section.materialShearTermOf(section.bendingMatrix)),
+      m_drillingFactor(drillingFactor)
 {
     // The edge node e lies between the corners e and e + 1 (HigherOrderShapes): the mean of their thicknesses, so
     // that the interpolation of the N nodes reproduces the bilinear (linear) field of the corners.
@@ -469,8 +473,9 @@ base::MatN<2> MindlinShell<Shape>::shearStiffness(double t) const
     for (std::size_t k = 0; k < 2; ++k)
     {
         const double stiffness = m_section.transverseShearStiffness[k];
-        // MID3 blank (or a rigid direction): the shear of the bending material (see the class comment).
-        principal[k] = t * (stiffness > 0.0 ? stiffness : m_section.shearRatio * m_section.bendingMatrix(2, 2));
+        // MID3 blank (or a rigid direction): the shear of the bending material in its material axes (see the class
+        // comment), not the term (3, 3) of the bending matrix in the element frame, which turns with the element.
+        principal[k] = t * (stiffness > 0.0 ? stiffness : m_section.shearRatio * m_bendingShearModulus);
     }
     const double c = std::cos(m_section.frameAngle);
     const double sine = std::sin(m_section.frameAngle);
@@ -976,12 +981,14 @@ auto MindlinShell<Shape>::placeStates(const PlaceOperators& operators, const Pla
 template <typename Shape>
 base::MatN<2> MindlinShell<Shape>::shearStiffnessRate(double t, const ShellSectionRate& rate) const
 {
-    // shearStiffness differentiated: each principal value t·κG (flexible) or t·TS/T·G2_33 (MID3 blank, rigid).
+    // shearStiffness differentiated: each principal value t·κG (flexible) or t·TS/T·G2_33 (MID3 blank, rigid), G2_33
+    // and its rate in the material frame.
+    const double bendingShearModulusRate = m_section.materialShearTermOf(rate.bendingMatrix);
     std::array<double, 2> principal{};
     for (std::size_t k = 0; k < 2; ++k)
         principal[k] =
             t * (m_section.transverseShearStiffness[k] > 0.0 ? rate.transverseShearStiffness[k]
-                                                             : m_section.shearRatio * rate.bendingMatrix(2, 2));
+                                                             : m_section.shearRatio * bendingShearModulusRate);
     const double c = std::cos(m_section.frameAngle);
     const double sine = std::sin(m_section.frameAngle);
     base::MatN<2> s;

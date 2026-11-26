@@ -2,10 +2,11 @@ import { numericalOptimizationGradients } from "./numerical-derivatives.js";
 
 export class OptimizationProblem {
   constructor(handle) { this.handle = handle; this.info = handle.metadata(); }
-  metadata() { return this.handle.metadata(); }
-  designPoint(x) { return this.handle.designPoint(x); }
+  requireAlive() { if (!this.handle) throw new Error("this optimization problem has been deleted"); }
+  metadata() { this.requireAlive(); return this.handle.metadata(); }
+  designPoint(x) { this.requireAlive(); return this.handle.designPoint(x); }
   evaluate(x = this.info.initialValues, modeReferences = []) {
-    if (!this.handle) throw new Error("this optimization problem has been deleted");
+    this.requireAlive();
     return new OptimizationEvaluation(this.handle.evaluate(x, modeReferences), this.info, this);
   }
   delete() { if (this.handle) { this.handle.delete(); this.handle = null; } }

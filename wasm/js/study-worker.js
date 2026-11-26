@@ -11,6 +11,13 @@ if (typeof globalThis.postMessage === "function" && typeof globalThis.addEventLi
 }
 
 let reader, solver, deck, problem, mode;
+// A WebAssembly trap (an abort, an unreachable instruction, an access out of the memory) or the exhaustion of the
+// call stack leaves the module where the fault found it: its stack and its heap are not unwound. The pool replaces a
+// worker that reports one. An ordinary error of the solver or of a callback (an Error with its message) is not one.
+function leavesModuleUndefined(error) {
+  if (typeof WebAssembly !== "undefined" && error instanceof WebAssembly.RuntimeError) return true;
+  return /call stack size exceeded|too much recursion/i.test(String(error?.message ?? ""));
+}
 function buffersOf(value, buffers = new Set(), seen = new Set()) {
   if (!value || typeof value !== "object" || seen.has(value)) return buffers;
   seen.add(value);
@@ -55,6 +62,7 @@ listen(async request => {
       } finally { point.delete(); }
     } else throw new Error("unknown optimization worker request");
   } catch (error) {
-    send({ type: "error", id: request.id, message: error?.message ?? String(error), stack: error?.stack });
+    send({ type: "error", id: request.id, message: error?.message ?? String(error), stack: error?.stack,
+      fatal: leavesModuleUndefined(error) });
   }
 });

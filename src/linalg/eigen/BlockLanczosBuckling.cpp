@@ -31,6 +31,9 @@ struct BucklingSide
     double sign = 1.0;
     double lower = 0.0;
     double upper = INFINITE;
+    // The Sturm point of a finite upper bound as factorised: `upper`, or a little beyond it when the factor was
+    // singular there (a root on the bound).
+    double upperPoint = INFINITE;
     bool isActive = false;
     SturmCheck sturm;
     std::optional<ShiftStrategy> strategy;
@@ -194,10 +197,10 @@ EigenSolution BlockLanczos::solveBuckling(ShiftedPencil& pencil, const EigenRequ
     const double firstShift = startsAtZero ? 0.0 : single.sign * single.lower;
     if (!startsAtZero)
         factoriseAt(0.0, ShiftPurpose::LowestBound);
-    for (const BucklingSide& side : sides)
+    for (BucklingSide& side : sides)
     {
         if (side.isActive && side.upper < INFINITE)
-            factoriseAt(side.sign * side.upper, ShiftPurpose::UpperBound);
+            side.upperPoint = side.sign * factoriseAt(side.sign * side.upper, ShiftPurpose::UpperBound);
     }
     double current = factoriseAt(firstShift, startsAtZero ? ShiftPurpose::LowestBound : ShiftPurpose::LowerBound);
 
@@ -214,7 +217,7 @@ EigenSolution BlockLanczos::solveBuckling(ShiftedPencil& pencil, const EigenRequ
             isRangeCounted = false;
             continue;
         }
-        inRange += side.sturm.countBelow(side.upper) - side.sturm.points().front().countBelow;
+        inRange += side.sturm.countBelow(side.upperPoint) - side.sturm.points().front().countBelow;
     }
     if (isRangeCounted)
         wanted = wanted > 0 ? std::min(wanted, inRange) : inRange;

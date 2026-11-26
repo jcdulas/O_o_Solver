@@ -214,34 +214,98 @@ struct SharedDirections
     bool differ = false;
 };
 
-SharedDirections sharedDirectionsOf(const std::map<std::size_t, std::vector<SolidSkewAxis>>& skewAt,
-                                    std::span<const std::size_t> grids)
+// A unit direction lies in the span of the basic axes a grid holds when it leaves it by less than this angle
+// (radians): the tolerance of the coordinates, as for the shells (ShellPartSupports.cpp).
+constexpr double BASIC_SPAN_ANGLE_TOLERANCE = 1e-4;
+
+// The basic components that `grid` holds.
+std::array<bool, COMPONENTS> basicFlagsOf(const HeldValues& held, std::size_t grid)
 {
-    SharedDirections shared;
-    const auto first = skewAt.find(grids.front());
-    if (first == skewAt.end())
-        return shared;
-    for (const std::size_t grid : grids)
-        if (skewAt.count(grid) == 0)
-            return shared;
-    for (const SolidSkewAxis& axis : first->second)
+    std::array<bool, COMPONENTS> flags{};
+    for (std::size_t c = 0; c < COMPONENTS; ++c)
+        flags[c] = holds(held, grid, c);
+    return flags;
+}
+
+// The unit direction d lies in the span of the basic axes of `flags`, at least one of them held.
+bool inBasicSpan(const SolidPoint& d, const std::array<bool, COMPONENTS>& flags)
+{
+    double outside = 0.0;
+    bool any = false;
+    for (std::size_t c = 0; c < COMPONENTS; ++c)
     {
+        any = any || flags[c];
+        if (!flags[c])
+            outside += d[c] * d[c];
+    }
+    return any && outside < BASIC_SPAN_ANGLE_TOLERANCE * BASIC_SPAN_ANGLE_TOLERANCE;
+}
+
+// `grid`, which holds by its basic flags alone, holds a basic axis that the grid of `axes` does not hold (by its own
+// flags `flags` or by one of its directions): with a direction of that grid it does not hold itself, the two hold
+// directions that differ.
+bool holdsMoreThan(const std::array<bool, COMPONENTS>& ownFlags, const std::vector<SolidSkewAxis>& axes,
+                   const std::array<bool, COMPONENTS>& flags)
+{
+    for (std::size_t c = 0; c < COMPONENTS; ++c)
+    {
+        if (!ownFlags[c] || flags[c])
+            continue;
+        const bool isHeldByAxis = std::any_of(axes.begin(), axes.end(), [&](const SolidSkewAxis& axis)
+                                              { return std::fabs(axis.direction[c]) >= 1.0 - PARALLEL_TOLERANCE; });
+        if (!isHeldByAxis)
+            return true;
+    }
+    return false;
+}
+
+// `held`: the basic components the grids hold. A grid holds a direction by one of its directions off the basic axes,
+// or by its basic flags when the direction lies in their span (a clamped grid beside a plane of symmetry turned from
+// the basic system). The directions are those of the grids of `grids` that have some, in their order, each once.
+void addSharedDirections(const std::map<std::size_t, std::vector<SolidSkewAxis>>& skewAt, const HeldValues& held,
+                         std::span<const std::size_t> grids, std::size_t source, SharedDirections& shared)
+{
+    const std::vector<SolidSkewAxis>& axes = skewAt.at(source);
+    const std::array<bool, COMPONENTS> sourceFlags = basicFlagsOf(held, source);
+    for (const SolidSkewAxis& axis : axes)
+    {
+        const bool isKnown =
+            std::any_of(shared.directions.begin(), shared.directions.end(), [&](const SolidPoint& direction)
+                        { return std::fabs(dot3(axis.direction, direction)) >= 1.0 - PARALLEL_TOLERANCE; });
+        if (isKnown)
+            continue;
         bool isShared = true;
         for (const std::size_t grid : grids)
         {
             bool isHeldThere = false;
-            for (const SolidSkewAxis& other : skewAt.at(grid))
-            {
-                if (std::fabs(dot3(axis.direction, other.direction)) >= 1.0 - PARALLEL_TOLERANCE)
-                    isHeldThere = true;
-                else
-                    shared.differ = shared.differ || other.component == axis.component;
-            }
+            const auto there = skewAt.find(grid);
+            if (there != skewAt.end())
+                for (const SolidSkewAxis& other : there->second)
+                {
+                    if (std::fabs(dot3(axis.direction, other.direction)) >= 1.0 - PARALLEL_TOLERANCE)
+                        isHeldThere = true;
+                    else
+                        shared.differ = shared.differ || other.component == axis.component;
+                }
+            const std::array<bool, COMPONENTS> flags = basicFlagsOf(held, grid);
+            if (!isHeldThere)
+                isHeldThere = inBasicSpan(axis.direction, flags);
+            if (!isHeldThere && there == skewAt.end())
+                shared.differ = shared.differ || holdsMoreThan(flags, axes, sourceFlags);
             isShared = isShared && isHeldThere;
         }
         if (isShared)
             shared.directions.push_back(axis.direction);
     }
+}
+
+SharedDirections sharedDirectionsOf(const std::map<std::size_t, std::vector<SolidSkewAxis>>& skewAt,
+                                    const HeldValues& held, std::span<const std::size_t> grids)
+{
+    SharedDirections shared;
+    for (const std::size_t grid : grids)
+        if (skewAt.count(grid) != 0)
+            addSharedDirections(skewAt, held, grids, grid, shared);
     return shared;
 }
 
@@ -266,6 +330,12 @@ std::vector<SolidDerivedSupport> SolidPart::deriveSupports(std::span<const Solid
                                                            std::span<const SolidSkewAxis> skew,
                                                            SolidSupportRows* rows) const
 {
+    const std::span<const SolidPoint> x = m_input.gridPositions;
+    HeldValues heldAt;
+    for (const SolidHeldComponent& h : held)
+        if (h.grid < x.size() && h.component < COMPONENTS)
+            heldAt[h.grid][h.component] = h.value;
+
     // the directions off the basic axes: the functions of an edge or a face whose grids all hold one are held along it
     if (rows != nullptr && !skew.empty())
     {
@@ -278,7 +348,7 @@ std::vector<SolidDerivedSupport> SolidPart::deriveSupports(std::span<const Solid
             if (!m_edgeEntities[e] || !edge.onSkin || edge.follows)
                 continue;
             const std::array<std::size_t, 2> grids{edge.grids.lower, edge.grids.higher};
-            const SharedDirections shared = sharedDirectionsOf(skewAt, grids);
+            const SharedDirections shared = sharedDirectionsOf(skewAt, heldAt, grids);
             for (const SolidPoint& direction : shared.directions)
                 appendSkewRows(*m_edgeEntities[e], edge.geometry.size(), direction, rows->rows);
             rows->uncarried += shared.differ ? 1 : 0;
@@ -288,18 +358,12 @@ std::vector<SolidDerivedSupport> SolidPart::deriveSupports(std::span<const Solid
             const SolidPartFace& face = m_faces[f];
             if (!m_faceEntities[f] || !face.onSkin() || face.follows)
                 continue;
-            const SharedDirections shared = sharedDirectionsOf(skewAt, face.view());
+            const SharedDirections shared = sharedDirectionsOf(skewAt, heldAt, face.view());
             for (const SolidPoint& direction : shared.directions)
                 appendSkewRows(*m_faceEntities[f], face.geometry.size(), direction, rows->rows);
             rows->uncarried += shared.differ ? 1 : 0;
         }
     }
-
-    const std::span<const SolidPoint> x = m_input.gridPositions;
-    HeldValues heldAt;
-    for (const SolidHeldComponent& h : held)
-        if (h.grid < x.size() && h.component < COMPONENTS)
-            heldAt[h.grid][h.component] = h.value;
 
     // the faces of each edge, by key: those of the skin first (an edge of the skin takes its held values along a face
     // of the skin when one holds them)

@@ -587,12 +587,15 @@ void StreamedFactorisation::finishFirstRun()
                 largestRatio = ratio;
                 equationOfLargest = equation;
             }
-            if (ratio > maxRatio || ratio < 0.0)
+            // A negative pivot is tested on the pivot itself (MultifrontalDriver::finish): with a zero or negative
+            // diagonal its ratio is −0 or positive, and would pass.
+            const bool isNegative = ratio < 0.0 || pivot < 0.0;
+            if (ratio > maxRatio || isNegative)
             {
                 ++issueCount;
                 if (issues.size() < PivotDiagnostics::RECORDED_ISSUE_COUNT)
                     issues.push_back({equation, diagonal, pivot, ratio,
-                                      ratio < 0.0 ? PivotIssueKind::NegativePivot : PivotIssueKind::RatioAboveMaximum});
+                                      isNegative ? PivotIssueKind::NegativePivot : PivotIssueKind::RatioAboveMaximum});
             }
         }
     m_diagnostics = PivotDiagnostics(std::move(issues), issueCount, largestRatio, equationOfLargest, maxRatio);

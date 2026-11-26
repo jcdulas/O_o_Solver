@@ -9,6 +9,7 @@
 #include "oos/input/tables/PointIndex.hpp"
 
 #include <optional>
+#include <string_view>
 
 namespace oos::assembly
 {
@@ -31,8 +32,10 @@ namespace oos::assembly
 // (ElementTemperatures::hasTemperatureLoad false). LoadVectorBuilder::checkThermalLoads checks the elements they name.
 //
 // A row the field cannot use is a Diagnostic: a TEMP on a point the model does not have ("load-unknown-point"), a
-// card of temperatureTable it does not know ("load-unsupported"), a DEFORM set without a card ("load-unknown-set"),
-// an element a DEFORM set names twice ("load-duplicate": which D applies would be ambiguous).
+// card of temperatureTable it does not know ("load-unsupported"), a TEMPERATURE(LOAD) or TEMPERATURE(INITIAL) set
+// without a row in temperatureTable and a DEFORM set without a card ("load-unknown-set": the selection would load
+// nothing; a snapshot without temperatureTable is not checked), an element a DEFORM set names twice
+// ("load-duplicate": which D applies would be ambiguous).
 //
 // Thread-safety: immutable once built. Ownership: owns its buffers (budgeted, one value per grid point).
 class TemperatureField
@@ -59,8 +62,11 @@ private:
         base::BudgetedBuffer<elements::ElementTemperature> ofElements; // sorted by element ID
     };
 
+    // The temperatures of set `setId`; `selection` names the Case Control command that selects it, for the
+    // diagnostic of a set no card defines.
     [[nodiscard]] static Set gather(const input::ModelSnapshot& snapshot, const input::PointIndex& points,
-                                    base::EntityId setId, base::MemoryBudget& budget, base::DiagnosticSink& sink);
+                                    base::EntityId setId, std::string_view selection, base::MemoryBudget& budget,
+                                    base::DiagnosticSink& sink);
     [[nodiscard]] static base::BudgetedBuffer<elements::ElementDeformation> gatherDeformations(
         const input::ModelSnapshot& snapshot, base::EntityId setId, base::MemoryBudget& budget,
         base::DiagnosticSink& sink);

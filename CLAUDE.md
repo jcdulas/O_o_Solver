@@ -11,13 +11,17 @@ O_o_Model module (table packages) and gives its results as plain arrays. Start w
    quote a vendor's documentation, never add it, an example deck or a result file of a vendor to the repository; no
    vendor file format (no F06-style listing, no binary result format). NASTRAN-95 code is never translated line by line.
    Scientific publications and NASA reports may be cited as the source of a method, with the name the publication
-   gives it (author, report number, year).
+   gives it (author, report number, year). One exception to the names: a comparison document
+   (`docs/structural-benchmark-comparison.md`, `docs/thin-plate-solid-bending.md`) may name a commercial solver and
+   link to its published verification page as the source of a published value; it gives numbers and their source,
+   never a quotation, and nothing of the vendor enters the repository.
 2. **English** for everything in the repository. The owner writes in French: answer in French in the conversation.
 3. **Readable by an intermediate developer** (about five years of experience): plain C++, small functions, named
    constants, comments that say why and give each formula with its source.
 4. **Layering**: `base` → `linalg` → `input` → `elements` → `assembly` → `reduction` → `aero` → `output` → `solutions`
    → `design` → `api`; a module uses only those before it. `wasm/src/Bindings.cpp` only converts between JavaScript and
-   `oos::api`. Operating-system headers only in `src/base/platform`, SIMD intrinsics only in `src/linalg/kernels/`.
+   `oos::api`. Operating-system headers only in `src/base/platform`, SIMD intrinsics only in `src/linalg/kernels/` (the
+   floating-point control register read and written by `src/base/platform/SubnormalModeScope.cpp` is not a kernel).
 5. **Coupling by data**: no O_o_Model header nor library; its tables arrive as table packages
    ([docs/table-package.md](docs/table-package.md)) and are read by the data contract (`src/input/contract/`).
 6. **WebAssembly threading**: the default build is single-threaded; `OOS_WASM_THREADS` enables shared-memory workers.

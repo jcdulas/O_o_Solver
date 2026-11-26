@@ -13,8 +13,10 @@
 //   A = Σ Q̄_k t_k,  B = ½ Σ Q̄_k (z_k² − z_{k−1}²),  D = ⅓ Σ Q̄_k (z_k³ − z_{k−1}³),
 //   Q̄_k = T(θ_k)ᵀ Q_k T(θ_k)   (Q_k the plane-stress matrix of the ply material, θ_k its angle to the material axis),
 //
-// and the transverse shear: H_x = κ Σ G_k,1z t_k, H_y = κ Σ G_k,2z t_k, κ = 5/6, a ply with a blank
-// G1Z (G2Z) making the laminate rigid in that direction. The thermal resultants of a temperature change ΔT(z) =
+// and the transverse shear H_x, H_y from the shear stresses of cylindrical bending, 1/H = ∫ τ²/G dz (Laminate.cpp,
+// setTransverseShear; κ G t with κ = 5/6 for one material). A blank G1Z or G2Z is an infinite modulus: such a ply is
+// rigid in transverse shear along that axis and adds nothing to the integral, and the laminate is rigid in a direction
+// (H = 0) only when every one of its plies is. The thermal resultants of a temperature change ΔT(z) =
 // ΔT + z·T' (Jones §4.5): N_T = Σ Q̄_k ᾱ_k (ΔT t_k + T' ½ (z_k² − z_{k−1}²)), M_T = Σ Q̄_k ᾱ_k (ΔT ½ (z_k² − z_{k−1}²)
 // + T' ⅓ (z_k³ − z_{k−1}³)), ᾱ_k = T(θ_k)⁻¹ α_k. Every matrix and vector is in the material frame of the element
 // (θ = 0 along the material axis of THETA or MCID); the strains carry the engineering shear.
@@ -75,9 +77,21 @@ struct LaminatePly
     base::Mat3 stiffness;              // Q̄ = T(θ)ᵀ Q T(θ), material frame of the element
     std::array<double, 3> expansion{}; // ᾱ = T(θ)⁻¹ α, material frame of the element
     // The transverse shear stress at the top of the ply per unit shear force (τxz/Qx, τyz/Qy), material frame of the
-    // element: the equilibrium distribution (setTransverseShear); 0 in a direction rigid in transverse shear.
+    // element: the equilibrium distribution (setTransverseShear); 0 in a direction in which the laminate is rigid in
+    // transverse shear.
     std::array<double, 2> shearAtTopPerForce{};
 };
+
+// A share cos²θ or sin²θ of a ply axis in a direction at or below this is round-off (cos² of a right angle is 4e-33,
+// not 0): the direction is across that axis.
+inline constexpr double PLY_AXIS_SHARE_ROUND_OFF = 1.0e-12;
+
+// The transverse shear modulus of a ply in direction d (0: x, 1: y) of the material frame of the element: the moduli
+// (G1Z, G2Z) of the ply axes turned by the ply angle θ, G_xz = G1Z cos²θ + G2Z sin²θ, G_yz = G1Z sin²θ + G2Z cos²θ.
+// 0 when the ply is rigid in that direction: a blank G1Z or G2Z is an infinite modulus (ShellMaterial gives it as 0),
+// and so is its sum with the other one as soon as the direction has a share of that axis (above
+// PLY_AXIS_SHARE_ROUND_OFF). The modulus of the laminate's shear integral, of its rate and of the plies' shear strains.
+[[nodiscard]] double plyShearModulus(const LaminatePly& ply, std::size_t d);
 
 // The resolved laminate of one CompProp or CompPropGlobal.
 struct Laminate
@@ -95,7 +109,7 @@ struct Laminate
     base::Mat3 a;                            // membrane
     base::Mat3 b;                            // membrane-bending coupling
     base::Mat3 d;                            // bending
-    std::array<double, 2> transverseShear{}; // H_x, H_y; 0: rigid in that direction
+    std::array<double, 2> transverseShear{}; // H_x, H_y; 0: rigid in that direction (every ply rigid in it)
     // The plies' interlaminar shear follows the equilibrium distribution (shearAtTopPerForce) in a flexible direction
     // of a stack of several materials or angles; otherwise every ply carries the mean shear Q / t (ShellRecovery).
     std::array<bool, 2> hasShearDistribution{};

@@ -91,6 +91,18 @@ elements::LayerOutput layerOutputOf(const std::string& tableKind)
            (item.location.column == FAILURE_INDEX_COLUMN || item.location.column == BOND_FAILURE_INDEX_COLUMN);
 }
 
+// Whether the forms a family gives for its ply states hold the columns the indices read (0 to PLY_STATE_WEIGHTS − 1),
+// all linear in the displacements: the condition for the slopes of a ply index to be those of the state chained with
+// the index's gradient.
+[[nodiscard]] bool areLinearPlyStates(std::span<const elements::ColumnForm> forms)
+{
+    if (forms.size() < PLY_STATE_WEIGHTS)
+        return false;
+    const std::span<const elements::ColumnForm> read = forms.first(PLY_STATE_WEIGHTS);
+    return std::all_of(read.begin(), read.end(), [](const elements::ColumnForm& form)
+                       { return form.kind == elements::ColumnForm::Kind::Linear; });
+}
+
 [[noreturn]] void refuse(const elements::ElementBatchView& view, std::int64_t row, const ElementItemSpec& item,
                          const std::string& what)
 {
@@ -496,7 +508,15 @@ std::optional<ItemSlopes> ElementItemFunction::slopes(const elements::ElementBat
     }
 
     if (needsPlyStates)
-        formsOf[plyStatesKey] = m_family->layerOutputColumnForms(elements::LayerOutput::PlyStates);
+    {
+        // A family that does not give the forms of its ply states (the default of ElementFamily: none) would get no
+        // slope from the unit displacements below, which keep the columns declared linear only: the index would then
+        // have a zero derivative in u. Such a job is differenced instead.
+        std::vector<elements::ColumnForm> forms = m_family->layerOutputColumnForms(elements::LayerOutput::PlyStates);
+        if (!areLinearPlyStates(forms))
+            return std::nullopt;
+        formsOf[plyStatesKey] = std::move(forms);
+    }
 
     ItemSlopes result;
     result.values.reserve(m_items.size());

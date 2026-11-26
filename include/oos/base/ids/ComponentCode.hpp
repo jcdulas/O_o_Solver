@@ -8,9 +8,9 @@
 namespace oos::base
 {
 
-// A set of the six components of a grid point, as the Nastran bulk data format writes it in a field (any unique
-// combination of the digits 1 to 6 with no embedded blanks; 0 for a scalar point): "123456", "135", "0". Held as a bit
-// mask, bit k-1 for component k. Immutable value type.
+// A set of the six components of a grid point, as the model format writes it in a field (any unique combination of
+// the digits 1 to 6 with no embedded blanks; 0 for a scalar point): "123456", "135", "0". Held as a bit mask, bit k-1
+// for component k. Immutable value type.
 class ComponentCode
 {
 public:

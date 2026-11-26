@@ -60,7 +60,10 @@ struct ItemKey
 // which its chained weights c_e = Σ_k ∂h/∂r_k·c_k and explicit part ∂h/∂x + Σ_k ∂h/∂r_k·∂r_k/∂x are formed.
 struct ItemLinearisation
 {
-    std::int32_t subcase = 0; // 0: a global item (WEIGHT, VOLUME, FRMASS, a global equation): no displacement weights
+    // 0: a global item (WEIGHT, VOLUME, FRMASS, a global equation): no displacement weights. Otherwise the subcase
+    // whose displacements the weights are on: a load factor its preload subcase; an equation item the subcase its
+    // chained weights read (the label of its values when it reads none).
+    std::int32_t subcase = 0;
     SparseVector weights;
     VariableRow explicitPart;
     bool isEquation = false;

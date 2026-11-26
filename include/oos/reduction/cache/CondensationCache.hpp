@@ -187,8 +187,10 @@ struct CacheFileProblem
 //   truncated file, which is then removed).
 // - A store cleans the cache up under the lock (CacheLock) by CacheCleanup's order, never removing an entry an
 //   analysis of this process uses, then writes the entry through a temporary file; an entry larger than its limit is
-//   not stored and the store says so. A failure to store is a note, never an error of the analysis: the entry is
-//   computed again when needed, to the same bits.
+//   not stored and the store says so. A file already at the entry's path is taken for the entry (stored meanwhile by
+//   another process) only when its header names this format and this key; any other file there (another format,
+//   another key of the same hash), which every lookup refuses, is replaced. A failure to store is a note, never an
+//   error of the analysis: the entry is computed again when needed, to the same bits.
 // The entries an analysis uses are pinned by its Session for the time of the analysis.
 //
 // Thread-safety: every member may be called from several threads (a mutex for the memory layer and the statistics,
@@ -243,6 +245,11 @@ private:
     [[nodiscard]] std::filesystem::path entryPath(CacheEntryKind kind, const CacheKey& key) const;
     [[nodiscard]] std::vector<DiskEntry> listEntries() const;
     void touch(const std::filesystem::path& path) const;
+    // Removes a file that stands at the path of an entry without being that entry (written in another format, or for
+    // another key of the same hash: no lookup takes it), from the folder and from the listing a store decides on, so
+    // that the entry is stored in its place; false when the file cannot be removed. Called by a store, which holds
+    // m_storeMutex and the CacheLock.
+    [[nodiscard]] bool forgetUnusableFile(const std::filesystem::path& path);
     [[nodiscard]] std::string missCause(CacheEntryKind kind, const CacheKey& key) const;
     // Makes room in the memory layer for `bytes` (dropping unpinned entries, least recently used first); false when it
     // cannot. Called under m_mutex.

@@ -1,5 +1,6 @@
 #include "oos/design/external/VectorJacobianProducts.hpp"
 
+#include "../common/DifferenceStencil.hpp"
 #include "../sensitivity/SensitivityComputation.hpp"
 #include "HessianBlocks.hpp"
 #include "oos/base/errors/MemoryBudgetError.hpp"
@@ -1663,8 +1664,39 @@ public:
         elements::ElementMatrixBlock secondStiffnessRate;
     };
 
+    // Whether a term of the SUBCOM `state` applies to `element` a load that designed fields of uses `a` and `b` change:
+    // a thermal or deformation load (the term's initial strains, SubcaseState::temperatures), a pressure or a line
+    // load, or an inertial load (it follows the mass). A SUBCOM has no load of its own
+    // (SensitivityComputation::prepareSubcases: no load set, no element loads, no inertial flag), its load is
+    // P_c = Σ a_k·P_k of its terms, so its applied-load curvature λ_cᵀ·∂²P_c/∂p∂q = Σ a_k·λ_cᵀ·∂²P_k/∂p∂q reads its
+    // terms' loads, which the closed blocks do not combine.
+    [[nodiscard]] bool hasTermLoadMovedBy(const ElementRef& element, const detail::SubcaseState& state,
+                                          const elements::FieldUse& a, const elements::FieldUse& b) const
+    {
+        const elements::ElementFamily& family = *m_set.batches()[element.batch].family;
+        const bool movesThermal = (a.changesLoads || b.changesLoads) && !family.isThermallyInert();
+        const bool movesDistributed = a.changesDistributedLoads || b.changesDistributedLoads;
+        const bool movesInertial = a.changesMass && b.changesMass && family.facets().has(elements::Facet::Mass);
+        for (const auto& [term, coefficient] : state.terms)
+        {
+            const detail::SubcaseState& of = m_subcases[term];
+            if (movesThermal && of.temperatures)
+                return true;
+            if (movesDistributed && of.elementLoads.count(element) != 0)
+                return true;
+            if (movesInertial && of.hasInertialLoads && of.subcase.load)
+                return true;
+        }
+        return false;
+    }
+
     // The applied-load contribution to the element's Lagrangian curvature: lambda^T P_pq.
     // Fixed geometry makes P independent of displacement, so there is no extra displacement/field block.
+    // None (the caller then gives the reason, and the products difference the linearisation): a family without the
+    // closed mixed derivative of its loads, and a SUBCOM whose terms have loads the fields change (the thermal,
+    // deformation, pressure and line loads here and the inertial loads, whose term the callers add for a subcase with
+    // a load of its own: hasTermLoadMovedBy). A SUBCOM of cases whose loads the fields do not change (point loads) has
+    // no such curvature: 0.
     [[nodiscard]] std::optional<double> loadCurvatureOf(const ElementRef& element, const detail::SubcaseState& state,
                                                         const elements::DesignedField& first,
                                                         const elements::DesignedField& second,
@@ -1673,6 +1705,8 @@ public:
         const auto& batch = m_set.batches()[element.batch];
         const auto& family = *batch.family;
         const auto a = family.designFieldUse(first), b = family.designFieldUse(second);
+        if (state.isCombination() && hasTermLoadMovedBy(element, state, a, b))
+            return std::nullopt;
         elements::ElementLoadContext context;
         if ((a.changesLoads || b.changesLoads) && !family.isThermallyInert() && state.temperatures)
             context.temperatures = &state.temperatures->temperatures();
@@ -1828,7 +1862,14 @@ public:
             const elements::FieldUse use = family.designFieldUse(designed.front());
             const auto loadTerm = loadCurvatureOf(element, state, designed.front(), designed.front(), adjoint);
             if (!loadTerm)
-                return base::concatenate({name(), " has no closed applied-load curvature", inField()});
+                return base::concatenate(
+                    {name(), " has no closed applied-load curvature", inField(),
+                     state.isCombination()
+                         ? base::concatenate({" in SUBCOM ", std::to_string(state.subcase.label),
+                                              ": its loads are its terms', and the closed forms do not combine the "
+                                              "thermal, deformation, pressure, line or inertial loads that the field "
+                                              "changes"})
+                         : std::string()});
             block.fieldTerm += *loadTerm;
             const auto valueAt = [](const std::vector<double>& vector, base::DofIndex dof)
             { return vector[static_cast<std::size_t>(dof)]; };
@@ -2018,7 +2059,8 @@ public:
     // Refuses what the Hessian-vector products do not differentiate (OptimisationError naming it): the responses
     // whose second derivatives the linearisation at a perturbed state does not give (equations, external, contour,
     // section and cut loads, self-adjoint and modal responses: their terms read more than the point and the
-    // displacements), the shape variables, the condensed path and inertia relief.
+    // displacements), the strain-energy percentages (weightedEnergyPercentage), the external units, the shape
+    // variables, the relations given by functions that are not asked at the moved points and the SAERO subcases.
     void requireSecondOrder(const ProductWeights& weights, bool asksSupplied) const
     {
         const auto refuse = [](const std::string& what)
@@ -2068,6 +2110,26 @@ public:
                 refuse(base::concatenate({"response ", std::to_string(id), " is of type ",
                                           std::string(responseTypeName(response->definition().type))}));
         }
+        if (const std::optional<ItemKey> percentage = weightedEnergyPercentage(weights))
+        {
+            // p = 100·E_e/T with T = ½·uᵀ·K·u the strain energy of the whole model: its second derivatives hold
+            // ½·uᵀ·(∂K/∂v)·u terms of every element, which neither path forms (the linearisation at a moved state
+            // takes T and K·u from the stiffness of the design point, prepareTotalEnergy; an element block holds its
+            // element's terms only).
+            const ResponseValues& values = valuesAt(percentage->response);
+            refuse(base::concatenate(
+                {"response ", std::to_string(values.id), " (", values.label, ") has a weight on its item ",
+                 std::to_string(percentage->item),
+                 ", a strain-energy percentage (item code 3: the element's share of the total strain energy), whose "
+                 "second derivatives read the stiffness of the whole model and are not formed; weight the energy "
+                 "items instead"}));
+        }
+        // An external unit replaces the elements of its zone by K* and f* of a plugin: the second-order terms would
+        // need ∂K*/∂x at the moved points and its second derivatives, which no element of the model gives (the closed
+        // blocks and the linearisations at the moved states both read the elements).
+        if (hasExternalUnits())
+            refuse("the analysis has external units, whose K* and loads are no element's: their second derivatives in "
+                   "the variables are not formed");
         if (!m_in.design->shapes.empty())
             refuse("the design has shape variables, whose second derivatives are not formed");
         for (std::size_t r = 0; r < m_in.model->relations().size() && !asksSupplied; ++r)
@@ -2080,6 +2142,31 @@ public:
             if (state.isAeroelastic)
                 refuse(base::concatenate({"subcase ", std::to_string(state.subcase.label), " is a SAERO subcase"}));
         }
+    }
+
+    // The first item with a non-zero weight (one row) that is a strain-energy percentage (ESE item 3,
+    // detail::STRAIN_ENERGY_PERCENT_ITEM), in the order of the responses and of their items; none: no such weight.
+    // The item codes are those of the linearised element jobs, so a weight row is read item by item whatever its
+    // form (dense or sparse), and a zero weight on a percentage refuses nothing.
+    [[nodiscard]] std::optional<ItemKey> weightedEnergyPercentage(const ProductWeights& weights) const
+    {
+        std::set<ItemKey> percentages;
+        for (const detail::ElementJob& job : m_jobs)
+            for (std::size_t k = 0; k < job.keys.size(); ++k)
+                if (isPercent(job, k))
+                    percentages.insert(job.keys[k]);
+        std::optional<ItemKey> found;
+        if (percentages.empty())
+            return found;
+        const WeightRows rows = rowsOf(weights);
+        for (std::size_t p = 0; p < m_linearised.items.size() && !found; ++p)
+            static_cast<void>(rows.forEach(p, 0,
+                                           [&](std::size_t i, double)
+                                           {
+                                               if (!found && percentages.count({p, i}) != 0)
+                                                   found = ItemKey{p, i};
+                                           }));
+        return found;
     }
 
     // The linearisation of every item the options ask for (once: the products then only read it).
@@ -3184,11 +3271,18 @@ ProductReport VectorJacobianProducts::vjp(const DesignProblem& problem, const De
 namespace
 {
 
-// The step of the differences along v: HESSIAN_STEP_RELATIVE of the largest |x_j|, over the largest |v_j|,
-// one central difference. The terms differenced are the linearisation's at the moved states, smooth in x and u, whose
+// The step of the differences along v (common/DifferenceStencil.hpp, which gives the rule and its formulas): each
+// moved variable has its own scale (|x_j|; at zero the width of its bounds, or FIELD_STEP_AT_ZERO as its step), and
+// t = HESSIAN_STEP_RELATIVE · min_j (scale_j / |v_j|), so that no variable moves by more than HESSIAN_STEP_RELATIVE of
+// its own scale (one scale for the whole vector, the largest |x_j|, made a thickness negative when an inertia was a
+// variable too). The states x0 + σ·v stay within the bounds of the variables: one central difference at t, clipped to
+// the room the bounds leave; at a bound the one-sided three-point difference toward the inside (the design point,
+// t and 2t); with no room on either side the central difference at t, the bounds ignored.
+// The terms differenced are the linearisation's at the moved states, smooth in x and u, whose
 // own rounding is some 1e-12 of their size: measured on the small caisson (von Mises items, MID3) against the central
 // differences of vjp (themselves good to 7e-8), the products agree to 6e-6 at a step of 1e-3 (truncation), 9e-8 at
-// 1e-4 and 3e-8 at 1e-5, and to 3e-8 at 1e-3 extrapolated from t and t/2 (twice the linearisations): 1e-4, central.
+// 1e-4 and 3e-8 at 1e-5, and to 3e-8 at 1e-3 extrapolated from t and t/2 (twice the linearisations): 1e-4, central
+// (measured with the step of before, the largest |x_j| over the largest |v_j|: the same step for one variable).
 constexpr double HESSIAN_STEP_RELATIVE = 1.0e-4;
 // Under inertia relief the linearisation at a moved state carries a round-off of some 1e-9 of its
 // terms (the relieved loads' projection on the support motions, the free barrels in millimetres: the vjp of the free
@@ -3203,12 +3297,63 @@ constexpr double HESSIAN_STEP_RELATIVE = 1.0e-4;
 // D(t)) / 3, truncation O(t⁴)): the stringer's product then 6e-8 of the converged differences at every t from 2e-3 to
 // 1e-5, the ply's as at 1e-3 (1e-5 of its entry); four linearisations at the moved states instead of two (the
 // product 1.3 to 2.2 times its time before on the tiny barrels), the same solves (the rates combined before δλ's
-// solve).
+// solve). The same step rule as HESSIAN_STEP_RELATIVE (per variable, within the bounds), one stencil per step
+// (hessianStencils).
 constexpr double RELIEVED_HESSIAN_STEP_RELATIVE = 1.0e-3;
-constexpr std::array<double, 2> HESSIAN_SIDES{1.0, -1.0};
 
-// The rates along σ of a product's differenced terms at one step: the explicit part Σ yᵢ·∂rᵢ/∂x_j, the adjoint part
-// Σ_s λ_sᵀ·b_js, and the right-hand sides Σ yᵢ·cᵢ − K·λ_s per subcase.
+// The bounds of the independent design variables, in the order of x (DesignModel::independentIndices): the states of
+// the differences along v stay within them (detail::differenceStencil).
+struct VariableBounds
+{
+    std::vector<double> lower;
+    std::vector<double> upper;
+};
+
+VariableBounds variableBoundsOf(const DesignModel& model)
+{
+    VariableBounds bounds;
+    for (const std::size_t index : model.independentIndices())
+    {
+        bounds.lower.push_back(model.variables()[index].lower);
+        bounds.upper.push_back(model.variables()[index].upper);
+    }
+    return bounds;
+}
+
+// The stencils of the differences along v at the nominal step t, the coarser first: one, or under inertia relief
+// (`extrapolates`) those of t and t/2, whose differences are then extrapolated (extrapolateInto). The extrapolation
+// needs two differences of the same form at steps h and h/2; the bounds may clip the two steps differently (one
+// central and one one-sided, or two steps that are not in the ratio 2): the finer stencil is then kept alone, its
+// difference not extrapolated.
+std::vector<detail::DifferenceStencil> hessianStencils(std::span<const double> x, std::span<const double> v,
+                                                       const VariableBounds& bounds, double t, bool extrapolates)
+{
+    std::vector<detail::DifferenceStencil> stencils; // one or two
+    stencils.push_back(detail::differenceStencil(x, v, bounds.lower, bounds.upper, t));
+    if (!extrapolates)
+        return stencils;
+    detail::DifferenceStencil half = detail::differenceStencil(x, v, bounds.lower, bounds.upper, 0.5 * t);
+    const detail::DifferenceStencil& full = stencils.front();
+    // The steps of two stencils the bounds do not clip are t and t/2, exactly (a product by 2).
+    const bool isSameForm = full.isOneSided == half.isOneSided && full.ignoresBounds == half.ignoresBounds &&
+                            full.step == 2.0 * half.step;
+    if (!isSameForm)
+        stencils.clear();
+    stencils.push_back(std::move(half));
+    return stencils;
+}
+
+// The differenced terms of a product at one state (x0 + σ·v, u + σ·δu): the explicit part Σ yᵢ·∂rᵢ/∂x_j, the adjoint
+// part Σ_s λ_sᵀ·b_js, and the right-hand sides Σ yᵢ·cᵢ − K·λ_s per subcase.
+struct StateTerms
+{
+    std::vector<double> explicitParts;
+    std::vector<double> adjointParts;
+    std::map<std::int32_t, std::vector<double>> loads;
+};
+
+// The rates along σ of those terms at one step: the sums Σ_k weight_k·terms(offset_k) over the states of its stencil
+// (detail::DifferenceStencil).
 struct StepRates
 {
     std::vector<double> explicitRates;
@@ -3216,7 +3361,27 @@ struct StepRates
     std::map<std::int32_t, std::vector<double>> loadRates;
 };
 
-// Richardson's extrapolation of central differences at t and t/2, (4·D(t/2) − D(t)) / 3, in place in `half`.
+// values += weight·terms.
+void addWeighted(std::vector<double>& values, double weight, const std::vector<double>& terms)
+{
+    if (values.empty())
+        values.assign(terms.size(), 0.0);
+    for (std::size_t k = 0; k < values.size(); ++k)
+        values[k] += weight * terms[k];
+}
+
+// rates += weight·(the terms of one state of the stencil).
+void addWeighted(StepRates& rates, double weight, const StateTerms& terms)
+{
+    addWeighted(rates.explicitRates, weight, terms.explicitParts);
+    addWeighted(rates.adjointRates, weight, terms.adjointParts);
+    for (const auto& [label, load] : terms.loads)
+        addWeighted(rates.loadRates[label], weight, load);
+}
+
+// Richardson's extrapolation of the differences at t and t/2, (4·D(t/2) − D(t)) / 3, in place in `half`: of two
+// central differences (their error c·t² + O(t⁴): O(t⁴) left) or of two one-sided three-point differences (their error
+// c·t² + O(t³): O(t³) left).
 void extrapolateInto(std::vector<double>& half, const std::vector<double>& full)
 {
     for (std::size_t k = 0; k < half.size(); ++k)
@@ -3237,12 +3402,6 @@ std::vector<std::pair<std::int32_t, std::vector<std::pair<std::size_t, double>>>
             if (sparse.values[k] != 0.0)
                 rows[id].emplace_back(sparse.items[k], sparse.values[k]);
     return {rows.begin(), rows.end()};
-}
-
-// The central difference of the values at σ = t and −t.
-double rateOf(const std::array<double, 2>& values, double t)
-{
-    return (values[0] - values[1]) / (2.0 * t);
 }
 
 } // namespace
@@ -3297,15 +3456,15 @@ ProductReport VectorJacobianProducts::hessianVector(const DesignProblem& problem
             computation.requireSecondOrder(effective, static_cast<bool>(context.suppliedAt));
             const std::size_t n = x0.size();
             values.assign(n * count, 0.0);
+            // The bounds of the variables, which the states of the differences along a direction respect.
+            const VariableBounds bounds = variableBoundsOf(problem.model());
             ensureAdjoints(state, weights, budget, report);
             // H·v along one direction v into `out` (each column of several directions as alone).
             bool hasAskedBlocks = false; // the blocks made or found for the first direction that moves
             const auto along = [&](std::span<const double> v, std::vector<double>& out)
             {
                 out.assign(n, 0.0);
-                const double vScale = std::accumulate(v.begin(), v.end(), 0.0, [](double largest, double value)
-                                                      { return std::max(largest, std::abs(value)); });
-                if (vScale == 0.0)
+                if (std::all_of(v.begin(), v.end(), [](double value) { return value == 0.0; }))
                     return;
                 // The element Hessian blocks of (x, y), made by the first product and kept for the next.
                 if (!context.usesHessianBlocks)
@@ -3339,14 +3498,19 @@ ProductReport VectorJacobianProducts::hessianVector(const DesignProblem& problem
                 std::optional<ProductComputation::EquationTerms> equationTerms;
                 if (hasEquations)
                     equationTerms = computation.equationTerms(weights, equations, v, shifts);
-                const double xScale = std::accumulate(
-                    x0.begin(), x0.end(), 0.0, [](double largest, double x) { return std::max(largest, std::abs(x)); });
+                // The step along v, each moved variable on its own scale, and the states of the differences within the
+                // bounds (HESSIAN_STEP_RELATIVE): the stencil of t, and under inertia relief that of t/2 too,
+                // extrapolated (RELIEVED_HESSIAN_STEP_RELATIVE).
                 const double relative = reliefPoint ? RELIEVED_HESSIAN_STEP_RELATIVE : HESSIAN_STEP_RELATIVE;
-                const double t = (xScale > 0.0 ? relative * xScale : FIELD_STEP_AT_ZERO) / vScale;
-                // The steps: t, and under inertia relief t/2 too, extrapolated (RELIEVED_HESSIAN_STEP_RELATIVE).
-                std::vector<double> steps{t}; // one or two
-                if (reliefPoint)
-                    steps.push_back(0.5 * t);
+                const double t =
+                    detail::directionStep(x0, v, bounds.lower, bounds.upper, relative, FIELD_STEP_AT_ZERO);
+                if (!(t > 0.0) || !std::isfinite(t))
+                    throw std::invalid_argument(
+                        base::concatenate({"hessian_vector: expected a finite direction at a finite design point, "
+                                           "found a step of ",
+                                           std::to_string(t), " along it; give finite values"}));
+                const std::vector<detail::DifferenceStencil> stencils =
+                    hessianStencils(x0, v, bounds, t, reliefPoint.has_value());
                 GradientOptions options;
                 // The responses the product's own terms read (an equation's arguments in its place: its callable gives
                 // its curvature, the moved states never call it).
@@ -3361,72 +3525,69 @@ ProductReport VectorJacobianProducts::hessianVector(const DesignProblem& problem
                 std::vector<double> reference; // bounded by the relations
                 for (const FieldValue& field : computation.inputs().design->fields)
                     reference.push_back(field.value);
-                std::vector<StepRates> rateOfSteps; // one per step
-                for (const double step : steps)
+                // The differenced terms at the state (x0 + σ·v, u + σ·δu). σ = 0 (the first state of a one-sided
+                // stencil) is the design point itself, linearised here as the moved states are, so that every term
+                // of a difference is formed by the same operations.
+                const auto termsAt = [&](double sigma)
                 {
-                    // The terms at the two states (x ± step·v, u ± step·δu).
-                    std::array<std::vector<double>, 2> explicitParts;
-                    std::array<std::vector<double>, 2> adjointParts;
-                    std::array<std::map<std::int32_t, std::vector<double>>, 2> loads; // Σ yᵢ·cᵢ − K(x')·λ per subcase
-                    for (std::size_t side = 0; side < HESSIAN_SIDES.size(); ++side)
-                    {
-                        const double sigma = HESSIAN_SIDES[side] * step;
-                        std::vector<double> x = x0;
-                        for (std::size_t j = 0; j < n; ++j)
-                            x[j] += sigma * v[j];
-                        // The relations given by functions at the moved point, asked of their callables.
-                        const std::vector<SuppliedField> supplied =
-                            context.suppliedAt ? context.suppliedAt(x) : std::vector<SuppliedField>{};
-                        const DesignPoint point = problem.designPoint(x, supplied, reference);
-                        StaticSensitivityInputs inputs = computation.inputs();
-                        inputs.overlaid = problem.overlaySnapshot(point);
-                        inputs.design = &point.values();
-                        inputs.sectionReference = reference;
-                        std::map<std::int32_t, std::vector<double>> displacementShifts;
-                        for (const auto& [label, du] : shifts)
-                        {
-                            std::vector<double> shift(du.size()); // a g-set vector
-                            for (std::size_t g = 0; g < du.size(); ++g)
-                                shift[g] = sigma * du[g];
-                            displacementShifts.emplace(label, std::move(shift));
-                        }
-                        const PerturbedComputation perturbed(inputs, options, budget, std::move(displacementShifts),
-                                                             reliefPoint ? &*reliefPoint : nullptr);
-                        ++report.perturbedLinearisations;
-                        explicitParts[side] = perturbed.weightedExplicit(effective);
-                        adjointParts[side] = perturbed.adjointProducts(state.adjoints);
-                        for (const auto& [label, adjoint] : state.adjoints)
-                        {
-                            // The weights Kgg·w of the SPC force items are those of the analysis' Kgg in the perturbed
-                            // linearisation: their move enters as −(∂K/∂v)·(−Σ y·w), the stiffness terms taking λ − Σ
-                            // y·w.
-                            std::vector<double> load = perturbed.weightedLoad(effective, label);
-                            std::vector<double> stiffnessAdjoint = adjoint;
-                            const std::vector<double> spcRows = computation.weightedSpcRows(effective, label);
-                            for (std::size_t g = 0; g < spcRows.size(); ++g)
-                                stiffnessAdjoint[g] -= spcRows[g];
-                            const std::vector<double> stiffness = perturbed.stiffnessTimes(moved, stiffnessAdjoint);
-                            for (std::size_t g = 0; g < load.size(); ++g)
-                                load[g] -= stiffness[g];
-                            loads[side].emplace(label, std::move(load));
-                        }
-                    }
-                    StepRates made;
-                    made.explicitRates.resize(n);
-                    made.adjointRates.resize(n);
+                    std::vector<double> x = x0;
                     for (std::size_t j = 0; j < n; ++j)
+                        x[j] += sigma * v[j];
+                    // The relations given by functions at the moved point, asked of their callables.
+                    const std::vector<SuppliedField> supplied =
+                        context.suppliedAt ? context.suppliedAt(x) : std::vector<SuppliedField>{};
+                    const DesignPoint point = problem.designPoint(x, supplied, reference);
+                    StaticSensitivityInputs inputs = computation.inputs();
+                    inputs.overlaid = problem.overlaySnapshot(point);
+                    inputs.design = &point.values();
+                    inputs.sectionReference = reference;
+                    std::map<std::int32_t, std::vector<double>> displacementShifts;
+                    for (const auto& [label, du] : shifts)
                     {
-                        made.explicitRates[j] = rateOf({explicitParts[0][j], explicitParts[1][j]}, step);
-                        made.adjointRates[j] = rateOf({adjointParts[0][j], adjointParts[1][j]}, step);
+                        std::vector<double> shift(du.size()); // a g-set vector
+                        for (std::size_t g = 0; g < du.size(); ++g)
+                            shift[g] = sigma * du[g];
+                        displacementShifts.emplace(label, std::move(shift));
                     }
+                    const PerturbedComputation perturbed(inputs, options, budget, std::move(displacementShifts),
+                                                         reliefPoint ? &*reliefPoint : nullptr);
+                    ++report.perturbedLinearisations;
+                    StateTerms terms;
+                    terms.explicitParts = perturbed.weightedExplicit(effective);
+                    terms.adjointParts = perturbed.adjointProducts(state.adjoints);
                     for (const auto& [label, adjoint] : state.adjoints)
                     {
-                        std::vector<double> rate(adjoint.size()); // a g-set vector
-                        for (std::size_t g = 0; g < rate.size(); ++g)
-                            rate[g] = rateOf({loads[0].at(label)[g], loads[1].at(label)[g]}, step);
-                        made.loadRates.emplace(label, std::move(rate));
+                        // The weights Kgg·w of the SPC force items are those of the analysis' Kgg in the perturbed
+                        // linearisation: their move enters as −(∂K/∂v)·(−Σ y·w), the stiffness terms taking λ − Σ
+                        // y·w.
+                        std::vector<double> load = perturbed.weightedLoad(effective, label); // Σ yᵢ·cᵢ − K(x')·λ
+                        std::vector<double> stiffnessAdjoint = adjoint;
+                        const std::vector<double> spcRows = computation.weightedSpcRows(effective, label);
+                        for (std::size_t g = 0; g < spcRows.size(); ++g)
+                            stiffnessAdjoint[g] -= spcRows[g];
+                        const std::vector<double> stiffness = perturbed.stiffnessTimes(moved, stiffnessAdjoint);
+                        for (std::size_t g = 0; g < load.size(); ++g)
+                            load[g] -= stiffness[g];
+                        terms.loads.emplace(label, std::move(load));
                     }
-                    rateOfSteps.push_back(std::move(made));
+                    return terms;
+                };
+                // The states of the stencils, each linearised once (the stencils of t and t/2 of a one-sided
+                // difference share the design point and the state at t), its terms added to the rates of every
+                // stencil that holds it: d/dσ f ≈ Σ_k weight_k·f(offset_k).
+                std::vector<double> offsets; // at most three per stencil
+                for (const detail::DifferenceStencil& stencil : stencils)
+                    for (const detail::StencilPoint& point : stencil.points)
+                        if (std::find(offsets.begin(), offsets.end(), point.offset) == offsets.end())
+                            offsets.push_back(point.offset);
+                std::vector<StepRates> rateOfSteps(stencils.size()); // one per stencil
+                for (const double sigma : offsets)
+                {
+                    const StateTerms terms = termsAt(sigma);
+                    for (std::size_t k = 0; k < stencils.size(); ++k)
+                        for (const detail::StencilPoint& point : stencils[k].points)
+                            if (point.offset == sigma)
+                                addWeighted(rateOfSteps[k], point.weight, terms);
                 }
                 StepRates stepRates = std::move(rateOfSteps.back());
                 if (rateOfSteps.size() == 2)

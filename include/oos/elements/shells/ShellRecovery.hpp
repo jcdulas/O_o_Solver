@@ -190,7 +190,9 @@ void appendShellRowSecondRates(ElementResultBlock& block, std::int64_t row, std:
 // axis,
 //   itself at section.frameAngle from the element x axis), and the ply stresses σ = Q_k (ε − α_k ΔT(z_k)) (the plies
 //   are evaluated at their mid-thickness);
-// - the transverse shear of the plies from the element's shear forces (see laminatePlyShear);
+// - the transverse shear of the plies from the element's shear forces (see laminatePlyShear), along the material axes
+//   x, y of the element (the columns t1z, t2z), and its strains (e1z, e2z), those stresses over the ply's modulus in
+//   the same direction (plyShearModulus: G1Z and G2Z turned by the ply angle; 0 where the ply is rigid);
 // - the failure indices of the plies by the theory FT (CompProp field FT), the bond indices max(|τ1z|, |τ2z|)/SB at the
 //   interface above each ply (NaN above the last), and the element index, the largest of them, on the last ply (NaN on
 //   the others), by the convention of the failure index table. No rows

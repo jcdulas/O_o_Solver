@@ -82,7 +82,7 @@ void ConstraintJacobian::values(OptimizationEvaluation& point, std::span<double>
             {
                 const auto& row = evaluation.constraints[i];
                 constraintsAt[baseRow.at(row.responseId) + row.item].emplace_back(
-                    i, design::ConstraintNormalisation{}.derivative(row.side, row.bound));
+                    i, constraintDerivativeScale(row));
             }
         }
 

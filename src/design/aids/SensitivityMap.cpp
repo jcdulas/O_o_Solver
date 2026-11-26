@@ -85,6 +85,7 @@ public:
         // Steps 1 of StaticSensitivity.hpp: the items with their weights and the explicit parts that do not depend
         // on a field; no designed quantity is differenced (the map's field is the model's, not a relation).
         selectResponses();
+        refuseModeShapeResponses();
         initialiseItems();
         prepareSubcases();
         lineariseDesignResp1();
@@ -111,6 +112,30 @@ private:
     [[nodiscard]] std::string fieldDescription() const
     {
         return base::concatenate({m_request.card, " '", m_request.field, "'"});
+    }
+
+    // The fields of a vibration mode (a response with a mode selector) and the buckling shapes are items of a mode
+    // shape: the gradients form them with the modal items and the shape adjoints, which the map neither prepares nor
+    // walks element by element (eigenItemParts takes the eigenvalue items only). Their rows of the map would be zeros,
+    // so the response mapped and those its equations read are refused when they are of these kinds.
+    void refuseModeShapeResponses() const
+    {
+        for (const std::int32_t id : m_needed)
+        {
+            const DesignResp1Response* response = m_in.responses->findDesignResp1(id);
+            if (response == nullptr)
+                continue;
+            const DesignResp1Definition& definition = response->definition();
+            const bool isBucklingShape = definition.type == ResponseType::BucklingDisplacement;
+            if (!isBucklingShape && !definition.mode)
+                continue;
+            throw base::OptimisationError(base::concatenate(
+                {"the sensitivity map of response ", std::to_string(m_request.responseId), ": response ",
+                 std::to_string(id), " (", definition.label, ", ", responseTypeName(definition.type), ") is ",
+                 isBucklingShape ? "a buckling mode shape" : "a field of a vibration mode",
+                 ", whose share of each element this version does not form (the map would be zero); take its gradient "
+                 "by a design relation instead, or map the eigenvalue of the mode (EIGN, FREQ, LAMA)"}));
+        }
     }
 
     // The elements that read a row of the column, and the ID of that row.

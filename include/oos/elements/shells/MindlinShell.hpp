@@ -126,8 +126,10 @@ struct ShellStrainRows
 // rigid motions are its only zero-energy modes.
 //
 // Transverse shear with MID3 blank (a design choice of this project): the rigid shear is approximated by the shear of
-// the bending material, S = TS/T · G2_33 · t (G2_33 the in-plane shear modulus of MID2, G of an IsoMat: the transverse
-// shear of a homogeneous isotropic plate), which is negligible for a thin plate. Not the stiffness c_K · 12 max(D11,
+// the bending material, S = TS/T · G2_33 · t (G2_33 the in-plane shear modulus of MID2 in its material axes, G12 of
+// an OrthoMat2D and G of an IsoMat: the transverse shear of a homogeneous isotropic plate; read in the material frame,
+// ShellSection::materialShearTermOf, so that it does not depend on the direction of the element's x axis), which is
+// negligible for a thin plate. Not the stiffness c_K · 12 max(D11,
 // D22) / A the ShellQuad4 and the ShellTria3 give such a section (EdgeShearShellSection.hpp): that stiffness makes a
 // plate of any thickness a thin one for its elements, and the eight nodes of the ShellQuad8 do not hold the uniform
 // curvature of a thin plate on a quadrilateral that is not a parallelogram (measured, 3 × 3 cells with their inner
@@ -302,6 +304,7 @@ private:
     std::array<base::Vec3, N> m_position{};
     std::array<base::Vec3, N> m_director{};
     ShellSection m_section;
+    double m_bendingShearModulus = 0.0; // G2_33 of the bending matrix in the material frame (the class comment)
     std::array<double, N> m_nodeThickness{}; // corners as given, edge nodes the mean of their corners
     double m_area = 0.0;
     double m_drillingFactor = 0.0;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "oos/assembly/assemble/ElementSet.hpp"
+#include "oos/assembly/assemble/NonStructuralMassShares.hpp"
 #include "oos/assembly/dofs/DofMap.hpp"
 #include "oos/base/memory/BudgetedBuffer.hpp"
 #include "oos/design/responses/DesignResp1Response.hpp"
@@ -12,6 +13,7 @@
 #include "oos/linalg/dense/DenseKernels.hpp"
 #include "oos/solutions/sol103/ModesSolution.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
@@ -78,11 +80,18 @@ private:
                                   std::span<const double> right) const;
     [[nodiscard]] double explicitRate(Item& item, const ElementRef& element, const elements::DesignedField* field,
                                        const LazyFieldPerturbation& perturbation) const;
+    // The mass options of `element` for a mode: the formulation of its solve and the mass the selected non-structural
+    // mass set adds to the rows of the element's batch (per unit length or area: the same on every side of a
+    // perturbation, each side multiplying it by its own length or area).
+    [[nodiscard]] elements::MassOptions massOptionsOf(const Mode& mode, const ElementRef& element) const;
 
     Inputs m_in;
     linalg::DenseKernels m_kernels;
     std::vector<Mode> m_modes;
     std::vector<Item> m_items;
+    // By solve whose subcases select a non-structural mass set: the mass it adds to the rows of each batch of
+    // m_in.set, which the element mass rates of that solve's modes take as its pencil's mass does (addElement).
+    std::map<std::size_t, assembly::NonStructuralMassShares> m_addedMass;
 };
 
 } // namespace oos::design::detail

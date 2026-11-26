@@ -80,6 +80,11 @@ public:
     // The value of the objective (its single item), or nothing without one. Throws OptimisationError when its
     // response has not one item.
     [[nodiscard]] std::optional<double> objectiveValue(const std::vector<ResponseValues>& values) const;
+    // The index, in the values of the objective's response, of the item the objective is: its one item of the
+    // objective's subcase or of subcase 0 (the rule of objectiveValue). The response may have items in other subcases
+    // (it is constrained there too), so the objective is not always item 0, and its gradient is that item's row.
+    // Nothing when `response` is not the objective's, or has not exactly one such item.
+    [[nodiscard]] std::optional<std::size_t> objectiveItem(const ResponseValues& response) const;
 
 private:
     // Whether constraint `c` acts in subcase `subcase` (0: global).

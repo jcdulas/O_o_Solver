@@ -308,11 +308,14 @@ struct ShellAxisTerm
 
 // A constraint that the supports put on the unknowns of an edge along a direction that is no basic axis (a
 // translation held in a displacement system turned from the basic one, at both grids of the edge):
-// Σ unknowns + Σ grids = 0. It is no support of one unknown: the solver eliminates it as a relation.
+// Σ unknowns + Σ grids + Σ basicGrids = 0. It is no support of one unknown: the solver eliminates it as a relation.
+// `basicGrids`: the terms of a grid that holds the direction by its basic flags (the other grid of the edge holding
+// it off the basic axes), on its basic components, which the caller carries to its displacement system.
 struct ShellSupportRow
 {
     std::vector<ShellPartTerm> unknowns;
     std::vector<ShellAxisTerm> grids;
+    std::vector<ShellGridTerm> basicGrids;
 };
 
 // The supports derived from those of the grid points, by increasing unknown; the rows of the directions that are no
@@ -849,6 +852,9 @@ private:
     Topology m_topology;
     // The shells without their tables and matrices.
     std::vector<ShellElementData> m_shells;
+    // The shells of each grid with their corner there, by increasing shell (shellsAt): the mean rotation of a grid
+    // asks them, and a scan of every shell per grid cost the product of the two counts.
+    std::vector<std::vector<std::pair<std::size_t, std::size_t>>> m_shellsAtGrid;
     // The points per direction of the rule of the matrices of each shell.
     std::vector<std::size_t> m_ownPoints;
     // The degree of each shell and of each edge of the topology.

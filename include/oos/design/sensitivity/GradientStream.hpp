@@ -110,7 +110,10 @@ struct StreamSubcase
 };
 
 // What a stream reads: the linearised items (every item of every evaluated response, no item mask), the rows of G in
-// their order, the subcases with their factors, the pseudo-loads, the number of independent variables.
+// their order, the subcases with their factors, the pseudo-loads, the number of independent variables. A row that reads
+// the displacements is solved on the subcase its item names (ItemLinearisation::subcase), which must be one of
+// `subcases`: the linearisation names the static subcase the weights are on (a load factor its preload subcase, an
+// equation item the subcase its chained weights read, not the subcase its values are labelled with).
 struct GradientStreamInputs
 {
     const LinearisedItems* linearised = nullptr;

@@ -513,7 +513,9 @@ StreamedStatics::GroupResult StreamedStatics::solveGroup(const GroupInputs& inpu
     for (const std::size_t c : inputs.cases)
     {
         caseInputs.cases.push_back(&inputs.subcases[c]);
-        caseInputs.spcs.push_back(inputs.spc);
+        // Each case with its own enforced values: with the set's first SPC set for all, an enforced displacement of a
+        // later case would be neither applied nor refused (StreamedLoads refuses the Enforced family).
+        caseInputs.spcs.push_back(inputs.spcSets.empty() ? inputs.spc : &inputs.spcSets[c]);
         setCases.push_back(&inputs.subcases[c]);
     }
     caseInputs.tolerance = inputs.tolerance;

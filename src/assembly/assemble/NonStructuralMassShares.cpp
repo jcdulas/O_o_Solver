@@ -37,6 +37,34 @@ MassMeasure measureOf(std::string_view card) noexcept
     return MassMeasure::None;
 }
 
+// The optional column of nonStructMassTable that names the property card of a property target, and the column of
+// an element batch that names the property card of each of its elements (input::ElementBatch::propertyTypes).
+constexpr const char* TARGET_PROPERTY_CARD_COLUMN = "propertyType";
+constexpr const char* ELEMENT_PROPERTY_CARD_COLUMN = "propType";
+
+// The property card of each element of a batch, when the batch gives it (isGiven) and knows it (isKnown: the row of
+// an element whose property the model does not have is null).
+struct BatchPropertyCards
+{
+    bool isGiven = false;
+    base::DictionaryView cards;
+    base::ValidityView isKnown;
+};
+
+// The property cards of the elements of every batch of the set, read once (a read checks every index of the column).
+std::vector<BatchPropertyCards> propertyCardsOf(const ElementSet& set)
+{
+    std::vector<BatchPropertyCards> cards(set.batches().size()); // bounded by the element card types
+    for (std::size_t b = 0; b < cards.size(); ++b)
+    {
+        const input::ElementBatch& batch = set.batches()[b].view.batch();
+        if (!batch.reader().hasColumn(ELEMENT_PROPERTY_CARD_COLUMN))
+            continue;
+        cards[b] = {true, batch.propertyTypes(), batch.reader().validity(ELEMENT_PROPERTY_CARD_COLUMN)};
+    }
+    return cards;
+}
+
 base::Diagnostic nsmProblem(std::string code, std::string_view card, std::int32_t setId, std::string message)
 {
     base::Diagnostic diagnostic;
@@ -88,6 +116,16 @@ NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set, const in
     const base::ValidityView validTargets = rows.validity("targetId");
     const base::DictionaryView kinds = rows.dictionaryTexts("kind");
     const std::span<const double> values = rows.values<double>("value", base::NullPolicy::Allow);
+    // The property card of each property target, when the table gives it: the mass then reaches the elements of that
+    // card only (a property ID alone would reach the elements of another card with the same ID).
+    const bool hasTargetCards = rows.hasColumn(TARGET_PROPERTY_CARD_COLUMN);
+    const base::DictionaryView targetCards =
+        hasTargetCards ? rows.dictionaryTexts(TARGET_PROPERTY_CARD_COLUMN, base::NullPolicy::Allow)
+                       : base::DictionaryView();
+    const base::ValidityView validTargetCards =
+        hasTargetCards ? rows.validity(TARGET_PROPERTY_CARD_COLUMN) : base::ValidityView();
+    const std::vector<BatchPropertyCards> elementCards =
+        hasTargetCards ? propertyCardsOf(set) : std::vector<BatchPropertyCards>(set.batches().size());
 
     const auto shareOf = [&](std::size_t b) -> base::BudgetedBuffer<double>&
     {
@@ -139,6 +177,9 @@ NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set, const in
             continue;
         }
         const std::int32_t target = targetIds[index];
+        // Empty: an element target, or a table that does not name the property card (every element of the ID).
+        const std::string_view targetCard =
+            !isElement && hasTargetCards && validTargetCards.isValid(row) ? targetCards[row] : std::string_view();
         bool isFound = false;
         bool isMismatched = false;
         for (std::size_t b = 0; b < set.batches().size(); ++b)
@@ -150,6 +191,12 @@ NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set, const in
             for (std::size_t r = 0; r < keys.size(); ++r)
             {
                 if (keys[r] != target)
+                    continue;
+                // An element whose property is another card than the one the row names is not a target; one whose
+                // batch does not say (or whose property is missing) is taken by its ID, as without the column.
+                if (!targetCard.empty() && elementCards[b].isGiven &&
+                    elementCards[b].isKnown.isValid(static_cast<std::int64_t>(r)) &&
+                    elementCards[b].cards[static_cast<std::int64_t>(r)] != targetCard)
                     continue;
                 isFound = true;
                 if (measure != wanted)
@@ -163,8 +210,10 @@ NonStructuralMassShares::NonStructuralMassShares(const ElementSet& set, const in
         if (!isFound)
             sink.report(nsmProblem(
                 "nsm-unknown-target", card, setId,
-                base::concatenate({"expected an existing ", isElement ? "element" : "property", ", found ID ",
-                                   std::to_string(target), " which no element of the model has; correct the ID"})));
+                base::concatenate({"expected an existing ", isElement ? "element" : "property",
+                                   targetCard.empty() ? "" : " ", targetCard, ", found ID ", std::to_string(target),
+                                   " which no element of the model has; correct the ID",
+                                   targetCard.empty() ? "" : " or the property type of the card"})));
         else if (isMismatched)
             sink.report(nsmProblem("nsm-kind-mismatch", card, setId,
                                    base::concatenate({"the ", std::string(kind), " mass of target ",

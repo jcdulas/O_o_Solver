@@ -1,7 +1,9 @@
 #include "oos/reduction/cache/CacheKey.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/elements/core/ElementFormulation.hpp"
 #include "oos/elements/core/FormulationModel.hpp"
+#include "oos/elements/shells/ShellDirectors.hpp"
 #include "oos/reduction/cache/CacheHasher.hpp"
 
 #include <algorithm>
@@ -67,6 +69,38 @@ UnitDofLabel labelOfNode(const assembly::DofMap& dofMap, std::int32_t node, int 
     }
     label.id = dofMap.nodeIdOf(node);
     return label;
+}
+
+// The grid points of a card whose elements take their normals from elements::ShellDirectors (ShellQuad4, ShellTria3,
+// ShellQuad8, ShellTria6 in ClassicFormulation), 0 for any other element: another formulation of these cards reads
+// its surroundings through FormulationModel::describeSurroundings.
+std::size_t directorNodeCountOf(const assembly::AssemblyBatch& batch) noexcept
+{
+    if (batch.family->formulation() != elements::CLASSIC_FORMULATION)
+        return 0;
+    for (const elements::DirectorShellCard& shell : elements::DIRECTOR_SHELL_CARDS)
+        if (shell.card == batch.view.card())
+            return shell.nodes;
+    return 0;
+}
+
+// Mixes the normal each grid point of the element of batch row `row` shares with its smooth group (a flag, then the
+// normal in basic when it is shared). The stiffness, mass and loads of a director shell read it, and it is not a
+// function of the unit's own inputs: it is the mean over every element at the grid point, those of other units
+// included, or the vector of a ShellNormal card, neither of which the reader's revision stamp of the unit sees.
+void mixSharedNormals(CacheHasher& hasher, const elements::ShellDirectors& directors, std::string_view card,
+                      std::int64_t row, std::size_t nodeCount)
+{
+    for (std::size_t node = 0; node < nodeCount; ++node)
+    {
+        const std::optional<base::Vec3> shared = directors.sharedNormal(card, row, node);
+        hasher.mix(std::uint64_t{shared.has_value() ? 1U : 0U});
+        if (!shared)
+            continue;
+        hasher.mix(shared->x());
+        hasher.mix(shared->y());
+        hasher.mix(shared->z());
+    }
 }
 
 std::string parameterText(const std::vector<CacheParameter>& parameters, std::string_view name)
@@ -167,7 +201,8 @@ std::string CacheKey::differenceFrom(const CacheKey& stored) const
                "cases, or another mass for its inertial patterns)";
     if (inputStamp != stored.inputStamp)
         return "the unit's inputs changed while its stamps did not (its points' positions or displacement systems, "
-               "the order of its elements, the relations inside it, the non-structural mass selected or the options "
+               "the order of its elements, the normals its shells share at their grid points (an element beside the "
+               "unit, a ShellNormal card), the relations inside it, the non-structural mass selected or the options "
                "of its assembly)";
     return {};
 }
@@ -255,6 +290,8 @@ std::uint64_t unitInputStamp(const UnitModel& model, const UnitDescription& desc
     // their cards and non-structural mass (the NSM set a subcase selects).
     hasher.mix(static_cast<std::uint64_t>(description.elementIds.size()));
     const std::span<const assembly::AssemblyBatch> batches = model.elements->batches();
+    // The shared normals of the model (built once per snapshot index), read at the first director shell of the unit.
+    const elements::ShellDirectors* directors = nullptr;
     for (const base::EntityId elementId : description.elementIds)
     {
         hasher.mix(static_cast<std::int32_t>(elementId));
@@ -273,6 +310,15 @@ std::uint64_t unitInputStamp(const UnitModel& model, const UnitDescription& desc
                                                    ? model.nonStructuralMass->sharesOf(place->batchIndex)
                                                    : std::span<const double>();
         hasher.mix(shares.empty() ? 0.0 : shares[static_cast<std::size_t>(place->row)]);
+        // The normals a director shell shares at its grid points with the elements around it and takes from the
+        // ShellNormal cards (mixSharedNormals).
+        const assembly::AssemblyBatch& batch = batches[place->batchIndex];
+        const std::size_t directorNodes = directorNodeCountOf(batch);
+        if (directorNodes == 0)
+            continue;
+        if (directors == nullptr)
+            directors = &elements::shellDirectors(batch.view.index());
+        mixSharedNormals(hasher, *directors, batch.view.card(), place->row, directorNodes);
     }
     // What an element formulation reads around the unit's elements (FormulationModel::describeSurroundings): the
     // geometry of the elements beside them, which may lie in other units, and the formulation's declarations.

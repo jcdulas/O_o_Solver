@@ -200,7 +200,10 @@ the unit's elements, `FormulationModel::describeSurroundings`, docs/mixed-hybrid
 - `CacheHasher`: FNV-1a on 64-bit words, the hash of the keys, the content checksums and the file checksum.
 - `CacheKey`: its parts (version, kernel, the `MATRIX_PARAMETERS`, the unit's identity,
   revision, design, constraint, boundary and spider stamps, the reduction), the patterns' checksum and the input stamp
-  (what the solver reads for the unit beside the stamps: `unitInputStamp`), all made from the unit's inputs by
+  (what the solver reads for the unit beside the stamps: `unitInputStamp`; with them the normal each grid point of its
+  ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6 shares, `elements::ShellDirectors`: the mean over every element
+  at the grid point, those of the units beside it included, or a ShellNormal card, which no stamp of the unit sees),
+  all made from the unit's inputs by
   `makeUnitKey` (no equation built); the checksum of the equations (`equationStampOf`) stored with
   an entry as its verification, not matched; `differenceFrom` names why a stored entry does not serve.
 - `CacheEntry`: `CachedReduction` (the `ReducedUnit`, the pattern work G, the pivot ratio; no factor) and
@@ -209,14 +212,17 @@ the unit's elements, `FormulationModel::describeSurroundings`, docs/mixed-hybrid
   file; a read refuses another format, a foreign, truncated or corrupted file, naming why.
 - `CacheLimits` (cache_max_size, cache_recovery_max_size, cache_max_age), `CacheCleanup` (superseded, expired, least
   recently used with recovery data first, never an entry in use), `CacheLock` (a lock folder shared by processes,
-  broken when abandoned).
+  broken when abandoned; its owner file holds a token of its holder, which releases the folder only while the token
+  is still its own: a lock broken and taken by a waiter is left to that waiter).
 - `CondensationCache`: the memory layer (its own budget) and the folder (`entries/<identity>/<R|M>-<key>.nsvc`), its
   sessions (an analysis pins what it uses), `info`, `statistics`, `clear`, `verify`. A store decides its cleanup on a
   listing of the folder it keeps, made again every `CACHE_LISTING_REFRESH_SECONDS` or when the entry needs room
   (a listing per store cost 10 000 units the square of their count in directory reads). The stores of a wave
   of condensations are made together (`Session::storeReductions`): each decided as `store` decides
   it, in order, under one lock, the planned entries kept in a listing made again, the files written on the pool; and
-  off the analysis' critical path by the session's writer (`storeReductionsLater`, `finishStores`).
+  off the analysis' critical path by the session's writer (`storeReductionsLater`, `finishStores`). A file already at
+  the path of an entry is taken for it (stored meanwhile by another process) only when its header names this format
+  and this key; any other file there, which every lookup refuses, is replaced by the store.
 
 `condense/StaticCondensation` takes a cached reduced unit (no factor: `recomputeInteriorFactor` makes the first one
 and checks `K*` to the bit); `solutions/sol101/CondensedStatics` looks each unit up and stores the new ones.
@@ -304,7 +310,10 @@ DOFs of the zone. The reduction layer holds the unit and its checks; the full pa
   mass, differential stiffness, thermal load or result row for them; their pressure and line loads pass through: those
   at the interior points are the zone loads given to the plugin, those at the contour stay loads of the analysis). An
   element set on these families gives every assembler, recovery and sensitivity the model without the zones, with no
-  change of theirs.
+  change of theirs. The wrapper overrides every virtual of `elements::ElementFamily` (its class comment gives the
+  rule of each kind of member), so that the elements it does not replace keep all their own family gives: the corner
+  rows of an output asked with them, the column forms and recovery slopes, the vectorised recovery, the volumes, the
+  stabilisation energies, the closed-form derivatives. A member added to `ElementFamily` is added there too.
 
 ### Design choices
 

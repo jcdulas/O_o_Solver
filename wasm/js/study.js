@@ -14,6 +14,52 @@ function serializable(value) {
   }));
 }
 
+// Refuses a key the interface does not read: a misspelt option would otherwise be ignored without a word and the
+// analysis would run with its default.
+export function requireKnownKeys(value, accepted, what) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return;
+  for (const key of Object.keys(value))
+    if (!accepted.includes(key))
+      throw new TypeError(`${what}: unknown key '${key}'; the keys are ${accepted.join(", ")}`);
+}
+
+// Every key a study definition has (StudyDefinition in study.d.ts), level by level.
+const DEFINITION_KEYS = ["version", "variables", "parameters", "analyses", "responses", "objective", "constraints",
+  "update"];
+const VARIABLE_KEYS = ["id", "label", "initialValue", "lower", "upper", "scale", "kind", "choices"];
+const PARAMETER_KEYS = ["target", "variableId", "coefficient", "constant", "terms", "callback"];
+const TERM_KEYS = ["variableId", "coefficient"];
+const TARGET_KEYS = {
+  card: ["kind", "type", "id", "key", "field", "slot", "forceReal", "part"],
+  case: ["kind", "command", "subcase", "sectionKey", "variant", "options"],
+  solution: ["kind"],
+};
+const PART_KEYS = ["kind", "id", "massId", "appends"];
+const ANALYSIS_KEYS = ["analysis", "subcases"];
+// sectionKey: the section of the Case Control the output request of the response is written in, in place of subcase.
+const RESPONSE_KEYS = ["id", "label", "analysis", "source", "query", "column", "idColumn", "args", "kind", "subcase",
+  "sectionKey", "elementType", "ids", "nodeIds", "layers", "components", "rowNames", "step", "mode", "tracksMode",
+  "minimumMac", "variable", "derivativeColumn", "reduce", "scale", "callback"];
+const OBJECTIVE_KEYS = ["responseId", "item", "sense"];
+const CONSTRAINT_KEYS = ["responseId", "items", "lower", "upper", "scale"];
+
+function requireDefinitionKeys(definition) {
+  requireKnownKeys(definition, DEFINITION_KEYS, "study definition");
+  for (const variable of definition.variables) requireKnownKeys(variable, VARIABLE_KEYS, "study variable");
+  for (const parameter of definition.parameters ?? []) {
+    requireKnownKeys(parameter, PARAMETER_KEYS, "study parameter");
+    for (const term of parameter?.terms ?? []) requireKnownKeys(term, TERM_KEYS, "study parameter term");
+    // An unknown kind of target is refused when the parameters are bound to the model.
+    const target = parameter?.target, targetKeys = TARGET_KEYS[target?.kind];
+    if (targetKeys) requireKnownKeys(target, targetKeys, `study parameter target of kind ${target.kind}`);
+    requireKnownKeys(target?.part, PART_KEYS, "study parameter target part");
+  }
+  for (const entry of definition.analyses) requireKnownKeys(entry, ANALYSIS_KEYS, "study analysis");
+  for (const response of definition.responses) requireKnownKeys(response, RESPONSE_KEYS, "study response");
+  requireKnownKeys(definition.objective, OBJECTIVE_KEYS, "study objective");
+  for (const constraint of definition.constraints ?? []) requireKnownKeys(constraint, CONSTRAINT_KEYS, "study constraint");
+}
+
 function uniqueIds(values, name) {
   const ids = new Set();
   for (const value of values) {
@@ -28,6 +74,7 @@ function requireDefinition(definition) {
   if (!Array.isArray(definition.variables) || !definition.variables.length) throw new Error("a study requires variables");
   if (!Array.isArray(definition.responses) || !definition.responses.length) throw new Error("a study requires responses");
   if (!Array.isArray(definition.analyses) || !definition.analyses.length) throw new Error("a study requires analyses");
+  requireDefinitionKeys(definition);
   uniqueIds(definition.variables, "variables"); uniqueIds(definition.responses, "responses");
   for (const variable of definition.variables) {
     if (![variable.initialValue, variable.lower, variable.upper].every(Number.isFinite) || variable.lower > variable.upper)

@@ -74,7 +74,9 @@ struct SensitivityMapResult
 // the elements of a property is the gradient with respect to that property's value, which the tests check, and the
 // element values equal the gradients of a model where each element has its own property.
 //
-// Refused (OptimisationError naming them): a response with no item; a field whose change moves the inertial or the
+// Refused (OptimisationError naming them): a response with no item; a field of a vibration mode (a response with a
+// mode selector) or a buckling mode shape, mapped or read by the equation mapped (their share of each element is not
+// formed: the map would be zero); a field whose change moves the inertial or the
 // distributed loads of a subcase the response reads (a density under GravityLoad: the inertial load of each element
 // would be needed apart); an element that reads two values of the field (a ShellProp whose MID1 and MID2 are two IsoMat
 // of the map); the grouping by unit on a model without unit tables.

@@ -165,8 +165,10 @@ apart from the solver, whose eigenvalues section 8 gives.
 ## 6. Stiffness, mass, loads, resultants
 
 - **Section without shear material:** the transverse shear stiffness is that of the bending material,
-  $H=\kappa\,G\,t$ with G its in-plane shear modulus and $\kappa$ the shear factor of the section: negligible for a
-  thin plate. This differs from the two documents, whose elements give such a section
+  $H=\kappa\,G\,t$ with G its in-plane shear modulus in the material axes (the term (3, 3) of the bending matrix
+  there, $G_{12}$ of an orthotropic layer: not that term in the element axes, which turns with the element) and
+  $\kappa$ the shear factor of the section: negligible for a thin plate. This differs from the two documents, whose
+  elements give such a section
   $H=c_K\,12\max(D_{11},D_{22})/S$: that stiffness makes a plate of any thickness a thin one for its elements, and the
   eight-node quadrilateral does not hold the uniform curvature of a thin plate on irregular quadrilaterals (section
   4). Measured on the mesh of section 4 for a plate of thickness a tenth of its side: moments at the places off by
@@ -182,7 +184,11 @@ apart from the solver, whose eigenvalues section 8 gives.
   $\mathbf q_h=\bar\varepsilon\,\mathbf x$ of the element. A free uniform temperature rise is then that homothety,
   without stress, on a curved element and with shared directors, whose transverse shear in a homothety the
   correction of section 3 does not remove (the displacements of a free quarter cylinder were off the homothety by
-  $2\cdot10^{-5}$ to $9\cdot10^{-5}$ of $\alpha\Delta T$ without it; $2\cdot10^{-9}$ with it).
+  $2\cdot10^{-5}$ to $9\cdot10^{-5}$ of $\alpha\Delta T$ without it; $2\cdot10^{-9}$ with it). As the pressure, the
+  thermal loads are carried to the grids through $\mathsf T_f$ of section 11 of the quadrilateral document: an
+  element with an offset is free of stress under that rise only when the model puts the loads on the offset; by
+  default its loads are taken at the grids, without the moments of its forces about them, and it bends (section 12
+  of that document).
 - **Differential stiffness:** that of the membrane forces of the centre on the gradients of the translations, with
   the rule of the stiffness.
 - **Resultants:** at the centre and at the corners, in the local frame of the place. For the triangle, from its tied

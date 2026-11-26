@@ -71,6 +71,19 @@ ExternalResponse::ExternalResponse(ExternalResponseDefinition definition, const 
         report("outputs",
                base::concatenate({"expected one output count per zone (", std::to_string(m_definition.zones.size()),
                                   "), found ", std::to_string(m_definition.outputs.size())}));
+    // With select=, a zone whose selection keeps no case is not called, and the number of its outputs is then known
+    // from the declaration only. Without it such a zone would give no item at all instead of its subcases × outputs
+    // items not evaluated, and the items of the response would change from one design point to the next.
+    const bool hasEveryOutputCount =
+        !m_definition.outputs.empty() && std::all_of(m_definition.outputs.begin(), m_definition.outputs.end(),
+                                                     [](std::int32_t count) { return count >= 1; });
+    if (m_definition.hasSelection && !hasEveryOutputCount)
+        report("outputs",
+               base::concatenate({"expected the number of outputs of every zone (at least 1 each) for a response "
+                                  "with select=, found ",
+                                  m_definition.outputs.empty() ? "none" : "a zone without one",
+                                  ": a zone whose selection keeps no case is not called, so its items that are not "
+                                  "evaluated could not be counted; declare outputs= for every zone"}));
     if (m_definition.evaluator.empty())
         report("evaluator", "expected the name of the evaluator of the response, found none");
     if (m_definition.hasPost && !m_definition.isLinear)

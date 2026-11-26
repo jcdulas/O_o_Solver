@@ -1,4 +1,7 @@
 const CODES = { static: 101, modes: 103, buckling: 105, aeroelastic: 144 };
+// The grid point forces as the result catalogue of the Model names them: three forces and three moments a row.
+const NODE_POINT_FORCES = "nodePointForces";
+const NODE_POINT_FORCE_COMPONENTS = ["f1", "f2", "f3", "m1", "m2", "m3"];
 const same = (a, b) => a?.length === b?.length && (!a || a.every((value, i) => Object.is(value, b[i])));
 const array = (values, shape = [values.length], type = "float64") => ({ type, shape, values });
 
@@ -26,9 +29,11 @@ export function analysisTables(runs) {
       }
     };
     run.nodalTables.forEach(append); run.elementTables.forEach(append);
-    for (const table of run.gridPointForces) append({ ...table, kind: "gridPointForces", ids: table.nodeIds,
+    // The Model names this kind and its components itself (its result catalogue): a table under another name or with
+    // the components of a nodal table is refused by createResults.
+    for (const table of run.gridPointForces) append({ ...table, kind: NODE_POINT_FORCES, ids: table.nodeIds,
       texts: { elementName: Array.from(table.nameIndices, index => table.names[index]) },
-      components: ["t1", "t2", "t3", "r1", "r2", "r3"] });
+      components: NODE_POINT_FORCE_COMPONENTS });
     for (const table of run.eigenvalues) {
       const components = ["extractionOrder", "eigenvalue", "radians", "cycles", "generalizedMass", "generalizedStiffness"];
       result.push({ kind: "eigenvalues", analysisCode: CODES[table.analysis], subcase: table.subcase,

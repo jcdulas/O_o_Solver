@@ -194,9 +194,16 @@ register it in `ElementRegistry::standard()` after the card's default.
   shell at one grid point, a moment about the normal on one grid point).
   The thermal loads take the dilatation of the free strain as K q, q the homothety of the element: a warped mesh,
   or one whose normals are shared, expands freely under a uniform temperature rise (Sanders 1959: a uniform
-  dilatation bends nothing).
-  A section without `MID3`, or a laminate whose plies give no G1Z and G2Z, has no transverse shear flexibility: the
-  kernels take a shear stiffness 10⁴ times the bending one (section 4 of the ShellQuad4 document).
+  dilatation bends nothing). An element with an offset (ZOFFS) does so only when ModelParams `OffsetDefinition` puts
+  the loads on the offsets (`LoadRecoveryOffsets`, `ElemOffsetZ`): under `ElemOffsetsOnly`, the default, the thermal
+  loads of every family (the six shells, the bars and the beams) are taken at the grid points, without the moments
+  offset × force the stiffness has, and a free offset element bends under a temperature rise (a free plate by the
+  curvature 12 α ΔT ZOFFS / t²).
+  A section without `MID3`, or a laminate none of whose plies gives a transverse shear modulus in a direction, has
+  no transverse shear flexibility there: the kernels take a shear stiffness 10⁴ times the bending one (section 4 of
+  the ShellQuad4 document). A ply with a blank G1Z or G2Z is rigid in transverse shear along that axis and adds
+  nothing to the shear flexibility of its laminate, which the other plies give (`Laminate`, `plyShearModulus`): a
+  sandwich whose faces leave them blank shears in its core.
   On the roof of Scordelis and Lo (sag of the free edge over 0.3024) the `ShellQuad4` gives 1.012, 1.002 at 8², 16²,
   and two `ShellTria3` per cell 0.883, 0.965.
   `PlateConstitutive` reads a section (ShellProp with IsoMat, AnisoMat2D, OrthoMat2D; CompProp and CompPropGlobal through their equivalent section,
@@ -210,9 +217,9 @@ register it in `ElementRegistry::standard()` after the card's default.
   `ShellQuad4::cornerRecovery`, the values of the 2 × 2 integration points with the enhanced strains read at the
   corners on the bilinear surface through them; the recovery by blocks of cases takes their slopes too), the plies
   of a laminate. Its header lists the choices of
-  this project (an MCID angle measured and applied in the element frame, the offset in the thermal loads, the
-  thickness of a section without MID1 kept, the coupling and the thermal strains in the recovery, the differential
-  stiffness, the rotation about the normal).
+  this project (an MCID angle measured and applied in the element frame, the mass and the pressure and thermal
+  loads on the offset only when `OffsetDefinition` asks for it, the thickness of a section without MID1 kept, the
+  coupling and the thermal strains in the recovery, the differential stiffness, the rotation about the normal).
 - `shells/shellQuad4Drilling/`, `shells/shellTria3Drilling/`: the ShellQuad4Drilling and ShellTria3Drilling families.
   `ShellQuad4DrillingElement.hpp` says which file holds which
   part: `ShellQuad4DrillingGeometry` (geometry and frames), `ShellQuad4DrillingBending` (bending and transverse shear), `ShellQuad4DrillingWarpOffsets`
@@ -222,8 +229,9 @@ register it in `ElementRegistry::standard()` after the card's default.
   displacement systems with ZOFFS (`shells/ShellNodeFrames`) and the output rows (`shells/ShellRecovery`) are shared by
   every shell.
 - `shells/Laminate`: the transverse shear of a laminate from the equilibrium of cylindrical bending (`H_x`, `H_y` and
-  the shear at the top of each ply); `ShellRecovery` gives each ply that distribution, or the mean `Q / t` for a
-  homogeneous stack or a rigid direction.
+  the shear at the top of each ply), the plies rigid in a direction (a blank G1Z or G2Z) without shear strain;
+  `ShellRecovery` gives each ply that distribution, or the mean `Q / t` for a homogeneous stack or a direction in
+  which every ply is rigid, and its shear strain as that stress over the ply's modulus in the same direction.
 
 ## Solids
 

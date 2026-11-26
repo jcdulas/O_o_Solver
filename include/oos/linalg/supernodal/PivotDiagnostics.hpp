@@ -18,9 +18,10 @@ using EquationNamer = std::function<base::GridComponent(std::int32_t equation)>;
 
 // The factor diagonal ratio test of PARAM MaxDiagonalRatio and PARAM SingularityBailOut: for each pivot of a
 // positive definite factorisation, the ratio of the matrix diagonal to the factor diagonal, a_jj / d_j. A ratio above
-// maxRatio flags a near mechanism (the pivot lost almost all of its diagonal to the coupled DOFs); a negative ratio
-// (a negative factor diagonal) flags a matrix that is not positive definite. Every such DOF is listed with its ratio,
-// then the run stops unless SingularityBailOut is negative.
+// maxRatio flags a near mechanism (the pivot lost almost all of its diagonal to the coupled DOFs); a negative factor
+// diagonal flags a matrix that is not positive definite, whatever its ratio (with a zero or negative matrix diagonal
+// the ratio is −0 or positive: the sign of the pivot is tested). Every such DOF is listed with its ratio, then the run
+// stops unless SingularityBailOut is negative.
 //
 // The caller may give the test another diagonal than the matrix's for some equations (a reference diagonal:
 // FactorOptions::referenceDiagonal, ratioTestDiagonal below). The matrix diagonal measures the stiffness a DOF has
@@ -45,7 +46,7 @@ struct PivotPolicy
 enum class PivotIssueKind : std::uint8_t
 {
     RatioAboveMaximum, // a_jj / d_j > MaxDiagonalRatio: a near mechanism
-    NegativePivot      // a_jj / d_j < 0: the matrix is not positive definite
+    NegativePivot      // d_j < 0 (a_jj / d_j < 0 for a positive diagonal): the matrix is not positive definite
 };
 
 // One pivot that fails the ratio test.

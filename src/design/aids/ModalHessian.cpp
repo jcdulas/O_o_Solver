@@ -2,6 +2,7 @@
 
 #include "../sensitivity/ModalSystem.hpp"
 #include "RecoveredFieldCurvature.hpp"
+#include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/errors/OptimisationError.hpp"
 #include "oos/design/sensitivity/AffectedElements.hpp"
 #include "oos/linalg/eigen/BorderedEigenSystem.hpp"
@@ -11,7 +12,9 @@
 #include <cmath>
 #include <map>
 #include <numbers>
+#include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace oos::design
@@ -20,6 +23,12 @@ namespace
 {
 
 constexpr double REPEATED_ROOT_TOLERANCE = 1e-6;
+// The share of the products K·φ and λ·M·φ their difference may reach for φ to be taken as a mode of the pencil formed
+// here (the bound of the modal field gradients, ModalItems): above the rounding and the convergence of an
+// eigensolution, far below the residual of a pencil that is not the analysis' one.
+constexpr double RESIDUAL_TOLERANCE = 1e-6;
+// Below this magnitude the products K·φ and λ·M·φ are taken as zero.
+constexpr double SMALLEST_RESIDUAL_SCALE = 1e-20;
 
 struct RootWeight
 {
@@ -28,7 +37,32 @@ struct RootWeight
     double first = 0.0;  // weight times dr/dlambda
     double second = 0.0; // weight times d2r/dlambda2
     std::vector<detail::WeightedRecoveredField> fields;
+    std::int32_t response = 0; // the first weighted response that reads the root, named by the refusals
 };
+
+// Refuses a shape that is not a mode of the pencil formed here: the bordered tangent and adjoint solves assume
+// (K − λ·M)·φ = 0 on the solved equations, and a product from another pencil would be wrong without a sign of it.
+// `stiffnessShape` is K·φ and `massShape` M·φ; the largest component of K·φ − λ·M·φ is compared with the largest
+// |K·φ| + |λ·M·φ| (the test does not depend on the scale of φ).
+void requireEigenpair(const RootWeight& weight, base::EntityId subcase, double root,
+                      std::span<const double> stiffnessShape, std::span<const double> massShape)
+{
+    double residual = 0.0, scale = 0.0;
+    for (std::size_t i = 0; i < stiffnessShape.size(); ++i)
+    {
+        residual = std::max(residual, std::abs(stiffnessShape[i] - root * massShape[i]));
+        scale = std::max(scale, std::abs(stiffnessShape[i]) + std::abs(root * massShape[i]));
+    }
+    if (residual > RESIDUAL_TOLERANCE * std::max(scale, SMALLEST_RESIDUAL_SCALE))
+        throw base::OptimisationError(base::concatenate(
+            {"the Hessian-vector product of response ", std::to_string(weight.response), " (mode ",
+             std::to_string(weight.mode + 1), " of subcase ", std::to_string(subcase),
+             "): the eigenvector does not satisfy the pencil (K - lambda M) phi = 0 of the full model (residual ",
+             std::to_string(residual / std::max(scale, SMALLEST_RESIDUAL_SCALE)), " of its terms, at most ",
+             std::to_string(RESIDUAL_TOLERANCE),
+             "); extract the mode with a converged eigensolution on the full path, and report it if the analysis "
+             "converged (the product would then be formed on another pencil than the analysis')"}));
+}
 
 // Translate weighted response items to roots. Frequency contributions keep their scalar chain-rule curvature.
 std::optional<std::vector<RootWeight>> rootsOf(const DesignProblem& problem, const DesignEvaluation& evaluation,
@@ -57,7 +91,10 @@ std::optional<std::vector<RootWeight>> rootsOf(const DesignProblem& problem, con
                 const auto& solve = evaluation.analysis.modes->solves[subcase.solve];
                 if (mode >= solve.eigenvalues.size())
                     throw base::OptimisationError("modal Hessian mode is outside the extracted roots");
-                auto& root = roots[{subcase.solve, mode}];
+                const auto [entry, isNew] = roots.try_emplace({subcase.solve, mode});
+                auto& root = entry->second;
+                if (isNew)
+                    root.response = id;
                 root.solve = subcase.solve;
                 root.mode = mode;
                 if (definition->definition().mode)
@@ -130,7 +167,7 @@ public:
                 continue;
             const auto& solution = m_evaluation.analysis.modes->solves[solve];
             const detail::ModalSystem system(*m_model, solution.subcases.front(), m_budget, m_pool);
-            if (!prepareFields(system.massOptions().formulation))
+            if (!prepareFields(system))
                 return std::nullopt;
             for (const RootWeight& root : roots)
                 if (root.solve == solve && !addRoot(root, system, directions, count, values))
@@ -183,7 +220,18 @@ private:
         return true;
     }
 
-    bool prepareFields(elements::MassFormulation formulation)
+    // The mass options of the elements of batch `batch` in the pencil of `system`: its formulation and the mass the
+    // non-structural mass set of its subcase adds to them, so that the rates of the element masses are those of the
+    // assembled mass.
+    static elements::MassOptions massOptionsOf(const detail::ModalSystem& system, std::size_t batch)
+    {
+        elements::MassOptions options;
+        options.formulation = system.massOptions().formulation;
+        options.addedNonStructuralMass = system.addedNonStructuralMass(batch);
+        return options;
+    }
+
+    bool prepareFields(const detail::ModalSystem& system)
     {
         m_entries.clear();
         m_byElement.clear();
@@ -205,8 +253,7 @@ private:
                 if (entry.use.changesStiffness && batch.family->facets().has(elements::Facet::Stiffness) &&
                     !batch.family->stiffnessFieldDerivative(batch.view, element.row, entry.field, entry.stiffness))
                     return false;
-                elements::MassOptions options;
-                options.formulation = formulation;
+                const elements::MassOptions options = massOptionsOf(system, element.batch);
                 if (entry.use.changesMass && batch.family->facets().has(elements::Facet::Mass) &&
                     !batch.family->massFieldDerivative(batch.view, element.row, entry.field, options, entry.mass))
                     return false;
@@ -257,11 +304,12 @@ private:
     }
 
     // Explicit matrix curvature at fixed mode: phi^T (K_pq - lambda M_pq) phi, only where two fields share an element.
-    bool mixedRates(double root, double weightToMass, elements::MassFormulation formulation,
+    bool mixedRates(double root, const detail::ModalSystem& system,
                      std::span<const double> shape, std::map<std::pair<std::size_t, std::size_t>, double>& rates,
                      std::span<const double> adjoint, double multiplier,
                      std::map<std::pair<std::size_t, std::size_t>, double>& fieldRates) const
     {
+        const double weightToMass = system.massOptions().weightToMass;
         for (const auto& [element, indices] : m_byElement)
         {
             const auto& batch = m_model->elementSet().batches()[element.batch];
@@ -286,8 +334,7 @@ private:
                     if (first.use.changesMass && second.use.changesMass &&
                         batch.family->facets().has(elements::Facet::Mass))
                     {
-                        elements::MassOptions options;
-                        options.formulation = formulation;
+                        const elements::MassOptions options = massOptionsOf(system, element.batch);
                         elements::ElementMatrixBlock matrix;
                         if (!batch.family->massFieldMixedDerivative(batch.view, element.row, first.field,
                                                                     second.field, options, matrix))
@@ -468,6 +515,11 @@ private:
         for (std::size_t i = 0; i < n; ++i)
             freeShape[i] = shape[static_cast<std::size_t>(selection.dofOfEquation(static_cast<std::int32_t>(i)))];
         system.mass().multiply(freeShape.span(), massShape.span());
+        {
+            base::BudgetedBuffer<double> stiffnessShape(m_budget, n, "modal Hessian stiffness product");
+            system.stiffness().multiply(freeShape.span(), stiffnessShape.span());
+            requireEigenpair(weight, solve.subcases.front(), root, stiffnessShape.span(), massShape.span());
+        }
         double norm = 0.0;
         for (std::size_t i = 0; i < n; ++i)
             norm += freeShape[i] * massShape[i];
@@ -481,8 +533,7 @@ private:
             freeShape[i] *= scale;
             massShape[i] *= scale;
         }
-        const auto massOptions = system.massOptions();
-        const double weightToMass = massOptions.weightToMass;
+        const double weightToMass = system.massOptions().weightToMass;
         base::BudgetedBuffer<double> gradient(m_budget, quantities.size(), "modal eigenvalue field gradient");
         base::BudgetedBuffer<double> massRates(m_budget, quantities.size(), "modal mass field gradient");
         std::fill(gradient.span().begin(), gradient.span().end(), 0.0);
@@ -499,8 +550,8 @@ private:
         ++m_report.factorisations;
         FieldState fields;
         if (!prepareFieldState(weight, system, shape.span(), norm, bordered, fields) ||
-            !mixedRates(root, weightToMass, massOptions.formulation, shape.span(), mixed, fields.adjoint.span(),
-                         fields.multiplier, fields.matrixPairs))
+            !mixedRates(root, system, shape.span(), mixed, fields.adjoint.span(), fields.multiplier,
+                         fields.matrixPairs))
             return false;
         for (std::size_t direction = 0; direction < count; ++direction)
         {

@@ -25,6 +25,18 @@ bool contains(const std::vector<std::int32_t>& list, std::int32_t value)
     return std::find(list.begin(), list.end(), value) != list.end();
 }
 
+// The items of `response` an objective of subcase `subcase` may be: those of that subcase and the global ones
+// (subcase 0), by their index in the response's values. The response may have items in other subcases as well (the
+// same response constrained there): they are not the objective.
+std::vector<std::size_t> objectiveItemsOf(const ResponseValues& response, std::int32_t subcase)
+{
+    std::vector<std::size_t> found;
+    for (std::size_t i = 0; i < response.items.size(); ++i)
+        if (response.items[i].subcase == subcase || response.items[i].subcase == 0)
+            found.push_back(i);
+    return found;
+}
+
 } // namespace
 
 DesignConstraints::DesignConstraints(ConstraintParts parts, const DesignResponses& responses)
@@ -283,19 +295,24 @@ std::optional<double> DesignConstraints::objectiveValue(const std::vector<Respon
     {
         if (response.id != *objective)
             continue;
-        const std::int32_t subcase = m_parts.selection.objectiveSubcase.value_or(0);
-        std::vector<double> found;
-        for (std::size_t i = 0; i < response.items.size(); ++i)
-            if (response.items[i].subcase == subcase || response.items[i].subcase == 0)
-                found.push_back(response.values[i]);
+        const std::vector<std::size_t> found =
+            objectiveItemsOf(response, m_parts.selection.objectiveSubcase.value_or(0));
         if (found.size() != 1)
             throw base::OptimisationError(base::concatenate(
                 {"DesignObjectiveSelection ", std::to_string(*objective),
                  ": expected an objective response of one item, found ", std::to_string(found.size()), " items (",
                  response.label, "); an objective is one value: use an equation (MAX, SUM...) of the items"}));
-        return found.front();
+        return response.values[found.front()];
     }
     return std::nullopt;
+}
+
+std::optional<std::size_t> DesignConstraints::objectiveItem(const ResponseValues& response) const
+{
+    if (!m_parts.selection.objective || response.id != *m_parts.selection.objective)
+        return std::nullopt;
+    const std::vector<std::size_t> found = objectiveItemsOf(response, m_parts.selection.objectiveSubcase.value_or(0));
+    return found.size() == 1 ? std::optional<std::size_t>(found.front()) : std::nullopt;
 }
 
 } // namespace oos::design

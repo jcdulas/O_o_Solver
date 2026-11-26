@@ -143,5 +143,7 @@ export function numericalOptimizationGradients(problem, point, settings = {}) {
   return { variableCount: n, responses, constraints,
     objective: point.objective === null ? null : matrix.values.slice(offset, offset + n),
     report: { ...matrix.report, solves: 0, factorisations: 0, analyticDerivatives: 0,
-      fieldPerturbations: matrix.report.evaluations, shapePerturbations: 0 } };
+      fieldPerturbations: matrix.report.evaluations, shapePerturbations: 0,
+      // every difference is a complete analysis at a perturbed point
+      analysisPerturbations: matrix.report.evaluations } };
 }

@@ -30,7 +30,8 @@ struct ConstraintTerm
 // An equation with a problem is dropped and reported: a point the model does not define ("mpc-unknown-point"), a
 // component the point does not have ("mpc-bad-component"), a dependent coefficient of zero
 // ("mpc-zero-dependent-coefficient"), the dependent DOF repeated among its own terms ("mpc-dependent-repeated"). The
-// diagnostics name the card MPC, the set ID and, in the field, the equation number within the set.
+// diagnostics name the card MPC, the set ID and, in the field, the equation number within the set. A selected set
+// that no row of the table names is an error too ("mpc-unknown-set": the set would tie nothing).
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns its terms (budgeted); the budget must outlive
 // it. Movable, not copyable.

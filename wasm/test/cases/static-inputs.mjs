@@ -142,7 +142,8 @@ test("unknown, incompatible and undistributed mass selections fail before solvin
   const cases = [
     ["", /nsm-unknown-set/],
     ["NonStructMass;20;RodProp;999;2.\n", /nsm-unknown-target/],
-    ["NonStructMass;20;ShellProp;1;2.\n", /nsm-kind-mismatch/],
+    // property 1 is a RodProp: the card names a ShellProp of that ID, which no element has
+    ["NonStructMass;20;ShellProp;1;2.\n", /nsm-unknown-target/],
     ["NonStructMassLumped;20;RodProp;1;6.\n", /nsm-lumped-unsupported/],
   ];
   for (const [extra, message] of cases)
@@ -258,12 +259,12 @@ NonStructMass;20;BarProp;1;2.
   relativelyNear(factorOf("NonStructMassSelection;20\n"), alone / 2, "the weight doubled");
 });
 
-test("an eigenvalue analysis checks its selected mass set, and refuses it where it would be left out", () => {
+test("an eigenvalue analysis checks its selected mass set, and a design problem takes it in its modes", () => {
   // an unknown set stops the analysis
   withDeck(103, MODES_CASE + "NonStructMassSelection;99\nSubcaseStart;1\n", MODES_BULK, model => {
     assert.throws(() => solver.run(model, "modes"), /nsm-unknown-set/);
   });
-  // the modes of a design problem are differentiated without the set: refused
+  // the modes of a design problem are evaluated with the set (their derivatives form it too: review-design.mjs)
   withDeck(103, MODES_CASE + "NonStructMassSelection;20\nSubcaseStart;1\n", MODES_BULK, model => {
     const problem = solver.createOptimization(model, {
       variables: [{ id: 1, initialValue: 2, lower: 1, upper: 3 }],
@@ -271,8 +272,12 @@ test("an eigenvalue analysis checks its selected mass set, and refuses it where 
         terms: [{ variableId: 1, coefficient: 1 }] }],
       responses: [{ id: 10, type: "Eigenvalue", attributeA: 1 }], objective: { responseId: 10, subcase: 1 },
     }, { analyses: { modes: [1] } });
-    try { assert.throws(() => problem.evaluate(new Float64Array([2.5])), /NonStructMassSelection/); }
-    finally { problem.delete(); }
+    let point;
+    try {
+      point = problem.evaluate(new Float64Array([2.5]));
+      const objective = point.values().objective;
+      assert.ok(Number.isFinite(objective) && objective > 0, `objective ${objective}`);
+    } finally { point?.delete(); problem.delete(); }
   });
 });
 

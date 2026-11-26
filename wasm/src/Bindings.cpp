@@ -451,7 +451,8 @@ val eigenvalueTableObject(const output::EigenvalueTable& table)
     return object;
 }
 
-// settings.condensation: "all", "recommended", or { units: "all" | "recommended" | number[], fullUnits?: number[],
+// settings.condensation: "all", "recommended", number[] (the units condensed), or { units: "all" | "recommended" |
+// number[], fullUnits?: number[],
 // retainedNodes?: number[], modeCount?: number, memoryMode?: "auto" | "speed" | "low_memory",
 // cache?: CondensationCache, cacheModelTag?: string } (an array of units: those condensed).
 api::CondensationSettings condensationSettingsOf(const val& given)
@@ -480,7 +481,8 @@ api::CondensationSettings condensationSettingsOf(const val& given)
             throw std::invalid_argument(
                 "condensation: expected \"all\", \"recommended\", \"none\" or an array of unit IDs");
     };
-    if (given.isString())
+    // The units alone: a name, or the list of those condensed.
+    if (given.isString() || given.isArray())
     {
         unitsNamed(given);
         return settings;

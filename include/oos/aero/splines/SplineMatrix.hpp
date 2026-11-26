@@ -46,7 +46,8 @@ struct BoxMotion
 //
 // Refused (UnsupportedCardError): METH FPS (the finite plate spline) and RIS, AeroSplineEquation3,
 // AeroFiniteSurfaceSpline6, AeroFiniteBeamSpline7, AeroUserSpline. A box moved by two splines, or loaded by two, is a
-// SolverError (a box is splined once).
+// SolverError (a box is splined once), as is a beam spline whose CID is a cylindrical or spherical system (its axis is
+// the y axis of a rectangular one).
 //
 // Thread-safety: immutable. Ownership: owns its matrices (budgeted: each spline's boxes × its unknowns); borrows the
 // boxes.

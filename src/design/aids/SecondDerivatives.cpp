@@ -1,5 +1,6 @@
 #include "oos/design/aids/SecondDerivatives.hpp"
 
+#include "../common/DifferenceStencil.hpp"
 #include "../sensitivity/SensitivityComputation.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/elements/core/ElementMatrixBlock.hpp"
@@ -23,8 +24,13 @@ namespace oos::design
 namespace
 {
 
-// The stencil sides of one direction: +h, −h, +h/2, −h/2.
-constexpr std::array<double, 4> SIDE_SCALES{1.0, -1.0, 0.5, -0.5};
+// The states of a difference stencil along one direction: two (central) or three (one-sided).
+constexpr std::size_t MAX_STENCIL_STATES = 3;
+// The power of the step in the leading error of a difference, for Richardson's extrapolation: h² for the first
+// differences (central, or the three-point one-sided) and the central second difference, h for the one-sided second
+// difference.
+constexpr int SECOND_ORDER = 2;
+constexpr int FIRST_ORDER = 1;
 // An element item is linear in u (affine under a thermal strain) when r(2u) − 2·r(u) + r(0) vanishes to this relative
 // size: the rounding of three recoveries, far below the curvature of a von Mises stress or a strain energy.
 constexpr double AFFINE_TOLERANCE = 1.0e-8;
@@ -37,18 +43,110 @@ constexpr std::uint64_t POINT_RESERVATION_CHUNK = std::uint64_t{1} << 20;
 // The working vectors of the g set a step makes besides those it keeps (a load and a solve's result).
 constexpr std::uint64_t WORKING_VECTORS = 2;
 
-// The step of x_j: SECOND_DERIVATIVE_STEP_RELATIVE of |x_j|, FIELD_STEP_AT_ZERO at zero.
-double stepOf(double value) noexcept
-{
-    return value != 0.0 ? SECOND_DERIVATIVE_STEP_RELATIVE * std::abs(value) : FIELD_STEP_AT_ZERO;
-}
-
 double largestMagnitudeOf(std::span<const double> values) noexcept
 {
     double largest = 0.0;
     for (const double value : values)
         largest = std::max(largest, std::abs(value));
     return largest;
+}
+
+// The bounds of the independent design variables, in the order of x.
+struct VariableBounds
+{
+    std::vector<double> lower;
+    std::vector<double> upper;
+};
+
+// The differences along a direction v of x (design/common/DifferenceStencil.hpp): the step moves each variable by at
+// most SECOND_DERIVATIVE_STEP_RELATIVE of its own scale (FIELD_STEP_AT_ZERO for a variable at zero without bounds),
+// and the states x0 + offset·v stay within the bounds of the variables, the difference one-sided at a bound. One
+// step for the whole vector, from the largest |x_j|, moved a thickness of 2e-3 to a negative value when a modulus of
+// 7e10 was a variable too.
+[[nodiscard]] double stepAlong(std::span<const double> x, std::span<const double> direction,
+                               const VariableBounds& bounds) noexcept
+{
+    return detail::directionStep(x, direction, bounds.lower, bounds.upper, SECOND_DERIVATIVE_STEP_RELATIVE,
+                                 FIELD_STEP_AT_ZERO);
+}
+
+// The stencils of one direction for Richardson's extrapolation: [0] the stencil of the step within the bounds, [1] the
+// same stencil at half its offsets (the weights of a first difference are in 1/h: doubled). The states of the second
+// lie between x0 and those of the first, so they are within the bounds too, and the two have the same form and steps
+// in the ratio two, which the extrapolation needs. A second stencil made by the rule at half the step could change
+// form near a bound (central at a far smaller step where the first is one-sided), and differences of two forms
+// cannot be extrapolated.
+using StepStencils = std::array<detail::DifferenceStencil, 2>;
+
+[[nodiscard]] StepStencils stencilsAlong(std::span<const double> x, std::span<const double> direction,
+                                         const VariableBounds& bounds, double step)
+{
+    const detail::DifferenceStencil whole = detail::differenceStencil(x, direction, bounds.lower, bounds.upper, step);
+    detail::DifferenceStencil half = whole;
+    for (detail::StencilPoint& point : half.points)
+    {
+        point.offset *= 0.5;
+        point.weight *= 2.0;
+    }
+    half.step *= 0.5;
+    return {whole, half};
+}
+
+// The unit direction e_j of x.
+[[nodiscard]] std::vector<double> unitDirection(std::size_t size, std::size_t j)
+{
+    std::vector<double> unit(size, 0.0);
+    unit[j] = 1.0;
+    return unit;
+}
+
+// The state x0 + offset·v of a stencil.
+[[nodiscard]] std::vector<double> movedAlong(std::span<const double> x0, std::span<const double> direction,
+                                             double offset)
+{
+    std::vector<double> x(x0.begin(), x0.end());
+    for (std::size_t k = 0; k < x.size(); ++k)
+        if (direction[k] != 0.0)
+            x[k] += offset * direction[k];
+    return x;
+}
+
+// The values of a function at the states of a stencil, in the order of its points.
+using StateValues = std::array<double, MAX_STENCIL_STATES>;
+
+// d/dσ f(x0 + σ·v) ≈ Σ_k weight_k·f(state k) (DifferenceStencil), error O(h²) for both forms.
+[[nodiscard]] double firstDifference(const detail::DifferenceStencil& stencil, const StateValues& atStates) noexcept
+{
+    double sum = 0.0;
+    for (std::size_t k = 0; k < stencil.points.size(); ++k)
+        sum += stencil.points[k].weight * atStates[k];
+    return sum;
+}
+
+// d²/dσ² f(x0 + σ·v) from the values at the states of a stencil (and at x0 for a central one), by Taylor's expansion:
+//   central (states +h, −h):          (f(h) − 2·f(0) + f(−h)) / h²       = f'' + h²·f''''/12 + ...
+//   one-sided (states 0, ±h, ±2h):    (f(0) − 2·f(±h) + f(±2h)) / h²     = f'' ± h·f''' + ...
+// The one-sided form has an error of first order (secondDifferenceOrder), which the extrapolation removes.
+[[nodiscard]] double secondDifference(const detail::DifferenceStencil& stencil, const StateValues& atStates,
+                                      double atCenter) noexcept
+{
+    const double squaredStep = stencil.step * stencil.step;
+    if (stencil.isOneSided)
+        return (atStates[0] - 2.0 * atStates[1] + atStates[2]) / squaredStep;
+    return (atStates[0] - 2.0 * atCenter + atStates[1]) / squaredStep;
+}
+
+[[nodiscard]] int secondDifferenceOrder(const detail::DifferenceStencil& stencil) noexcept
+{
+    return stencil.isOneSided ? FIRST_ORDER : SECOND_ORDER;
+}
+
+// Richardson's extrapolation of the differences at h (coarse) and h/2 (fine) whose error starts at h^order:
+//   (2^order·fine − coarse) / (2^order − 1):   (4·fine − coarse)/3 at order 2,   2·fine − coarse at order 1.
+[[nodiscard]] double richardson(double coarse, double fine, int order = SECOND_ORDER) noexcept
+{
+    const double ratio = order == SECOND_ORDER ? 4.0 : 2.0;
+    return (ratio * fine - coarse) / (ratio - 1.0);
 }
 
 // What an item is to the Lagrangian: its kind and its index in the lists of the linearisation.
@@ -149,94 +247,83 @@ public:
     {
         const std::size_t n = variables.size();
         const std::vector<double> x0 = m_in.design == nullptr ? std::vector<double>{} : xOf();
+        const VariableBounds bounds = boundsOf();
         reserveVectors(n * m_subcases.size() + WORKING_VECTORS, "second derivatives displacement derivatives");
         directSolves(variables);
         const std::size_t count = m_items.size();
-        // The values of the Lagrangian at the points: center, the diagonal points (with ∇_w L·du_k), the pairs.
+        // The values of the Lagrangian at the points: center, the states of each variable's stencils (with
+        // ∇_w L·du_k), the pairs.
         DesignPointState center = makePoint(x0);
         std::vector<double> atCenter(count);
         for (std::size_t i = 0; i < count; ++i)
             atCenter[i] = lagrangian(center, m_items[i], displacementsOf(m_items[i]));
         center = {};
-        std::vector<double> steps(n);
-        std::vector<std::array<double, 2>> widths(n); // the stored half-widths at h and h/2
-        // [j][side][i] and [j][side][k][i]
-        std::vector<std::array<std::vector<double>, 4>> diagonal(n);
-        std::vector<std::array<std::vector<std::vector<double>>, 4>> directional(n);
+        // The stencils along e_j of each variable asked for, at its step and at half of it (StepStencils): x_j ± h
+        // away from its bounds, one-sided at a bound.
+        std::vector<StepStencils> stencils(n);
+        // [a][scale][i] the Lagrangian and [a][scale][b][i] ∇_w L·du_b, at the states of the stencil.
+        std::vector<std::array<std::vector<StateValues>, 2>> diagonal(n);
+        std::vector<std::array<std::vector<std::vector<StateValues>>, 2>> directional(n);
         for (std::size_t a = 0; a < n; ++a)
         {
-            const std::size_t j = variables[a];
-            steps[a] = stepOf(x0[j]);
-            std::array<double, 4> moved{};
-            for (std::size_t side = 0; side < 4; ++side)
+            const std::vector<double> unit = unitDirection(x0.size(), variables[a]);
+            stencils[a] = stencilsAlong(x0, unit, bounds, stepAlong(x0, unit, bounds));
+            for (std::size_t scale = 0; scale < 2; ++scale)
             {
-                std::vector<double> x = x0;
-                x[j] = x0[j] + SIDE_SCALES[side] * steps[a];
-                moved[side] = x[j];
-                DesignPointState point = makePoint(x);
-                diagonal[a][side].resize(count);
-                directional[a][side].assign(n, std::vector<double>(count));
-                for (std::size_t i = 0; i < count; ++i)
+                const detail::DifferenceStencil& stencil = stencils[a][scale];
+                diagonal[a][scale].assign(count, StateValues{});
+                directional[a][scale].assign(n, std::vector<StateValues>(count, StateValues{}));
+                for (std::size_t state = 0; state < stencil.points.size(); ++state)
                 {
-                    const std::span<const double> u = displacementsOf(m_items[i]);
-                    diagonal[a][side][i] = lagrangian(point, m_items[i], u);
-                    if (m_items[i].isGlobal)
-                        continue; // no displacement: ∇_w L = 0
-                    for (std::size_t b = 0; b < n; ++b)
-                        directional[a][side][b][i] = alongDirection(point, m_items[i], u, diagonal[a][side][i],
-                                                                    m_directions[b][m_items[i].subcase]);
+                    DesignPointState point = makePoint(movedAlong(x0, unit, stencil.points[state].offset));
+                    for (std::size_t i = 0; i < count; ++i)
+                    {
+                        const std::span<const double> u = displacementsOf(m_items[i]);
+                        const double atU = lagrangian(point, m_items[i], u);
+                        diagonal[a][scale][i][state] = atU;
+                        if (m_items[i].isGlobal)
+                            continue; // no displacement: ∇_w L = 0
+                        for (std::size_t b = 0; b < n; ++b)
+                            directional[a][scale][b][i][state] =
+                                alongDirection(point, m_items[i], u, atU, m_directions[b][m_items[i].subcase]);
+                    }
                 }
             }
-            widths[a] = {(moved[0] - moved[1]) / 2.0, (moved[2] - moved[3]) / 2.0};
         }
         SecondDerivativesResult result;
         result.variables = variables;
         std::vector<double> hessian(count * n * n, 0.0);
+        // ∂²L/∂x_a²: the second difference along e_a at the step and at half of it.
         for (std::size_t a = 0; a < n; ++a)
             for (std::size_t i = 0; i < count; ++i)
             {
-                const double coarse =
-                    (diagonal[a][0][i] - 2.0 * atCenter[i] + diagonal[a][1][i]) / (widths[a][0] * widths[a][0]);
-                const double fine =
-                    (diagonal[a][2][i] - 2.0 * atCenter[i] + diagonal[a][3][i]) / (widths[a][1] * widths[a][1]);
-                hessian[(i * n + a) * n + a] += richardson(coarse, fine);
+                const double coarse = secondDifference(stencils[a][0], diagonal[a][0][i], atCenter[i]);
+                const double fine = secondDifference(stencils[a][1], diagonal[a][1][i], atCenter[i]);
+                hessian[(i * n + a) * n + a] += richardson(coarse, fine, secondDifferenceOrder(stencils[a][0]));
             }
         for (std::size_t a = 0; a < n; ++a)
             for (std::size_t b = a + 1; b < n; ++b)
             {
-                // L(++) − L(+−) − L(−+) + L(−−) over 4·h_a·h_b, at h and h/2: per item, [scale][corner].
-                std::vector<std::array<std::array<double, 4>, 2>> values(count);
-                std::array<std::array<double, 2>, 2> pairWidths{};
+                // ∂²L/∂x_a∂x_b: the stencil of e_b applied to the stencil of e_a, at the steps and at half of them
+                // (two central stencils: L(++) − L(+−) − L(−+) + L(−−) over 4·h_a·h_b). The two move different
+                // variables, so that every state is within the bounds as those of each stencil are. Per item, [scale].
+                std::vector<std::array<double, 2>> differences(count, std::array<double, 2>{});
                 for (std::size_t scale = 0; scale < 2; ++scale)
-                {
-                    const double factor = scale == 0 ? 1.0 : 0.5;
-                    std::array<double, 2> movedA{};
-                    std::array<double, 2> movedB{};
-                    for (std::size_t corner = 0; corner < 4; ++corner)
-                    {
-                        const double signA = corner < 2 ? 1.0 : -1.0;
-                        const double signB = corner % 2 == 0 ? 1.0 : -1.0;
-                        std::vector<double> x = x0;
-                        x[variables[a]] += signA * factor * steps[a];
-                        x[variables[b]] += signB * factor * steps[b];
-                        movedA[corner < 2 ? 0 : 1] = x[variables[a]];
-                        movedB[corner % 2 == 0 ? 0 : 1] = x[variables[b]];
-                        DesignPointState point = makePoint(x);
-                        for (std::size_t i = 0; i < count; ++i)
-                            values[i][scale][corner] = lagrangian(point, m_items[i], displacementsOf(m_items[i]));
-                    }
-                    pairWidths[scale] = {(movedA[0] - movedA[1]) / 2.0, (movedB[0] - movedB[1]) / 2.0};
-                }
+                    for (const detail::StencilPoint& ofA : stencils[a][scale].points)
+                        for (const detail::StencilPoint& ofB : stencils[b][scale].points)
+                        {
+                            std::vector<double> x = x0;
+                            x[variables[a]] += ofA.offset;
+                            x[variables[b]] += ofB.offset;
+                            DesignPointState point = makePoint(x);
+                            const double weight = ofA.weight * ofB.weight;
+                            for (std::size_t i = 0; i < count; ++i)
+                                differences[i][scale] +=
+                                    weight * lagrangian(point, m_items[i], displacementsOf(m_items[i]));
+                        }
                 for (std::size_t i = 0; i < count; ++i)
                 {
-                    std::array<double, 2> differences{};
-                    for (std::size_t scale = 0; scale < 2; ++scale)
-                    {
-                        const std::array<double, 4>& c = values[i][scale];
-                        differences[scale] =
-                            (c[0] - c[1] - c[2] + c[3]) / (4.0 * pairWidths[scale][0] * pairWidths[scale][1]);
-                    }
-                    const double mixed = richardson(differences[0], differences[1]);
+                    const double mixed = richardson(differences[i][0], differences[i][1]);
                     hessian[(i * n + a) * n + b] += mixed;
                     hessian[(i * n + b) * n + a] += mixed;
                 }
@@ -246,8 +333,8 @@ public:
             for (std::size_t b = 0; b < n; ++b)
                 for (std::size_t i = 0; i < count; ++i)
                 {
-                    const double coarse = (directional[a][0][b][i] - directional[a][1][b][i]) / (2.0 * widths[a][0]);
-                    const double fine = (directional[a][2][b][i] - directional[a][3][b][i]) / (2.0 * widths[a][1]);
+                    const double coarse = firstDifference(stencils[a][0], directional[a][0][b][i]);
+                    const double fine = firstDifference(stencils[a][1], directional[a][1][b][i]);
                     const double rate = richardson(coarse, fine); // ∂_a(∇_w L·du_b)
                     hessian[(i * n + a) * n + b] += rate;
                     hessian[(i * n + b) * n + a] += rate;
@@ -281,6 +368,7 @@ public:
                 {"hessian_vector: expected a direction of ", std::to_string(n),
                  " values (one per independent variable), found ", std::to_string(direction.size())}));
         const std::vector<double> x0 = xOf();
+        const VariableBounds bounds = boundsOf();
         const std::size_t count = m_items.size();
         HessianVectorResult result;
         result.itemCount = count;
@@ -288,83 +376,95 @@ public:
         if (count == 0)
             return result;
         result.id = valuesAt(m_items.front().key.response).id;
-        // du_v per subcase and the weights of the Lagrangian at the four points along v, per item.
-        reserveVectors(m_subcases.size() + 4 * count + WORKING_VECTORS, "second derivatives Hessian-vector vectors");
+        // du_v per subcase; the weights of the Lagrangian at the states along v are reserved below, once their
+        // number is known.
+        reserveVectors(m_subcases.size() + WORKING_VECTORS, "second derivatives Hessian-vector vectors");
         // du_v = K⁻¹·Σ_k v_k·b_k per subcase (one solve each).
         const std::vector<std::vector<double>> alongV = directSolveOf(direction);
-        // The step along v: the relative step of the largest variable, over |v|.
-        const double vNorm = largestMagnitudeOf(direction);
-        if (vNorm == 0.0)
-            return result;
-        double xScale = largestMagnitudeOf(x0);
-        const double t = (xScale != 0.0 ? SECOND_DERIVATIVE_STEP_RELATIVE * xScale : FIELD_STEP_AT_ZERO) / vNorm;
-        const auto pointAt = [&](std::size_t j, double sj, double sv)
+        // The step along v and its stencils (stepAlong, StepStencils): each moved variable by at most the relative
+        // step of its own scale, the states within the bounds of the variables.
+        const double t = stepAlong(x0, direction, bounds);
+        if (!(t > 0.0))
+            return result; // v is zero
+        const StepStencils alongStencils = stencilsAlong(x0, direction, bounds, t);
+        // L at x0, for the second differences along each variable.
+        std::vector<double> atCenter(count);
         {
-            std::vector<double> x = x0;
-            for (std::size_t k = 0; k < n; ++k)
-                x[k] += sv * direction[k];
-            if (j < n)
-                x[j] += sj;
-            return x;
-        };
+            DesignPointState center = makePoint(x0);
+            for (std::size_t i = 0; i < count; ++i)
+                atCenter[i] = lagrangian(center, m_items[i], displacementsOf(m_items[i]));
+        }
         for (std::size_t j = 0; j < n; ++j)
         {
-            const double h = stepOf(x0[j]);
-            // Σ_k ∂²L/∂x_j∂x_k·v_k: the mixed stencil of e_j and v, at (h, t) and (h/2, t/2).
-            std::vector<std::array<double, 2>> perItem(count);
+            const std::vector<double> unit = unitDirection(n, j);
+            const StepStencils own = stencilsAlong(x0, unit, bounds, stepAlong(x0, unit, bounds));
+            const bool isMoved = direction[j] != 0.0;
+            // Σ_k ∂²L/∂x_j∂x_k·v_k = v_j·∂²L/∂x_j² + ∂_j(∂_r L), r being v without its component j. The stencil of
+            // e_j applied to the stencil of v would move x_j twice, beyond its bounds; applied to the states of v
+            // without their component j (within the bounds, as those of v are) it moves each variable once.
+            std::vector<double> others(direction.begin(), direction.end());
+            others[j] = 0.0;
+            std::vector<std::array<double, 2>> mixed(count, std::array<double, 2>{}); // [item][scale]
+            if (largestMagnitudeOf(others) != 0.0)
+                for (std::size_t scale = 0; scale < 2; ++scale)
+                    for (const detail::StencilPoint& ofJ : own[scale].points)
+                        for (const detail::StencilPoint& ofV : alongStencils[scale].points)
+                        {
+                            std::vector<double> x = movedAlong(x0, others, ofV.offset);
+                            x[j] += ofJ.offset;
+                            DesignPointState point = makePoint(x);
+                            const double weight = ofJ.weight * ofV.weight;
+                            for (std::size_t i = 0; i < count; ++i)
+                                mixed[i][scale] += weight * lagrangian(point, m_items[i], displacementsOf(m_items[i]));
+                        }
+            // At the states along e_j: L (for ∂²L/∂x_j²) and ∇_w L·du_v (for ∂_j(∇_w L·du_v)); [scale][item].
+            std::array<std::vector<StateValues>, 2> values;
+            std::array<std::vector<StateValues>, 2> along;
             for (std::size_t scale = 0; scale < 2; ++scale)
             {
-                const double factor = scale == 0 ? 1.0 : 0.5;
-                std::array<std::vector<double>, 4> corners;
-                for (std::size_t corner = 0; corner < 4; ++corner)
+                values[scale].assign(count, StateValues{});
+                along[scale].assign(count, StateValues{});
+                for (std::size_t state = 0; state < own[scale].points.size(); ++state)
                 {
-                    const double signJ = corner < 2 ? 1.0 : -1.0;
-                    const double signV = corner % 2 == 0 ? 1.0 : -1.0;
-                    DesignPointState point = makePoint(pointAt(j, signJ * factor * h, signV * factor * t));
-                    corners[corner].resize(count);
+                    DesignPointState point = makePoint(movedAlong(x0, unit, own[scale].points[state].offset));
                     for (std::size_t i = 0; i < count; ++i)
-                        corners[corner][i] = lagrangian(point, m_items[i], displacementsOf(m_items[i]));
-                }
-                for (std::size_t i = 0; i < count; ++i)
-                    perItem[i][scale] = (corners[0][i] - corners[1][i] - corners[2][i] + corners[3][i]) /
-                                        (4.0 * factor * h * factor * t);
-            }
-            // ∂_j(∇_w L·du_v).
-            std::array<std::vector<double>, 4> along;
-            std::array<double, 4> moved{};
-            for (std::size_t side = 0; side < 4; ++side)
-            {
-                const std::vector<double> x = pointAt(j, SIDE_SCALES[side] * h, 0.0);
-                moved[side] = x[j];
-                DesignPointState point = makePoint(x);
-                along[side].assign(count, 0.0);
-                for (std::size_t i = 0; i < count; ++i)
-                {
-                    if (m_items[i].isGlobal)
-                        continue;
-                    const std::span<const double> u = displacementsOf(m_items[i]);
-                    const double base = lagrangian(point, m_items[i], u);
-                    along[side][i] = alongDirection(point, m_items[i], u, base, alongV[m_items[i].subcase]);
+                    {
+                        if (m_items[i].isGlobal && !isMoved)
+                            continue; // no displacement (∇_w L = 0) and no second difference along e_j to form
+                        const std::span<const double> u = displacementsOf(m_items[i]);
+                        const double atU = lagrangian(point, m_items[i], u);
+                        values[scale][i][state] = atU;
+                        if (!m_items[i].isGlobal)
+                            along[scale][i][state] =
+                                alongDirection(point, m_items[i], u, atU, alongV[m_items[i].subcase]);
+                    }
                 }
             }
-            const double halfWidth = (moved[0] - moved[1]) / 2.0;
-            const double halfWidthFine = (moved[2] - moved[3]) / 2.0;
             for (std::size_t i = 0; i < count; ++i)
             {
-                const double mixed = richardson(perItem[i][0], perItem[i][1]);
-                const double rate = richardson((along[0][i] - along[1][i]) / (2.0 * halfWidth),
-                                               (along[2][i] - along[3][i]) / (2.0 * halfWidthFine));
-                result.values[i * n + j] += mixed + rate;
+                double curvature = richardson(mixed[i][0], mixed[i][1]);
+                if (isMoved)
+                    curvature += direction[j] * richardson(secondDifference(own[0], values[0][i], atCenter[i]),
+                                                           secondDifference(own[1], values[1][i], atCenter[i]),
+                                                           secondDifferenceOrder(own[0]));
+                const double rate =
+                    richardson(firstDifference(own[0], along[0][i]), firstDifference(own[1], along[1][i]));
+                result.values[i * n + j] += curvature + rate;
             }
         }
-        // μᵀ·b_j, μ = K⁻¹·∂_v(∇_w L): the weights of the Lagrangian at x ± t·v, differenced.
-        std::array<std::vector<std::vector<double>>, 4> weights; // [side][item] on the g set
-        for (std::size_t side = 0; side < 4; ++side)
-        {
-            DesignPointState point = makePoint(pointAt(n, 0.0, SIDE_SCALES[side] * t));
-            for (std::size_t i = 0; i < count; ++i)
-                weights[side].push_back(lagrangianWeights(point, m_items[i]));
-        }
+        // μᵀ·b_j, μ = K⁻¹·∂_v(∇_w L): the weights of the Lagrangian at the states of the stencils along v,
+        // differenced.
+        reserveVectors((alongStencils[0].points.size() + alongStencils[1].points.size()) * count,
+                       "second derivatives Hessian-vector weights");
+        std::array<std::vector<std::vector<std::vector<double>>>, 2> weights; // [scale][state][item] on the g set
+        for (std::size_t scale = 0; scale < 2; ++scale)
+            for (const detail::StencilPoint& ofV : alongStencils[scale].points)
+            {
+                DesignPointState point = makePoint(movedAlong(x0, direction, ofV.offset));
+                weights[scale].emplace_back();
+                for (std::size_t i = 0; i < count; ++i)
+                    weights[scale].back().push_back(lagrangianWeights(point, m_items[i]));
+            }
         std::vector<double> products(n);
         for (std::size_t i = 0; i < count; ++i)
         {
@@ -372,8 +472,13 @@ public:
                 continue; // no displacement: μ = 0
             std::vector<double> z(gSize());
             for (std::size_t g = 0; g < gSize(); ++g)
-                z[g] = richardson((weights[0][i][g] - weights[1][i][g]) / (2.0 * t),
-                                  (weights[2][i][g] - weights[3][i][g]) / t);
+            {
+                std::array<double, 2> rates{}; // ∂_v of the weight at the step and at half of it
+                for (std::size_t scale = 0; scale < 2; ++scale)
+                    for (std::size_t state = 0; state < alongStencils[scale].points.size(); ++state)
+                        rates[scale] += alongStencils[scale].points[state].weight * weights[scale][state][i][g];
+                z[g] = richardson(rates[0], rates[1]);
+            }
             if (largestMagnitudeOf(z) == 0.0)
                 continue;
             const std::vector<double> mu = solveOne(m_items[i].subcase, z);
@@ -387,7 +492,18 @@ public:
     }
 
 private:
-    [[nodiscard]] static double richardson(double coarse, double fine) noexcept { return (4.0 * fine - coarse) / 3.0; }
+    // The bounds of the independent design variables, in the order of x (DesignModel::independentIndices).
+    [[nodiscard]] VariableBounds boundsOf() const
+    {
+        VariableBounds bounds;
+        for (const std::size_t v : m_in.model->independentIndices())
+        {
+            const DesignVariable& variable = m_in.model->variables()[v];
+            bounds.lower.push_back(variable.lower);
+            bounds.upper.push_back(variable.upper);
+        }
+        return bounds;
+    }
 
     // Takes `count` vectors of the g set from the memory budget before they are made: they grow with the model.
     void reserveVectors(std::uint64_t count, const std::string& label)
@@ -446,14 +562,22 @@ private:
             refuse(
                 "an equation response (DesignResp2, DesignResp3): its second derivatives are not formed in this "
                 "version");
+        // A field of a vibration mode (its mode selector set) is linearised by the modal items of the gradients: it
+        // has no role here, and a displacement of a mode would be taken as a static displacement without a subcase
+        // nor an adjoint vector, its Hessian all zeros.
+        const DesignResp1Response* response = m_in.responses->findDesignResp1(values.id);
+        if (response != nullptr && response->definition().mode)
+            refuse(
+                "a field of a vibration mode (its mode selector is set): the second derivatives of mode-selected "
+                "fields are not formed by this aid; ask for the product with weights, hessian_vector(x, v, "
+                "weights=...) (hessianVector of design/external/VectorJacobianProducts), which takes them");
         HessianItem result;
         result.key = key;
         result.isGlobal = item.subcase == 0;
         result.subcase = result.isGlobal ? 0 : m_subcaseIndex.at(item.subcase);
         if (const auto role = m_roles.find(key); role != m_roles.end())
             result.role = role->second;
-        else if (const DesignResp1Response* response = m_in.responses->findDesignResp1(values.id);
-                 response == nullptr || response->definition().type != ResponseType::Displacement)
+        else if (response == nullptr || response->definition().type != ResponseType::Displacement)
             refuse(response != nullptr && response->definition().type == ResponseType::Rotation
                        ? "a rotation magnitude is not linear in the displacements"
                        : "its kind has no second derivatives in this version");
@@ -680,8 +804,11 @@ private:
                             loads[static_cast<std::size_t>(m_dofMap.dofOf(vectors.dofs(v)[d]))] += vectors.values(v)[d];
                 }
             base::DiagnosticSink sink;
-            // The point's own positions (the radius of a RotationalForceLoad, the location of an ACCEL) and tables.
-            const assembly::DofMap pointMap(state.snapshot->nodes(), state.index->points());
+            // The point's own positions (the radius of a RotationalForceLoad, the location of an ACCEL) and tables,
+            // with the entities of the point's element formulation in the static layout, as its element set carries
+            // them and as m_dofMap numbers them at the design point: without them the map of a
+            // MixedHybridFormulation model stops at the grid points and the loads of gSize() values are not its.
+            const assembly::DofMap pointMap = pointDofMapOf(state, subcase);
             const assembly::LoadVectorBuilder builder(*state.set, pointMap, m_budget);
             if (subcase.hasDistributedLoads)
                 builder.addFamilyLoads(*subcase.subcase.load, assembly::LoadFamily::Distributed, nullptr, loads,
@@ -694,13 +821,37 @@ private:
                 const assembly::MassAssemblyOptions options =
                     assembly::MassAssemblyOptions::fromParams(params, subcase.subcase.label, sink);
                 linalg::BlockSparseMatrix mass(systemOf(subcase).pattern(), m_budget, "second derivatives mass");
-                const assembly::NonStructuralMassShares shares(*state.set);
+                // The non-structural mass set the subcase selects, as the analysis and the gradients take it: without
+                // it the inertial loads of the point lack the weight of that mass.
+                const assembly::NonStructuralMassShares shares(*state.set, subcase.subcase.nonStructuralMass, m_budget,
+                                                               sink);
                 assembly::MassAssembler(*state.set, m_dofMap, shares, options).assemble(mass, m_in.pool);
                 builder.addFamilyLoads(*subcase.subcase.load, assembly::LoadFamily::Inertial, &mass, loads, m_budget,
                                        sink);
             }
         }
         return state;
+    }
+
+    // The DOF map of a design point x' for the loads of `subcase`: its own points, then the entities of its own
+    // formulation model in the static layout. A point keeps the points and the connectivity of the design point, so
+    // its DOFs are those of m_dofMap in the same order; a point with another DOF count is refused (its loads could
+    // not be differenced DOF by DOF with those of the other points).
+    [[nodiscard]] assembly::DofMap pointDofMapOf(const DesignPointState& state,
+                                                 const detail::SubcaseState& subcase) const
+    {
+        assembly::DofMap pointMap(state.snapshot->nodes(), state.index->points(),
+                                  elements::formulationModelOf(*state.index, m_registry),
+                                  elements::EntityLayout::Kind::Static);
+        if (pointMap.gSetSize() != m_dofMap.gSetSize())
+            throw base::OptimisationError(base::concatenate(
+                {"second derivatives, the loads of subcase ", std::to_string(subcase.subcase.label), ": expected the ",
+                 std::to_string(m_dofMap.gSetSize()),
+                 " degrees of freedom of the design point at a moved design point, found ",
+                 std::to_string(pointMap.gSetSize()),
+                 " (the step changes the unknowns of the element formulation, so the loads of the points cannot be "
+                 "differenced); leave the variables that change them out of variables="}));
+        return pointMap;
     }
 
     // Σ_e aᵀ·K_e(x')·b over the elements reached.

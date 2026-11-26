@@ -204,6 +204,9 @@ EigenSolution BlockLanczos::solve(ShiftedPencil& pencil, const EigenRequest& req
         std::sort(sorted.begin(), sorted.end());
         verification = sturm.verify(sorted);
         requireNoExtraEigenvalue(verification);
+        // From the lowest root the walk starts at a point with no root below it (lowestCount = 0).
+        if (request.startsFromLowest())
+            requireNoEigenvalueBelow(sturm.points().front().shift, sorted);
         if (strategy.isComplete(verification) || (result.isSpaceExhausted && !verification.hasMismatch))
         {
             isComplete = true;

@@ -430,6 +430,10 @@ const SKIN_CASES = [
   { shape: "SolidTetra", kind: "ShellTria3 along the edges of the solids", offset: SKIN.thickness / 2 },
   { shape: "SolidTetra", kind: "ShellQuad4" },
 ];
+// The warning a skin may give: two triangular shells across a quadrilateral face of a hexahedron are tied to it by
+// its grid points and its edges only (the limit the formulation states, reported by `shell-triangles-on-solid-face`).
+const skinWarnings = (shape, kind) =>
+  (shape === "SolidHexa" && kind === "ShellTria3 across" ? ["shell-triangles-on-solid-face"] : []);
 for (const { shape, kind, offset = 0, quadratic = false } of SKIN_CASES)
   test(`skin: ${kind}${offset ? " with an offset" : ""} on the top face of a block of ${shape}` +
     `${quadratic ? " with mid-side nodes" : ""}, stretched and bent by its ends`, (t) => {
@@ -439,7 +443,8 @@ for (const { shape, kind, offset = 0, quadratic = false } of SKIN_CASES)
       .filter((id) => mesh.cornerIds().has(id));
     const records = [...sections(), ...topShells(mesh, n, kind, offset), ...endSupports(mesh, top)];
     // The rotations held at the ends act through the shell edges of the ends (the note of the run says so).
-    const run = runMixed(mesh, caseOf([[1, null], [2, null]]), records, { allowed: ["support-note"] });
+    const run = runMixed(mesh, caseOf([[1, null], [2, null]]), records,
+      { allowed: ["support-note", ...skinWarnings(shape, kind)] });
     const card = kind.split(" ")[0];
     const { thickness } = SKIN;
     const lines = [];
@@ -488,9 +493,9 @@ for (const { shape, kind, offset = 0, quadratic = false } of SKIN_CASES)
 
 // Free vibrations of the core with what lies on it: `count` modes of zero frequency (|λ| at most 1e-8 of the first
 // elastic one) and the next one elastic, of the order of the following (no mechanism).
-function freeModes(mesh, records, count = 9) {
+function freeModes(mesh, records, count = 9, allowed = []) {
   const run = runMixed(mesh, ["SubcaseStart;1", "EigenMethodSelection;3"],
-    [...sections(), ...records, `LanczosEigenMethod;3;;;${count}`], { solution: 103, analysis: "modes" });
+    [...sections(), ...records, `LanczosEigenMethod;3;;;${count}`], { solution: 103, analysis: "modes", allowed });
   return run.eigenvalues[0].rows.map((row) => row.eigenvalue);
 }
 function assertRigidModes(t, values, rigid = 6) {
@@ -506,7 +511,7 @@ function assertRigidModes(t, values, rigid = 6) {
 for (const { shape, kind } of [SKIN_CASES[0], SKIN_CASES[3], SKIN_CASES[6], SKIN_CASES[7]])
   test(`skin: a free block of ${shape} with ${kind} on its top face has six rigid-body modes`, (t) => {
     const mesh = coreMesh({ shape });
-    assertRigidModes(t, freeModes(mesh, topShells(mesh, [2, 2, 2], kind)));
+    assertRigidModes(t, freeModes(mesh, topShells(mesh, [2, 2, 2], kind), 9, skinWarnings(shape, kind)));
   });
 
 // ---------------------------------------------------------------------------------------------------------------------

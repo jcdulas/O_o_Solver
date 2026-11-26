@@ -52,3 +52,16 @@ its last offset).
 
 The consumer checks the contract version in the schema metadata and validates each column before using it.
 Card types, fields, parameter values and diagnostics use the neutral names of the model.
+
+## Columns the reader takes when the table has them
+
+The column contracts (`src/input/contract/TableContracts.cpp`) list the columns the solver reads from each table. A
+column added to a table of O_o_Model without a change of the contract version is optional there: a table without it
+(an earlier O_o_Model, a table built by hand) is still read, and the contract says what its absence means.
+
+| Table | Column | Type | What it gives | Without it |
+| --- | --- | --- | --- | --- |
+| `pressureTable`, `pressureFields` | `surfaceOrLine` | `dictionary<utf8>`, null for the other cards | `Surface` or `Line` for a FacePressureLoad: a pressure on a face, or a load per unit length along the edges of the element, which the solver refuses | every row is a pressure on a face |
+| `rigidElementsTable` | `alpha` | `float64`, null for a card that has none | the thermal expansion coefficient of the rigid element, on each of its rows; a non-zero one is refused under a thermal load | no rigid element has an expansion |
+| `nonStructMassTable` | `propertyType` | `dictionary<utf8>`, null for an element target | the property card a row on a property names, by the name the element tables give in `propType`: the card of that ID when it is of the type the non-structural mass card names or counts as it, else the type named | the mass reaches every element of the property ID |
+| `lineLoadsTable` | `p2` | `float64` | P2 as the solver reads it: a blank P2 is P1 | a null is read as P1 |

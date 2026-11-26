@@ -204,6 +204,12 @@ below build on it.
   their mass at the initial design (the topometry definition of the format, applied to sizing).
 - The items the format lists as "von Mises or maximum shear" give the von Mises value the result tables hold; the
   maximum shear form (STRESS(MAXS)) is not offered.
+- A property target of a DesignResp1 that no element references is a problem (`MISSING_RESPONSE_TARGET`), not a
+  response without items; FRMASS with property targets takes the elements of (PTYPE, PID), not of every property of
+  that ID; the lamina (ATTB) of a ply response is an integer of at least 1.
+- The objective is the one item of its response in the objective's subcase (`DesignConstraints::objectiveItem`):
+  the response may have items in other subcases (the same response constrained there), and the objective's
+  gradient is the row of that item.
 - ESE item 4 (the energy density) is the element's strain energy over its volume (the density column of the strain
   energy table is empty).
 - CSTRAT: the strength ratio λ with F(λσ) = 1 (`composite/StrengthRatio`), from the ply stresses and the allowables of
@@ -540,7 +546,9 @@ is handled by `model/DerivedGeometry` (below).
   ordinary sensitivity solve. Motion of the reference grid alone can require zero shape perturbations.
   Directions changing the undetermined rigid motions, separating coincident interpolation points, or
   deforming another rigid element still raise a diagnostic. SPC force, zone force, external-unit and
-  modal responses are outside this static derivative path. Uniform motion preserves the spider relations.
+  modal responses are outside this static derivative path, and so are the buckling responses unless a response
+  of a SAERO subcase is differentiated with them (a trim that differentiates nothing is refused with them, as no
+  trim is). Uniform motion preserves the spider relations.
 - **Derived tables** (refusals): fastener piercing points, glued contact and curvilinear CD stay as O_o_Model read
   them; a shape that moves such a grid point is refused at its declaration.
 - **Writing a design** makes x the XINIT of the shaped variables in the problem too, as O_o_Model does for the deck's:
@@ -576,8 +584,9 @@ What an optimiser or a partner solver uses besides the gradients. None changes t
   intermediate variable y = x^p of each response (displacements −round(stiffness exponent), stresses and forces −1,
   masses +round(mass exponent), equations 1). `ApproximationKind::Hints`: r ≈ r0 + g·(x^p − x0^p)/(p·x0^(p−1)).
 - **`SecondDerivatives`** — the adjoint second-order sensitivities on the element-level Lagrangian at fixed u, λ,
-  du (Haftka and Gürdal, section 7.3), differenced at x ± h (`SECOND_DERIVATIVE_STEP_RELATIVE`); Hessian-vector
-  products with two solves per product.
+  du (Haftka and Gürdal, section 7.3), differenced at x ± h (`SECOND_DERIVATIVE_STEP_RELATIVE` of each moved
+  variable's own scale, the states kept within the bounds of the design variables, one-sided at a bound:
+  `common/DifferenceStencil.hpp`); Hessian-vector products with two solves per product.
 - **`LinearityGeometry`** — the shells' corners, normals, areas and the elements around each grid point that
   `LinearityIndicator` reads, kept by a `DesignProblem` without shape variables (built once, lent to each
   evaluation's budget); the thicknesses of each point from the elements' volumes on the pool.
@@ -606,16 +615,21 @@ solves that `StaticSensitivity`, `SensitivityMap` and `SecondDerivatives` share 
   plate example's force went from 50 N to 25 N: at 50 N its deflection is 0.54 of the thickness, beyond the limit.
 - **The kinds of the aids are extension types**: `COMPLIANCE`, `MEANDISP`, `DEFLTHK`, `ROTATION` have no RTYPE in
   the input format and are refused in a deck; only the caller declares them.
-- **The compliance with enforced displacements** is refused (Pᵀu is then not twice the energy, the fold not exact):
-  OptimisationError naming the subcase; a SUBCOM too.
+- **The compliance and the mean displacement with enforced displacements or under inertia relief** are refused (Pᵀu
+  is then not twice the energy and u not the adjoint vector): OptimisationError naming the response and the subcase;
+  a SUBCOM too.
 - **The sensitivity map refuses** a field that moves the inertial or distributed loads of a subcase the response reads
   (each element's share would be needed apart) and an element reading two values of the field (a ShellProp whose MID1 and
-  MID2 are two IsoMat of the column), rather than give a sum of shares under one element.
-- **Second derivatives** are refused for items not linear in u (von Mises, strain energies, rotations), equations and
-  relations given by the caller's functions: their second-order terms are not formed.
+  MID2 are two IsoMat of the column), rather than give a sum of shares under one element; it also refuses a field
+  of a vibration mode and a buckling mode shape (mapped, or read by the mapped equation), whose element shares are
+  not formed.
+- **Second derivatives** are refused for items not linear in u (von Mises, strain energies, rotations), equations,
+  relations given by the caller's functions and the fields of a vibration mode (mode-selected responses): their
+  second-order terms are not formed by this aid.
 - **The fast reanalysis tolerance**: η ≤ 1e-6 keeps the responses within 1e-6 of the full analysis on steps of
   1 %, 10 % and 30 % of the thickness of the clamped plate, in 3 to 6 solves; enforced displacements, inertia relief
-  and SUBCOM go to a full analysis, named.
+  and SUBCOM go to a full analysis, named, as does a trial point whose degrees of freedom differ from those of the
+  kept analysis; the trial inertial loads take the non-structural mass set of the subcase.
 - **The hints do not replace APRCOD by default**: the caller asks for them. On the clamped plate without transverse
   shear (w ∝ t⁻³ exactly) the internal optimiser takes 3 cycles with the hints and 4 with APRCOD 2, to the same
   optimum.
@@ -667,7 +681,8 @@ Plugins coupled by data through the zones of the model: the contour data of `out
   `StaticResults::zones` (`ResponseContext::zones`).
 - **`ExternalResponseDefinition`, `ExternalResponse`**: the third response kind beside DesignResp1 and equations. Its
   labels are zones, its arguments contour displacements, contour forces, zone loads or design variables (one per
-  label: `variableByLabel`); `isLinear` (on the load basis), `hasPost`, `hasSelection`, the coupling (`Callback`, or
+  label: `variableByLabel`); `isLinear` (on the load basis), `hasPost`, `hasSelection` (which requires the declared
+  number of outputs of every zone: a zone whose selection keeps no case is not called), the coupling (`Callback`, or
   `Supplied`: two-phase) and the name of its `ExternalEvaluator` (the plug-in point, which the caller implements). Per
   zone a callback that is not linear (and a supplied response) is called per batch of at most `blockItems` of its
   selected cases, its arguments the combined data of those cases (rows) × the zone's DOFs (unpadded: each zone its own
@@ -694,7 +709,10 @@ Plugins coupled by data through the zones of the model: the contour data of `out
   and `ElementItemFunction::secondOrder`, the SinglePointConstr force items folded into the adjoint as λ − Σ y·w), kept with the
   linearisation for the next products at the same weights; where the closed forms stop, the differences of the
   linearisation at the moved states, the reason in `ProductReport::hessianBlocksReason`
-  (`ProductContext::usesHessianBlocks` false forces them).
+  (`ProductContext::usesHessianBlocks` false forces them). The differences step along v by `HESSIAN_STEP_RELATIVE`
+  of each moved variable's own scale and stay within the bounds of the design variables, one-sided at a bound
+  (`common/DifferenceStencil.hpp`); a weight on a strain-energy percentage item and an analysis with external units
+  are refused.
   Several fields may reach the same element: each gives a diagonal field block, and each pair gives a symmetric
   field coupling from `stiffnessFieldMixedDerivative`, `massFieldMixedDerivative` and
   `ElementItemFunction::mixedFieldRate`. The displacement block is counted once. A single fixed-list item is
@@ -702,7 +720,8 @@ Plugins coupled by data through the zones of the model: the contour data of `out
   off-diagonal field terms; an unavailable mixed formula keeps the numerical path with its reason in the report.
   The products also cover the section and cut loads (differenced); inertia relief (the linearisation at a moved state
   takes the relief of the moved point, `SensitivityComputation::movedReliefOf` and `movedAccelerationsOf`, from a
-  `detail::ReliefPoint`; a relative step of 1e-3 there); the condensed path (δu read where the weighted items are too:
+  `detail::ReliefPoint`; a relative step of 1e-3 there, extrapolated from t and t/2 when the bounds leave the two
+  stencils the same form at those steps); the condensed path (δu read where the weighted items are too:
   `ProductComputation::Reads::Direction`); the relations given by functions (`ProductContext::suppliedAt`) and the
   derived sections on the point's meshes (`StaticSensitivityInputs::sectionReference`, `DesignPoint`'s `reference`);
   the equation responses of the second order (`EquationResponse::secondOrderTerms`, `BatchCallable::hessianVector`:
@@ -719,7 +738,10 @@ Plugins coupled by data through the zones of the model: the contour data of `out
   its terms' constraint set and `u_c = Σ a_k·u_k`; the element loop adds its stiffness terms and no load rate of its
   own; `PseudoLoads::addCombination` adds its terms' load parts after each field's `finish` (before the relief's
   projection); a term no item reads (`isTermOnly`) is never solved. `FastReanalysis` combines the terms' approximated
-  vectors; `SensitivityMap` combines the terms' load parts; `SecondDerivatives` (the aid) refuses a SUBCOM.
+  vectors; `SensitivityMap` combines the terms' load parts; `SecondDerivatives` (the aid) refuses a SUBCOM. The
+  closed Hessian blocks cover a SUBCOM whose terms' loads the designed fields do not change; with a thermal,
+  deformation, pressure, line or inertial load in a term that a field changes, the products difference the
+  linearisation (`hessianBlocksReason`).
 
 ### Decisions
 
@@ -852,11 +874,17 @@ condensed path (the same rules as for the statics).
   dλ/dv = φᵀ(∂K/∂v − λ∂M/∂v)φ (Fox & Kapoor 1968; φ M-normalised: the stored shape over its scale); buckling
   dλ/dv = λφᵀ(∂K/∂v + λ dK_d/dv)φ (φ K-normalised), dK_d/dv = ∂K_d/∂v|_u + K_d(du/dv), the preload part a static item
   of the preload subcase with the weights c = λ²∇_u(φᵀK_d(u)φ) (exact: K_d is linear in u), solved by the direct,
-  adjoint or chained order as any static item; repeated roots (within `REPEATED_ROOT_TOLERANCE` = 1e-6 relative) by
+  adjoint or chained order as any static item; an equation over load factors takes the preload subcase of its
+  arguments once its weights are chained (`SensitivityComputation::labelEquationItem`) and is solved there too, in
+  the gradients, the stream and the products (arguments that read the displacements of two subcases are refused);
+  repeated roots (within `REPEATED_ROOT_TOLERANCE` = 1e-6 relative) by
   the eigenvalues of the subspace matrix D_j = Φᵀ(∂K/∂x_j − λ∂M/∂x_j)Φ (buckling: λΦᵀ(∂K/∂x_j + λ dK_d/dx_j)Φ, the
   preload part by the direct method), the one-sided derivatives along +x_j sorted to the cluster's modes in the order
   of their roots. `ElementDerivatives::mass` and `differentialStiffness` give the semi-analytic differences of the
-  element mass and differential stiffness, as `stiffness` does for K. Per single root of EIGN and FreqList the gradients
+  element mass and differential stiffness, as `stiffness` does for K. The mass of the vibration derivatives and its
+  element rates carry the non-structural mass set the MODES subcase selects (its share per unit length or area on
+  every side of a perturbation), as the modal solution's mass does; a BUCK subcase that selects one is refused at
+  the analysis of the design point. Per single root of EIGN and FreqList the gradients
   of the Rayleigh quotient's parts at fixed φ, ∇(φᵀKφ) and ∇(φᵀMφ) (`DesignGradients::rayleigh`).
 - **`approximation/`** — the Rayleigh quotient approximation of a root (Canfield, "High-quality approximation of
   eigenvalues in structural optimization", AIAA J. 28(6), 1990): λ̃ = (λ0 + ∇U·Δx) / (1 + ∇T·Δx), FreqList from λ̃; under

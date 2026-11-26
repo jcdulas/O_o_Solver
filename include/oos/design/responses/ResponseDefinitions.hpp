@@ -276,7 +276,8 @@ enum class ExternalCoupling : std::uint8_t
 // `hasPost` then: post= computes the outputs of each case from its combined linear outputs (von Mises, a reserve
 // factor). `hasSelection` (select=): the evaluator gives, per zone, the subcases to evaluate; the others are
 // not_evaluated. `outputs`: per zone (in the order of `zones`) the number of outputs when declared, 0 when it is the
-// plugin's first answer. `evaluator`: its name in the ExternalRegistry.
+// plugin's first answer; required (at least 1 per zone) with `hasSelection`, since a zone whose selection keeps no
+// case gives no answer to count its items from. `evaluator`: its name in the ExternalRegistry.
 struct ExternalResponseDefinition
 {
     std::int32_t id = 0;

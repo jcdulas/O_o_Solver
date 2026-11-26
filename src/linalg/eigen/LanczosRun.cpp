@@ -228,6 +228,64 @@ void LanczosRun::startBlock(const EigenvectorStore& store)
     m_nextColumnCount = factoriseBlock(next, nullptr, store);
 }
 
+bool LanczosRun::probeBeyondLocked(double shift, const EigenvectorStore& store, LanczosRunResult& result)
+{
+    const LockedVectors locked = store.locked();
+    if (locked.columns() == 0)
+        return false;
+    // The norms of the start block's columns Op·r before their projection: the scale of the locked roots at this
+    // shift, which the rounding left by the projections is measured against.
+    const std::vector<double> startNorms = m_referenceNorms; // bounded by the block
+    const DenseMatrixView probe = m_workspace.next.view();
+    const std::size_t width = probe.columns;
+    // P·Op·P·r: the random block off the locked set, the operator, off the locked set again.
+    fillRandom(probe);
+    for (int pass = 0; pass < ORTHOGONALISATION_PASSES; ++pass)
+        m_orthogonalizer.projectOut(probe, locked, basisView(0), nullptr, {});
+    applyOperator(probe);
+    for (int pass = 0; pass < ORTHOGONALISATION_PASSES; ++pass)
+        m_orthogonalizer.projectOut(probe, locked, basisView(0), nullptr, {});
+
+    // A column above the rounding of two projections, (DEFLATION_FACTOR·ε·√n)² of the start block's norm, is a
+    // direction outside the locked set; it is normalised for its Rayleigh quotient.
+    const DenseMatrixView massOfProbe = m_workspace.massOfNext.view();
+    const double rounding =
+        DEFLATION_FACTOR * EPSILON * std::sqrt(static_cast<double>(std::max<std::size_t>(m_dimension, 1)));
+    std::vector<unsigned char> isDirection(width, 0); // bounded by the block
+    bool hasDirection = false;
+    for (std::size_t c = 0; c < width && c < startNorms.size(); ++c)
+    {
+        m_orthogonalizer.multiplyColumn(&probe(0, c), &massOfProbe(0, c));
+        const double norm =
+            std::sqrt(std::max(0.0, m_orthogonalizer.dot(&probe(0, c), &massOfProbe(0, c), m_dimension)));
+        if (!(startNorms[c] > 0.0) || !(norm > rounding * rounding * startNorms[c]))
+            continue;
+        m_orthogonalizer.scale(&probe(0, c), &massOfProbe(0, c), 1.0 / norm, m_dimension);
+        isDirection[c] = 1;
+        hasDirection = true;
+    }
+    if (!hasDirection)
+        return false;
+
+    // The Rayleigh quotient θ = qᵀ·M·Op·q of each direction q, a mean of the θ of the roots left weighted by their
+    // parts in q: σ + 1/θ points at them (an estimate for the next shift, not a root).
+    const DenseMatrixView image = m_workspace.product.view();
+    for (std::size_t c = 0; c < width; ++c)
+        std::copy_n(&probe(0, c), m_dimension, &image(0, c));
+    applyOperator(image);
+    for (std::size_t c = 0; c < width; ++c)
+    {
+        if (isDirection[c] == 0)
+            continue;
+        const double theta = m_orthogonalizer.dot(&massOfProbe(0, c), &image(0, c), m_dimension);
+        const double estimate = shift + 1.0 / theta;
+        if (theta != 0.0 && std::isfinite(estimate))
+            result.ritzEstimates.push_back(estimate);
+    }
+    std::sort(result.ritzEstimates.begin(), result.ritzEstimates.end());
+    return true;
+}
+
 LanczosRun::RitzPairs LanczosRun::computeRitzPairs() const
 {
     const std::size_t p = m_columns;
@@ -395,7 +453,8 @@ LanczosRunResult LanczosRun::run(double shift, EigenvectorStore& store)
     startBlock(store);
     if (m_nextColumnCount == 0)
     {
-        result.isSpaceExhausted = true;
+        // Nothing to start from: the space is exhausted unless the locked roots hide the ones left at this shift.
+        result.isSpaceExhausted = !probeBeyondLocked(shift, store, result);
         return result;
     }
 

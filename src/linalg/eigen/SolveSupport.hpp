@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 
 namespace oos::linalg
@@ -31,6 +32,21 @@ inline void requireNoExtraEigenvalue(const SturmVerification& verification)
              ") where the Sturm counts allow ", std::to_string(verification.mismatch.expectedCount),
              "; the factorisations are not reliable there (an eigenvalue on a bound of the range, or a pencil "
              "close to singular): move the bounds of the range or check the model for massless mechanisms"}));
+}
+
+// Throws SolverError when an eigenvalue was found below the lowest Sturm point of a solve from the lowest root: no
+// root lies below that point by its count (0), so the factorisation there or the root is not reliable, as for an
+// interval that holds more roots than its counts allow.
+inline void requireNoEigenvalueBelow(double lowestPoint, std::span<const double> sortedEigenvalues)
+{
+    if (sortedEigenvalues.empty() || !(sortedEigenvalues.front() < lowestPoint))
+        return;
+    throw base::SolverError(base::concatenate(
+        {"eigenvalue analysis: the eigenvalue ", std::to_string(sortedEigenvalues.front()),
+         " was found below the shift ", std::to_string(lowestPoint),
+         ", where the Sturm count says no eigenvalue lies; the factorisation there is not reliable (a pencil close to "
+         "singular, or a mass matrix that is not positive semi-definite): check the model for massless mechanisms and "
+         "negative masses"}));
 }
 
 } // namespace oos::linalg

@@ -30,6 +30,8 @@ which is the order in which the pieces depend on one another.
 - `SplineMatrix`: the splines of a model from `splinesTable`, `splineNodes` and the AeroBeamSpline2, AeroBeamSpline5 and AeroBoxList
   card tables: the plunge and slope of each box at its center from the motions of the grid points (GKA), and the box
   forces given back to the grid points by the transpose; FPS, RIS, AeroSplineEquation3, AeroFiniteSurfaceSpline6, AeroFiniteBeamSpline7, AeroUserSpline refused.
+  The CID of a beam spline is a rectangular system (its y axis is the axis of the spline): a cylindrical or spherical
+  one is refused, as for the aerodynamic and reference systems and the hinge lines.
 
 ## `trim/`
 

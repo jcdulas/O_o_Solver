@@ -203,6 +203,13 @@ SplineMatrix::SplineMatrix(const input::ModelSnapshot& snapshot, const AeroRefer
                     : 0;
             const std::string frameLabel = base::concatenate({"SPLINE ", spline.card, ".frameId"});
             const input::CoordinateFrame frame = frameOf(snapshot, frameId, frameLabel.c_str());
+            // The axis of the spline is the y axis of a rectangular system: the j axis of the frame that defines a
+            // cylindrical or spherical one is not that, so such a system is refused as the other aero readers do.
+            if (frame.kind != input::CoordinateFrame::Kind::Rectangular)
+                throw base::SolverError(base::concatenate(
+                    {name, ": expected a rectangular ", spline.card,
+                     ".frameId (its y axis is the axis of the beam spline), found the cylindrical or spherical system ",
+                     std::to_string(frameId), "; use a RectFrame2"}));
             const base::Vec3 axis =
                 reference.directionInAeroFrame({frame.axes(0, 1), frame.axes(1, 1), frame.axes(2, 1)});
             y = base::normalized(axis - base::dot(axis, z) * z);

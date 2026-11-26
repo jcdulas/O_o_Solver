@@ -14,8 +14,12 @@
 
 #include <algorithm>
 #include <array>
+#include <map>
 #include <numbers>
+#include <optional>
 #include <set>
+#include <span>
+#include <vector>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -199,6 +203,164 @@ std::vector<base::Diagnostic> conflictsOf(const input::FormulationGeometry& geom
                                              " declared both ended and continued at grid point ",
                                              std::to_string(end[1]), "; keep one of the two declarations"})));
     return out;
+}
+
+// What the reading of the mesh made of the edges the declarations name: the shells of each edge and their smooth
+// partners (the topology of the ShellPart), and the edges of the solids, on their skin or inside them. It says which
+// declarations changed nothing though they name edges of the model (reportDeclarationsNotApplied).
+class DeclarationReading
+{
+public:
+    DeclarationReading(std::span<const std::int32_t> gridIds, const ShellPart* shells, const SolidPart* solids,
+                       const std::map<std::int32_t, std::size_t>& shellOfId)
+        : m_shells(shells != nullptr && shells->usable() ? shells : nullptr),
+          m_isShellReadingUnknown(shells != nullptr && !shells->usable()), m_shellOfId(shellOfId)
+    {
+        for (std::size_t grid = 0; grid < gridIds.size(); ++grid)
+            m_gridOfId.emplace(gridIds[grid], grid);
+        if (solids != nullptr)
+            for (const SolidPartEdge& edge : solids->edges())
+                (edge.onSkin ? m_skinEdges : m_innerEdges).insert(edge.grids);
+        if (m_shells != nullptr)
+            m_rawShells.insert(m_shells->input().rawElements.begin(), m_shells->input().rawElements.end());
+    }
+
+    // A smooth (`isSmooth`) or sharp edge side changes something of the reading:
+    // - on the skin of the solids, an edge declared whole;
+    // - an edge of a raw shell, which the declaration keeps out of the raw edges;
+    // - smooth, an edge whose shell (or one of whose shells, declared whole) is smooth with the shell that faces
+    //   it: on the outline, and on a side of a junction that no shell faces, there is none;
+    // - sharp, an edge of two shells or more (a side of a junction that no shell faces ends there already, which is
+    //   what the declaration says: it is not reported).
+    [[nodiscard]] bool isSideApplied(const input::EdgeSide& side, bool isSmooth) const
+    {
+        const std::optional<EdgeKey> edge = edgeOf(side.grids[0], side.grids[1]);
+        if (!edge || m_isShellReadingUnknown)
+            return true; // reported as unknown, or not read: nothing to say
+        if (side.elementId == 0 && m_skinEdges.contains(*edge))
+            return true;
+        const std::optional<std::size_t> shellEdge = shellEdgeOf(*edge);
+        if (!shellEdge)
+            return !m_innerEdges.contains(*edge);
+        const Topology& topology = m_shells->topology();
+        const std::vector<std::size_t>& owners = topology.edgeElements[*shellEdge];
+        const auto isRaw = [&](std::size_t shell) { return m_rawShells.contains(shell); };
+        if (std::any_of(owners.begin(), owners.end(), isRaw))
+            return true;
+        if (!isSmooth)
+            return owners.size() >= 2;
+        const std::map<std::size_t, std::size_t>& partners = topology.partners[*shellEdge];
+        if (side.elementId == 0)
+            return !partners.empty();
+        const auto shell = m_shellOfId.find(side.elementId);
+        if (shell == m_shellOfId.end() || std::find(owners.begin(), owners.end(), shell->second) == owners.end())
+            return true; // an element that is no shell of the edge: reported as unknown
+        return partners.contains(shell->second);
+    }
+
+    // The mesh line of a continuation is read: its two edges are edges of the shells, or of the skin of the solids.
+    [[nodiscard]] bool isContinuationApplied(const input::LineContinuation& line) const
+    {
+        return m_isShellReadingUnknown || (isShellEdge(line[1], line[0]) && isShellEdge(line[1], line[2])) ||
+               (isSkinEdge(line[1], line[0]) && isSkinEdge(line[1], line[2]));
+    }
+
+    [[nodiscard]] bool isEndApplied(const input::LineEnd& end) const
+    {
+        return m_isShellReadingUnknown || isShellEdge(end[1], end[0]) || isSkinEdge(end[1], end[0]);
+    }
+
+private:
+    [[nodiscard]] std::optional<EdgeKey> edgeOf(std::int32_t firstId, std::int32_t secondId) const
+    {
+        const auto first = m_gridOfId.find(firstId);
+        const auto second = m_gridOfId.find(secondId);
+        if (first == m_gridOfId.end() || second == m_gridOfId.end())
+            return std::nullopt;
+        return EdgeKey::of(first->second, second->second);
+    }
+
+    // The edge of the topology of the shells, when shells have it.
+    [[nodiscard]] std::optional<std::size_t> shellEdgeOf(const EdgeKey& edge) const
+    {
+        if (m_shells == nullptr)
+            return std::nullopt;
+        const Topology& topology = m_shells->topology();
+        const auto found = topology.edgeIndex.find(edge);
+        if (found == topology.edgeIndex.end() || topology.edgeElements[found->second].empty())
+            return std::nullopt;
+        return found->second;
+    }
+
+    [[nodiscard]] bool isShellEdge(std::int32_t firstId, std::int32_t secondId) const
+    {
+        const std::optional<EdgeKey> edge = edgeOf(firstId, secondId);
+        return edge && shellEdgeOf(*edge).has_value();
+    }
+
+    [[nodiscard]] bool isSkinEdge(std::int32_t firstId, std::int32_t secondId) const
+    {
+        const std::optional<EdgeKey> edge = edgeOf(firstId, secondId);
+        return edge && m_skinEdges.contains(*edge);
+    }
+
+    const ShellPart* m_shells = nullptr;
+    // The shells could not be read (their problems say why): nothing is said of the declarations then.
+    bool m_isShellReadingUnknown = false;
+    const std::map<std::int32_t, std::size_t>& m_shellOfId;
+    std::map<std::int32_t, std::size_t> m_gridOfId;
+    std::set<EdgeKey> m_skinEdges;
+    std::set<EdgeKey> m_innerEdges;
+    std::set<std::size_t> m_rawShells;
+};
+
+// One warning for the declarations that name edges of the model and change nothing of its reading (`...Used`: the
+// declarations that name edges of the model, the others being reported as unknown): their count and the first.
+void reportDeclarationsNotApplied(const input::FormulationGeometry& geometry, const std::vector<char>& smoothUsed,
+                                  const std::vector<char>& sharpUsed, const std::vector<char>& continuationsUsed,
+                                  const std::vector<char>& endsUsed, const DeclarationReading& reading,
+                                  std::vector<base::Diagnostic>& problems)
+{
+    std::size_t count = 0;
+    std::string first;
+    const auto add = [&](std::string name)
+    {
+        if (count == 0)
+            first = std::move(name);
+        ++count;
+    };
+    const auto addSides = [&](const std::vector<input::EdgeSide>& sides, const std::vector<char>& used, bool isSmooth)
+    {
+        for (std::size_t i = 0; i < sides.size(); ++i)
+            if (used[i] != 0 && !reading.isSideApplied(sides[i], isSmooth))
+                add(base::concatenate(
+                    {isSmooth ? "the smooth edge between " : "the sharp edge between ", edgeName(sides[i].grids),
+                     sides[i].elementId != 0 ? " for element " + std::to_string(sides[i].elementId) : ""}));
+    };
+    addSides(geometry.smoothEdges, smoothUsed, true);
+    addSides(geometry.sharpEdges, sharpUsed, false);
+    for (std::size_t i = 0; i < geometry.lineContinuations.size(); ++i)
+        if (continuationsUsed[i] != 0 && !reading.isContinuationApplied(geometry.lineContinuations[i]))
+            add(base::concatenate({"the line continuation at grid point ",
+                                   std::to_string(geometry.lineContinuations[i][1]), " between grid points ",
+                                   std::to_string(geometry.lineContinuations[i][0]), " and ",
+                                   std::to_string(geometry.lineContinuations[i][2])}));
+    for (std::size_t i = 0; i < geometry.lineEnds.size(); ++i)
+        if (endsUsed[i] != 0 && !reading.isEndApplied(geometry.lineEnds[i]))
+            add(base::concatenate({"the line end at grid point ", std::to_string(geometry.lineEnds[i][1]),
+                                   " of the edge from grid point ", std::to_string(geometry.lineEnds[i][0])}));
+    if (count == 0)
+        return;
+    base::Diagnostic warning = declarationProblem(
+        "geometry-declaration-not-applied",
+        base::concatenate(
+            {std::to_string(count), " geometry declarations name edges of the model and change nothing of its reading "
+                                    "(a smooth side that no shell faces across its edge, an edge of the outline of the "
+                                    "shells declared smooth or sharp, an edge or a mesh line inside the solids): the "
+                                    "first is ",
+             first, "; remove them, or declare what was meant"}));
+    warning.severity = base::Severity::Warning;
+    problems.push_back(std::move(warning));
 }
 
 } // namespace
@@ -476,6 +638,10 @@ void MixedHybridModel::reportUnknownDeclarations()
                                          MIXED_HYBRID_FORMULATION, ", found ", edgeName({end[0], end[1]}),
                                          ", which no edge of a shell or of a solid joins; correct the declaration"})));
         }
+    reportDeclarationsNotApplied(*m_declarations, m_declarationUse.smoothEdges, m_declarationUse.sharpEdges,
+                                 m_declarationUse.lineContinuations, m_declarationUse.lineEnds,
+                                 DeclarationReading(m_gridIds, m_shellPart.get(), m_solidPart.get(), m_shellOfId),
+                                 m_problems);
 }
 
 } // namespace oos::elements::mixedHybrid

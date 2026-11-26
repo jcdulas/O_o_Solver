@@ -12,8 +12,10 @@ namespace oos::input
 // The rigid elements of the model, expanded by O_o_Model (rigidElementsTable): one row per grid point of each
 // RigidBar, RigidBar1, RigidBodyMulti, RigidBodyStar, RigidInterpolation, RigidRod, RigidTriaPlate... with its role
 // ("independent", "dependent", and for a RigidInterpolation the weighted legs), its components as a text of digits,
-// and the RigidInterpolation weight (null for the other cards). The card fields themselves (ALPHA, TREF) are in the
-// element batch of the card.
+// and the RigidInterpolation weight (null for the other cards). The optional column `alpha` is the thermal expansion
+// coefficient of the element (its ALPHA), repeated on each of its rows (null for a card that has none; absent from a
+// table of an earlier O_o_Model or built by hand): the solver does not compute the expansion of a rigid element, and
+// reads it only to refuse it under a thermal load (assembly::LoadVectorBuilder::checkThermalLoads).
 //
 // Thread-safety: immutable; concurrent reads are safe. Ownership: owns the imported table (buffers borrowed).
 class RigidTable
@@ -32,6 +34,14 @@ public:
     {
         return m_reader.values<double>("weight", base::NullPolicy::Allow);
     }
+    // Whether the table gives the thermal expansion coefficient of the elements (its optional column `alpha`), and,
+    // when it does, the coefficient of the element of each row with the rows that have one.
+    [[nodiscard]] bool hasExpansionCoefficients() const { return m_reader.hasColumn("alpha"); }
+    [[nodiscard]] std::span<const double> expansionCoefficients() const
+    {
+        return m_reader.values<double>("alpha", base::NullPolicy::Allow);
+    }
+    [[nodiscard]] base::ValidityView expansionValidity() const { return m_reader.validity("alpha"); }
     [[nodiscard]] const base::ContractReader& reader() const noexcept { return m_reader; }
 
 private:

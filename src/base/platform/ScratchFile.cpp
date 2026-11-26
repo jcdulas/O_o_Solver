@@ -5,9 +5,11 @@
 
 #include <algorithm>
 #include <atomic>
+#include <optional>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -57,6 +59,37 @@ std::string systemMessage()
     return std::error_code(errno, std::generic_category()).message();
 #endif
 }
+
+#if !defined(_WIN32)
+
+// Transfers `bytes` bytes by calls of `transferFrom(done)`, which makes one pwrite or pread of the bytes from `done`
+// on and returns its count. A call may transfer fewer bytes than asked without failing (POSIX: a signal, a file
+// system's limit): it is made again for the rest, and again when a signal interrupted it before any byte (EINTR).
+// Returns nothing, or what stopped the transfer: the system's message of the failing call, read at once, or
+// `stoppedText` and the count reached when a call transferred nothing (the end of the file, a device that takes no
+// more: errno says nothing then).
+template <typename TransferFrom>
+std::optional<std::string> transferAll(std::size_t bytes, std::string_view stoppedText,
+                                       const TransferFrom& transferFrom)
+{
+    std::size_t done = 0;
+    while (done < bytes)
+    {
+        const ssize_t count = transferFrom(done);
+        if (count < 0)
+        {
+            if (errno == EINTR)
+                continue;
+            return systemMessage();
+        }
+        if (count == 0)
+            return concatenate({stoppedText, std::to_string(done), " bytes"});
+        done += static_cast<std::size_t>(count);
+    }
+    return std::nullopt;
+}
+
+#endif
 
 } // namespace
 
@@ -174,13 +207,16 @@ void ScratchFile::write(std::uint64_t offset, const void* data, std::size_t byte
         at.OffsetHigh = static_cast<DWORD>(offset >> 32);
         DWORD done = 0;
         const BOOL isWritten = WriteFile(static_cast<HANDLE>(m_handle), from, static_cast<DWORD>(part), &done, &at);
-        if (isWritten == 0 || done != part)
+        const std::optional<std::string> failure =
+            isWritten == 0 || done != part ? std::optional<std::string>(systemMessage()) : std::nullopt;
 #else
-        const ssize_t done = ::pwrite(m_descriptor, from, part, static_cast<off_t>(offset));
-        if (done < 0 || static_cast<std::size_t>(done) != part)
+        const std::optional<std::string> failure = transferAll(
+            part, "no byte written after ", [&](std::size_t done)
+            { return ::pwrite(m_descriptor, from + done, part - done, static_cast<off_t>(offset + done)); });
 #endif
+        if (failure)
             throw FileError(concatenate({"cannot write ", std::to_string(part), " bytes at ", std::to_string(offset),
-                                         " of the scratch file '", m_path.string(), "': ", systemMessage(),
+                                         " of the scratch file '", m_path.string(), "': ", *failure,
                                          "; free disk space there or give another scratch folder (scratch_dir=)"}));
         from += part;
         offset += part;
@@ -201,13 +237,16 @@ void ScratchFile::read(std::uint64_t offset, void* data, std::size_t bytes) cons
         at.OffsetHigh = static_cast<DWORD>(offset >> 32);
         DWORD done = 0;
         const BOOL isRead = ReadFile(static_cast<HANDLE>(m_handle), to, static_cast<DWORD>(part), &done, &at);
-        if (isRead == 0 || done != part)
+        const std::optional<std::string> failure =
+            isRead == 0 || done != part ? std::optional<std::string>(systemMessage()) : std::nullopt;
 #else
-        const ssize_t done = ::pread(m_descriptor, to, part, static_cast<off_t>(offset));
-        if (done < 0 || static_cast<std::size_t>(done) != part)
+        const std::optional<std::string> failure = transferAll(
+            part, "end of the file after ", [&](std::size_t done)
+            { return ::pread(m_descriptor, to + done, part - done, static_cast<off_t>(offset + done)); });
 #endif
+        if (failure)
             throw FileError(concatenate({"cannot read ", std::to_string(part), " bytes at ", std::to_string(offset),
-                                         " of the scratch file '", m_path.string(), "': ", systemMessage(),
+                                         " of the scratch file '", m_path.string(), "': ", *failure,
                                          " (no remedy: the scratch file was written by this analysis; report it if "
                                          "the disk is healthy)"}));
         to += part;

@@ -66,11 +66,16 @@ EdgeReading readSkinEdge(std::span<const Vector3> grids, const SkinFace& first, 
 }
 
 // The declared lines of the model given to the smooth parts: `index` gives the grid of the skin mesh of each grid of
-// the model in each part. A line goes to the parts that have its two grids; a continuation that names no grid of a
-// part says nothing of that part.
+// the model in each part, `partEdges` the edges of each part (the part, then the grids of the model). A line goes to
+// the parts that have its edge, with the continuations whose edge the part has too: two grids of a part that no edge
+// of it joins (the diagonal of a face, the two ends of an edge inside the solids) are no mesh line of that part, and
+// the reading, which walks along the lines edge by edge, would look for an edge that does not exist.
 std::map<std::pair<std::size_t, std::size_t>, std::set<std::size_t>> linesOfParts(
-    const SkinDeclarations& declarations, const std::map<std::pair<std::size_t, std::size_t>, std::size_t>& index)
+    const SkinDeclarations& declarations, const std::map<std::pair<std::size_t, std::size_t>, std::size_t>& index,
+    const std::set<std::pair<std::size_t, EdgeKey>>& partEdges)
 {
+    const auto isEdgeOfPart = [&](std::size_t a, std::size_t b, std::size_t part)
+    { return partEdges.contains({part, EdgeKey::of(a, b)}); };
     std::map<std::size_t, std::vector<std::size_t>> partsOf;
     for (const auto& [gridAndPart, skinGrid] : index)
         partsOf[gridAndPart.first].push_back(gridAndPart.second);
@@ -88,11 +93,11 @@ std::map<std::pair<std::size_t, std::size_t>, std::set<std::size_t>> linesOfPart
         for (const std::size_t part : parts->second)
         {
             const std::optional<std::size_t> to = skinGrid(edge.second, part);
-            if (!to)
+            if (!to || !isEdgeOfPart(edge.first, edge.second, part))
                 continue;
             std::set<std::size_t> mapped;
             for (const std::size_t c : next)
-                if (const std::optional<std::size_t> g = skinGrid(c, part))
+                if (const std::optional<std::size_t> g = skinGrid(c, part); g && isEdgeOfPart(edge.first, c, part))
                     mapped.insert(*g);
             if (next.empty() || !mapped.empty())
                 out[{*skinGrid(edge.first, part), *to}] = std::move(mapped);
@@ -227,7 +232,11 @@ SkinReading readSolidSkin(std::span<const Vector3> grids, std::span<const SkinFa
             through.insert(i);
     }
     reading.mesh.throughGrids = std::move(through);
-    reading.mesh.declaredLines = linesOfParts(declarations, index);
+    std::set<std::pair<std::size_t, EdgeKey>> partEdges;
+    for (const auto& [edge, list] : sides)
+        for (const std::size_t face : list)
+            partEdges.emplace(findPart(part, face), edge);
+    reading.mesh.declaredLines = linesOfParts(declarations, index, partEdges);
     reading.topology = Topology::fromMesh(reading.mesh);
     // the conic of each edge: the mean of its readings (two on a sharp edge)
     std::map<EdgeKey, ConicSum> sums;

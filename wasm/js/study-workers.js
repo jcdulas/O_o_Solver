@@ -63,7 +63,10 @@ export class OptimizationWorkerPool {
           const error = new Error(data.message); if (data.stack) error.stack = data.stack;
           if (initializing) fail(error);
           else if (slot.task && data.id === slot.task.id) {
-            this.finish(slot.task, error); slot.task = null; this.dispatch();
+            // A module that trapped is in an undefined state: its worker is replaced, as after a timeout, so that
+            // the next point does not run in it.
+            if (data.fatal) fail(error);
+            else { this.finish(slot.task, error); slot.task = null; this.dispatch(); }
           }
         } else if (data.type === "result" && slot.task && data.id === slot.task.id) {
           this.finish(slot.task, null, data.result); slot.task = null; this.dispatch();
@@ -81,9 +84,15 @@ export class OptimizationWorkerPool {
     });
   }
   metadata() { return structuredClone(this.info); }
-  evaluate(x, { signal, timeoutMs, ...options } = {}) {
+  evaluate(x, options = {}) {
+    if (this.queue.length >= this.settings.maximumQueuedPoints && !this.closed)
+      return Promise.reject(new Error("maximumQueuedPoints exceeded"));
+    return this.submit(x, options);
+  }
+  // Queues one point without the limit of the queue: evaluate() checks it for its callers, and evaluateMany() keeps
+  // no more points in flight than there are workers.
+  submit(x, { signal, timeoutMs, ...options } = {}) {
     if (this.closed) return Promise.reject(new Error("the optimization worker pool is closed"));
-    if (this.queue.length >= this.settings.maximumQueuedPoints) return Promise.reject(new Error("maximumQueuedPoints exceeded"));
     if (signal?.aborted) return Promise.reject(abortError(signal.reason));
     if (timeoutMs !== undefined) positiveInteger(timeoutMs, "timeoutMs");
     const values = x === undefined ? undefined : Float64Array.from(x);
@@ -127,12 +136,24 @@ export class OptimizationWorkerPool {
     if (result?.catch) result.catch(() => {});
     const index = this.slots.indexOf(slot); if (index >= 0) this.slots.splice(index, 1);
   }
+  // Evaluates the points with backpressure: one lane per worker takes the next point when its own has ended (and
+  // its onPoint has returned), so the queue never holds more than a point per worker whatever the number of points.
+  // The first failure rejects the call and no further point is started; the points already running end on their
+  // own, their results dropped (abort them with options.signal, which terminates their workers).
   async evaluateMany(points, { onPoint, ...options } = {}) {
-    const results = new Array(points.length);
-    await Promise.all(Array.from(points, async (point, index) => {
-      const result = await this.evaluate(point, options);
-      if (onPoint) await onPoint(result, index); else results[index] = result;
-    }));
+    const list = Array.from(points), results = new Array(list.length);
+    let next = 0, failed = false;
+    const lane = async () => {
+      while (!failed && next < list.length) {
+        const index = next++;
+        try {
+          const result = await this.submit(list[index], options);
+          if (failed) return;
+          if (onPoint) await onPoint(result, index); else results[index] = result;
+        } catch (error) { failed = true; throw error; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(list.length, this.settings.workers) }, lane));
     return onPoint ? [] : results;
   }
   close(reason = new Error("the optimization worker pool was closed")) {

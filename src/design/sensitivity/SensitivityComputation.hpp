@@ -610,7 +610,8 @@ protected:
                 item.subcase = values[p].items[i].subcase;
                 if (values[p].items[i].mode != 0)
                     item.subcase = 0; // the modal adjoint supplies the complete explicit row
-                // A LAMA item reads the displacements of its preload subcase (EigenItems: the weights of K_d(u)).
+                // A LAMA item reads the displacements of its preload subcase (EigenItems: the weights of K_d(u)). An
+                // equation item takes the subcase its arguments read once its weights are chained (labelEquationItem).
                 if (const DesignResp1Response* response = m_in.responses->findDesignResp1(values[p].id);
                     m_eigen && response != nullptr &&
                     (response->definition().type == ResponseType::BucklingFactor ||
@@ -1630,6 +1631,17 @@ protected:
                  std::to_string(label.subcase),
                  ": the subcase enforces displacements, so the displacement is not the adjoint vector of its "
                  "compliance; constrain displacements instead"}));
+        // Inertia relief: the solve takes P − M·D·ü_r, the relieving loads moving with the design (the mass and
+        // ü_r = (Dᵀ·M·D)⁻¹·Dᵀ·P), so K·u is not P, u is not the adjoint vector of Pᵀu and the explicit part
+        // uᵀ·∂P/∂v would read the load part before the relief projects it (SelfAdjointResponses.hpp refuses both
+        // kinds there).
+        if (state.relief != nullptr)
+            throw base::OptimisationError(base::concatenate(
+                {"the sensitivity of response ", std::to_string(values.id), " (", values.label, ") in subcase ",
+                 std::to_string(label.subcase),
+                 ": the subcase is solved under inertia relief (PARAM InertiaRelief), where the displacement is not "
+                 "the adjoint vector of its compliance; constrain the structure there instead of relieving it, or "
+                 "use displacement responses in that subcase"}));
         prepareTotalEnergy(state);
         SelfAdjointItem item{key, m_subcaseIndex.at(label.subcase), 1.0, values.values[key.item], {}};
         if (type == ResponseType::MeanDisplacement)
@@ -2978,6 +2990,14 @@ protected:
             if (element.type != "RigidInterpolation" || (m_eigen && !m_trim) || m_modal || !m_spcItems.empty() ||
                 !m_zoneItems.empty() || hasExternalUnits())
                 unsupported("the derivative of its moving constraint equations is unavailable for these responses");
+            // The eigenvalue items take the rate of the moving rows (EigenItems::addRigidShapeTerms) beside the trim's
+            // transfer rate only, below: with a trim that differentiates nothing here (no direction) their term
+            // D_aᵀ·R_b + D_bᵀ·R_a would be left out of dλ/dx, as without a trim, which is refused above.
+            if (m_eigen && !m_eigen->isEmpty() && m_trim && m_trim->isEmpty())
+                unsupported("the load factor and buckling displacement responses take the derivative of its moving "
+                            "constraint equations with the responses of a SAERO subcase only, and none is "
+                            "differentiated here; keep the grid points of the element moving together, or leave the "
+                            "buckling responses out of these gradients");
             base::DiagnosticSink sink;
             if (!assembly::RigidElementEquations(m_dofMap).interpolationDerivative(
                     table, element.beginRow, element.endRow, velocity, rates.emplace_back(), sink))
@@ -4189,6 +4209,32 @@ protected:
         return *rate;
     }
 
+    // The DOF map of one side of a perturbation (its element set `set`), for the loads of subcase `subcase` on that
+    // side: the side's own points, then the entities of the side's own formulation model in the static layout, those
+    // its element set carries (FieldPerturbation) and those m_dofMap numbers at the design point (the loads are those
+    // of static subcases, on gSize() DOFs: the modal layout of m_modalDofMap is not theirs). Without the entities the
+    // map of a MixedHybridFormulation model stops at the points: the load vector of gSize() values is refused and the
+    // mass of an inertial load finds no entity DOF. A side keeps the points and the connectivity of the design point,
+    // so its entities are taken as the design point's in the same order, as the element differences of the sides
+    // take them already (their DOFs are numbered by m_dofMap); a side with another DOF count is refused (its load
+    // vector could not be differenced DOF by DOF).
+    [[nodiscard]] assembly::DofMap sideDofMapOf(const assembly::ElementSet& set, std::size_t subcase) const
+    {
+        const elements::SnapshotIndex& index = set.index();
+        assembly::DofMap sideMap(index.snapshot().nodes(), index.points(),
+                                 elements::formulationModelOf(index, elementRegistry()),
+                                 elements::EntityLayout::Kind::Static);
+        if (sideMap.gSetSize() != m_dofMap.gSetSize())
+            throw base::OptimisationError(base::concatenate(
+                {"the sensitivities of the loads of subcase ", std::to_string(m_subcases[subcase].subcase.label),
+                 ": expected the ", std::to_string(m_dofMap.gSetSize()),
+                 " degrees of freedom of the design point on a perturbed side of the design, found ",
+                 std::to_string(sideMap.gSetSize()),
+                 " (the perturbation changes the unknowns of the element formulation, so the loads of the sides "
+                 "cannot be differenced); leave the variable of that designed quantity out of these gradients"}));
+        return sideMap;
+    }
+
     // ∂P/∂v of one family of loads of a subcase, from the whole load vectors on the perturbed snapshots (the
     // distributed loads of an element whose field changes them; the inertial loads M·a of a mass that changes: they are
     // linear in the mass matrix, assembled on each side).
@@ -4203,8 +4249,8 @@ protected:
             // The loads of a side read its own tables and positions: the directions and frames a shape
             // derives again (loadsTable, inertialLoadsTable), the moved positions of the radius of an
             // RotationalForceLoad or the location of an ACCEL. The side's DOF map numbers the DOFs as the design
-            // point's (the same points).
-            const assembly::DofMap sideMap(set.index().snapshot().nodes(), set.index().points());
+            // point's (sideDofMapOf).
+            const assembly::DofMap sideMap = sideDofMapOf(set, subcase);
             base::BudgetedBuffer<double> loads(m_budget, gSize(), "sensitivity load difference");
             std::fill(loads.data(), loads.data() + gSize(), 0.0);
             const assembly::LoadVectorBuilder builder(set, sideMap, m_budget);
@@ -4309,8 +4355,45 @@ protected:
                 }
                 compressRow(item.ownExplicit);
                 ChainedAdjoint::chain(key, m_linearised);
+                labelEquationItem(equation, key);
             }
         }
+    }
+
+    // The subcase of an equation item once its weights are chained: c_e = Σ_k ∂h/∂r_k·c_k (ChainedAdjoint::chain) is
+    // on the displacements of the static subcase its arguments read, and that subcase is where the direct, adjoint and
+    // chained orders (solveSubcases), the stream (GradientStream) and the products of design/external and design/aids
+    // look for the item. For an equation of a STATICS subcase it is the label of its values already. For an equation
+    // evaluated in a BUCK subcase it is the preload subcase of its load factors (initialiseItems), which the label of
+    // its values (the BUCK subcase, never a static one) does not give: left there, the item was never solved and its
+    // gradient missed c_e·du/dx. An item none of whose arguments reads the displacements (EIGN, FREQ, WEIGHT, a
+    // repeated load factor, the items of a SAERO subcase: their rows are complete) keeps its label, and its gradient
+    // is its explicit part. The arguments are items linearised before it (the equations come in their dependency
+    // order), so an equation of equations takes the subcase its inner equations took. The labels of the values
+    // (ResponseValues::items) do not change.
+    // Throws OptimisationError when the arguments read the displacements of two subcases: an item is solved on one.
+    void labelEquationItem(const EquationResponse& equation, const ItemKey& key)
+    {
+        ItemLinearisation& item = m_linearised.at(key);
+        std::optional<std::int32_t> read; // the subcase whose displacements the arguments read
+        for (const auto& [argument, weight] : item.arguments)
+        {
+            const ItemLinearisation& source = m_linearised.at(argument);
+            if (!source.readsDisplacements())
+                continue;
+            if (read && *read != source.subcase)
+                throw base::OptimisationError(base::concatenate(
+                    {"the sensitivity of ", equation.definition().card, " ", std::to_string(equation.definition().id),
+                     " (", valuesAt(key.response).label, "), item ", std::to_string(key.item),
+                     ": its arguments read the displacements of subcase ", std::to_string(*read), " and of subcase ",
+                     std::to_string(source.subcase),
+                     ", and the gradient of one item is solved on one static subcase (a partial gradient is not "
+                     "returned); give the equation arguments that read one subcase, one equation response per "
+                     "subcase"}));
+            read = source.subcase;
+        }
+        if (read)
+            item.subcase = *read;
     }
 
     void solveSubcases()

@@ -27,7 +27,13 @@ Folders: `common/`, `sol101/`, `sol103/`, `sol105/`, `sol144/`, `superelements/`
   displacements (see output/arrays/ResultCombination.hpp): the non-linear columns stay exact without a per-family rule,
   and for more than a few tens of basis vectors a recovery costs no more than a combination.
 - With Parameter DofSetPrint >= 0 the static solution keeps the UserDofSet table of each constraint set (`StaticResults::usetTables`: the sets G, M, S, F, R, L;
-  DofSetPrintSelection is not read).
+  DofSetPrintSelection is not read). That table and the grid point weight generator (Parameter WeightReferenceNode)
+  are made on the full path, from its DOF sets and its mass: on the condensed and streamed paths an information
+  diagnostic `output-not-produced` says that they are not.
+- `StaticOptions::appliedLoads` (loads the caller adds to one case) is taken on the full path only: refused
+  (`std::invalid_argument`) with a condensation plan that condenses a unit or on the streamed path.
+- The full path streamed refuses an enforced displacement of any subcase of a constraint set: each case is given its
+  own SPC set (`StreamedStatics::GroupInputs::spcSets`), as on the full path.
 - `common/FsetSolver`: the ordering, symbolic analysis, l-set numbering (the f set without the r set of FreeBodySupport),
   conversion and positive definite factorisation of Knn (MaxDiagonalRatio, SingularityBailOut), and the solves; reusable by every sequence
   that factorises Kff.
@@ -113,8 +119,11 @@ for full and streamed statics, for the mass of a real eigenvalue analysis and fo
   buckling subcase's constraints, K_d from `assembly::DifferentialStiffnessAssembler` on K's pattern reduced to the n
   set, the solve on `linalg::BucklingPencil`, the eigenvalue table (generalised stiffness s², "generalised mass"
   s²/λ), the tables of the shapes appended to the static result arrays. The preload of a buckling subcase: the column
-  `staticSubcaseSelection` of subcasesTable when O_o_Model gives it; else the subcase itself when it has a LoadCombination or
-  TEMPERATURE(LoadCombination); else the static subcase just before it.
+  `staticSubcaseSelection` of subcasesTable when O_o_Model gives it; else the first static subcase of the deck (the
+  first subcase without a method that is not a combination, wherever the buckling subcase stands and whatever it
+  selects itself); in a deck without a static subcase, the subcase itself when it has a LoadCombination or
+  TEMPERATURE(LoadCombination). A method range of a buckling analysis may lie wholly below 0 (the load factors are of
+  either sign: `common/EigenMethod`).
 
 The PARAMs read in addition: CoupledMass and WeightToMass for the mass of the modes, WeightReferenceNode for both.
 
@@ -225,7 +234,8 @@ slopes E = S·K_ll⁻¹·T, then per subcase the pressures of each trim variable
 structure (dense LU of D − AEQR·q·E), the derivative table (rigid unsplined and splined, elastic and inertial,
 restrained and unrestrained), the trim (aero::TrimSystem on the equilibrium of the supported motions), the hinge
 moments and the trimmed displacements (u_r = 0). The rigid-body modes of the supports come from the geometry, not
-from the stiffness.
+from the stiffness. Enforced displacements are refused subcase by subcase (`trim-enforced`): the value of an SPC card,
+and an EnforcedMotionConstr that the subcase's load set brings.
 
 ## External units on the full path
 
@@ -260,6 +270,8 @@ superelements of the external matrix file type, one level upstream of the residu
 - `SuperelementSolution`: the residual structure solved as the interface problem through `common/ConstrainedSystem`
   (`extraCouplings`, `addStiffness`, `heldDofs`, and `uncheckedDofs` so that AutoSingularityConstr leaves the q set free), then each
   part recovered and its tables made on its own model in the subcases its SuperelementProcessing selects (`SuperelementOutput`).
+  Its static subcases are grouped by constraint set as the static solution groups them (the same MPC set, glued
+  contact and constrained DOFs, EnforcedMotionConstr included), its modal subcases by constraints, contact and method.
 
 ## The trim on the condensed path
 
@@ -295,7 +307,8 @@ constraint set carries the formulation's constraints (`FactorisedSet::formulatio
 - `common/RunChecks::reportKeptPivots`: a factor kept with failed pivots (Parameter SingularityBailOut -1) gives a warning
   `max-diagonal-ratio-exceeded` naming the DOFs (the full path's f set and the condensed path's interface).
 - `common/EigenMethod`: a method range the Lanczos solver cannot take (a bound not finite, V1 not below V2, V2 not
-  above 0 when the roots are sought from the lowest) is an error diagnostic `method-range` naming the card's field.
+  above 0 when the roots of a vibration analysis are sought from the lowest; for a buckling analysis, whose load
+  factors are of either sign, only V1 not below V2) is an error diagnostic `method-range` naming the card's field.
 - `sol101/StaticSolution`: a SingularityError of the condensed path has no zero-energy shapes (they are computed on the
   f set of the full stiffness, never assembled there); its message says to run the full path to have them.
 - Damaged tables: a damaged column of any input table (wrong type, nulls, out-of-range values) ends in an error of the

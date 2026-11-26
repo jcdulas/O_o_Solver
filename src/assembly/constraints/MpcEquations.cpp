@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace oos::assembly
@@ -27,6 +28,9 @@ base::Diagnostic mpcDiagnostic(std::string code, base::EntityId setId, std::int3
 // The optional column of multiPointConstrTable that names the MPC card of each row (the MultiPointConstrUnion
 // membership).
 constexpr const char* SOURCE_SET_ID_COLUMN = "sourceSetId";
+
+// The Case Control command that selects the MPC set of a subcase: what the diagnostic of a set no card defines names.
+constexpr std::string_view MPC_SELECTION_COMMAND = "MultiPointConstrSelection";
 
 } // namespace
 
@@ -101,14 +105,32 @@ void MpcEquations::readEquations(const input::ConstraintTable& constraints, cons
 
     std::size_t rowCount = 0;
     std::size_t equationCount = 0;
+    bool isSetDefined = false; // a row of the table names the set (kept or not)
     for (std::size_t row = 0; row < setIds.size(); ++row)
     {
-        if (setIds[row] != setId || !isKept(row))
+        if (setIds[row] != setId)
+            continue;
+        isSetDefined = true;
+        if (!isKept(row))
             continue;
         ++rowCount;
         // multiPointConstrTable is sorted by set, equation, term: an equation starts where the equation number changes.
         if (row == 0 || setIds[row - 1] != setId || equations[row - 1] != equations[row])
             ++equationCount;
+    }
+    // A selected set that no card defines (a mistyped ID) would tie nothing without a word.
+    if (!isSetDefined)
+    {
+        base::Diagnostic diagnostic;
+        diagnostic.code = "mpc-unknown-set";
+        diagnostic.card = std::string(MPC_SELECTION_COMMAND);
+        diagnostic.id = setId;
+        diagnostic.message = base::concatenate(
+            {"expected the equations of constraint set ", std::to_string(setId), ", which a ", MPC_SELECTION_COMMAND,
+             " selects, found none (no MultiPointConstr or MultiPointConstrUnion row of that set in "
+             "multiPointConstrTable): the set would tie nothing; correct the set ID or add its MultiPointConstr "
+             "cards"});
+        sink.report(std::move(diagnostic));
     }
     m_offsets = base::BudgetedBuffer<std::int64_t>(budget, equationCount + 1, "MPC equation offsets");
     m_terms = base::BudgetedBuffer<ConstraintTerm>(budget, rowCount, "MPC equation terms");

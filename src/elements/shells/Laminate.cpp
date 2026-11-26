@@ -36,22 +36,14 @@ struct PlyRows
     std::int64_t last = 0;
 };
 
-// The transverse shear modulus of a ply in direction d (0: x, 1: y) of the material frame of the element: the tensor
-// (G1Z, G2Z) of the ply axes rotated by the ply angle θ, G_xz = G1Z cos²θ + G2Z sin²θ, G_yz = G1Z sin²θ + G2Z cos²θ.
-[[nodiscard]] double plyShearModulus(const LaminatePly& ply, std::size_t d)
-{
-    const double c2 = std::cos(ply.angle) * std::cos(ply.angle);
-    const double s2 = 1.0 - c2;
-    const std::array<double, 2>& g = ply.material.transverseShear;
-    return d == 0 ? g[0] * c2 + g[1] * s2 : g[0] * s2 + g[1] * c2;
-}
-
 // The transverse shear of a laminate in direction d (x with Q̄11, y with Q̄22) from the bending stress
 // distribution of cylindrical bending about the neutral axis zn = B/A (Whitney, "Structural Analysis of Laminated
 // Anisotropic Plates", §4.6). Per unit shear force, the equilibrium ∂σ/∂x + ∂τ/∂z = 0 gives
 //   τ(z) = −S(z) / D*,  S(z) = ∫_bottom^z Q̄dd (ζ − zn) dζ,  D* = D − B²/A,
 // and the shear energy gives the stiffness 1/H = ∫ τ² / G dz (κ G t, κ = 5/6, for one material). τ is quadratic in
-// each ply: three Gauss points integrate τ² exactly. Sets H and the τ at the top of each ply.
+// each ply: three Gauss points integrate τ² exactly. A ply rigid in the direction (plyShearModulus 0: a blank G1Z or
+// G2Z) carries its shear stress without strain: it adds nothing to the integral (1/G = 0). Sets H and the τ at the
+// top of each ply. Precondition: a ply at least is flexible in the direction (isRigidIn false).
 void setTransverseShear(Laminate& laminate, std::size_t d)
 {
     double a = 0.0;
@@ -79,7 +71,8 @@ void setTransverseShear(Laminate& laminate, std::size_t d)
         const double g = plyShearModulus(ply, d);
         const double half = 0.5 * (ply.zTop - ply.zBottom);
         const double middle = 0.5 * (ply.zTop + ply.zBottom);
-        for (std::size_t k = 0; k < GAUSS_POINTS.size(); ++k)
+        const bool isFlexible = g > 0.0;
+        for (std::size_t k = 0; isFlexible && k < GAUSS_POINTS.size(); ++k)
         {
             const double tau = (below + firstMoment(e, ply.zBottom, middle + half * GAUSS_POINTS[k])) / reducedRigidity;
             compliance += GAUSS_WEIGHTS[k] * half * tau * tau / g;
@@ -88,6 +81,15 @@ void setTransverseShear(Laminate& laminate, std::size_t d)
         ply.shearAtTopPerForce[d] = -below / reducedRigidity;
     }
     laminate.transverseShear[d] = 1.0 / compliance;
+}
+
+// A laminate is rigid in transverse shear in direction d when every one of its plies is (plyShearModulus 0): it then
+// has no shear flexibility there and the kernels take their own shear stiffness. One flexible ply is enough for the
+// laminate to be flexible (a sandwich whose faces leave G1Z and G2Z blank shears in its core).
+[[nodiscard]] bool isRigidIn(const Laminate& laminate, std::size_t d)
+{
+    return std::all_of(laminate.plies.begin(), laminate.plies.end(),
+                       [d](const LaminatePly& ply) { return !(plyShearModulus(ply, d) > 0.0); });
 }
 
 // A stack whose plies all have the same material and the same angle (one material through the thickness).
@@ -191,6 +193,25 @@ struct TheoryReading
 
 } // namespace
 
+double plyShearModulus(const LaminatePly& ply, std::size_t d)
+{
+    const double c2 = std::cos(ply.angle) * std::cos(ply.angle);
+    const double s2 = 1.0 - c2;
+    // The shares of the ply axes 1 and 2 in direction d: (cos²θ, sin²θ) along x, (sin²θ, cos²θ) along y.
+    const std::array<double, 2> share = d == 0 ? std::array<double, 2>{c2, s2} : std::array<double, 2>{s2, c2};
+    const std::array<double, 2>& g = ply.material.transverseShear;
+    double modulus = 0.0;
+    for (std::size_t axis = 0; axis < 2; ++axis)
+    {
+        if (share[axis] <= PLY_AXIS_SHARE_ROUND_OFF)
+            continue; // the direction is across this ply axis: its modulus plays no part
+        if (!(g[axis] > 0.0))
+            return 0.0; // a blank modulus is an infinite one: rigid as soon as the direction has a share of its axis
+        modulus += share[axis] * g[axis];
+    }
+    return modulus;
+}
+
 LaminateColumns::LaminateColumns(const ElementBatchView& view) : materials(view)
 {
     const input::ModelSnapshot& snapshot = view.snapshot();
@@ -262,8 +283,6 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
     std::int32_t cardPlies = 0;
     for (std::int64_t p = rows.first; p < rows.last; ++p)
         cardPlies += mirrored[p] ? 0 : 1;
-    bool isRigidInX = false;
-    bool isRigidInY = false;
     for (std::int64_t p = rows.first; p < rows.last; ++p)
     {
         const auto r = static_cast<std::size_t>(p);
@@ -311,9 +330,6 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
         }
         laminate.thickness += ply.thickness;
         laminate.massPerArea += ply.material.density * ply.thickness;
-        // A ply rigid in transverse shear (G1Z or G2Z blank) makes the laminate rigid in that direction.
-        isRigidInX = isRigidInX || !(ply.material.transverseShear[0] > 0.0);
-        isRigidInY = isRigidInY || !(ply.material.transverseShear[1] > 0.0);
         laminate.plies.push_back(std::move(ply));
     }
     // A blank Z0 is −T/2 and follows the plies' thicknesses (CompProp); the card says whether it was given from data
@@ -332,10 +348,9 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
     if (!isAnyPlyAsked)
         for (LaminatePly& ply : laminate.plies)
             ply.hasOutput = true;
-    const std::array<bool, 2> isRigid{isRigidInX, isRigidInY};
     for (std::size_t d = 0; d < 2; ++d)
     {
-        if (isRigid[d])
+        if (isRigidIn(laminate, d))
             continue;
         setTransverseShear(laminate, d);
         // Every ply of a homogeneous stack (one material, one angle) takes the mean shear; a stack of several materials

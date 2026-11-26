@@ -14,9 +14,10 @@ folders in that order, which is the order in which the pieces depend on one anot
   rotations and the positions come from the snapshot.
 - `constraints/SpcSet`: the single-point constraints of a subcase — sg from Node PS, sb from the SinglePointConstr/SinglePointConstrList rows of the
   selected SinglePointConstr set and the EnforcedMotionConstr rows of the selected LoadCombination set (singlePointConstrTable of O_o_Model, SinglePointConstrUnion expanded), and the
-  nonzero enforced values (EnforcedMotionConstr overrides the SinglePointConstr value of the same DOF).
+  nonzero enforced values (EnforcedMotionConstr overrides the SinglePointConstr value of the same DOF). A selected set that no card defines
+  is an error (`spc-unknown-set`).
 - `constraints/MpcEquations`: the MultiPointConstr equations of the selected MultiPointConstr set (multiPointConstrTable, MultiPointConstrUnion expanded), first term
-  dependent.
+  dependent. A selected set that no card defines is an error (`mpc-unknown-set`).
 - `constraints/RigidElementEquations`: the dependent DOFs of one rigid element as combinations of its other DOFs:
   RigidBodyMulti, RigidBodyStar, RigidBar by the rigid transfer from six independent DOFs, RigidRod by the extension equation, RigidInterpolation by the
   weighted least-squares fit (rotational weights scaled by Lc², REFC or UM dependent). Other rigid cards are refused.
@@ -186,7 +187,27 @@ These rules are stated in the code where they are applied and tested on hand-mad
 - The RigidInterpolation rotational weights are WTi·Lc², Lc the mean distance of the independent grid points to the reference point.
 - The UserDofSet table layout is this project's own.
 - GravityLoad is Mgg·r with r the rigid translation by the acceleration, WeightToMass applied to Mgg.
-- A blank BeamDistributedLoad P2 is taken as P1, as O_o_Model gives it, also when X2 is given.
+- A blank BeamDistributedLoad P2 is taken as P1, as O_o_Model gives it, also when X2 is given (a uniform load from X1
+  to X2); a null `p2` of a table built by hand is read as P1 too.
+- A set a subcase selects must be defined by a card: an SPC set without a row of a constraint card in
+  singlePointConstrTable (`spc-unknown-set`, SpcSet), an MPC set without a row in multiPointConstrTable
+  (`mpc-unknown-set`, MpcEquations), a TEMPERATURE(LOAD) or TEMPERATURE(INITIAL) set without a row in temperatureTable
+  (`load-unknown-set`, TemperatureField) and a LOAD set without a row in any table that can carry it (loadsTable,
+  pressureTable, lineLoadsTable, inertialLoadsTable, temperatureTable, an EnforcedMotionConstr of
+  singlePointConstrTable: `load-unknown-set`, LoadVectorBuilder) are errors, as is a set a LoadCombination combines that
+  no card defines: a mistyped ID would otherwise hold, tie or load nothing without a word. A snapshot taken without
+  the table of a kind of set is not checked for it. Each model of a run with superelements defines the sets its
+  subcases select in its own Bulk Data.
+- A FacePressureLoad written as a line load (its surfaceOrLine word is Line: a load per unit length along the edges of
+  the element) is refused (`load-unsupported`), never applied as a pressure; a pressureTable without the column is
+  read as pressures on faces.
+- The thermal expansion of a rigid element is not computed: under a thermal load, the rigid elements whose card gives
+  a non-zero expansion coefficient (rigidElementsTable's optional `alpha`) are an error
+  (`rigid-expansion-unsupported`, LoadVectorBuilder::checkThermalLoads); without a thermal load the coefficient plays
+  no part and is accepted.
+- A non-structural mass on a property reaches the elements whose property card is the one the card names
+  (nonStructMassTable's optional `propertyType` against the `propType` of the element batches); a table without the
+  column reaches every element of the property ID.
 
 ## Differential stiffness
 

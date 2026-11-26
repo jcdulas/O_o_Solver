@@ -9,7 +9,8 @@ import { cases } from "./register.mjs";
 
 const ALL_SUITES = ["smoke", "optimization", "modal-derivatives", "trim-derivatives", "buckling-derivatives",
   "beam-derivatives", "studies", "static-inputs", "threading", "static-matrix", "connections", "controls",
-  "mixed-hybrid", "mixed-hybrid-geometry", "mixed-hybrid-energy", "condensation", "streamed", "reader-fixes", "bar-stations"];
+  "mixed-hybrid", "mixed-hybrid-geometry", "mixed-hybrid-energy", "condensation", "streamed", "reader-fixes", "bar-stations",
+  "review-assembly", "review-bindings", "review-design", "review-elements", "review-reduction", "review-solutions"];
 const SLOWEST_SHOWN = 8;
 
 const words = process.argv.slice(2);

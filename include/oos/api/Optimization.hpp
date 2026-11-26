@@ -42,6 +42,14 @@ struct OptimizationSettings
     return variable.initialValue < 0. ? -variable.initialValue : variable.initialValue;
 }
 
+// The rate of a normalised constraint with its response value, dg/dr: 1/GNORM for an upper bound, -1/GNORM for a
+// lower one, with the normalisation the evaluation uses (design::ConstraintNormalisation). Every interface reports
+// this one value beside a constraint, so that the weights a caller builds from it follow the solver's constraints.
+[[nodiscard]] inline double constraintDerivativeScale(const design::ConstraintValue& constraint) noexcept
+{
+    return design::ConstraintNormalisation{}.derivative(constraint.side, constraint.bound);
+}
+
 struct OptimizerValues
 {
     std::optional<double> objective;

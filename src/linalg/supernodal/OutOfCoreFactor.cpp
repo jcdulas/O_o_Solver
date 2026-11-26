@@ -11,6 +11,7 @@
 #include "oos/linalg/supernodal/FactorSolve.hpp"
 
 #include <algorithm>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -23,6 +24,44 @@ using namespace sweeps;
 
 namespace
 {
+
+// Consecutive supernodes [first, end) whose records are consecutive on the spool (one writer, its blocks): one read.
+struct RecordRun
+{
+    std::int32_t first = 0;
+    std::int32_t end = 0;
+    std::uint64_t offset = 0;
+    std::uint64_t bytes = 0;
+};
+
+// The run that starts at supernode s, within [s, last].
+RecordRun runFrom(std::span<const SpoolRecord> records, std::int32_t s, std::int32_t last)
+{
+    const SpoolRecord& start = records[static_cast<std::size_t>(s)];
+    RecordRun run{s, s + 1, start.offset, start.bytes};
+    while (run.end <= last && records[static_cast<std::size_t>(run.end)].offset == run.offset + run.bytes)
+        run.bytes += records[static_cast<std::size_t>(run.end++)].bytes;
+    return run;
+}
+
+// The bytes read for a run: its own, or, from a file without the system's cache, the whole aligned pieces of the file
+// that hold them (`lead` bytes of them before the run's first).
+struct RunRead
+{
+    std::uint64_t offset = 0;
+    std::uint64_t bytes = 0;
+    std::uint64_t lead = 0;
+};
+
+RunRead readOf(const RecordRun& run, bool isAligned)
+{
+    if (!isAligned || run.bytes == 0)
+        return {run.offset, run.bytes, 0};
+    constexpr std::uint64_t ALIGNMENT = base::ScratchFile::ALIGNMENT;
+    const std::uint64_t first = run.offset / ALIGNMENT * ALIGNMENT;
+    const std::uint64_t end = (run.offset + run.bytes + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT;
+    return {first, end - first, run.offset - first};
+}
 
 FactorOptions indefiniteOf(const FactorOptions& options)
 {
@@ -79,35 +118,45 @@ OutOfCoreTraffic OutOfCoreFactor::traffic() const noexcept
 void OutOfCoreFactor::load(std::int32_t first, std::int32_t last)
 {
     base::Stopwatch watch;
-    std::uint64_t total = 0;
-    for (std::int32_t s = first; s <= last; ++s)
-        total += m_records[static_cast<std::size_t>(s)].bytes;
-    if (m_window.size() < total)
-        m_window = SpoolBuffer(*m_budget, static_cast<std::size_t>(total), "factor out of core: resident panels");
-    // The records of consecutive supernodes are mostly consecutive on the spool (one writer, its blocks): one read
-    // for each run of them.
-    std::uint64_t at = 0;
-    std::int32_t s = first;
-    while (s <= last)
+    // MEMORY: a file without the system's cache is read by aligned requests. The records of a unit are not aligned, so
+    // each read went through a bounce buffer of its size (ScratchSpool::readSpan), reserved in the budget beside the
+    // window: twice the unit's panels while they were read, which no plan of the solves counts. Here the aligned
+    // pieces of the file that hold a run are read straight into the window (itself aligned), and the panels point
+    // inside them: the window alone, a few kilobytes larger. The bytes of the panels are the same.
+    const bool isAligned = m_spool->isUnbuffered();
+    std::uint64_t recordBytes = 0;
+    std::uint64_t windowBytes = 0;
+    for (std::int32_t s = first; s <= last;)
     {
-        const SpoolRecord& start = m_records[static_cast<std::size_t>(s)];
-        std::uint64_t bytes = start.bytes;
-        std::int32_t end = s + 1;
-        while (end <= last && m_records[static_cast<std::size_t>(end)].offset == start.offset + bytes)
-            bytes += m_records[static_cast<std::size_t>(end++)].bytes;
-        if (bytes > 0)
+        const RecordRun run = runFrom(m_records, s, last);
+        recordBytes += run.bytes;
+        windowBytes += readOf(run, isAligned).bytes;
+        s = run.end;
+    }
+    if (m_window.size() < windowBytes)
+        m_window = SpoolBuffer(*m_budget, static_cast<std::size_t>(windowBytes), "factor out of core: resident panels");
+    // The reads follow each other in the window: aligned ones keep its positions aligned.
+    std::uint64_t at = 0;
+    for (std::int32_t s = first; s <= last;)
+    {
+        const RecordRun run = runFrom(m_records, s, last);
+        const RunRead read = readOf(run, isAligned);
+        if (read.bytes > 0)
         {
-            m_spool->readSpan(start.offset, bytes, m_window.data() + at);
+            m_spool->readSpan(read.offset, read.bytes, m_window.data() + at);
             ++m_traffic.readRequests;
         }
-        for (std::int32_t k = s; k < end; ++k)
+        std::uint64_t panelAt = at + read.lead;
+        for (std::int32_t k = run.first; k < run.end; ++k)
         {
-            m_factor.m_panelPointer[static_cast<std::size_t>(k)] = reinterpret_cast<double*>(m_window.data() + at);
-            at += m_records[static_cast<std::size_t>(k)].bytes;
+            m_factor.m_panelPointer[static_cast<std::size_t>(k)] =
+                reinterpret_cast<double*>(m_window.data() + panelAt);
+            panelAt += m_records[static_cast<std::size_t>(k)].bytes;
         }
-        s = end;
+        at += read.bytes;
+        s = run.end;
     }
-    m_traffic.readBytes += total;
+    m_traffic.readBytes += recordBytes;
     m_traffic.readSeconds += watch.lap();
 }
 

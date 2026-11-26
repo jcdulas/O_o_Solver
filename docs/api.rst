@@ -145,6 +145,10 @@ JavaScript and TypeScript
 
 Load the built package from ``build/wasm/dist/index.js``. The declarations below describe its public interface.
 
+An option object accepts only the keys its declaration lists. Another key in the options of ``modelFromReader``,
+in the settings of ``run``, in a condensation given as an object or in a study definition throws a ``TypeError``
+that lists the accepted keys: a misspelt option never leaves its default in force without a word.
+
 .. literalinclude:: ../wasm/js/index.d.ts
    :language: typescript
    :linenos:
@@ -193,7 +197,8 @@ Import ``model_from_reader(deck, *, formulation=None)`` and
   ``point.gradients()``, ``point.jvp(direction)`` and ``point.vjp(weights)`` reuse it.
 * ``analysis={"aeroelastic": [1], "buckling": [2]}`` selects a trim and a buckling
   subcase in one design problem. Set ``StaticSubcaseSelection`` in the buckling
-  subcase to select its preload.
+  subcase to select its preload; without it the preload is the first static subcase
+  of the deck, wherever the buckling subcase stands.
 * ``point.hessian_vector(weights, direction)`` returns a dictionary with a NumPy
   array of products and a tangent report. Directions have shape (variables,) or
   (variables, directions). Weights map response IDs to vectors of item weights.

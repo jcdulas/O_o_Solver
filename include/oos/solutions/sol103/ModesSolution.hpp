@@ -45,8 +45,8 @@ struct ModesOptions
     const base::CancellationToken* cancellation = nullptr; // not owned, may be null
     ProgressMonitor* monitor = nullptr;                    // not owned, may be null
     // Whether a subcase that selects a non-structural mass set (NonStructMassSelection) is refused. The analysis adds
-    // the selected set to its mass on the full path; a caller that differentiates the modes without the set (the
-    // design sensitivities, whose mass derivatives do not form it) refuses it rather than mix two masses.
+    // the selected set to its mass on the full path; a caller that would differentiate the modes without the set
+    // refuses it rather than mix two masses (the design sensitivities form the set themselves and do not ask for it).
     bool refusesSelectedMassSets = false;
     // The memory the result tables may take; nothing: half of the memory budget left when the recovery starts.
     std::optional<std::uint64_t> outputLimitBytes;

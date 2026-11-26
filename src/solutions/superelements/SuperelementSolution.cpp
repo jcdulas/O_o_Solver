@@ -761,8 +761,13 @@ void solveStatics(const SuperelementOptions& options, const linalg::DenseKernels
         bool isPlaced = false;
         for (std::vector<std::size_t>& group : groups)
         {
+            // One constraint set as the static solution groups them: the same relations (MPC set, glued contact) and
+            // the same constrained DOFs. Two subcases of one SPC set may hold other DOFs (an EnforcedMotionConstr of
+            // the load set of one of them constrains its DOF), and would then be solved on the factor of the first.
             const StaticSubcase& first = residual.subcases[group.front()].subcase;
-            if (first.spc == residual.subcases[s].subcase.spc && first.mpc == residual.subcases[s].subcase.mpc)
+            const StaticSubcase& candidate = residual.subcases[s].subcase;
+            if (first.mpc == candidate.mpc && first.contact == candidate.contact &&
+                spcSets[group.front()].hasSameConstrainedDofs(spcSets[s]))
             {
                 group.push_back(s);
                 isPlaced = true;
@@ -996,8 +1001,10 @@ struct ResidualModes
 
 bool isSameSolve(const SubcaseOfModel& left, const SubcaseOfModel& right)
 {
-    return left.subcase.spc == right.subcase.spc && left.subcase.mpc == right.subcase.mpc && left.method &&
-           right.method && left.method->card == right.method->card && left.method->setId == right.method->setId;
+    // The glued contact of the subcase is part of its relations (as in the eigenvalue solution's own grouping).
+    return left.subcase.spc == right.subcase.spc && left.subcase.mpc == right.subcase.mpc &&
+           left.subcase.contact == right.subcase.contact && left.method && right.method &&
+           left.method->card == right.method->card && left.method->setId == right.method->setId;
 }
 
 void solveModes(const SuperelementOptions& options, const linalg::DenseKernels& kernels, Residual& residual,

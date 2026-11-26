@@ -109,7 +109,8 @@ the folders in that order, which is the order in which the pieces depend on one 
   ancestors accumulated apart and added in subtree order (the same bits whatever the threads); backward, the top first,
   then the subtrees (the bits of the sweep in supernode order).
 - `supernodal/PivotDiagnostics`: `PivotPolicy` (MaxDiagonalRatio, SingularityBailOut), the failing pivots with their equations, named for
-  the user by an `EquationNamer` of the caller.
+  the user by an `EquationNamer` of the caller; a negative pivot fails the test whatever the sign of its matrix
+  diagonal.
 - Internal: `supernodal/MultifrontalDriver` (the numeric loop, the tasks, the checks, the admission of subtrees beyond
   the plan), `supernodal/WorkBuffer` (a buffer of the working storage and the `WorkspaceMeter` that measures it),
   `supernodal/WorkspacePool` (the large blocks of the working storage kept for reuse within its bound, by size
@@ -158,8 +159,10 @@ the folders in that order, which is the order in which the pieces depend on one 
   missed), `eigen/ShiftStrategy` (where the shifts go, when the request is met), `eigen/BlockLanczos` (the driver:
   shifts, runs, locking, the M-orthonormal result).
 - Internal: `eigen/LanczosRun` (block shift-invert Lanczos at one shift: thick restart, full reorthogonalisation,
-  purification), `eigen/MassOrthogonalizer` (block Gram-Schmidt in the M-inner product, its inner products by fixed
-  pieces of rows on the threads), `eigen/EigenvectorStore` (the pairs found, locked out of every later basis).
+  purification; before it reports the space exhausted, a probe of the operator deflated of the locked vectors, whose
+  estimates send the driver to the roots a shift too near the locked ones hides), `eigen/MassOrthogonalizer` (block
+  Gram-Schmidt in the M-inner product, its inner products by fixed pieces of rows on the threads),
+  `eigen/EigenvectorStore` (the pairs found, locked out of every later basis).
 - Sparse additions: `SymmetricCsc::combine`, `hasSameStructure`, `withoutZeroTerms` and the block product
   `multiply(X, Y, pool)` (the columns by groups in one pass over the terms, each column the bits of its own product).
 - `eigen/BorderedEigenSystem`: the sparse linearisation `[K-lambda M, M phi; (M phi)^T, 0]` of a simple

@@ -350,14 +350,16 @@ void EdgeShearShellFamily<Shell>::checkThermalLoads(const ElementBatchView& view
     }
 }
 
-// The kernel's thermal loads of the element's mean temperature change and gradient, through the offset (see the
-// header: consistent with the stiffness, whatever ModelParams OffsetDefinition).
+// The kernel's thermal loads of the element's mean temperature change and gradient, without the offset unless
+// ModelParams OffsetDefinition puts the loads on it, as the pressure loads above and as every other family. Under
+// ElemOffsetsOnly, the default, the moments ZOFFS·n × F of the thermal forces F at the grid points are left out: a
+// free element with an offset is then not free of stress under a temperature rise. Under ElemOffsetZ the loads are
+// Tᵀ f, those of the stiffness Tᵀ K T, and it is.
 template <typename Shell>
 void EdgeShearShellFamily<Shell>::computeThermalLoads(const ElementBatchView& view, ElementRange range,
                                                       const ElementTemperatures& temperatures,
                                                       ElementVectorBlock& block) const
 {
-    constexpr bool THROUGH_OFFSET = true;
     const Columns columns(view);
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
@@ -369,7 +371,8 @@ void EdgeShearShellFamily<Shell>::computeThermalLoads(const ElementBatchView& vi
         const PlateThermalStrain thermal = edge_shear_detail::thermalStrainOf(data, change);
         const std::array<double, DOFS> loads =
             Shell::thermalLoads(data.geometry, data.constitutive, data.thickness, thermal);
-        block.append(row, data.frames.dofs(), data.frames.loadsToDisplacementSystems(loads, THROUGH_OFFSET));
+        block.append(row, data.frames.dofs(),
+                     data.frames.loadsToDisplacementSystems(loads, view.areLoadsOnOffsets()));
     }
 }
 

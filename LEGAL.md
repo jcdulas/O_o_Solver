@@ -14,6 +14,9 @@ document is not legal advice.
 - Code, model records, interfaces and diagnostics use neutral project names.
 - The name NASTRAN-95 identifies NASA's open-source release when cited as a scientific source.
 - The product, namespace (`oos`), libraries (`oos_*`) and package (`oos-solver`) carry no vendor name.
+- A comparison document (docs/structural-benchmark-comparison.md, docs/thin-plate-solid-bending.md) names a
+  commercial solver only as the source of a value that its vendor has published, with a link to the published page.
+  It gives the number and where it comes from; it quotes no text and copies no model or result file.
 
 ## Sources
 

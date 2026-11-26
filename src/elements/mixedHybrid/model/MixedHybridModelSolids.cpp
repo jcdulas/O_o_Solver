@@ -309,6 +309,111 @@ void MixedHybridModel::reportSkinGeometry()
     }
 }
 
+namespace
+{
+
+// A mid-side grid point is off the straight edge of a line alone when it leaves the middle of the chord by more than
+// this share of the chord (the precision of coordinates written with a few digits stays under it).
+constexpr double IGNORED_MID_SIDE_RATIO = 1.0e-4;
+
+// The warning of the quadrilateral faces of the solids that triangular shells lie on (spec section 3.6): no shell
+// covers such a face, so tie 2 is not written and the shells are tied to the solids by their grid points and by the
+// edges of the face only; the diagonal between the two triangles and the inside of the face are free of each other.
+// `triangles`: the corner grids of the triangular shells. Nothing when there is no such face.
+std::optional<base::Diagnostic> uncoveredFacesWarning(const SolidPart& solids,
+                                                      std::span<const std::array<std::size_t, 3>> triangles,
+                                                      std::span<const std::int32_t> gridIds)
+{
+    // each three grids of a quadrilateral face that no shell covers
+    std::map<std::array<std::size_t, 3>, std::size_t> faceOfThree;
+    const std::span<const SolidPartFace> faces = solids.faces();
+    for (std::size_t f = 0; f < faces.size(); ++f)
+    {
+        if (faces[f].count != 4 || faces[f].tie.coveredByShell)
+            continue;
+        for (std::size_t left = 0; left < 4; ++left)
+        {
+            std::array<std::size_t, 3> three{};
+            std::size_t next = 0;
+            for (std::size_t k = 0; k < 4; ++k)
+                if (k != left)
+                    three[next++] = faces[f].grids[k];
+            std::sort(three.begin(), three.end());
+            faceOfThree.emplace(three, f);
+        }
+    }
+    std::set<std::size_t> uncovered;
+    for (std::array<std::size_t, 3> three : triangles)
+    {
+        std::sort(three.begin(), three.end());
+        if (const auto found = faceOfThree.find(three); found != faceOfThree.end())
+            uncovered.insert(found->second);
+    }
+    if (uncovered.empty())
+        return std::nullopt;
+    const SolidPartFace& first = faces[*uncovered.begin()];
+    std::string firstGrids;
+    for (std::size_t k = 0; k < first.count; ++k)
+        firstGrids += (k == 0 ? "" : ", ") + std::to_string(gridIds[first.grids[k]]);
+    base::Diagnostic diagnostic;
+    diagnostic.severity = base::Severity::Warning;
+    diagnostic.code = "shell-triangles-on-solid-face";
+    diagnostic.message = base::concatenate(
+        {std::to_string(uncovered.size()), " quadrilateral faces of solids of ", MIXED_HYBRID_FORMULATION,
+         " have triangular shells on them: the shells are tied to such a face by its grid points and its edges only, "
+         "their common side and the inside of the face are free of each other (the first is the face of grid points ",
+         firstGrids, "); put a quadrilateral shell on the face, or solids whose faces are those triangles"});
+    return diagnostic;
+}
+
+// The warning of the edges of the solids that a line alone lies on and that have a mid-side grid point off their
+// chord (spec section 3.6): such an edge is straight, the position of the mid-side grid point is not used. Nothing
+// when there is no such edge.
+std::optional<base::Diagnostic> ignoredMidSidesWarning(const SolidPart& solids, std::span<const base::Vec3> positions,
+                                                       std::span<const std::int32_t> gridIds)
+{
+    std::size_t count = 0;
+    std::string firstEdge;
+    for (const SolidPartEdge& edge : solids.edges())
+    {
+        if (edge.tie.kind != SolidEdgeTie::Kind::Alone || edge.midSideGrid == NO_MID_SIDE_GRID)
+            continue;
+        const base::Vec3& lower = positions[edge.grids.lower];
+        const base::Vec3& higher = positions[edge.grids.higher];
+        const base::Vec3& middle = positions[edge.midSideGrid];
+        double offsetSquared = 0.0;
+        double chordSquared = 0.0;
+        for (std::size_t c = 0; c < 3; ++c)
+        {
+            const double offset = middle[c] - 0.5 * (lower[c] + higher[c]);
+            const double chord = higher[c] - lower[c];
+            offsetSquared += offset * offset;
+            chordSquared += chord * chord;
+        }
+        if (offsetSquared <= IGNORED_MID_SIDE_RATIO * IGNORED_MID_SIDE_RATIO * chordSquared)
+            continue;
+        if (count == 0)
+            firstEdge = base::concatenate({std::to_string(gridIds[edge.grids.lower]), " and ",
+                                           std::to_string(gridIds[edge.grids.higher]), " (mid-side grid point ",
+                                           std::to_string(gridIds[edge.midSideGrid]), ")"});
+        ++count;
+    }
+    if (count == 0)
+        return std::nullopt;
+    base::Diagnostic diagnostic;
+    diagnostic.severity = base::Severity::Warning;
+    diagnostic.code = "mid-side-grid-ignored";
+    diagnostic.message = base::concatenate(
+        {std::to_string(count), " edges of solids of ", MIXED_HYBRID_FORMULATION,
+         " have a line element alone on them and a mid-side grid point off their chord: a line alone is straight, so "
+         "is the edge, and the position of the mid-side grid point is not used (the first is the edge between grid "
+         "points ",
+         firstEdge, ")"});
+    return diagnostic;
+}
+
+} // namespace
+
 void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
 {
     if (m_solids.empty())
@@ -354,6 +459,17 @@ void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
     m_solidPart = std::make_unique<SolidPart>(std::move(input));
     markSkinDeclarationsUsed(index);
     reportSkinGeometry();
+    // The limits of section 3.6 that the mesh meets, said rather than applied silently.
+    std::vector<std::array<std::size_t, 3>> triangles;
+    for (const MixedShell& shell : m_shells)
+        if (shell.cornerCount == 3)
+            triangles.push_back({static_cast<std::size_t>(m_gridIndexOfRow.at(shell.gridRows[0])),
+                                 static_cast<std::size_t>(m_gridIndexOfRow.at(shell.gridRows[1])),
+                                 static_cast<std::size_t>(m_gridIndexOfRow.at(shell.gridRows[2]))});
+    if (std::optional<base::Diagnostic> warning = uncoveredFacesWarning(*m_solidPart, triangles, m_gridIds))
+        m_problems.push_back(std::move(*warning));
+    if (std::optional<base::Diagnostic> warning = ignoredMidSidesWarning(*m_solidPart, m_gridPositions, m_gridIds))
+        m_problems.push_back(std::move(*warning));
     for (const SolidPartProblem& problem : m_solidPart->problems())
     {
         const MixedSolid& solid = m_solids[problem.solid];

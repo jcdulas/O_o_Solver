@@ -96,7 +96,7 @@ void EigenItems::add(const ItemKey& key, ResponseType type, const ResponseItem& 
                     solve.scales = &candidate.scales;
                 }
             // The mass of the subcase as the modal solution assembles it (PARAM CoupledMass, WeightToMass of the
-            // subcase).
+            // subcase; the non-structural mass set it selects is read once the solve is known: readAddedMass).
             base::DiagnosticSink ignored; // the analysis reported the problems of its PARAMs
             const assembly::MassAssemblyOptions options =
                 assembly::MassAssemblyOptions::fromParams(m_in.params, label.subcase, ignored);
@@ -109,6 +109,8 @@ void EigenItems::add(const ItemKey& key, ResponseType type, const ResponseItem& 
                                    isBuckling ? "buckling" : "modes",
                                    " solve of that subcase; analyse the subcase (DesignProblem(analyses=...))"}));
         found = m_solves.size();
+        if (!isBuckling)
+            readAddedMass(*found, label.subcase);
         m_solves.push_back(std::move(solve));
     }
     const Solve& solve = m_solves[*found];
@@ -145,6 +147,39 @@ void EigenItems::add(const ItemKey& key, ResponseType type, const ResponseItem& 
     m_hasModal = m_hasModal || !isBuckling;
     m_hasBuckling = m_hasBuckling || isBuckling;
     m_items.push_back(item);
+}
+
+void EigenItems::readAddedMass(std::size_t solveIndex, std::int32_t subcase)
+{
+    if (m_in.snapshot == nullptr)
+        throw std::logic_error("EigenItems: the snapshot of the design point is not given (a bug of O_o_Solver)");
+    // The analysis reported the problems of its subcases and of the selected set.
+    base::DiagnosticSink ignored;
+    const std::vector<solutions::StaticSubcase> subcases =
+        solutions::staticSubcasesOf(*m_in.snapshot, {subcase}, ignored);
+    if (subcases.empty() || !subcases.front().nonStructuralMass)
+        return;
+    // On the design point's element set: the batches the element derivatives are asked for (massOptionsOf).
+    m_addedMass.try_emplace(solveIndex, *m_in.set, subcases.front().nonStructuralMass, *m_in.budget, ignored);
+}
+
+elements::MassOptions EigenItems::massOptionsOf(std::size_t solveIndex, const elements::ElementFamily& family) const
+{
+    elements::MassOptions options = m_solves[solveIndex].massOptions;
+    const auto added = m_addedMass.find(solveIndex);
+    if (added == m_addedMass.end())
+        return options;
+    // The element's batch is its family's: a snapshot has one batch per element card and the registry one family
+    // per card, so the family names the batch.
+    const std::span<const assembly::AssemblyBatch> batches = m_in.set->batches();
+    for (std::size_t b = 0; b < batches.size(); ++b)
+        if (batches[b].family == &family)
+        {
+            options.addedNonStructuralMass = added->second.sharesOf(b);
+            return options;
+        }
+    throw std::logic_error("EigenItems: the family of an element is not one of the design point's element set (a bug "
+                           "of O_o_Solver: report it)");
 }
 
 void EigenItems::addBucklingShape(ItemKey key, const ResponseItem& label, double value)
@@ -378,7 +413,10 @@ EigenItems::SolveConstraints& EigenItems::constraintsOf(std::size_t solveIndex)
     {
         const assembly::MassAssemblyOptions options =
             assembly::MassAssemblyOptions::fromParams(m_in.params, solve.subcase, sink);
-        const assembly::NonStructuralMassShares shares(made.model->elementSet());
+        // With the non-structural mass set the subcase selects, as the modal solution assembles its mass: M·φ is
+        // then that of the pencil the modes satisfy.
+        const assembly::NonStructuralMassShares shares(made.model->elementSet(), subcase.nonStructuralMass, budget,
+                                                       sink);
         assembly::MassAssembler(made.model->elementSet(), dofMap, shares, options).assemble(second, m_in.pool);
     }
     for (const Cluster& cluster : m_clusters)
@@ -669,7 +707,7 @@ void EigenItems::projectElement(const elements::ElementFamily& family, const ele
         {
             auto [found, isNew] = mass.try_emplace(cluster.solve);
             if (isNew)
-                found->second = massOf(solve.massOptions);
+                found->second = massOf(massOptionsOf(cluster.solve, family));
             if (!found->second.isEmpty())
             {
                 addProjection(cluster, dofsOf(found->second.dofs, true), found->second.values,

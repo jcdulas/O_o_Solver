@@ -90,8 +90,11 @@ struct PlyState
     std::array<double, 3> stress{};           // σ1, σ2, τ12
     std::array<double, 3> strain{};           // ε1, ε2, γ12 (total)
     std::array<double, 3> mechanicalStrain{}; // ε − α ΔT
-    std::array<double, 2> shear{};            // τ1z, τ2z: the interlaminar shears, ply frame
-    std::array<double, 2> shearStrain{};      // τ / G of the ply (0 for a rigid direction)
+    // The interlaminar shears (the columns t1z, t2z) and their strains (e1z, e2z) are along the material axes x, y of
+    // the element, not along the ply axes: τxz, τyz of plyShears, and γ = τ / G with the ply's modulus in the same
+    // direction (plyShearModulus: G1Z, G2Z turned by the ply angle), 0 where the ply is rigid in it.
+    std::array<double, 2> shear{};
+    std::array<double, 2> shearStrain{};
 };
 
 [[nodiscard]] std::vector<PlyState> plyStates(const ShellPlaceState& centre, const ShellSection& section)
@@ -120,7 +123,7 @@ struct PlyState
         state.shear = shears[k];
         for (std::size_t d = 0; d < 2; ++d)
         {
-            const double g = ply.material.transverseShear[d];
+            const double g = plyShearModulus(ply, d);
             state.shearStrain[d] = g > 0.0 ? state.shear[d] / g : 0.0;
         }
     }
@@ -756,7 +759,7 @@ void appendLaminateRowRates(ElementResultBlock& block, std::int64_t row, std::in
                     ? shearForceRate[d] * ply.shearAtTopPerForce[d] + shearForce[d] * rate.shearAtTopPerForce[k][d]
                     : shearForceRate[d] / laminate.thickness -
                           shearForce[d] * rate.thickness / (laminate.thickness * laminate.thickness);
-            const double g = ply.material.transverseShear[d];
+            const double g = plyShearModulus(ply, d);
             out.shearStrain[d] = g > 0.0 ? out.shear[d] / g : 0.0;
         }
     }

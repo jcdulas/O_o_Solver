@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <string>
 
 namespace oos::reduction
 {
@@ -19,6 +20,12 @@ namespace oos::reduction
 // a waiter renames it away (a rename of the same folder succeeds for one waiter only), removes it and tries again.
 // Waiters poll with a growing pause (POLL_FIRST to POLL_LONGEST). The time the folder exists without its owner file
 // (between its creation and the owner's) is covered by the folder's own time.
+//
+// The owner file holds a token of its holder (unique to this object: a random number of the process and a counter).
+// A holder that worked for longer than STALE_AGE without a refresh may have had its lock broken and taken by a waiter:
+// the folder at the lock's path is then the waiter's. So a holder releases the folder only while the owner file still
+// holds its own token, and leaves any other lock alone. (The token is read, then the folder removed: a waiter that
+// breaks the lock between the two, which needs the lock to turn stale at that very moment, is not excluded.)
 //
 // Thread-safety: one object per thread; two threads of one process wait for each other like two processes.
 // Ownership: owns the lock folder while it lives; movable, not copyable.
@@ -47,8 +54,11 @@ public:
 
 private:
     void release() noexcept;
+    // Whether the lock folder at m_path is still this object's (its owner file holds m_token).
+    [[nodiscard]] bool isStillOwned() const noexcept;
 
     std::filesystem::path m_path; // empty once released or moved from
+    std::string m_token;          // what this holder wrote in the owner file; empty when the file could not be written
 };
 
 } // namespace oos::reduction

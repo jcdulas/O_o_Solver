@@ -14,7 +14,7 @@
 import createOosSolverCore from "./oos_solver_core.js";
 import { THREADED_BUILD, MAXIMUM_THREADS } from "./build-info.js";
 import { OptimizationProblem } from "./optimization.js";
-import { OptimizationStudy, restoreStudy } from "./study.js";
+import { OptimizationStudy, restoreStudy, requireKnownKeys } from "./study.js";
 import { shapeBasisFromReader } from "./shape-basis.js";
 export { OptimizationProblem, OptimizationEvaluation } from "./optimization.js";
 export { OptimizationStudy, StudyEvaluation, restoreStudy, STUDY_DOCUMENT } from "./study.js";
@@ -127,6 +127,16 @@ const CONDENSATION_QUERIES = {
   connectionSharing: ["connectionSharing", {}],
 };
 
+// Every key of the options of modelFromReader, of its formulationGeometry, of the settings of run and of
+// runSuperelements and of a condensation given as an object: another key is refused (requireKnownKeys).
+const MODEL_OPTION_KEYS = ["elementFormulations", "elementFormulation", "formulationGeometry", "condensation"];
+const GEOMETRY_KEYS = ["smoothEdges", "sharpEdges", "rawEdges", "rawElements", "lineContinuations", "lineEnds"];
+const RUN_SETTING_KEYS = ["subcases", "memoryBytes", "threads", "condensation", "streamed", "externalUnits",
+  "envelopes", "keepsCaseTables"];
+const CONDENSATION_KEYS = ["units", "fullUnits", "retainedNodes", "modeCount", "memoryMode", "cache",
+  "cacheModelTag"];
+const SUPERELEMENT_SETTING_KEYS = ["subcases", "memoryBytes", "threads"];
+
 export class OosSolver {
   constructor(core, threads = 1) {
     this.core = core;
@@ -189,8 +199,15 @@ export class OosSolver {
   // (run(model, "statics", { condensation: "all" })).
   // The model's ModelParams OffsetDefinition is read (where the mass of an offset element is; another value than
   // those the solver takes is refused by checkSupport and run).
-  // Throws an Error naming the table and the column when a table of the reader is not what the solver reads.
+  // Throws an Error naming the table and the column when a table of the reader is not what the solver reads, and a
+  // TypeError for an option the function does not have (a misspelt name would otherwise leave the default in force).
   modelFromReader(oor, deck, options = {}) {
+    requireKnownKeys(options, MODEL_OPTION_KEYS, "modelFromReader options");
+    requireKnownKeys(options.formulationGeometry, GEOMETRY_KEYS, "modelFromReader options.formulationGeometry");
+    // The units to condense are given to run; here the option only says whether the component tables are taken.
+    if (options.condensation !== undefined && typeof options.condensation !== "boolean")
+      throw new TypeError("modelFromReader options.condensation is true or false; give the units to condense to " +
+        "run (settings.condensation)");
     const reader = oor.core;
     const input = new this.core.ModelInput();
     const putTable = (name, bytes, added = null) => input.setTable(name, bytes, added);
@@ -397,7 +414,10 @@ export class OosSolver {
   }
 
   createOptimization(model, declarations = {}, settings = {}) {
-    return new OptimizationProblem(this.core.createOptimization(model, declarations, { threads: this.defaultThreads, ...settings }));
+    const handle = this.core.createOptimization(model, declarations, { threads: this.defaultThreads, ...settings });
+    // The wrapper reads the metadata of the problem: the handle is released when that fails, nobody else holds it.
+    try { return new OptimizationProblem(handle); }
+    catch (error) { handle.delete(); throw error; }
   }
 
   // `modelOptions`: the options of modelFromReader (elementFormulation, formulationGeometry...).
@@ -424,7 +444,8 @@ export class OosSolver {
   }
 
   // Runs an analysis ("statics", "modes", "buckling" or "aeroelastic") on a model.
-  // settings: { subcases?: number[], memoryBytes?: number, threads?: number, condensation?, streamed?: boolean }.
+  // settings: { subcases?: number[], memoryBytes?: number, threads?: number, condensation?, streamed?: boolean,
+  // externalUnits?, envelopes?, keepsCaseTables?: boolean }; another key throws a TypeError that lists these.
   // condensation (a model read with { condensation: true }): "all", "recommended" (every unit but those whose
   // condensed stiffness would cost more than their interior), or { units: "all" | "recommended" | unitIds,
   // fullUnits?: unitIds, retainedNodes?: gridIds, modeCount?: number, memoryMode?: "auto" | "speed" | "low_memory",
@@ -434,6 +455,8 @@ export class OosSolver {
   // Gives { nodalTables, elementTables, gridPointForces, eigenvalues, diagnostics, condensation } (condensation: null,
   // or { condensedUnits, fullUnits, interfaceDofs, note } when a condensation was asked).
   run(model, analysis = "statics", settings = {}) {
+    requireKnownKeys(settings, RUN_SETTING_KEYS, "run settings");
+    requireKnownKeys(settings?.condensation, CONDENSATION_KEYS, "run settings.condensation");
     return this.core.runAnalysis(model, analysis, { threads: this.defaultThreads, ...settings });
   }
 
@@ -443,6 +466,7 @@ export class OosSolver {
   // residual structure. Gives { superelements: [{ id, nodalTables, elementTables, eigenvalues }], diagnostics }, the
   // residual structure (id 0) first.
   runSuperelements(residual, parts, analysis = "statics", settings = {}) {
+    requireKnownKeys(settings, SUPERELEMENT_SETTING_KEYS, "runSuperelements settings");
     return this.core.runSuperelements(residual, parts, analysis, { threads: this.defaultThreads, ...settings });
   }
 

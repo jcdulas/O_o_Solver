@@ -53,7 +53,13 @@ namespace oos::elements
 //   of the shells over the square, not at the point alone. In the ClassicFormulation the piercing point of a
 //   Fastener or a Weld takes the rotation of the shell about the axes of its plane (the rotations of the grid
 //   points, by the shape functions), not the slope of the sheet between its grid points; its rotation about the
-//   normal is still that of the translations around it.
-inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 11;
+//   normal is still that of the translations around it;
+// - 12: the thermal loads of an offset ShellQuad4 or ShellTria3 at their grid points under ElemOffsetsOnly, as those
+//   of every other family since 4 (through the offset before, whatever OffsetDefinition); a laminate rigid in
+//   transverse shear in a direction only when every one of its plies is, a ply with a blank G1Z or G2Z adding no
+//   shear flexibility (one such ply made the laminate rigid before); a ShellQuad8 or ShellTria6 without shear
+//   material on the in-plane shear modulus of its bending material in the material axes (the term of the element
+//   axes before, which turned with the element).
+inline constexpr std::uint32_t ELEMENT_FORMULATION_VERSION = 12;
 
 } // namespace oos::elements

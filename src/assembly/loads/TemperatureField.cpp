@@ -21,6 +21,10 @@ namespace
 {
 
 constexpr double NO_TEMPERATURE = std::numeric_limits<double>::quiet_NaN();
+// The Case Control commands that select the temperature sets of a subcase: what the diagnostic of a set no card
+// defines names.
+constexpr std::string_view LOAD_SELECTION_COMMAND = "TemperatureSelection(LOAD)";
+constexpr std::string_view INITIAL_SELECTION_COMMAND = "TemperatureSelection(INITIAL)";
 
 base::Diagnostic temperatureProblem(std::string code, std::string_view card, base::EntityId setId, std::string message)
 {
@@ -72,8 +76,8 @@ private:
 } // namespace
 
 TemperatureField::Set TemperatureField::gather(const input::ModelSnapshot& snapshot, const input::PointIndex& points,
-                                               base::EntityId setId, base::MemoryBudget& budget,
-                                               base::DiagnosticSink& sink)
+                                               base::EntityId setId, std::string_view selection,
+                                               base::MemoryBudget& budget, base::DiagnosticSink& sink)
 {
     const auto gridCount = static_cast<std::size_t>(snapshot.nodes().rowCount());
     Set set;
@@ -93,10 +97,26 @@ TemperatureField::Set TemperatureField::gather(const input::ModelSnapshot& snaps
     const LineGradientColumns lineGradients(table);
 
     double defaultTemperature = NO_TEMPERATURE;
+    // The element rows the loop below keeps (those with a target): the buffer holds exactly them, so that the view
+    // the elements search by ID is sorted to its end.
     std::size_t elementCount = 0;
+    bool isSetDefined = false; // a row of the table names the set
     for (std::int64_t row = 0; row < table.rowCount(); ++row)
-        if (setIds[static_cast<std::size_t>(row)] == setId && targetTypes[row] == "element")
+    {
+        if (setIds[static_cast<std::size_t>(row)] != setId)
+            continue;
+        isSetDefined = true;
+        if (targetTypes[row] == "element" && isTargetGiven.isValid(row))
             ++elementCount;
+    }
+    // A selected set that no card defines (a mistyped ID) would give no temperature without a word.
+    if (!isSetDefined)
+        sink.report(temperatureProblem(
+            "load-unknown-set", selection, setId,
+            base::concatenate({"expected the temperature cards of set ", std::to_string(setId), ", which a ", selection,
+                               " selects, found none (no NodeTemperatureLoad, DefaultTemperatureLoad, "
+                               "PlateTemperatureLoad or LineElemTemperatureLoad row of that set in temperatureTable); "
+                               "correct the set ID or add its temperature cards"})));
     set.ofElements = base::BudgetedBuffer<elements::ElementTemperature>(budget, elementCount, "element temperatures");
     std::size_t next = 0;
     for (std::int64_t row = 0; row < table.rowCount(); ++row)
@@ -211,12 +231,12 @@ base::BudgetedBuffer<elements::ElementDeformation> TemperatureField::gatherDefor
 TemperatureField::TemperatureField(const input::ModelSnapshot& snapshot, const input::PointIndex& points,
                                    base::EntityId loadSet, std::optional<base::EntityId> initialSet,
                                    base::MemoryBudget& budget, base::DiagnosticSink& sink)
-    : m_load(gather(snapshot, points, loadSet, budget, sink))
+    : m_load(gather(snapshot, points, loadSet, LOAD_SELECTION_COMMAND, budget, sink))
 {
     m_view.load = {m_load.atGrid.span(), m_load.ofElements.span()};
     if (initialSet)
     {
-        m_initial = gather(snapshot, points, *initialSet, budget, sink);
+        m_initial = gather(snapshot, points, *initialSet, INITIAL_SELECTION_COMMAND, budget, sink);
         m_view.initial = {m_initial.atGrid.span(), m_initial.ofElements.span()};
     }
 }
@@ -232,11 +252,11 @@ TemperatureField::TemperatureField(const input::ModelSnapshot& snapshot, const i
             "set, found neither");
     if (loadSet)
     {
-        m_load = gather(snapshot, points, *loadSet, budget, sink);
+        m_load = gather(snapshot, points, *loadSet, LOAD_SELECTION_COMMAND, budget, sink);
         m_view.load = {m_load.atGrid.span(), m_load.ofElements.span()};
         if (initialSet)
         {
-            m_initial = gather(snapshot, points, *initialSet, budget, sink);
+            m_initial = gather(snapshot, points, *initialSet, INITIAL_SELECTION_COMMAND, budget, sink);
             m_view.initial = {m_initial.atGrid.span(), m_initial.ofElements.span()};
         }
     }

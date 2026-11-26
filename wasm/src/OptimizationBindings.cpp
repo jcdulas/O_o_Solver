@@ -734,9 +734,7 @@ val evaluationValues(api::OptimizationEvaluation& point)
                 value.set("item", double(c.item));
                 value.set("label", itemObject(c.label));
                 value.set("side", std::string(c.side == design::BoundSide::Lower ? "lower" : "upper"));
-                value.set("derivativeScale",
-                          (c.side == design::BoundSide::Lower ? -1.0 : 1.0) /
-                              std::max(std::abs(c.bound), design::DesignConstraints::DEFAULT_CONSTRAINT_SCALE));
+                value.set("derivativeScale", api::constraintDerivativeScale(c));
                 value.set("bound", c.bound);
                 value.set("value", c.value);
                 value.set("normalised", c.normalised);

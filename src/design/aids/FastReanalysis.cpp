@@ -184,7 +184,23 @@ public:
             }
         const std::shared_ptr<const input::ModelSnapshot> snapshot = m_problem.overlaySnapshot(point);
         const elements::SnapshotIndex index(*snapshot, m_budget);
-        const assembly::ElementSet set(index, m_registry);
+        // The element set of the trial point with the entities of its element formulation in the static layout (null
+        // without one), as the analysis and the element set of the design point carry them: the elements of a
+        // MixedHybridFormulation model give their matrices and loads on those entities, which m_dofMap numbers.
+        const elements::EntityLayout::Kind layout = elements::EntityLayout::Kind::Static;
+        const assembly::ElementSet set(index, m_registry, elements::formulationEntitiesOf(index, m_registry, layout));
+        // The trial point keeps the points and the connectivity of the kept one, so that its DOFs are those of
+        // m_dofMap in the same order; a trial point with another DOF count cannot use the kept factor.
+        const assembly::DofMap trialMap(snapshot->nodes(), index.points(),
+                                        elements::formulationModelOf(index, m_registry), layout);
+        if (trialMap.gSetSize() != m_dofMap.gSetSize())
+        {
+            result.fallback = base::concatenate(
+                {"full analysis: the trial point has ", std::to_string(trialMap.gSetSize()),
+                 " degrees of freedom and the kept analysis ", std::to_string(m_dofMap.gSetSize()),
+                 " (the unknowns of the element formulation change), so the kept factor does not apply"});
+            return result;
+        }
         const input::ParamTable* params = snapshot->hasTable(input::TableRole::Params) ? &snapshot->params() : nullptr;
         const assembly::LoadVectorBuilder loads(set, m_dofMap, m_budget);
         // The trial stiffness of each constraint set, assembled on the kept pattern (no factorisation).
@@ -232,7 +248,10 @@ public:
                 {
                     mass =
                         std::make_unique<linalg::BlockSparseMatrix>(system.pattern(), m_budget, "fast reanalysis mass");
-                    const assembly::NonStructuralMassShares shares(set);
+                    // The non-structural mass set the subcase selects, as the analysis takes it: without it the
+                    // inertial loads of the trial point lack the weight of that mass.
+                    const assembly::NonStructuralMassShares shares(set, state.subcase.nonStructuralMass, m_budget,
+                                                                   sink);
                     assembly::MassAssembler(
                         set, m_dofMap, shares,
                         assembly::MassAssemblyOptions::fromParams(params, state.subcase.label, sink))

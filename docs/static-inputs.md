@@ -58,6 +58,43 @@ if (report.refusals.empty()) {
 }
 ```
 
+## Selected sets must be defined
+
+A set that a subcase selects must be defined by a card of the Bulk Data. A mistyped set ID would otherwise hold, tie
+or load nothing without a word, so the run stops before solving:
+
+| Selection | Refused when | Diagnostic |
+| --- | --- | --- |
+| `SinglePointConstrSelection` | no constraint card defines the set | `spc-unknown-set` |
+| `MultiPointConstrSelection` | no multipoint constraint card defines the set | `mpc-unknown-set` |
+| `StaticLoadSelection` | no load, pressure, line load, inertial load, temperature or enforced displacement card defines the set | `load-unknown-set` |
+| `TemperatureSelection` | no temperature card defines the set | `load-unknown-set` |
+
+A set that a `LoadCombination` combines follows the same rule. A load set that only enforced displacements define is
+a defined set. In a run with superelements, each model defines the sets its own subcases select.
+
+Two forms of a load are refused rather than applied as something else: a `FacePressureLoad` written as a line load
+(`load-unsupported`), and a thermal load on a model whose rigid elements give a thermal expansion coefficient
+(`rigid-expansion-unsupported`; without a thermal load the coefficient plays no part).
+
+The checks are in `wasm/test/cases/review-assembly.mjs`.
+
+## Stiffness pivots
+
+The factorisation of the stiffness tests each pivot, and lists every degree of freedom that fails with its grid or
+scalar point and component:
+
+- a pivot that lost almost all of its stiffness to the degrees of freedom coupled with it: the matrix diagonal over
+  the factor diagonal is above `Parameter;MaxDiagonalRatio` (1e7 by default), a mechanism or nearly one;
+- a negative pivot, whatever the sign of its matrix diagonal: the stiffness is not positive definite. A spring of
+  negative stiffness that nothing else stiffens is found this way, as is a structure loaded beyond a negative term of
+  its stiffness.
+
+The run then stops, naming these degrees of freedom. `Parameter;SingularityBailOut;-1` keeps the factor instead: the
+analysis ends with the warning `max-diagonal-ratio-exceeded`, which lists the same degrees of freedom, and the results
+near them may be inaccurate. Constrain the mechanisms there (`SinglePointConstr`, `AutoSingularityConstr`) or check
+the connections and the properties, rather than keep the factor.
+
 ## Selecting added mass
 
 Select a bulk non-structural mass set in Case Control:
@@ -90,12 +127,14 @@ masses and the grid point weight read that mass. In a buckling analysis (SOL 105
 loads of the static preload, whose subcase selects it, and so in the load factors.
 
 Unknown selected sets, missing targets, invalid values and incompatible target dimensions stop the run before
-solving. Lumped set cards (`NonStructMassLumped`, `NonStructMassLumped1`) are still refused when selected:
+solving. A card reaches the elements whose property card is the one it names: `NonStructMass;20;ShellProp;1;2.` does
+not reach the elements of `RodProp;1`, and is refused as a missing target (`nsm-unknown-target`) when no element has
+a `ShellProp;1`. Lumped set cards (`NonStructMassLumped`, `NonStructMassLumped1`) are still refused when selected:
 their distribution is not implemented. A selected set is refused, naming the subcase, where its mass would be left
 out: on the condensed path of every analysis, in a static aeroelastic analysis (SOL 144), in an analysis with
-superelements, and in the eigenvalue and buckling analyses of a design problem, whose derivatives do not form the
-mass of the set. A static design problem takes it. These restrictions concern selected bulk mass sets; the existing
-mass fields in element properties remain available.
+superelements, and in the buckling analysis of a design problem, whose derivatives do not form the mass of the set.
+The static and eigenvalue analyses of a design problem take it: their derivatives form the mass of the set. These
+restrictions concern selected bulk mass sets; the existing mass fields in element properties remain available.
 
 The end-to-end checks in `wasm/test/cases/static-inputs.mjs` compare gravity displacements with the independent
 axial-rod solution, test inherited and overridden selections, unions, property mass and unit scaling, and verify

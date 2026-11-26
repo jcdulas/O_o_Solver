@@ -11,6 +11,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -125,7 +126,8 @@ public:
     };
     [[nodiscard]] const std::vector<SectionItem>& sectionItems() const noexcept { return m_sectionItems; }
 
-    // The elements the mass of FRMASS takes (its properties, or every structural element).
+    // The elements the mass of FRMASS takes: the elements of its properties, each property known by its card and its
+    // ID together (a search by element ID in a list the copies of the filter share), or every structural element.
     [[nodiscard]] ElementFilter massFilter() const;
     // The reference point of WEIGHT: the grid point of PARAM WeightReferenceNode, the origin otherwise.
     [[nodiscard]] static base::Vec3 weightReference(const input::ModelSnapshot& snapshot);
@@ -157,6 +159,9 @@ private:
     std::vector<ElementTarget> m_elements;                          // element responses
     std::vector<std::int32_t> m_plies;                              // composite responses: the laminae
     std::vector<std::pair<std::string, std::int32_t>> m_properties; // FRMASS: (property card, PID), empty for all
+    // FRMASS with properties: the IDs of their elements, sorted (an element ID is unique in a model); set whenever
+    // m_properties is not empty, shared with the filters massFilter() gives.
+    std::shared_ptr<const std::vector<std::int32_t>> m_massElements;
     std::int32_t m_weightRow = 3;
     std::int32_t m_weightColumn = 3;
     std::vector<SectionItem> m_sectionItems; // SECTLOAD, CUTLOAD

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <limits>
 #include <string>
+#include <string_view>
 
 namespace oos::assembly
 {
@@ -15,6 +16,10 @@ namespace
 
 constexpr std::array<const char*, 3> DIRECTION_COLUMNS{"directionX", "directionY", "directionZ"};
 constexpr std::array<const char*, 4> CORNER_COLUMNS{"p1", "p2", "p3", "p4"};
+// The optional column of pressureTable that says whether a FacePressureLoad is a pressure on a face ("Surface") or a
+// load per unit length along the edges of the element ("Line"), and the word of the latter.
+constexpr const char* SURFACE_OR_LINE_COLUMN = "surfaceOrLine";
+constexpr std::string_view LINE_LOAD_WORD = "Line";
 // One value of a field stands for the four corners (O_o_Model: a pressure a row when the four are equal).
 constexpr std::int32_t ONE_VALUE_FOR_FOUR = 1;
 constexpr std::int32_t FOUR_CORNERS = 4;
@@ -46,6 +51,12 @@ PressureRows::PressureRows(const input::LoadTable& loads, base::MemoryBudget& bu
     }
     m_scales = table.values<double>("scale", base::NullPolicy::Allow);
     m_validScales = table.validity("scale");
+    m_hasSurfaceWords = table.hasColumn(SURFACE_OR_LINE_COLUMN);
+    if (m_hasSurfaceWords)
+    {
+        m_surfaceWords = table.dictionaryTexts(SURFACE_OR_LINE_COLUMN, base::NullPolicy::Allow);
+        m_validSurfaceWords = table.validity(SURFACE_OR_LINE_COLUMN);
+    }
     if (!m_isFields)
     {
         m_rowCount = table.rowCount();
@@ -86,7 +97,14 @@ PressureRows::PressureRows(const input::LoadTable& loads, base::MemoryBudget& bu
             refuseFields(base::concatenate({"field ", std::to_string(f), " has ", std::to_string(m_values[at].size()),
                                             " values; expected ", std::to_string(expected)}));
         if (m_validLists.isValid(at))
+        {
+            // The lists are numbered from 0 (they index the arrays below): a negative number names none.
+            if (m_elementLists[f] < 0)
+                refuseFields(base::concatenate({"field ", std::to_string(f), " names the element list ",
+                                                std::to_string(m_elementLists[f]),
+                                                "; expected a list number of zero or more"}));
             largestList = std::max(largestList, m_elementLists[f]);
+        }
         if (m_elementIdRuns[at].size() % 2 != 0)
             refuseFields(base::concatenate({"field ", std::to_string(f), " has an odd number of run bounds"}));
         runCount += m_elementIdRuns[at].size() / 2;
@@ -176,7 +194,13 @@ PressureRow PressureRows::rowOfTable(std::int64_t row) const
         out.direction[c] =
             m_validDirection[c].isValid(row) ? m_direction[c][index] : std::numeric_limits<double>::quiet_NaN();
     out.scale = m_scales[index];
+    out.isLineLoad = isLineLoadAt(row);
     return out;
+}
+
+bool PressureRows::isLineLoadAt(std::int64_t row) const
+{
+    return m_hasSurfaceWords && m_validSurfaceWords.isValid(row) && m_surfaceWords[row] == LINE_LOAD_WORD;
 }
 
 PressureRow PressureRows::fieldRow(std::int64_t field) const
@@ -195,6 +219,7 @@ PressureRow PressureRows::fieldRow(std::int64_t field) const
         out.direction[c] =
             m_validDirection[c].isValid(field) ? m_direction[c][index] : std::numeric_limits<double>::quiet_NaN();
     out.scale = m_scales[index];
+    out.isLineLoad = isLineLoadAt(field);
     return out;
 }
 

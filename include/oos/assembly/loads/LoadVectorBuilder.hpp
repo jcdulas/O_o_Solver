@@ -55,8 +55,15 @@ namespace oos::assembly
 // ShellPressureLoad or FacePressureLoad row without an element ("load-unsupported"), an element ID that no supported
 // batch holds ("load-unknown-element"), a point the model does not have ("load-unknown-point"), a FORCE or MOMENT on a
 // scalar point, a ScalarPointLoad or a PointsPressureLoad on a grid point that is not one ("load-bad-point"), a
-// PointsPressureLoad whose points do not make a triangle or a quadrilateral of non-zero area ("load-bad-face"), and the
-// element-level refusals of the families' load facets.
+// PointsPressureLoad whose points do not make a triangle or a quadrilateral of non-zero area ("load-bad-face"), a
+// FacePressureLoad written as a line load (surfaceOrLine "Line": "load-unsupported"), and the element-level refusals
+// of the families' load facets. A load set that no card defines is an error too ("load-unknown-set"): the set a
+// subcase selects, or a set a LoadCombination combines, without a row in any table that can carry it (loadsTable,
+// pressureTable, lineLoadsTable, inertialLoadsTable, temperatureTable, an EnforcedMotionConstr row of
+// singlePointConstrTable) would load nothing without a word. addLoads, addFamilyLoads and checkLoads report it; a
+// snapshot without load tables is not checked (nothing says which sets it has). Under a thermal load, the rigid
+// elements whose card gives a thermal expansion coefficient are refused ("rigid-expansion-unsupported",
+// checkThermalLoads): their expansion is not computed.
 //
 // PointsPressureLoad (a pressure on the triangle or quadrilateral of three or four grid points, no element) is applied
 // here, as the format defines it (forEachGridPressureValue); it belongs to the distributed family.
@@ -156,7 +163,9 @@ public:
                                                                     base::MemoryBudget& budget,
                                                                     const FieldPrecision* precision = nullptr) const;
 
-    // Reports the elements whose thermal load cannot be computed under `temperatures` (the families' checks).
+    // Reports the elements whose thermal load cannot be computed under `temperatures` (the families' checks), and,
+    // with temperatures, the rigid elements that have a thermal expansion coefficient (their expansion is not
+    // computed).
     void checkThermalLoads(const elements::ElementTemperatures& temperatures, base::DiagnosticSink& sink) const;
     // Adds the thermal loads of every element under `temperatures` to `loadsG`. Precondition: checkThermalLoads()
     // found no error. Throws std::invalid_argument when the size of `loadsG` is not the g-set size.
@@ -246,6 +255,12 @@ private:
     [[nodiscard]] elements::ElementPressure elementPressureOf(const PressureRow& row,
                                                               const ElementLocation& location) const;
     void addLineLoads(base::EntityId loadSetId, std::span<double> loadsG, base::DiagnosticSink& sink) const;
+    // Whether a table that can carry a load set has a row under the SID itself (not through its terms): a load card
+    // (holdsOwnCards), a temperature card or an enforced displacement.
+    [[nodiscard]] bool isDefinedSet(base::EntityId setId) const;
+    // Reports ("load-unknown-set") the load set `loadSetId` when no card defines it, and the sets its LoadCombination
+    // combines that no card defines.
+    void reportUndefinedSets(base::EntityId loadSetId, base::DiagnosticSink& sink) const;
     // The line loads of the set per batch, in the order of the table rows.
     [[nodiscard]] std::vector<std::vector<elements::ElementLineLoad>> collectLineLoads(
         base::EntityId loadSetId, base::DiagnosticSink& sink) const;
@@ -262,6 +277,10 @@ private:
     // asked for every case that takes it, never by a pass over its rows (the cabin pressure's set in each
     // of 6 000 LOAD entries).
     base::BudgetedBuffer<std::int32_t> m_concentratedSets;
+    // The sets with rows in temperatureTable, and those with EnforcedMotionConstr rows in singlePointConstrTable,
+    // increasing (isDefinedSet; bounded by the sets of the model).
+    std::vector<base::EntityId> m_temperatureSets;
+    std::vector<base::EntityId> m_enforcedSets;
     // The text columns, read once: a read checks every index of the column, which per load set would make the
     // assembly of thousands of load sets quadratic.
     base::DictionaryView m_loadCards;

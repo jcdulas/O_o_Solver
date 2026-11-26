@@ -104,10 +104,12 @@ function deck(solution, caseLines, modelLines) {
 
 const MODES_CASE = ["SubcaseStart;1", "SinglePointConstrSelection;1", "EigenMethodSelection;3"];
 const FREE_MODES_CASE = ["SubcaseStart;1", "EigenMethodSelection;3"];
-// A static subcase (supports 1, loads 2, temperatures 7 when `thermal`) and the buckling subcase on its stresses.
+// A static subcase (supports 1 with their enforced displacements, temperatures 7 when `thermal`) and the buckling
+// subcase on its stresses. The preload of these models is enforced through the supports: no load set is selected (a
+// selected set that no card defines is refused, `load-unknown-set`).
 function bucklingCase(thermal = false) {
-  const preload = thermal ? "TemperatureSelection;7;TemperatureLoadPart" : "StaticLoadSelection;2";
-  return ["SubcaseStart;1", "SinglePointConstrSelection;1", preload, "SubcaseStart;2",
+  const preload = thermal ? ["TemperatureSelection;7;TemperatureLoadPart"] : [];
+  return ["SubcaseStart;1", "SinglePointConstrSelection;1", ...preload, "SubcaseStart;2",
     "SinglePointConstrSelection;1", "EigenMethodSelection;3", "StaticSubcaseSelection;1"];
 }
 const eigenMethod = (count) => `LanczosEigenMethod;3;;;${count}`;
@@ -625,7 +627,9 @@ function cylinderBuckling({ nt, nz, shape, distortion, radius = 1.0, thickness =
       if (i === nt) lines.push(`SinglePointConstrList;${set};${isEnd ? "56" : "156"};${id}`);
     }
   }
-  const caseLines = bucklingCase().map((line, k) => (k === 4 ? "SinglePointConstrSelection;3" : line));
+  // The buckling subcase (the second) takes the supports of set 3.
+  const caseLines = bucklingCase();
+  caseLines[caseLines.lastIndexOf("SinglePointConstrSelection;1")] = "SinglePointConstrSelection;3";
   // The classical load per unit length, E t² / (R √(3 (1 − ν²))) = 0.605 E t² / R (Timoshenko and Gere, Theory of
   // Elastic Stability, chapter 11), and the lowest load of the harmonics of this quarter (n even, m = 1, 2, ...).
   const classical = (E * thickness ** 2) / (radius * Math.sqrt(3 * (1 - NU ** 2)));

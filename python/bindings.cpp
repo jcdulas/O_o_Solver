@@ -560,7 +560,7 @@ PYBIND11_MODULE(_native, m)
                     out.append(py::dict("set_id"_a = c.setId, "response_id"_a = c.responseId, "item"_a = c.item,
                                         "side"_a = c.side == design::BoundSide::Lower ? "lower" : "upper",
                                         "bound"_a = c.bound, "value"_a = c.value, "normalised"_a = c.normalised,
-                                        "derivative_scale"_a = design::ConstraintNormalisation{}.derivative(c.side, c.bound),
+                                        "derivative_scale"_a = api::constraintDerivativeScale(c),
                                         "subcase"_a = c.label.subcase, "entity"_a = c.label.entity,
                                         "component"_a = c.label.component, "layer"_a = c.label.layer, "mode"_a = c.label.mode));
                 return out;

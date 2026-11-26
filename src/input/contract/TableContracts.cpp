@@ -78,8 +78,12 @@ TableContract contractOf(TableRole role)
                               required("nodeId", INT32), required("dof", INT32), required("coefficient", FLOAT64),
                               required("isDependent", BOOL)});
     case TableRole::RigidElements:
+        // alpha: the thermal expansion coefficient of the element, on each of its rows (null for a card without one).
+        // Optional: a table without it (an earlier O_o_Model, a table built by hand) is read as elements without
+        // expansion.
         return tableOf(role, {required("elementId", INT32), required("type", TEXTS), required("role", TEXTS),
-                              required("nodeId", INT32), required("dof", UTF8), required("weight", FLOAT64)});
+                              required("nodeId", INT32), required("dof", UTF8), required("weight", FLOAT64),
+                              optional("alpha", FLOAT64)});
     case TableRole::Loads:
         // g1 to g4 (O_o_Model contract 44): the grid points that define the direction of a PointForceLoad1,
         // PointForceLoad2, PointMomentLoad1 or PointMomentLoad2 (null for the other cards), from which a design point
@@ -91,9 +95,13 @@ TableContract contractOf(TableRole role)
                         optional("g4", INT32)},
                        {"fx", "fy", "fz", "mx", "my", "mz", "pressure", "ax", "ay", "az"});
     case TableRole::Pressures:
+        // surfaceOrLine: "Surface" or "Line" for a FacePressureLoad (a pressure on a face, or a load per unit length
+        // along the edges of the element, which the solver refuses), null for the other cards. Optional: a table
+        // without it (an earlier O_o_Model, a table built by hand) is read as pressures on faces.
         return tableOf(role,
                        {required("setId", INT32), required("card", TEXTS), required("elementId", INT32),
-                        required("faceNodes", INT32_LIST), required("frameId", INT32)},
+                        required("faceNodes", INT32_LIST), required("frameId", INT32),
+                        optional("surfaceOrLine", TEXTS)},
                        {"p1", "p2", "p3", "p4", "directionX", "directionY", "directionZ", "scale"});
     case TableRole::PressureFields:
         // O_o_Model contract 55: pressureTable(detail="fields"), a row per field (the rows of consecutive cards
@@ -101,15 +109,17 @@ TableContract contractOf(TableRole role)
         // list as (first, last) runs given on the first field of the list (empty on the later ones; elementList null
         // for a PointsPressureLoad, whose faceNodes the field holds), the pressures `values` (cornerCount of them, one
         // for four equal corners, for the field when isUniform, else for each row; a NaN the null of p1 to p4), the
-        // other columns as the rows'. Expanded in order (input::PressureRows), they are the rows of the default form to
-        // the bit.
+        // other columns as the rows' (surfaceOrLine too, optional as there). Expanded in order
+        // (assembly::PressureRows), they are the rows of the default form to the bit.
         return tableOf(role,
                        {required("setId", INT32), required("card", TEXTS), required("elementCount", INT64),
                         required("elementList", INT32), required("eidRuns", INT32_LIST),
                         required("faceNodes", INT32_LIST), required("isUniform", BOOL), required("cornerCount", INT32),
-                        required("values", REAL_LIST), required("frameId", INT32)},
+                        required("values", REAL_LIST), required("frameId", INT32), optional("surfaceOrLine", TEXTS)},
                        {"directionX", "directionY", "directionZ", "scale"});
     case TableRole::LineLoads:
+        // x2 and p2 as the solver reads them: a blank X2 is X1 (a concentrated load), a blank P2 is P1 (a uniform
+        // load from X1 to X2); a null p2 of a table built by hand is read as P1 too (assembly::LoadVectorBuilder).
         return tableOf(role,
                        {required("setId", INT32), required("card", TEXTS), required("elementId", INT32),
                         required("loadType", TEXTS), required("scaleType", TEXTS)},
@@ -199,9 +209,14 @@ TableContract contractOf(TableRole role)
                               required("loadSetId", INT32), required("loadedNodeCount", INT64),
                               required("isDistributed", BOOL), required("loadRevision", INT64)});
     case TableRole::NonStructuralMass:
+        // propertyType: for a property target, the property card the non-structural mass card names for that ID, by
+        // the name the element batches give in propType (the card of that ID when it is of the type the card names
+        // or one that counts as it: a CompProp for ShellProp, a BarShapeProp for BarProp; else the type named, which
+        // no element then has); null for an element target. Optional: a table without it (an earlier O_o_Model, a
+        // table built by hand) reaches every element of the property ID, whatever its property card.
         return tableOf(role,
                        {required("setId", INT32), required("card", TEXTS), required("targetType", TEXTS),
-                        required("targetId", INT32), required("kind", TEXTS)},
+                        required("targetId", INT32), required("kind", TEXTS), optional("propertyType", TEXTS)},
                        {"value", "mass"});
     case TableRole::OutputRequests:
         // O_o_Model outputRequestsTable (contract 31): one row per effective request of each subcase (the
@@ -331,7 +346,7 @@ TableContract contractOf(TableRole role)
     case TableRole::TrimCases:
         // O_o_Model aeroTrimCasesTable: one row per variable of each TRIM (or AeroTrim2) set, the subcases that select
         // it, its Mach number, dynamic pressure and AEQR, the variable's label, value (when fixed), state ("fixed",
-        // "free", "linked", "scheduled") and kind ("rigid_body", "control_surface", "user").
+        // "free", "linked", "scheduled") and kind ("rigidBody", "controlSurface", "user").
         return tableOf(role, {required("setId", INT32), required("subcases", INT32_LIST), required("mach", FLOAT64),
                               required("dynamicPressure", FLOAT64), optional("equivalentAspectRatio", FLOAT64),
                               required("variable", UTF8), required("value", FLOAT64), required("isFixed", BOOL),

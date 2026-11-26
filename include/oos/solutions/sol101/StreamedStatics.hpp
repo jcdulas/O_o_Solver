@@ -249,7 +249,11 @@ public:
         // (elements::BodyAcceleration, for the stresses of the solids of an element formulation); empty: none.
         std::span<const std::optional<elements::BodyAcceleration>> bodyAccelerations;
         std::span<const output::OutputPlan> plans; // per subcase
-        const assembly::SpcSet* spc = nullptr;
+        const assembly::SpcSet* spc = nullptr; // the set's constrained DOFs (its first case's)
+        // The SPC set of each subcase of the analysis (indexed as `subcases`): the cases of one constraint set hold
+        // the same DOFs but each has its own enforced values (the EnforcedMotionConstr of its load set), which the
+        // path refuses case by case. Empty: every case takes `spc`.
+        std::span<const assembly::SpcSet> spcSets;
         std::span<const base::DofIndex> supports; // the FreeBodySupport DOFs
         assembly::InertiaReliefMode relief = assembly::InertiaReliefMode::None;
         ConstraintSelection selection;

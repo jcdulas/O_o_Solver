@@ -2496,7 +2496,9 @@ test("a curved edge of ShellQuad4 in MixedHybridFormulation that follows a rigid
 
 test("a sandwich of 2D orthotropic plies without transverse shear moduli is solved in both formulations", () => {
   // A cantilever plate of 4 × 4 ShellQuad4, 2.5 thicknesses wide each, with an unsymmetric sandwich (four plies,
-  // a core, two plies) whose plies give no G1Z and G2Z: the laminate is rigid in transverse shear. ClassicFormulation
+  // a core, two plies) none of whose plies gives G1Z and G2Z: the laminate is rigid in transverse shear (one ply
+  // that gives them is enough for the laminate to shear: the core is an OrthoMat2D with the moduli of an isotropic
+  // material, E = 1e8 and ν = 0.3, not an IsoMat, whose shear modulus is also a transverse one). ClassicFormulation
   // took the general matrix of the bending section as its transverse shear there, whose Poisson term made the
   // stiffness of such elements indefinite (negative pivots); it takes that matrix without that term. The two
   // formulations then agree on the deflection under the corner force (1.8645e-4 and 1.9013e-4; ClassicFormulation
@@ -2512,7 +2514,7 @@ test("a sandwich of 2D orthotropic plies without transverse shear moduli is solv
       lines.push(`ShellQuad4;${j * n + i + 1};1;${id(i, j)};${id(i + 1, j)};${id(i + 1, j + 1)};${id(i, j + 1)}`);
   const plies = [[1, 0.1, 0], [1, 0.1, 45], [1, 0.1, -45], [1, 0.1, 90], [2, 0.5, 0], [1, 0.05, 90], [1, 0.05, 0]];
   lines.push(`CompProp;1;;0.;;;0.;0.;;${plies.map(([m, t, a]) => `${m};${real(t)};${real(a)};Yes`).join(";")}`,
-    "OrthoMat2D;1;1.3e11;9.e9;0.3;5.e9;;;1600.", "IsoMat;2;1.e8;;0.3;50.");
+    "OrthoMat2D;1;1.3e11;9.e9;0.3;5.e9;;;1600.", `OrthoMat2D;2;1.e8;1.e8;0.3;${real(1.0e8 / 2.6)};;;50.`);
   for (let j = 0; j <= n; ++j) lines.push(`SinglePointConstrList;1;123456;${id(0, j)}`);
   lines.push(`PointForceLoad;2;${id(n, n)};;1.e4;0.;0.;1.`);
   const text = lines.join("\n") + "\n";

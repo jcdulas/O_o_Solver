@@ -83,7 +83,8 @@ For response displacement weights `c`, solving `B [z; t] = [c; 0]` gives the der
 dr/dp = explicit recovery rate - z^T (K_p - lambda M_p) phi - t/2 * phi^T M_p phi
 ```
 
-The pencil is reduced by the same constraints and rigid-element map as the eigensolution. The border is sparse,
+The pencil is reduced by the same constraints and rigid-element map as the eigensolution, and its mass carries the
+non-structural mass set the subcase selects. The border is sparse,
 balanced against the stiffness scale and eliminated last with indefinite pivoting. One factor serves all requested
 field adjoints of that mode. The calculation does not require the unextracted modes or a complete modal basis.
 
@@ -109,6 +110,8 @@ columns use the element's displacement and field blocks. Frequency curvature inc
 The report sets `usesModalTangents: true` and `perturbedLinearisations: 0`. `hasHessianBlocks` refers to the separate
 static element-block path and remains false here. Requested roots share one factor per mode, including when an
 eigenvalue, its frequency and its fields are weighted together. An eigenvalue Hessian at a repeated root is refused.
+A root whose eigenvector does not satisfy the full-model pencil within 1e-6 of its terms is refused too, as for the
+first derivatives of the mode-selected fields.
 
 Unavailable second-order element/recovery formulas, derived or nonlinear sizing relations, shape directions,
 approximate condensed vibration solutions and equation responses keep the general difference-of-native-gradients

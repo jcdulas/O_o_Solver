@@ -30,6 +30,10 @@ struct PressureRow
     std::int32_t frameId = 0;
     std::array<double, 3> direction{}; // NaN when null
     double scale = 0.0;                // NaN when null
+    // A FacePressureLoad written as a line load (its surfaceOrLine word is "Line": a load per unit length along the
+    // edges of the element, not a pressure on its face). False for a table without the column (an earlier O_o_Model
+    // writes none) and for the other cards (null).
+    bool isLineLoad = false;
 };
 
 // The rows of pressureTable in either of O_o_Model's forms:
@@ -82,6 +86,8 @@ private:
     // The row of field `field` before its pressures and element: its card, set, face, system, direction, scale.
     [[nodiscard]] PressureRow fieldRow(std::int64_t field) const;
     void setCorners(std::int64_t field, std::int64_t k, PressureRow& row) const;
+    // Whether the row (or the field) `row` of the table is a FacePressureLoad written as a line load.
+    [[nodiscard]] bool isLineLoadAt(std::int64_t row) const;
 
     template <typename Visit>
     void forEachRowOfField(std::int64_t field, Visit& visit) const
@@ -126,6 +132,10 @@ private:
     std::array<base::ValidityView, 3> m_validDirection{};
     std::span<const double> m_scales;
     base::ValidityView m_validScales;
+    // The surfaceOrLine words of the FacePressureLoad rows (isLineLoadAt); read only when the table has the column.
+    bool m_hasSurfaceWords = false;
+    base::DictionaryView m_surfaceWords;
+    base::ValidityView m_validSurfaceWords;
     // The default form.
     std::span<const std::int32_t> m_elementIds;
     base::ValidityView m_validElementIds;

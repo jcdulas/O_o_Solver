@@ -39,8 +39,9 @@ struct PiercingMap
     [[nodiscard]] double at(std::size_t row, std::size_t column) const { return values[row * 6 * gridCount + column]; }
 };
 
-// The shape functions of the pierced element at the piercing point sum to 1; a larger departure means the table does
-// not hold an interpolation.
+// The shape functions of the pierced element at the piercing point sum to 1, and so do the weights of the auxiliary
+// points of a footprint and the shape functions of each of them; a larger departure means the table does not hold an
+// interpolation (interpolatePiercing and interpolateFootprint then return a problem).
 inline constexpr double PIERCING_WEIGHT_SUM_TOLERANCE = 1.0e-8;
 
 // The smallest weight of a grid point in the rigid fit that gives the rotation of the piercing point about the normal

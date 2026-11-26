@@ -70,7 +70,10 @@ struct FastReanalysisResult
 // external work of the checks), and the responses, constraints and objective evaluated on them.
 //
 // Statics only. A full analysis is asked (fallback, named) for a subcase with enforced displacements, under inertia
-// relief or a SUBCOM, and for a trial point whose shape distorts an element (the full analysis refuses or warns).
+// relief or a SUBCOM, for a trial point whose shape distorts an element (the full analysis refuses or warns), and for
+// a trial point whose degrees of freedom are not those of the kept analysis (the unknowns of its element formulation
+// change). The inertial loads of the trial point take the non-structural mass set its subcase selects, as the
+// analysis does.
 //
 // Thread-safety: run on the calling thread. Ownership: none kept.
 class FastReanalysis

@@ -18,8 +18,11 @@ used are those of the open literature listed in section 15.
   $A\propto t$, $B\propto t^2$, $D\propto t^3$, $H\propto t$.
 - Material axis: an angle φ from the reference direction of section 2, or a given
   direction projected on the element plane.
-- Offset d of the reference surface from the grids, along the element normal.
-- Drilling factor $c_d$.
+- Offset d of the reference surface from the grids, along the element normal, and whether the mass and the loads of
+  the element are taken on the offset (data of the model, section 11).
+- Drilling factor $c_d$ (a datum of the model, section 13).
+- A director $\mathbf n_i$ at each grid: the normal of the element there, or the normal the grid shares with its
+  neighbours (section 3).
 
 Conventions: the director increment of a rotation is
 $\boldsymbol\beta=\boldsymbol\theta\times\mathbf n$; in a local frame $(x,y,z)$ with z along the
@@ -55,8 +58,15 @@ $\mathbf e_z$, or the projection of the given direction on that plane.
 Natural coordinates $(\xi_i,\eta_i)=(-1,-1),(1,-1),(1,1),(-1,1)$,
 $N_i=\tfrac14(1+\xi\xi_i)(1+\eta\eta_i)$, $\zeta\in[-1,1]$ through the thickness.
 
-Directors: $\mathbf n_i=\widehat{\mathbf x_{,\xi}\times\mathbf x_{,\eta}}$ evaluated at grid i,
-with $\mathbf x=\sum N_i\mathbf x_i$.
+Directors: the own normal of the element at grid i is
+$\widehat{\mathbf x_{,\xi}\times\mathbf x_{,\eta}}$ evaluated there, with $\mathbf x=\sum N_i\mathbf x_i$. It is the
+director $\mathbf n_i$ of an element alone at a grid, of a grid whose elements have the same normal (a flat mesh), and
+on each side of a fold or a junction. Elsewhere $\mathbf n_i$ is the normal the grid shares with the neighbouring
+elements whose normals there are, in direction, within the angle $\alpha_n$ (20° by default) of each other, taken on
+the side of the own normal; a normal may also be given at a grid. Section 3 of
+[shell-tria3-formulation.md](shell-tria3-formulation.md) states the rule, which the quadrilaterals and the triangles
+of a model follow together. Everything below holds for any unit directors $\mathbf n_i$; the element of the checks of
+section 14 has its own normals.
 
 $$
 \mathbf X(\xi,\eta,\zeta)=\sum_iN_i\big(\mathbf x_i+\zeta\tfrac{t_i}2\mathbf n_i\big),\qquad
@@ -240,7 +250,20 @@ $$
 $$
 
 $T_1, T_2$ = first and second rows of T. With $\mathsf T=\operatorname{diag}(T_6,T_6,T_6,T_6)$:
-$K_g=\mathsf T^{\mathsf T}K\mathsf T$, $M_g=\mathsf T^{\mathsf T}M\mathsf T$.
+$K_g=\mathsf T^{\mathsf T}K\mathsf T$.
+
+The mass and the loads of the element (pressure, initial resultants) take the offset only when the model asks for them
+on the offset. By default they are taken at the grids, through $\mathsf T_0$, the matrix $\mathsf T$ at d = 0 (the
+rotation alone):
+
+$$
+M_g=\mathsf T_M^{\mathsf T}M\,\mathsf T_M,\qquad\mathbf f_g=\mathsf T_f^{\mathsf T}\mathbf f,\qquad
+\mathsf T_M,\ \mathsf T_f=\mathsf T_0\ \text{by default, }\mathsf T\text{ when the model puts the mass, the loads, on the offset.}
+$$
+
+With $\mathsf T_f=\mathsf T_0$ the loads leave out the moments $d\,\mathbf e_z\times\mathbf F_i$ of the forces
+$\mathbf F_i$ of the element at its grids, which the stiffness $\mathsf T^{\mathsf T}K\mathsf T$ has: the loads of an
+element with an offset are then not those of its stiffness (section 12).
 
 ## 12. Loads, resultants, differential stiffness
 
@@ -252,8 +275,17 @@ $K_g=\mathsf T^{\mathsf T}K\mathsf T$, $M_g=\mathsf T^{\mathsf T}M\mathsf T$.
 
 $$
 \mathbf f_d=\sum_pj_p\mathsf B^{\mathsf T}\mathbf S_0,\quad\mathbf f_\alpha=\sum_pj_p\mathsf G^{\mathsf T}\mathbf S_0,\quad
-\mathbf f=\mathsf T^{\mathsf T}\big(\mathbf f_d-K_{d\alpha}K_{\alpha\alpha}^{-1}\mathbf f_\alpha\big).
+\mathbf f=\mathsf T_f^{\mathsf T}\big(\mathbf f_d-K_{d\alpha}K_{\alpha\alpha}^{-1}\mathbf f_\alpha\big),
 $$
+
+  $\mathsf T_f$ of section 11. The dilatation ε of the free strain (the mean of its two in-plane strains) is taken
+  apart: $\mathbf S_0$ above is the rest, and the dilatation gives $\varepsilon\,K\mathbf d_h$, $\mathbf d_h$ the
+  homothety of the element (the positions $\mathbf x_i$ on the translations, no rotation). A free uniform temperature
+  rise is then that homothety, without stress, on a warped element and with shared directors. This holds for an
+  element without offset, and for an element with an offset only when the model puts the loads on the offset
+  ($\mathsf T_f=\mathsf T$). With $\mathsf T_f=\mathsf T_0$ a free element with an offset d bends under the moments
+  $d\,\mathbf e_z\times\mathbf F_i$ that its loads leave out: a free isotropic plate of thickness t under a uniform
+  rise ΔT takes the curvature $12\,\alpha\Delta T\,d/t^2$ in every direction.
 
 - **Resultants** at the integration points, in the local frames:
 
@@ -299,7 +331,7 @@ $$
 | 12 and $D^*_{11}/a^2$ in $s_{x1}$ | exact | The same relation on each line across the element, for a shear strain varying linearly. |
 | $c_t$ | 99 | Tolerance. The twisting curvature measured with the rotations can be relieved by the linear part of the shear; a thin strip one element wide keeps $\mu/(1+\mu)$ of its torsional rigidity, $\mu=c_t+(D_{11}/D_{33})(b/a)^2$. $c_t=1/\epsilon-1$ with ε = 1 %. |
 | $D^*_{kk}$ | — | Bending stiffness of a strip in cylindrical bending whose membrane force along the strip is zero. |
-| $c_d$ | 4·10⁻⁴ by default | Stabilisation of the rotation about the normal; results are insensitive to it between 10⁻⁷ and 10⁻³. |
+| $c_d$ | $10^{-6}k$, k = 100 by default ($c_d=10^{-4}$); no drilling term with $k\le0$ | A datum of the model. Stabilisation of the rotation about the normal; results are insensitive to it between 10⁻⁷ and 10⁻³. |
 | $c_K$ | 10⁴ | Sections without transverse shear flexibility: shear flexibility below 10⁻⁴ of the bending one. |
 
 ## 14. Checks of an implementation
@@ -315,7 +347,8 @@ $$
 5. Numerical values. Isotropic section, E = 1000, ν = 0.3, t = 0.05 at the four grids:
    $A=\frac{Et}{1-\nu^2}\begin{bmatrix}1&\nu&0\\\nu&1&0\\0&0&\frac{1-\nu}2\end{bmatrix}$,
    $B=0$, $D=\frac{t^2}{12}A$, $H=\frac56\frac{Et}{2(1+\nu)}\mathbf I$, $I_0=0.05$, $I_1=0$,
-   $I_2=t^3/12$, φ = 0, d = 0, $c_d=4\cdot10^{-4}$, $c_t=99$. The eighteen non-zero
+   $I_2=t^3/12$, φ = 0, d = 0, $c_d=4\cdot10^{-4}$ (k = 400, the value these check values were computed with: not
+   the default of section 13), $c_t=99$, the directors the own normals of the element. The eighteen non-zero
    eigenvalues of the 24 × 24 stiffness and the trace of the consistent mass:
 
 | Grids | Eigenvalues of K | trace M |

@@ -124,7 +124,10 @@ struct ProductReport
     std::uint64_t linearisationBytes = 0;
     // The Hessian-vector products: `solves` counts δu and δλ, two per subcase; the adjoint of Σ yᵢ·rᵢ is
     // solved once per weights (`adjointSolves`, 0 when it was kept from a product with the same weights:
-    // `isAdjointReused`); the linearisations at the perturbed states (two per product).
+    // `isAdjointReused`); the linearisations made at the states of the differences (per differenced product two for
+    // a central difference, three for a one-sided one at a bound of a variable, the design point being one of its
+    // states; under inertia relief the states of the steps t and t/2, four: two one-sided stencils share two of
+    // their six states).
     std::int64_t adjointSolves = 0;
     bool isAdjointReused = false;
     std::int32_t perturbedLinearisations = 0;
@@ -369,19 +372,22 @@ public:
     // g_j = Σ yᵢ·∂rᵢ/∂x_j + λᵀ·b_j: along x + σ·v, u moves by σ·δu (δu = K⁻¹·Σ_j v_j·b_j) and λ by σ·δλ, with
     // K·δλ = d/dσ (Σ yᵢ·cᵢ) − (∂K/∂v)·λ, so that
     //     (H·v)_j = d/dσ [Σ yᵢ·∂rᵢ/∂x_j + λᵀ·b_j](x + σ·v, u + σ·δu) + δλᵀ·b_j,
-    // the derivatives in σ of the linearisation's own terms at the states (x ± t·v, u ± t·δu), one central difference
-    // (HESSIAN_STEP_RELATIVE): the items not linear in u (von Mises) enter by their own curvature, through their
+    // the derivatives in σ of the linearisation's own terms at the states (x + σ·v, u + σ·δu), one central difference
+    // at σ = ±t (HESSIAN_STEP_RELATIVE: t takes each moved variable on its own scale, and the states stay within the
+    // bounds of the variables, the difference one-sided, from the design point, t and 2t, where a bound leaves no room
+    // on one side): the items not linear in u (von Mises) enter by their own curvature, through their
     // weights cᵢ at the moved displacements. Two solves per subcase and product (δu and δλ); λ once per weights, kept
     // with the linearisation for the next products at the same (x, y); two linearisations at the moved states per
-    // product. Also covered: the section and cut loads; inertia relief (the linearisation at a moved state
-    // takes the relief of the moved point); the condensed path (the solves through the boundaries, the units
-    // read recovered); the relations given by functions (ProductContext::suppliedAt); SUBCOM subcases; the equation
-    // responses whose callable has hessianVector (their weights y moved onto their arguments, μ = Σ y·∂f/∂L, the
-    // callable's (w_x, w_L) at (v, δL) added to the product and Σ w_L·∂L/∂u to the right-hand side of δλ: still two
-    // solves per subcase). Only the subcases a weight reads are solved; λ is taken from a vjp of the same one row at
-    // the same evaluation (kept with the linearisation). Throws std::invalid_argument for more than one row or a
-    // direction of the wrong size, and OptimisationError for what requireSecondOrder refuses (the external responses,
-    // an equation without hessian_vector, the other extension kinds, shape variables, SAERO subcases).
+    // product (three one-sided). Also covered: the section and cut loads; inertia relief (the linearisation at a
+    // moved state takes the relief of the moved point); the condensed path (the solves through the boundaries, the
+    // units read recovered); the relations given by functions (ProductContext::suppliedAt); SUBCOM subcases; the
+    // equation responses whose callable has hessianVector (their weights y moved onto their arguments,
+    // μ = Σ y·∂f/∂L, the callable's (w_x, w_L) at (v, δL) added to the product and Σ w_L·∂L/∂u to the right-hand side
+    // of δλ: still two solves per subcase). Only the subcases a weight reads are solved; λ is taken from a vjp of the
+    // same one row at the same evaluation (kept with the linearisation). Throws std::invalid_argument for more than
+    // one row or a direction of the wrong size, and OptimisationError for what requireSecondOrder refuses (the
+    // external responses, an equation without hessian_vector, the other extension kinds, a weight on a strain-energy
+    // percentage item, an analysis with external units, shape variables, SAERO subcases).
     //
     // `count` directions at once: `direction` variables × count, row-major (one column per
     // direction), `values` variables × count the same way; the adjoint and the blocks once, then each column as the

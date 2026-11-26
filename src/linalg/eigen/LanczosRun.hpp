@@ -39,8 +39,10 @@ struct LanczosRunResult
     std::vector<double> ritzEstimates;
     std::size_t blockSteps = 0;
     std::size_t restarts = 0;
-    // True when no direction outside the locked eigenvectors was left to start the run from: every root of the pencil
-    // has been found.
+    // True when no direction outside the locked eigenvectors was left to start the run from, and the probe of the
+    // deflated operator found none either (LanczosRun, "Exhaustion"): every root of the pencil has been found. False
+    // with no converged pair when the probe found one: roots are left that this shift cannot resolve (ritzEstimates
+    // then holds the probe's estimates of them).
     bool isSpaceExhausted = false;
 };
 
@@ -84,6 +86,16 @@ struct LanczosWorkspace
 // random vector, orthogonalised the same way. Every order is fixed and every product is a DenseKernels product or a
 // serial sum: the bits do not depend on the threads.
 //
+// Exhaustion: a start block Op·R whose columns all deflate against the locked eigenvectors says that nothing is left
+// only when the roots left are not hidden by the locked ones. With a shift much nearer the locked roots than the
+// others (θ_left/θ_locked below DEFLATION_FACTOR·ε·√n), Op·R is the locked vectors to rounding and the roots left
+// deflate with them. The run therefore probes the deflated operator before it reports the space exhausted:
+// P·Op·P·R with P the M-orthogonal projector off the locked set, applied twice on each side. Its locked part is
+// rounding of rounding, (DEFLATION_FACTOR·ε·√n)² of the start block's norms at most, so a probe column above that is a
+// direction outside the locked set. The run then converges nothing at this shift (its basis would carry the locked
+// vectors' rounding amplified at every step) and hands back the Rayleigh quotients of the probe's columns as
+// estimates, from which the driver places a shift near the roots left.
+//
 // Thread-safety: not thread-safe. Ownership: references the pencil, the kernels, the workspace and the budget.
 class LanczosRun
 {
@@ -120,6 +132,10 @@ private:
     };
 
     void startBlock(const EigenvectorStore& store);
+    // After a start block that deflated whole: whether the probe of the deflated operator (class comment,
+    // "Exhaustion") finds a direction outside the locked set; the eigenvalue estimates of its columns are added to
+    // the result. False without locked eigenvectors (nothing hides a direction then).
+    [[nodiscard]] bool probeBeyondLocked(double shift, const EigenvectorStore& store, LanczosRunResult& result);
     void applyOperator(DenseMatrixView block);
     // Factorises the block (already M-orthogonal to the locked set and the basis) as Q·B; Q replaces the block.
     // Returns the columns filled (fewer than the block's when the space is exhausted: the others are zero).

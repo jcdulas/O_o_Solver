@@ -45,9 +45,10 @@ std::optional<std::size_t> modalNormalisationPivot(const solutions::EigenMethod&
 ModalSystem::ModalSystem(const solutions::AnalysisModel& model, std::int32_t subcase, base::MemoryBudget& budget,
                          base::ThreadPool* pool, bool needsMass)
 {
-    base::DiagnosticSink sink;
+    base::DiagnosticSink sink; // the analysis of the subcase reported the problems of its selections and parameters
     const auto subcases = solutions::staticSubcasesOf(model.snapshot(), {subcase}, sink);
     const auto& selected = subcases.front();
+    m_selectedMass = selected.nonStructuralMass;
     const solutions::ConstraintSelection selection{selected.label, selected.spc, selected.mpc, std::nullopt,
                                                    selected.contact};
     m_constraints = std::make_unique<solutions::ConstrainedSystem>(model, selection, budget, pool, nullptr, sink);
@@ -58,8 +59,10 @@ ModalSystem::ModalSystem(const solutions::AnalysisModel& model, std::int32_t sub
     {
         m_massOptions = assembly::MassAssemblyOptions::fromParams(model.params(), subcase, sink);
         linalg::BlockSparseMatrix mgg(m_constraints->pattern(), budget, "modal derivative mass Mgg");
-        const assembly::NonStructuralMassShares shares(model.elementSet());
-        assembly::MassAssembler(model.elementSet(), model.dofMap(), shares, m_massOptions).assemble(mgg, pool);
+        // With the non-structural mass set the subcase selects, as the eigensolution assembles its mass (the subcases
+        // of one solve select the same set): without it K − λ·M would not be the pencil of the modes.
+        m_shares.emplace(model.elementSet(), m_selectedMass, budget, sink);
+        assembly::MassAssembler(model.elementSet(), model.dofMap(), *m_shares, m_massOptions).assemble(mgg, pool);
         const auto mnn = m_constraints->reduce(mgg, budget, "modal derivative mass Mnn");
         m_mass = linalg::SymmetricCsc::fromBlocks(mnn, m_ordering->selection(), budget, pool);
     }

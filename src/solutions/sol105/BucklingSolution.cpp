@@ -408,6 +408,15 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
                                    "LanczosEigenMethod or BucklingEigenMethod card), found none; add "
                                    "EigenMethodSelection to the Case Control"));
 
+    // The first static subcase of the deck (the first subcase that is not an eigenvalue subcase nor a combination): the
+    // preload of every buckling subcase that names none. Only in a deck that marks its buckling subcases with METHOD:
+    // with the caller's method and no METHOD in the deck, the buckling subcases are the subcases with a preload of
+    // their own (above), each its own preload.
+    std::optional<std::size_t> firstStatic;
+    for (std::size_t d = 0; hasMethods && d < deck.size() && !firstStatic; ++d)
+        if (!deck[d].method && !deck[d].subcase.isCombination)
+            firstStatic = d;
+
     // The methods and the preload of each buckling subcase.
     std::vector<BucklingCase> cases; // bounded by the subcases
     for (const std::size_t d : buckling)
@@ -434,22 +443,22 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
                                    base::concatenate({"StaticSubcaseSelection = ", std::to_string(*entry.staticSubcase),
                                                       " names no static subcase of the deck; correct it"})));
         }
+        // Without a StaticSubcaseSelection: the first static subcase of the deck, whatever the selections the buckling
+        // subcase has itself (a load of the global section reaches every subcase, and would make each buckling subcase
+        // its own preload, under its own constraints). A deck without a static subcase (one subcase with the load and
+        // the method) is its own preload.
+        else if (firstStatic)
+            preload = firstStatic;
         else if (hasPreload(entry.subcase) || m_options.trimPreloads.contains(entry.subcase.label))
             preload = d;
-        else
-            for (std::size_t p = d; p-- > 0;)
-                if (!deck[p].method && !deck[p].subcase.isCombination)
-                {
-                    preload = p;
-                    break;
-                }
         if (!preload)
         {
             if (!entry.staticSubcase)
                 sink.report(subcaseProblem(entry.subcase.label, base::Severity::Error, "missing-preload",
-                                           "a buckling subcase needs a static preload: a StaticLoadSelection "
-                                           "(or TemperatureSelection(LOAD)) in the subcase, or a static "
-                                           "subcase before it (StaticSubcaseSelection); add one"));
+                                           "a buckling subcase needs a static preload: a static subcase of the deck "
+                                           "(the first one, or the one StaticSubcaseSelection names), or a "
+                                           "StaticLoadSelection (or TemperatureSelection(LOAD)) in the subcase itself "
+                                           "when the deck has no static subcase; add one"));
             continue;
         }
         if (m_options.requiredPreload && deck[*preload].subcase.label != *m_options.requiredPreload)

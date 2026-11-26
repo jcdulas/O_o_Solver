@@ -294,7 +294,10 @@ modal assurance values and uncertainty flags let JavaScript preserve and inspect
 `analysisResults()` includes tracking warnings. With `deckOutputs: true`, it also contains the outputs requested by
 the deck, beyond those required by responses.
 
-Selected bulk non-structural mass sets are supported in static optimization. Sizing derivatives keep their selected
+Selected bulk non-structural mass sets are supported in static optimization and by the vibration responses on the
+full path: the eigenvalue, frequency and mode-selected field derivatives and the analytic vibration Hessian-vector
+products form their mass, and the rates of the element masses, with the set the MODES subcase selects. A buckling
+subcase that selects a set is refused in an optimization. In statics, sizing derivatives keep their selected
 mass share fixed; shape derivatives include the change of its length or area in the differentiated inertial load.
 The selected set must use the per-length or per-area forms supported by [static runs](static-inputs.md).
 An imposed axial deformation (`DeformationLoadSelection`) contributes to native static gradients through its

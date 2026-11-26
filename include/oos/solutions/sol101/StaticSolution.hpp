@@ -243,6 +243,8 @@ struct StaticOptions
     bool isStreamed = false;
     StreamedOptions streamed;
     bool usesAeroTransfer = false;
+    // Loads added to one case beside those of its load set (g-set DOFs and values). Taken on the full path only:
+    // refused (std::invalid_argument) with a condensation plan that condenses a unit or with isStreamed.
     AppliedCaseLoads appliedLoads;
 };
 

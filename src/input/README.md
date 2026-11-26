@@ -59,7 +59,12 @@ connection system (`componentNodes`, `connectionList`, `spiders`, `connectionSha
 (`contactNodePairs`, `contactPairsTable`, `contactTablesTable`) and the aeroelastic model. Several columns are
 optional in their contract, such as the SUBCOM columns of `subcasesTable` (`combinedSubcases`, `coefficients`) and its
 `bcontact` and `deform` columns, or the glue columns of the contact tables: without the glue columns, a model with
-contact pairs is refused by the assembly (`assembly::requireGlueContract`) rather than guessed.
+contact pairs is refused by the assembly (`assembly::requireGlueContract`) rather than guessed. Three more say what a
+card asks for that the assembly must not take for something else; a table without one (an earlier O_o_Model, a table
+built by hand) is read as before: `surfaceOrLine` of `pressureTable` and `pressureFields` (a FacePressureLoad written
+as a line load is refused), `alpha` of `rigidElementsTable` (the thermal expansion coefficient of a rigid element,
+refused under a thermal load) and `propertyType` of `nonStructMassTable` (the property card a non-structural mass
+names, matched with the `propType` of the element batches).
 
 ## Where to start reading
 

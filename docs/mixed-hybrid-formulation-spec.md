@@ -315,7 +315,9 @@ These are properties of the formulation; the port reproduces them and does not t
   shell. Where the surface is smooth is decided by the fold angle of the model and by the declarations (section 4.4);
   which mesh line goes on into which is declared where the rules of the reading are not the ones wanted.
 - Two shell triangles on a quadrilateral face of a solid are tied to it by their grid points and edges only. A line
-  alone on an edge with a mid-side node is straight.
+  alone on an edge with a mid-side node is straight. Both are said when the mesh meets them, by one warning each
+  with the count and the first place: `shell-triangles-on-solid-face`, and `mid-side-grid-ignored` when the mid-side
+  node is off the chord by more than 1e-4 of its length.
 - A rotation held at one grid point of shells with no line element there is no unknown of the shells: it is read
   along the edges whose two grid points hold it, and elsewhere tied to the mean rotation of the shells at the grid
   point (section 5.6; not in the reference, which reads it along the edges only).
@@ -502,6 +504,19 @@ and the rules of the reading every mesh line: `formulationGeometry: {}` from the
 | `geometry-declarations-missing` | no declaration, from the program or from the deck |
 | `geometry-declaration-unknown` | a declaration names an edge, an element or two edges that neither the shells nor the solids have |
 | `geometry-declaration-conflict` | an edge side declared both smooth and sharp, an edge declared raw and also smooth or sharp, a mesh line both ended and continued at one grid point |
+
+A declaration that names edges of the model and changes nothing of its reading is no refusal: one warning
+(`geometry-declaration-not-applied`) counts them and names the first. They are:
+
+- a smooth side at an edge whose shell no shell faces across it (a rib on a junction, the outline), or that a sharp
+  declaration of the same pair overrides;
+- an edge of the outline of the shells declared smooth or sharp, unless its shell is a raw element (the declaration
+  then keeps the edge out of the raw edges);
+- an edge declared smooth or sharp, or a mesh line, on edges inside the solids: only their skin is read.
+
+A sharp side at a junction that no shell faces is not among them: that side ends there, which is what the
+declaration says. A declared mesh line goes to a smooth part of the skin of the solids when its edges are edges of
+that part; two grid points of a part that no edge of it joins are no mesh line of it.
 
 What the preprocessor has to detect and declare, situation by situation, is specified for it in
 `O_o_Viewer/docs/geometry-declarations.md`.
@@ -704,7 +719,20 @@ system, and an edge or a face holds the directions its grid points share:
   held by the grid points only; the edge between them is free along it, and a warning counts such edges
   (`support-not-carried-along-edge`). Holding both directions of the plane they turn in holds the edge (their span
   is the same plane at both grid points). The relation u(s) · d(s) = value along such an edge is later work
-  (section 14).
+  (section 14);
+- a direction is the same, and a tangent, a conormal or a normal of an edge lies in the span of the held axes, to
+  within 1e-4 rad: these directions come from the coordinates of the grid points, and coordinates written with
+  seven significant digits put an edge a thousandth of the size of the model that far from the plane its grid points
+  were meant to lie in. A direction that turns along an edge turns by the angle of an element and stays apart;
+- the two grid points of an edge may state what they hold differently: one by basic axes (a clamped grid point
+  whose CD is the basic system), the other by directions that are no basic axis (the next grid point, on a plane of
+  symmetry turned from the basic system). The edge holds what the spans of their held axes share: the translation
+  along a shared direction by the relation above, the grid point of the basic axes entering by its basic
+  components; the rotations by the spans of both. An edge or a face of solids whose grid points hold a direction
+  some by a direction of their own and the others by their basic axes is held along it the same way;
+- both grid points of an edge of shells may hold a rotation that is neither about the edge nor about its conormal
+  (an axis oblique to the edge, with a part in the surface): the edge takes nothing of it, the grid points hold it
+  through the mean rotation of the shells (below), and one `support-note` warning counts such edges.
 
 Reactions. The force of a held entity DOF is reported at the grid points of its edge or face as forces and moments
 with the same resultant force and moment (`DerivedSupportDof::reactionTo`, the map of the grid point force balance,
@@ -1367,6 +1395,8 @@ shows what the fold angle alone decides, which is what a preprocessor shows befo
 | A mesh transition on a straight outline or junction keeps it straight, and a side with quadrilaterals only is read as between quadrilaterals (section 4.4) | The reference reads three quadrilaterals at a boundary grid point as a re-entrant corner whatever their angles, and a quadrilateral side beside a triangle by the triangle rule. |
 | A shell that continues solids or stands on them is tied to them over its thickness: the displacement of its edge to the mean of the skin over its fibre, the rotation about its edge to the slope of the skin across the fibre (section 3.4) | The reference ties both on the line of the edge: a force and a couple on a line of a continuum, a joint that softens without bound as the solids are refined (1.26 to 3.8 times the deflection of a beam). |
 | The functions of the corners and edges of a shell triangle are orthogonal to its interior functions on the triangle itself (`h1Space`) | The reference takes the product of the reference square for the triangle too: the functions then depend on the corner the element starts from, and with them the share of a distributed load between the grid points in the applied load table (22 % on one grid point of an assembly). The space and the solution are the same. |
+| A held direction is read along an edge to within 1e-4 rad, and from the spans of what its two grid points hold when one states it by basic axes and the other by directions off them (section 5.6) | The reference has global axes and exact planes. With the round-off of the arithmetic as tolerance, the edges of a plane of symmetry whose grid points have coordinates of seven digits kept their rotation free (a hinge along the plane), and the edge between a clamped grid point and the first grid point of a turned plane of symmetry was held along nothing. |
+| Warnings for what is read without effect or under a limit: a rotation both grid points of an edge hold and the edge does not take (`support-note`), triangular shells on a quadrilateral face of solids (`shell-triangles-on-solid-face`), a mid-side node under a line alone (`mid-side-grid-ignored`), declarations that change nothing (`geometry-declaration-not-applied`); a declared mesh line goes to a part of the skin only by edges of that part (sections 3.6, 4.4, 5.6) | The reference states its supports and its raw edges on the edges themselves and has no model file to check; here a model file may say more than the reading takes, and it is told. |
 | A shell can have a degree of its own, chosen from its shape, and its edges with a shell of a lower degree take that one: transition elements (section 3.1) | The reference has one degree for all its elements. |
 | The matrices of a shell are integrated on a rule chosen from its shape, of 6 to 2k + 4 points per direction (section 6) | The reference has 2k + 4 points on every element, which an affine element needs a quarter of and a curved element of a regular mesh less than half; the results are those of 2k + 4 points to 3e-11 on the meshes measured. |
 
