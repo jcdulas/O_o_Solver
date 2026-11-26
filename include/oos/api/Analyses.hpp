@@ -228,7 +228,7 @@ struct SuperelementAnalysisOutput
                                                           std::vector<SuperelementPartSettings> parts,
                                                           Analysis analysis, const AnalysisSettings& settings);
 
-// The name and version of the solver: "O_o_Solver 0.2.3".
+// The name and version of the solver: "O_o_Solver 0.2.4".
 [[nodiscard]] std::string programName();
 
 // A condensation cache that lives in memory, for the analyses of the process to share (CondensationSettings::cache):

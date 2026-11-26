@@ -12,15 +12,15 @@ Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembl
 
 | Interface | Install |
 | --- | --- |
-| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.3/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.3/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
-| Python | Run `python -m pip install oo-solver==0.2.3` to get the Solver and its `oo-model` dependency. |
+| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.4/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.4/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
+| Python | Run `python -m pip install oo-solver==0.2.4` to get the Solver and its `oo-model` dependency. |
 | C++20 / vcpkg | Add `oo-solver` from the [O_o vcpkg registry](https://github.com/jcdulas/O_o_vcpkg) and link `oos::api`. [Native CMake example](https://github.com/jcdulas/O_o_vcpkg/tree/main/examples/rod) |
 
 Applications can link an external optimizer to the [JavaScript, Python or C++ evaluation API](docs/optimization.md). The [client benchmark](docs/benchmarks/optimizer-api/README.md) exercises all three interfaces on identical inputs.
 
 ## Couple an external aerodynamic solver
 
-Use Solver 0.2.3 to couple a structural model to an external aerodynamic solver. Prepare the transfer once per model geometry.
+Use Solver 0.2.4 to couple a structural model to an external aerodynamic solver. Prepare the transfer once per model geometry.
 
 | Operation | JavaScript / WebAssembly | Python | C++20 |
 | --- | --- | --- | --- |
