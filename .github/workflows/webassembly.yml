@@ -95,13 +95,16 @@ jobs:
           fi
           cmake --build "build/$PRESET" -j "$(nproc)"
       - name: Load the module
-        # The module needs 64-bit WebAssembly: the Node.js of the SDK runs it.
+        # The module needs 64-bit WebAssembly: the Node.js of the SDK runs it. From a script file: the workers of the
+        # shared-memory package start with the options of their parent, and refuse those of an inline script.
         run: |
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
-          "${EMSDK_NODE:-node}" --input-type=module -e "
-            import { loadOosSolver } from './build/$PRESET/dist/index.js';
-            const solver = await loadOosSolver();
-            console.log('module loaded:', solver.constructor.name, JSON.stringify(solver.threading()));"
+          printf '%s\n' \
+            "import { loadOosSolver } from './dist/index.js';" \
+            "const solver = await loadOosSolver();" \
+            "console.log('module loaded:', solver.constructor.name, JSON.stringify(solver.threading()));" \
+            "process.exit(0);" > "build/$PRESET/load-check.mjs"
+          "${EMSDK_NODE:-node}" "build/$PRESET/load-check.mjs"
       - name: Archive the package
         id: archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
