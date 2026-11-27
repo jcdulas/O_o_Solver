@@ -21,6 +21,7 @@
 // The matrices are kept in the material frame (the x axis of THETA or MCID); rotatedToElementFrame
 // writes them in the element frame by M_e = T(φ)ᵀ M T(φ), the strain-like vectors by v_e = T(φ)⁻¹ v.
 
+#include "oos/base/diagnostics/DiagnosticSink.hpp"
 #include "oos/base/math/Mat3.hpp"
 #include "oos/elements/core/DesignFieldUse.hpp"
 #include "oos/elements/core/ElementBatchView.hpp"
@@ -205,5 +206,12 @@ template <std::size_t N>
 // as ElemOffsetsOnly and ElemOffsetZ); refused, naming ElemOffsetZ (LoadRecoveryOffsets with the element z direction:
 // input::OffsetDefinition).
 [[nodiscard]] std::optional<std::string> offsetDefinitionProblem(const input::ModelSnapshot& snapshot, double offset);
+
+// Reports what the laminate of `section` will not give although its card asks for it (nothing for a ShellProp): a
+// failureTheory whose indices cannot be written because a ply with an output has a material without strengths
+// (warning failure-index-not-written, on the property). `lastReported`: the property the last call reported, 0 before
+// the first; the consecutive elements of one property then report once, and the sink lists once a diagnostic that
+// other ranges or batches report again.
+void reportLaminateWarnings(const ShellSection& section, std::int32_t& lastReported, base::DiagnosticSink& sink);
 
 } // namespace oos::elements

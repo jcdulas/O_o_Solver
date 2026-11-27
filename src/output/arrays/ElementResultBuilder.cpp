@@ -3,6 +3,7 @@
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/elements/core/ElementResultBlock.hpp"
 #include "oos/elements/core/FormulationModel.hpp"
+#include "oos/elements/shells/ShellRecovery.hpp"
 #include "oos/elements/solids/SolidRecovery.hpp"
 
 #include <algorithm>
@@ -39,9 +40,18 @@ struct KindOfLayerTable
     const char* kind;
     elements::LayerOutput output;
 };
-constexpr std::array<KindOfLayerTable, 3> LAYER_KINDS{{{"stress", elements::LayerOutput::Stresses},
+constexpr std::array<KindOfLayerTable, 4> LAYER_KINDS{{{"stress", elements::LayerOutput::Stresses},
                                                        {"strain", elements::LayerOutput::Strains},
-                                                       {"failureIndices", elements::LayerOutput::FailureIndices}}};
+                                                       {"failureIndices", elements::LayerOutput::FailureIndices},
+                                                       {"strengthRatios", elements::LayerOutput::StrengthRatios}}};
+
+// Whether the model writes a layer kind at all, beside the output request of the case: the strength ratios only with
+// Parameter StrengthRatioCompositeStress = Yes (elements::writesStrengthRatios).
+bool isLayerKindWritten(const KindOfLayerTable& kind, const assembly::AssemblyBatch& batch)
+{
+    return kind.output != elements::LayerOutput::StrengthRatios ||
+           elements::writesStrengthRatios(batch.view.snapshot());
+}
 
 // The output a family gives for a kind of table, or nothing (no columns): the strains as membrane strains and
 // curvatures when the family gives that form and the fibres are not asked for.
@@ -579,7 +589,8 @@ void recoverKind(const assembly::AssemblyBatch& batch, const char* kindName, con
 }
 
 // The layer tables of one layer kind of one batch for one case (the laminated elements; a layered element has no line
-// loads): the stresses and failure indices with STRESS, the strains with STRAIN. Returns whether a table was appended.
+// loads): the stresses, failure indices and strength ratios with StressOutput, the strains with StrainOutput. Returns
+// whether a table was appended.
 bool recoverLayerKind(const assembly::AssemblyBatch& batch, const KindOfLayerTable& kind,
                       const ElementOutputSelection& chosen, std::int32_t subcase,
                       const elements::NodalDisplacements& displacements, std::int64_t rangeLength,
@@ -587,7 +598,7 @@ bool recoverLayerKind(const assembly::AssemblyBatch& batch, const KindOfLayerTab
                       const BatchRows& rows = {})
 {
     const elements::ElementFamily& family = *batch.family;
-    if (family.layerOutputColumns(kind.output).empty())
+    if (family.layerOutputColumns(kind.output).empty() || !isLayerKindWritten(kind, batch))
         return false;
     const ElementKindSelection& kindSelection =
         kind.output == elements::LayerOutput::Strains ? chosen.strain : chosen.stress;
@@ -620,7 +631,7 @@ bool recoverLayerKind(const assembly::AssemblyBatch& batch, const KindOfLayerTab
 // PERFORMANCE: a case's tables resolved and formulated every element again for each kind (a ShellQuad4 three times, a
 // laminate six: its plate, place states and laminate); here once.
 // Measured: on the 1-case recovery configurations.
-constexpr std::size_t ALL_KINDS = 6;
+constexpr std::size_t ALL_KINDS = KINDS.size() + LAYER_KINDS.size();
 using KindTablesOfCase = std::array<std::vector<ElementResultTable>, ALL_KINDS>;
 
 KindTablesOfCase recoverKindsTogether(const assembly::AssemblyBatch& batch, const ElementOutputSelection& chosen,
@@ -650,7 +661,7 @@ KindTablesOfCase recoverKindsTogether(const assembly::AssemblyBatch& batch, cons
         const ElementKindSelection& kindSelection =
             kind.output == elements::LayerOutput::Strains ? chosen.strain : chosen.stress;
         if (!isIncluded[KINDS.size() + k] || family.layerOutputColumns(kind.output).empty() ||
-            !kindSelection.isRequested)
+            !kindSelection.isRequested || !isLayerKindWritten(kind, batch))
             continue;
         asked.push_back({KINDS.size() + k, kind.kind, elements::RecoveryOutput::ofLayers(kind.output), &kindSelection,
                          TableShaping{false, chosen.isMaximumShear && kind.output == elements::LayerOutput::Stresses},
@@ -1528,7 +1539,7 @@ void ElementResultBuilder::buildCasesIn(std::span<const std::int32_t> subcases,
                 output == elements::LayerOutput::Strains ? chosen.strain : chosen.stress;
             const std::size_t minimum = family.vectorisedLayerRecoveryMinCases(output);
             if (family.layerOutputColumns(output).empty() || !kindSelection.isRequested || minimum == 0 ||
-                vectorisable < minimum)
+                vectorisable < minimum || !isLayerKindWritten(LAYER_KINDS[k], batch))
                 continue;
             vectorisedLayerIndex[k] = vectorised.size();
             vectorised.push_back(

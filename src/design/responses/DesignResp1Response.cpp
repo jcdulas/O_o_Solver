@@ -721,14 +721,25 @@ void DesignResp1Response::resolveElementTargets(const ElementCatalog& catalog, s
         problems.push_back(problem(design_code::INVALID_RESPONSE, m_definition, "attributeA",
                                    base::concatenate({"expected the item code of ", responseTypeName(type),
                                                       " in DesignResp1.attributeA, found it blank"})));
-    if (m_definition.targets.empty())
+    // An owner kind that is neither Elements nor a property card of the model: said as such, rather than as
+    // attributes the model does not have (the reader resolves no attribute of an owner kind it does not know).
+    const bool isUnknownOwner = !m_definition.propertyType.empty() && m_definition.propertyType != ELEMENTS_OWNER &&
+                                catalog.snapshot().findPropertyTable(m_definition.propertyType) == nullptr;
+    if (isUnknownOwner)
+        problems.push_back(
+            problem(design_code::INVALID_RESPONSE, m_definition, "ownerKind",
+                    base::concatenate({"expected DesignResp1.ownerKind = Elements (the attributes are element IDs) or "
+                                       "a property card of the model (ShellProp, CompProp, RodProp...) for ",
+                                       responseTypeName(type), ", found ", m_definition.propertyType,
+                                       "; correct the owner kind"})));
+    else if (m_definition.targets.empty())
         problems.push_back(problem(design_code::INVALID_RESPONSE, m_definition, "attribute1",
                                    base::concatenate({"expected the elements or properties of ", responseTypeName(type),
                                                       " in DesignResp1.attributes, found none"})));
     if (m_definition.propertyType.empty())
         problems.push_back(problem(design_code::INVALID_RESPONSE, m_definition, "ownerKind",
-                                   "expected DesignResp1.ownerKind = ELEM or a property card for an element response, "
-                                   "found it blank"));
+                                   "expected DesignResp1.ownerKind = Elements or a property card for an element "
+                                   "response, found it blank"));
     if (isComposite(type))
     {
         // ATTB, the lamina: a ply number, an integer of at least 1 (isIntegerWithin: no conversion before the test).
@@ -763,7 +774,7 @@ void DesignResp1Response::resolveElementTargets(const ElementCatalog& catalog, s
                 selected.push_back(entry);
             continue;
         }
-        if (m_definition.propertyType.empty())
+        if (m_definition.propertyType.empty() || isUnknownOwner)
             continue;
         if (!catalog.hasProperty(m_definition.propertyType, target))
         {

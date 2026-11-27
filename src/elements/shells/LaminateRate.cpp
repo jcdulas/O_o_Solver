@@ -43,7 +43,8 @@ struct Rated
 
 // The rate of H in direction d and of each ply's shear at its top per unit force: Laminate.cpp's setTransverseShear
 // (τ(z) = −S(z)/D*, 1/H = ∫ τ²/G dz by three Gauss points per ply, a ply rigid in the direction adding nothing) on
-// rated values, the same operations.
+// rated values, the same operations. A direction in which every ply is rigid stays rigid (H = 0, no rate); its
+// shears at the tops of the plies move as in any other.
 void setTransverseShearRate(const Laminate& laminate, LaminateRate& rate, std::size_t d)
 {
     Rated a;
@@ -86,7 +87,8 @@ void setTransverseShearRate(const Laminate& laminate, LaminateRate& rate, std::s
         rate.shearAtTopPerForce[k][d] = -(below / reducedRigidity).rate;
     }
     // H = 1/C: dH = −dC/C².
-    rate.transverseShear[d] = -compliance.rate / (compliance.value * compliance.value);
+    rate.transverseShear[d] =
+        compliance.value > 0.0 ? -compliance.rate / (compliance.value * compliance.value) : 0.0;
 }
 
 } // namespace
@@ -130,10 +132,8 @@ std::optional<LaminateRate> laminateThicknessRate(const Laminate& laminate, cons
         rate.d += (ply.zTop * ply.zTop * rate.zTop[k] - ply.zBottom * ply.zBottom * rate.zBottom[k]) * ply.stiffness;
         rate.massPerArea += ply.material.density * rate.plyThickness[k];
     }
-    // A direction in which every ply is rigid stays rigid (H = 0, no rate).
     for (std::size_t d = 0; d < 2; ++d)
-        if (laminate.transverseShear[d] > 0.0)
-            setTransverseShearRate(laminate, rate, d);
+        setTransverseShearRate(laminate, rate, d);
     switch (laminate.option)
     {
     case LaminateOption::Full:

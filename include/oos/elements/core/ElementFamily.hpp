@@ -103,13 +103,15 @@ enum class ElementOutput : std::uint8_t
 // strains in the ply frame, and the failure indices of the plies and of their bonds. PlyStates is no table: the
 // stresses, mechanical strains and transverse shears of the plies whose failure indices are written, one row per such
 // ply, every column affine in the displacements; the vectorised recovery makes the failure indices from them
-// (ElementFamily::vectorisedLayerSource).
+// (ElementFamily::vectorisedLayerSource). StrengthRatios: the rows of the failure indices with, in place of each index,
+// the factor that would bring the ply or the bond to failure (written when the model asks for it).
 enum class LayerOutput : std::uint8_t
 {
     Stresses,
     Strains,
     FailureIndices,
-    PlyStates
+    PlyStates,
+    StrengthRatios
 };
 
 // One output of a recovery: an element output (recover()) or a layer output (recoverLayers()).

@@ -366,6 +366,10 @@ void MixedHybridShellFamily::check(const ElementBatchView& view, base::Diagnosti
     const MixedHybridModel& model = MixedHybridModel::of(view.index());
     for (base::Diagnostic& problem : model.elementProblems(view.card()))
         sink.report(std::move(problem));
+    std::int32_t warnedProperty = 0;
+    for (std::int64_t row = 0; row < view.rowCount(); ++row)
+        if (const MixedShell* shell = model.shellOf(view.card(), row))
+            reportLaminateWarnings(shell->classicSection, warnedProperty, sink);
     // Every row read: the ShellPart refused the whole mesh when it is not usable (the model's problems say why).
     if (model.shellPart() == nullptr || !model.shellPart()->usable())
         return;

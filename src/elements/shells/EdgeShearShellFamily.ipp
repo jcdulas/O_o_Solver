@@ -228,11 +228,14 @@ void EdgeShearShellFamily<Shell>::checkRows(const ElementBatchView& view, Elemen
                                             base::DiagnosticSink& sink) const
 {
     const Columns columns(view);
+    std::int32_t warnedProperty = 0;
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         Resolution<Data> resolution = resolve(view, columns, row);
         if (!resolution)
             sink.report(std::move(resolution.problem));
+        else
+            reportLaminateWarnings(resolution.value->section, warnedProperty, sink);
     }
 }
 

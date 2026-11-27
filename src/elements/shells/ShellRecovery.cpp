@@ -68,9 +68,9 @@ struct Principal
 }
 
 // The transverse shear stresses (τxz, τyz) of the plies of a laminate in the material frame, from the element's shear
-// forces: in a direction with a shear distribution (Laminate), the equilibrium stress at the top of each ply, τ_k =
-// Q·shearAtTopPerForce, zero at the top surface; otherwise the mean stress Q / t in every ply (a rigid direction, or a
-// homogeneous stack).
+// forces: the equilibrium stress at the top of each ply, τ_k = Q·shearAtTopPerForce, zero at the top surface
+// (Laminate::hasShearDistribution: every stack); the mean stress Q / t in every ply of a SmearedLaminate, whose
+// stacking is ignored.
 [[nodiscard]] std::vector<std::array<double, 2>> plyShears(const Laminate& laminate,
                                                            const std::array<double, 2>& shearForce)
 {
@@ -146,6 +146,54 @@ CompositeOutput compositeOutputOf(const input::ModelSnapshot& snapshot)
     return CompositeOutput::PliesOnly;
 }
 
+bool writesStrengthRatios(const input::ModelSnapshot& snapshot)
+{
+    if (!snapshot.hasTable(input::TableRole::Params))
+        return false;
+    const std::optional<input::ParamValue> value = snapshot.params().find("StrengthRatioCompositeStress");
+    return value && value->kind == input::ParamValue::Kind::Text && value->text == "Yes";
+}
+
+double plyStrengthRatio(FailureTheory theory, const ShellMaterial& material, const std::array<double, 3>& stress,
+                        double failureIndex) noexcept
+{
+    const PlyAllowables& allowables = material.allowables;
+    switch (theory)
+    {
+    case FailureTheory::Hill:
+        return failureIndex > 0.0 ? 1.0 / std::sqrt(failureIndex) : UNLOADED_STRENGTH_RATIO;
+    case FailureTheory::MaxStrain:
+        return failureIndex > 0.0 ? 1.0 / failureIndex : UNLOADED_STRENGTH_RATIO;
+    case FailureTheory::Hoffman:
+    case FailureTheory::TsaiWu:
+    {
+        // The quadratic and linear parts of the criteria of plyFailureIndex.
+        const double s1 = stress[0];
+        const double s2 = stress[1];
+        const double t12 = stress[2];
+        const double xt = allowables.xt;
+        const double xc = allowables.xc;
+        const double yt = allowables.yt;
+        const double yc = allowables.yc;
+        const double s = allowables.s;
+        const double linear = (1.0 / xt - 1.0 / xc) * s1 + (1.0 / yt - 1.0 / yc) * s2;
+        double quadratic = s1 * s1 / (xt * xc) + s2 * s2 / (yt * yc) + t12 * t12 / (s * s);
+        quadratic += theory == FailureTheory::Hoffman ? -s1 * s2 / (xt * xc) : 2.0 * allowables.f12 * s1 * s2;
+        if (quadratic <= 0.0)
+            return linear > 0.0 ? 1.0 / linear : UNLOADED_STRENGTH_RATIO;
+        return (-linear + std::sqrt(linear * linear + 4.0 * quadratic)) / (2.0 * quadratic);
+    }
+    case FailureTheory::None:
+        break;
+    }
+    return UNLOADED_STRENGTH_RATIO;
+}
+
+double bondStrengthRatio(double bondFailureIndex) noexcept
+{
+    return bondFailureIndex > 0.0 ? 1.0 / bondFailureIndex : UNLOADED_STRENGTH_RATIO;
+}
+
 std::vector<std::string> shellOutputColumns(ElementOutput output)
 {
     switch (output)
@@ -195,6 +243,7 @@ std::vector<ColumnForm> laminateOutputColumnForms(LayerOutput output)
                 linear, linear, other,
                 other,  other,  ColumnForm::planeVonMises({0, 1, 2}, 0.5, STRAIN_VON_MISES_SCALE)};
     case LayerOutput::FailureIndices:
+    case LayerOutput::StrengthRatios:
         return {other, other, other};
     case LayerOutput::PlyStates:
         return std::vector<ColumnForm>(PLY_STATE_COLUMNS, linear);
@@ -478,6 +527,8 @@ std::vector<std::string> laminateOutputColumns(LayerOutput output)
         return {"e11", "e22", "e12", "e1z", "e2z", "angle", "major", "minor", "vonMises"};
     case LayerOutput::FailureIndices:
         return {"failureIndex", "bondFailureIndex", "elementFailureIndex"};
+    case LayerOutput::StrengthRatios:
+        return {"strengthRatio", "bondStrengthRatio", "elementStrengthRatio"};
     case LayerOutput::PlyStates:
         return {"o11", "o22", "t12", "mechanicalE11", "mechanicalE22", "mechanicalE12", "t1z", "t2z"};
     }
@@ -594,8 +645,8 @@ double plyFailureIndex(FailureTheory theory, const PlyAllowables& allowables, co
 namespace
 {
 
-// Whether a laminate writes failure indices (CompProp field FT): a failure theory, and the allowables of every ply
-// written.
+// Whether a laminate writes failure indices: a failureTheory, and the allowables of every ply written (the check of
+// the elements warns of a laminate that has the theory without them: reportLaminateWarnings).
 [[nodiscard]] bool writesFailureIndices(const Laminate& laminate)
 {
     if (laminate.failureTheory == FailureTheory::None)
@@ -618,11 +669,42 @@ namespace
 
 // The failure index rows of the written plies from their states (`stateOf(w)` the state of the w-th written ply): the
 // index of each ply by the laminate's theory, the bond index above it (none above the last ply) and the element index,
-// the largest of them, on the last row (appendLaminateRows' comment).
+// the largest of them, on the last row (appendLaminateRows' comment). With LayerOutput::StrengthRatios, the strength
+// ratio of each ply and bond in place of its index, and the element's ratio, the smallest of them.
 template <typename StateOf>
 void appendFailureRows(ElementResultBlock& block, std::int64_t row, std::int32_t elementId, const Laminate& laminate,
-                       const std::vector<std::size_t>& written, StateOf&& stateOf)
+                       const std::vector<std::size_t>& written, LayerOutput output, StateOf&& stateOf)
 {
+    if (output == LayerOutput::StrengthRatios)
+    {
+        double smallest = std::numeric_limits<double>::infinity();
+        std::vector<std::array<double, 2>> ratios(written.size()); // bounded by the plies
+        for (std::size_t w = 0; w < written.size(); ++w)
+        {
+            const std::size_t k = written[w];
+            const LaminatePly& ply = laminate.plies[k];
+            const PlyState state = stateOf(w);
+            const double index = plyFailureIndex(laminate.failureTheory, ply.material.allowables, ply.material,
+                                                 state.stress, state.mechanicalStrain);
+            const double ratio = plyStrengthRatio(laminate.failureTheory, ply.material, state.stress, index);
+            const bool isLast = k + 1 == laminate.plies.size();
+            double bond = NO_INDEX;
+            if (!isLast && laminate.bondAllowable > 0.0)
+                bond = bondStrengthRatio(std::max(std::abs(state.shear[0]), std::abs(state.shear[1])) /
+                                         laminate.bondAllowable);
+            ratios[w] = {ratio, bond};
+            smallest = std::min(smallest, ratio);
+            if (std::isfinite(bond))
+                smallest = std::min(smallest, bond);
+        }
+        for (std::size_t w = 0; w < written.size(); ++w)
+        {
+            const bool isLastRow = w + 1 == written.size();
+            const std::array<double, 3> values{ratios[w][0], ratios[w][1], isLastRow ? smallest : NO_INDEX};
+            block.append(row, elementId, {0, laminate.plies[written[w]].number}, values);
+        }
+        return;
+    }
     double largest = -std::numeric_limits<double>::infinity();
     std::vector<std::array<double, 2>> indices(written.size()); // bounded by the plies
     for (std::size_t w = 0; w < written.size(); ++w)
@@ -671,14 +753,14 @@ void appendLaminateRows(ElementResultBlock& block, std::int64_t row, std::int32_
         return;
     const Laminate& laminate = *section.laminate;
     const std::vector<PlyState> states = plyStates(centre, section);
-    if (output == LayerOutput::FailureIndices || output == LayerOutput::PlyStates)
+    if (isPlyIndexOutput(output) || output == LayerOutput::PlyStates)
     {
         if (!writesFailureIndices(laminate))
             return;
         const std::vector<std::size_t> written = writtenPlies(laminate);
-        if (output == LayerOutput::FailureIndices)
+        if (isPlyIndexOutput(output))
         {
-            appendFailureRows(block, row, elementId, laminate, written,
+            appendFailureRows(block, row, elementId, laminate, written, output,
                               [&](std::size_t w) { return states[written[w]]; });
             return;
         }
@@ -763,7 +845,7 @@ void appendLaminateRowRates(ElementResultBlock& block, std::int64_t row, std::in
             out.shearStrain[d] = g > 0.0 ? out.shear[d] / g : 0.0;
         }
     }
-    if (output == LayerOutput::FailureIndices || output == LayerOutput::PlyStates)
+    if (isPlyIndexOutput(output) || output == LayerOutput::PlyStates)
     {
         if (!writesFailureIndices(laminate))
             return;
@@ -773,6 +855,12 @@ void appendLaminateRowRates(ElementResultBlock& block, std::int64_t row, std::in
             const std::size_t k = written[w];
             const PlyState& state = states[k];
             const PlyState& d = rates[k];
+            if (output == LayerOutput::StrengthRatios)
+            {
+                // No closed form: the strength ratios are differenced by their callers.
+                block.append(row, elementId, {0, laminate.plies[k].number}, std::array<double, 3>{NONE, NONE, NONE});
+                continue;
+            }
             if (output == LayerOutput::PlyStates)
             {
                 const std::array<double, PLY_STATE_COLUMNS> values{
@@ -850,7 +938,7 @@ void completeLaminateRows(LayerOutput output, std::span<ElementResultBlock> bloc
 
 void appendLaminateFailureRows(ElementResultBlock& block, std::int64_t row, std::int32_t elementId,
                                const ShellSection& section, const ElementResultBlock& plyStateRows, std::size_t first,
-                               std::size_t last)
+                               std::size_t last, LayerOutput output)
 {
     if (!section.isLaminate() || !writesFailureIndices(*section.laminate))
         throw std::invalid_argument("appendLaminateFailureRows: expected a laminate that writes failure indices");
@@ -860,7 +948,7 @@ void appendLaminateFailureRows(ElementResultBlock& block, std::int64_t row, std:
         throw std::invalid_argument(base::concatenate(
             {"appendLaminateFailureRows: expected the states of the ", std::to_string(written.size()),
              " plies written, found ", std::to_string(last - first), " rows (a bug of O_o_Solver: report it)"}));
-    appendFailureRows(block, row, elementId, laminate, written,
+    appendFailureRows(block, row, elementId, laminate, written, output,
                       [&](std::size_t w)
                       {
                           const std::span<const double> values = plyStateRows.values(first + w);
@@ -913,7 +1001,7 @@ std::size_t laminateVectorisedRecoveryMinCases(LayerOutput output)
 
 LayerOutput laminateVectorisedSource(LayerOutput output)
 {
-    return output == LayerOutput::FailureIndices ? LayerOutput::PlyStates : output;
+    return isPlyIndexOutput(output) ? LayerOutput::PlyStates : output;
 }
 
 } // namespace oos::elements

@@ -166,9 +166,11 @@ template <typename Shape>
 [[nodiscard]] bool higherOrderShellLayerRates(const ElementBatchView& view, std::int64_t row,
                                               const DesignedField& field, LayerOutput output,
                                               const NodalDisplacements& displacements, ElementResultBlock& rates);
-// The failure index rows of the blocks from the ply states (completeLaminateFailureRows), each element resolved once.
+// The failure index rows, or the strength ratio rows (`output`), of the blocks from the ply states
+// (completeLaminateFailureRows), each element resolved once.
 template <typename Shape>
-void completeHigherOrderShellFailureRows(const ElementBatchView& view, std::span<const ElementResultBlock> sources,
+void completeHigherOrderShellFailureRows(const ElementBatchView& view, LayerOutput output,
+                                         std::span<const ElementResultBlock> sources,
                                          std::span<ElementResultBlock> blocks);
 
 } // namespace oos::elements

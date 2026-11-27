@@ -212,8 +212,9 @@ below build on it.
   gradient is the row of that item.
 - ESE item 4 (the energy density) is the element's strain energy over its volume (the density column of the strain
   energy table is empty).
-- CSTRAT: the strength ratio λ with F(λσ) = 1 (`composite/StrengthRatio`), from the ply stresses and the allowables of
-  the laminate on the overlaid snapshot; the bond ratio is 1/FB.
+- CompositeStrengthRatio: the strength ratio λ with F(λσ) = 1 (`composite/StrengthRatio`, the values of the strength
+  ratio table of the laminated shells: `elements::plyStrengthRatio`), from the ply stresses and the allowables of the
+  laminate on the overlaid snapshot; the bond ratio is the inverse of the bond index.
 - A constraint value is given for every item and every bound in every subcase where it acts, in the normalised form
   g = (L − r)/max(|L|, GSCAL) or (r − U)/max(|U|, GSCAL), GSCAL = 0.001 by default (DesignOptimParams); the screening of DesignConstrScreen
   is applied by the approximation. A constraint of set 0 (declared by the caller without a set) acts wherever its

@@ -532,6 +532,12 @@ test("a ply response whose lamina is not an integer is refused", () => {
     const refused = declared(text, "lamina", plyStress(2.7), {}, false);
     try { refused.problem.evaluate().delete(); } finally { refused.dispose(); }
   }, /integer/i);
+  // An owner kind that is neither Elements nor a property card of the model is named as such.
+  assert.throws(() => {
+    const refused = declared(text, "owner", { responses: [{ id: 11, type: "CompositeStress", propertyType: "Element",
+      attributeA: 3, attributeB: 1, targets: [1] }] }, {}, false);
+    try { refused.problem.evaluate().delete(); } finally { refused.dispose(); }
+  }, /ownerKind = Elements .* or a property card of the model .*, found Element/);
 });
 
 // --- 9. A Hessian-vector product weighted on a share of the strain energy --------------------------------------------

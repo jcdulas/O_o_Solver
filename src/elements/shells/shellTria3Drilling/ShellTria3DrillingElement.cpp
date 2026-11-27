@@ -56,11 +56,14 @@ Resolution<ShellTria3DrillingElement::Data> ShellTria3DrillingElement::resolve(c
     // A membrane-bending coupling is refused: the drilling membrane has none.
     if (data.section.hasCoupling)
         return Result::failure(elementProblem(
-            view, row, problem_code::UNSUPPORTED_FIELD, "ShellProp.couplingMatId",
+            view, row, problem_code::UNSUPPORTED_FIELD,
+            data.section.isLaminate() ? "propId" : "ShellProp.couplingMatId",
             base::concatenate(
                 {"expected no membrane-bending coupling on the ", view.card(),
-                 " (ShellProp.couplingMatId blank, a laminate "
-                 "with B = 0), found one; the coupling is supported on the ShellQuad4 and ShellTria3 only"})));
+                 data.section.isLaminate() ? " (a stack symmetric about the reference surface)"
+                                           : " (ShellProp.couplingMatId blank)",
+                 ", found one; the ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6 take the coupling: use one of "
+                 "them, or remove the coupling (a symmetric stack with a blank bottomOffset)"})));
 
     Resolution<std::array<double, 3>> thickness =
         resolveCornerThicknesses<3>(view, row, data.section, columns.thicknessFlag[r], columns.cornerThickness[row]);
@@ -111,11 +114,14 @@ void ShellTria3DrillingElement::check(const ElementBatchView& view, base::Diagno
 void ShellTria3DrillingElement::checkRows(const ElementBatchView& view, ElementRange range, base::DiagnosticSink& sink) const
 {
     const Columns columns(view);
+    std::int32_t warnedProperty = 0;
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         auto resolution = resolve(view, columns, row);
         if (!resolution)
             sink.report(std::move(resolution.problem));
+        else
+            reportLaminateWarnings(resolution.value->section, warnedProperty, sink);
     }
 }
 

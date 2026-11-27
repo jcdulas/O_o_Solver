@@ -79,12 +79,12 @@ void ShellTria6Element::completeRecoveredLayerRows(const ElementBatchView& view,
                                                   std::span<const ElementResultBlock> sources,
                                                   std::span<ElementResultBlock> blocks) const
 {
-    if (output != LayerOutput::FailureIndices)
+    if (!isPlyIndexOutput(output))
     {
         completeLaminateRows(output, blocks);
         return;
     }
-    completeHigherOrderShellFailureRows<QuadraticTriangleShape>(view, sources, blocks);
+    completeHigherOrderShellFailureRows<QuadraticTriangleShape>(view, output, sources, blocks);
 }
 
 } // namespace oos::elements

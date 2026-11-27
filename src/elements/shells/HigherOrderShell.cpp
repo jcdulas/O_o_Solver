@@ -147,7 +147,15 @@ template <typename Shape>
 void checkHigherOrderShells(const ElementBatchView& view, base::DiagnosticSink& sink)
 {
     const HigherOrderShellColumns columns(view);
-    checkEveryRow(view, sink, [&](std::int64_t row) { return resolveHigherOrderShell<Shape>(view, columns, row); });
+    std::int32_t warnedProperty = 0;
+    for (std::int64_t row = 0; row < view.rowCount(); ++row)
+    {
+        Resolution<HigherOrderShellData<Shape>> data = resolveHigherOrderShell<Shape>(view, columns, row);
+        if (!data)
+            sink.report(std::move(data.problem));
+        else
+            reportLaminateWarnings(data.value->section, warnedProperty, sink);
+    }
 }
 
 template <typename Shape>
@@ -359,11 +367,12 @@ void higherOrderShellSlopes(const ElementBatchView& view, std::int64_t row, std:
 }
 
 template <typename Shape>
-void completeHigherOrderShellFailureRows(const ElementBatchView& view, std::span<const ElementResultBlock> sources,
+void completeHigherOrderShellFailureRows(const ElementBatchView& view, LayerOutput output,
+                                         std::span<const ElementResultBlock> sources,
                                          std::span<ElementResultBlock> blocks)
 {
     const HigherOrderShellColumns columns(view);
-    completeLaminateFailureRows(sources, blocks, [&](std::int64_t row, const auto& visit)
+    completeLaminateFailureRows(output, sources, blocks, [&](std::int64_t row, const auto& visit)
                                 { visit(resolveHigherOrderShell<Shape>(view, columns, row).required().section); });
 }
 
@@ -506,7 +515,7 @@ bool higherOrderShellLayerRates(const ElementBatchView& view, std::int64_t row, 
     template void higherOrderShellSlopes<Shape>(const ElementBatchView&, std::int64_t,                                 \
                                                 std::span<const RecoveryOutput>, std::span<RecoverySlopes>);           \
     template void completeHigherOrderShellFailureRows<Shape>(                                                          \
-        const ElementBatchView&, std::span<const ElementResultBlock>, std::span<ElementResultBlock>);                  \
+        const ElementBatchView&, LayerOutput, std::span<const ElementResultBlock>, std::span<ElementResultBlock>);     \
     template bool higherOrderShellStiffnessRate<Shape>(const ElementBatchView&, std::int64_t, const DesignedField&,    \
                                                        ElementMatrixBlock&);                                           \
     template bool higherOrderShellDifferentialRate<Shape>(const ElementBatchView&, std::int64_t, const DesignedField&, \

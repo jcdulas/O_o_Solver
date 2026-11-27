@@ -1,6 +1,7 @@
 #include "oos/elements/shells/Laminate.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/elements/core/ElementFormulation.hpp"
 #include "oos/elements/core/MaterialMatrices.hpp"
 
 #include <algorithm>
@@ -26,8 +27,23 @@ enum class FailureTheoryCode : std::uint8_t
     Hill = 1,
     Hoffman = 2,
     TsaiWu = 3,
-    MaxStrain = 4
+    MaxStrain = 4,
+    HashinCriterion = 5,
+    HashinTape = 6,
+    HashinFabricFailure = 7
 };
+
+// Whether the model is computed in the mixed hybrid formulation: the choice of the program that built the snapshot,
+// else the model parameter (ElementRegistry::readModelFormulation, which also reports a wrong choice).
+[[nodiscard]] bool isMixedHybridModel(const input::ModelSnapshot& snapshot)
+{
+    if (!snapshot.modelFormulation().empty())
+        return snapshot.modelFormulation() == MIXED_HYBRID_FORMULATION;
+    if (!snapshot.hasTable(input::TableRole::Params))
+        return false;
+    const std::optional<input::ParamValue> value = snapshot.params().find(MODEL_FORMULATION_PARAMETER);
+    return value && value->kind == input::ParamValue::Kind::Text && value->text == MIXED_HYBRID_FORMULATION;
+}
 
 // The rows [first, last) of laminatePliesTable holding the plies of `propId`: the table is sorted by propId, then ply.
 struct PlyRows
@@ -42,8 +58,9 @@ struct PlyRows
 //   τ(z) = −S(z) / D*,  S(z) = ∫_bottom^z Q̄dd (ζ − zn) dζ,  D* = D − B²/A,
 // and the shear energy gives the stiffness 1/H = ∫ τ² / G dz (κ G t, κ = 5/6, for one material). τ is quadratic in
 // each ply: three Gauss points integrate τ² exactly. A ply rigid in the direction (plyShearModulus 0: a blank G1Z or
-// G2Z) carries its shear stress without strain: it adds nothing to the integral (1/G = 0). Sets H and the τ at the
-// top of each ply. Precondition: a ply at least is flexible in the direction (isRigidIn false).
+// G2Z) carries its shear stress without strain: it adds nothing to the integral (1/G = 0). Sets the τ at the top of
+// each ply, which does not depend on the moduli, and H: 0 when every ply is rigid in the direction (the laminate is
+// then rigid in transverse shear there).
 void setTransverseShear(Laminate& laminate, std::size_t d)
 {
     double a = 0.0;
@@ -80,24 +97,28 @@ void setTransverseShear(Laminate& laminate, std::size_t d)
         below += firstMoment(e, ply.zBottom, ply.zTop);
         ply.shearAtTopPerForce[d] = -below / reducedRigidity;
     }
-    laminate.transverseShear[d] = 1.0 / compliance;
+    // A laminate is rigid in transverse shear in direction d when every one of its plies is: it then has no shear
+    // flexibility there and the kernels take their own shear stiffness. One flexible ply is enough for the laminate to
+    // be flexible (a sandwich whose faces leave G1Z and G2Z blank shears in its core).
+    laminate.transverseShear[d] = compliance > 0.0 ? 1.0 / compliance : 0.0;
 }
 
-// A laminate is rigid in transverse shear in direction d when every one of its plies is (plyShearModulus 0): it then
-// has no shear flexibility there and the kernels take their own shear stiffness. One flexible ply is enough for the
-// laminate to be flexible (a sandwich whose faces leave G1Z and G2Z blank shears in its core).
-[[nodiscard]] bool isRigidIn(const Laminate& laminate, std::size_t d)
-{
-    return std::all_of(laminate.plies.begin(), laminate.plies.end(),
-                       [d](const LaminatePly& ply) { return !(plyShearModulus(ply, d) > 0.0); });
-}
+// B is zero for the section when its terms are round-off beside those of the stack: a symmetric stack whose ply
+// heights are not exact in binary (plies of 0.13 or 0.1) leaves terms of some 1e-17 of A·t, which are not a coupling.
+// The scale of B is that of A times the thickness (B = ½ Σ Q̄ (z_k² − z_{k−1}²)).
+constexpr double COUPLING_ROUND_OFF = 1.0e-12;
 
-// A stack whose plies all have the same material and the same angle (one material through the thickness).
-[[nodiscard]] bool isHomogeneous(const Laminate& laminate)
+void dropCouplingRoundOff(Laminate& laminate)
 {
-    const LaminatePly& first = laminate.plies.front();
-    return std::all_of(laminate.plies.begin(), laminate.plies.end(), [&first](const LaminatePly& ply)
-                       { return ply.material.matId == first.material.matId && ply.angle == first.angle; });
+    double largestA = 0.0;
+    double largestB = 0.0;
+    for (std::size_t k = 0; k < laminate.a.values.size(); ++k)
+    {
+        largestA = std::max(largestA, std::abs(laminate.a.values[k]));
+        largestB = std::max(largestB, std::abs(laminate.b.values[k]));
+    }
+    if (largestB <= COUPLING_ROUND_OFF * largestA * laminate.thickness)
+        laminate.b = {};
 }
 
 [[nodiscard]] PlyRows plyRowsOf(const base::ContractReader& plies, std::int32_t propId)
@@ -132,7 +153,7 @@ void setTransverseShear(Laminate& laminate, std::size_t d)
 }
 
 // The failure theory of the property row: the `failureTheory` column of a CompPropGlobal (O_o_Model's codes) or of a
-// CompProp, as a code or a text. Nothing when the code is a theory the solver does not compute (the Hashin criteria).
+// CompProp, as a code or a text. Not supported when it is a theory the solver does not compute (the Hashin criteria).
 struct TheoryReading
 {
     bool isSupported = true;
@@ -161,8 +182,14 @@ struct TheoryReading
             return {true, FailureTheory::TsaiWu, "TsaiWu"};
         case FailureTheoryCode::MaxStrain:
             return {true, FailureTheory::MaxStrain, "StrainTheory"};
+        case FailureTheoryCode::HashinCriterion:
+            return {false, FailureTheory::None, "HashinCriterion"};
+        case FailureTheoryCode::HashinTape:
+            return {false, FailureTheory::None, "HashinTape"};
+        case FailureTheoryCode::HashinFabricFailure:
+            return {false, FailureTheory::None, "HashinFabricFailure"};
         }
-        return {false, FailureTheory::None, std::string("code ").append(std::to_string(code))};
+        return {false, FailureTheory::None, std::string("the code ").append(std::to_string(code))};
     }
     const std::string_view text = property.dictionaryTexts(column, base::NullPolicy::Allow)[row];
     if (text.empty())
@@ -219,6 +246,8 @@ LaminateColumns::LaminateColumns(const ElementBatchView& view) : materials(view)
         plies = &snapshot.laminatePlies();
     if (snapshot.hasTable(input::TableRole::LaminateSummary))
         summary = &snapshot.laminateSummary();
+    anisotropicPlyShear =
+        isMixedHybridModel(snapshot) ? AnisotropicPlyShear::InPlaneShearModulus : AnisotropicPlyShear::Rigid;
 }
 
 Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const LaminateColumns& columns, std::int64_t row,
@@ -260,8 +289,9 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
     if (!theory.isSupported)
         return Result::failure(
             elementProblem(view, row, problem_code::UNSUPPORTED_FIELD, base::concatenate({"", type, ".failureTheory"}),
-                           base::concatenate({"expected ", type, ".failureTheory blank, HILL, HOFF, TSAI or STRN on ",
-                                              type, " ", propId, ", found ", theory.text,
+                           base::concatenate({"expected ", type,
+                                              ".failureTheory blank, Hill, Hoffman, TsaiWu or StrainTheory on ", type,
+                                              " ", propId, ", found ", theory.text,
                                               "; the Hashin criteria are not supported: choose another theory"})));
     laminate.failureTheory = theory.theory;
     laminate.bondAllowable = realOr(card, "bondAllowable", propertyRow, 0.0);
@@ -279,7 +309,7 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
     const std::span<const double> tops = plies.values<double>("zTop");
     const base::BooleanView outputs = plies.booleans("sout");
     const base::BooleanView mirrored = plies.booleans("isMirrored");
-    // The card's plies: the stack's rows outside the mirrored half of LAM = SYM.
+    // The card's plies: the stack's rows outside the mirrored half of laminateOption = Symmetry.
     std::int32_t cardPlies = 0;
     for (std::int64_t p = rows.first; p < rows.last; ++p)
         cardPlies += mirrored[p] ? 0 : 1;
@@ -290,13 +320,22 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
         ply.number = numbers[r];
         ply.cardPly = mirrored[p] ? 2 * cardPlies - ply.number : ply.number - 1;
         ply.plyId = isPlyIdGiven.isValid(p) ? plyIds[r] : 0;
-        // The ply fields carry their number after the keyword of the first ply's field: MID3 is
+        // The ply fields carry their number after the name of the field: the material of ply 3 is
         // "CompProp.plyMatId3".
         const std::string field = base::concatenate({"", type, ".plyMatId", std::to_string(ply.number)});
         Resolution<ShellMaterial> material = resolveShellMaterial(view, columns.materials, row, matIds[r], field);
         if (!material)
             return Result::failure(std::move(material.problem));
         ply.material = *material.value;
+        // An AnisoMat2D gives the transverse shear of a ShellProp when it is its shearMatId (its terms G11, G22 then);
+        // as a ply it has no transverse shear modulus: AnisotropicPlyShear.
+        if (ply.material.type == ShellMaterialType::AnisoMat2D)
+        {
+            const double modulus = columns.anisotropicPlyShear == AnisotropicPlyShear::InPlaneShearModulus
+                                       ? ply.material.inPlaneShearModulus
+                                       : 0.0;
+            ply.material.transverseShear = {modulus, modulus};
+        }
         ply.thickness = thicknesses[r];
         ply.angle = thetas[r] * RADIANS_PER_DEGREE;
         ply.zBottom = bottoms[r];
@@ -332,8 +371,9 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
         laminate.massPerArea += ply.material.density * ply.thickness;
         laminate.plies.push_back(std::move(ply));
     }
-    // A blank Z0 is −T/2 and follows the plies' thicknesses (CompProp); the card says whether it was given from data
-    // contract 54 (z0_given), before it a Z0 equal to −T/2 to the bit is taken as blank (as
+    dropCouplingRoundOff(laminate);
+    // A blank bottomOffset is −T/2 and follows the plies' thicknesses (CompProp); the card says whether it was given
+    // from data contract 54 (bottomOffsetGiven), before it an offset equal to −T/2 to the bit is taken as blank (as
     // design::DerivedProperties, whose overlays move the stack's z with the same rule).
     if (card.hasColumn("bottomOffsetGiven") && card.columnType("bottomOffsetGiven") == "uint8")
         laminate.isZ0Blank =
@@ -341,21 +381,20 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
                                       base::NullPolicy::Allow)[static_cast<std::size_t>(propertyRow)] == 0;
     else
         laminate.isZ0Blank = !laminate.plies.empty() && laminate.plies.front().zBottom == -0.5 * laminate.thickness;
-    // SOUT defaults to NO, but a laminate whose plies all leave SOUT blank or NO writes every ply, so that a ply
-    // output asked for is never empty; with a YES on some plies, only those.
+    // plyStressOutput defaults to No, but a laminate whose plies all leave it blank or No writes every ply, so that a
+    // ply output asked for is never empty; with a Yes on some plies, only those.
     const bool isAnyPlyAsked =
         std::any_of(laminate.plies.begin(), laminate.plies.end(), [](const LaminatePly& ply) { return ply.hasOutput; });
     if (!isAnyPlyAsked)
         for (LaminatePly& ply : laminate.plies)
             ply.hasOutput = true;
+    // The equilibrium distribution of the transverse shear holds for every stack, of one material or of several: a
+    // stack of equal plies has the parabola of a homogeneous plate, 1.5 Q/t at its middle and zero at its faces, which
+    // the mean Q/t would underestimate at the bonds.
     for (std::size_t d = 0; d < 2; ++d)
     {
-        if (isRigidIn(laminate, d))
-            continue;
         setTransverseShear(laminate, d);
-        // Every ply of a homogeneous stack (one material, one angle) takes the mean shear; a stack of several materials
-        // or angles (a sandwich) the equilibrium distribution at the top of each ply.
-        laminate.hasShearDistribution[d] = !isHomogeneous(laminate);
+        laminate.hasShearDistribution[d] = true;
     }
 
     switch (laminate.option)
@@ -363,26 +402,27 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
     case LaminateOption::Full:
         break;
     case LaminateOption::Membrane:
-        // CompProp LAM = MEM: only the membrane terms (MID1 of the equivalent ShellProp).
+        // MembraneOnly: only the membrane terms (the membrane material of the equivalent ShellProp).
         laminate.b = {};
         laminate.d = {};
         laminate.momentPerDegree = {};
         laminate.momentPerGradient = {};
         break;
     case LaminateOption::Bending:
-        // LAM = BEND: only the bending terms (MID2).
+        // BendingOnly: only the bending terms (the bending material of the equivalent ShellProp).
         laminate.a = {};
         laminate.b = {};
         laminate.forcePerDegree = {};
         laminate.forcePerGradient = {};
         break;
     case LaminateOption::Smeared:
-        // LAM = SMEAR: MID1 = MID2 of the equivalent ShellProp with 12I/T³ = 1, MID3 and MID4 blank: D = A t²/12, no
-        // coupling, rigid transverse shear; the thermal moments follow the same smearing (none from a uniform ΔT).
+        // SmearedLaminate: the membrane and bending materials of the equivalent ShellProp the same, with 12I/T³ = 1,
+        // no transverse shear nor coupling material: D = A t²/12, no coupling, rigid transverse shear; the thermal
+        // moments follow the same smearing (none from a uniform ΔT).
         laminate.d = (laminate.thickness * laminate.thickness / 12.0) * laminate.a;
         laminate.b = {};
         laminate.transverseShear = {};
-        // Rigid in transverse shear: every ply takes the mean shear Q / t, as in a rigid direction.
+        // The stacking is ignored: every ply takes the mean shear Q / t.
         laminate.hasShearDistribution = {};
         laminate.momentPerDegree = {};
         for (std::size_t k = 0; k < 3; ++k)

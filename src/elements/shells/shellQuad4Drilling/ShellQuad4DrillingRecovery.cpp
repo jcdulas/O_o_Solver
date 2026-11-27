@@ -223,13 +223,13 @@ void ShellQuad4DrillingElement::completeRecoveredLayerRows(const ElementBatchVie
                                                   std::span<const ElementResultBlock> sources,
                                                   std::span<ElementResultBlock> blocks) const
 {
-    if (output != LayerOutput::FailureIndices)
+    if (!isPlyIndexOutput(output))
     {
         completeLaminateRows(output, blocks);
         return;
     }
     const Columns columns(view);
-    completeLaminateFailureRows(sources, blocks, [&](std::int64_t row, const auto& visit)
+    completeLaminateFailureRows(output, sources, blocks, [&](std::int64_t row, const auto& visit)
                                 { visit(resolve(view, columns, row).required().section); });
 }
 

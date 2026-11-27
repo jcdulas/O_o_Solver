@@ -85,6 +85,30 @@ enum class CompositeOutput : std::uint8_t
 // PARAM NoCompositeStress of the snapshot (default +1), read once per facet call.
 [[nodiscard]] CompositeOutput compositeOutputOf(const input::ModelSnapshot& snapshot);
 
+// Whether the laminated shells of the model write their strength ratio table beside their failure indices:
+// Parameter StrengthRatioCompositeStress = Yes (default No).
+[[nodiscard]] bool writesStrengthRatios(const input::ModelSnapshot& snapshot);
+
+// The failure index table and the strength ratio table have the same rows, made from the same ply states.
+[[nodiscard]] constexpr bool isPlyIndexOutput(LayerOutput output) noexcept
+{
+    return output == LayerOutput::FailureIndices || output == LayerOutput::StrengthRatios;
+}
+
+// The strength ratio of a ply: the factor λ by which its stresses would be multiplied to reach failure, F(λ·σ) = 1
+// for the failure criterion F of the laminate's theory. With F = a + b, a the quadratic part and b the linear part of
+// the criterion at σ:
+//   - Hill (quadratic only, the allowable chosen by the sign of each stress, which λ > 0 keeps): λ = 1/√F(σ);
+//   - Hoffman and TsaiWu (a·λ² + b·λ = 1): λ = (−b + √(b² + 4a)) / (2a), the positive root;
+//   - StrainTheory (maximum strain, linear): λ = 1/F(σ).
+// `stress` the ply stresses (σ1, σ2, τ12), `failureIndex` their index (which gives F for Hill and StrainTheory). A ply
+// whose criterion is 0 (no load) gets UNLOADED_STRENGTH_RATIO, the "no bound" magnitude of the format.
+inline constexpr double UNLOADED_STRENGTH_RATIO = 1.0e20;
+[[nodiscard]] double plyStrengthRatio(FailureTheory theory, const ShellMaterial& material,
+                                      const std::array<double, 3>& stress, double failureIndex) noexcept;
+// The strength ratio of a bond from its failure index: the allowable over the larger transverse shear, 1/index.
+[[nodiscard]] double bondStrengthRatio(double bondFailureIndex) noexcept;
+
 // The columns of each output kind in the data contract: stresses fiber_distance, oxx, oyy, txy, angle, omax, omin,
 // von_mises; strains the same with exx... (Strains: at the fibres; StrainCurvatures: first column fiber_curvature);
 // forces nx, ny, nxy, mx, my, mxy, qx, qy.
@@ -129,8 +153,9 @@ inline constexpr std::size_t SHELL_VECTORISED_RECOVERY_MIN_CASES = 8;
 // appendShellRows, so the bits of its rows for the same Linear values.
 void completeShellRows(ElementOutput output, std::span<ElementResultBlock> blocks);
 
-// The columns of the ply tables (stress.shellQuad4_composite: o11, o22, t12, t1z, t2z, angle, major, minor, von_mises;
-// strain: e11 ...; failure_indices: failure_index, bond_failure_index, element_failure_index), and of the ply states
+// The columns of the ply tables (stress of a ShellQuad4Composite: o11, o22, t12, t1z, t2z, angle, major, minor,
+// vonMises; strain: e11 ...; failureIndices: failureIndex, bondFailureIndex, elementFailureIndex; strengthRatios:
+// strengthRatio, bondStrengthRatio, elementStrengthRatio), and of the ply states
 // (LayerOutput::PlyStates, no table: the stresses σ1, σ2, τ12, the mechanical strains ε − α·ΔT and the transverse
 // shears τ1z, τ2z of the plies whose failure indices are written, PLY_STATE_COLUMNS values).
 inline constexpr std::size_t PLY_STATE_COLUMNS = 8;
@@ -193,10 +218,12 @@ void appendShellRowSecondRates(ElementResultBlock& block, std::int64_t row, std:
 // - the transverse shear of the plies from the element's shear forces (see laminatePlyShear), along the material axes
 //   x, y of the element (the columns t1z, t2z), and its strains (e1z, e2z), those stresses over the ply's modulus in
 //   the same direction (plyShearModulus: G1Z and G2Z turned by the ply angle; 0 where the ply is rigid);
-// - the failure indices of the plies by the theory FT (CompProp field FT), the bond indices max(|τ1z|, |τ2z|)/SB at the
-//   interface above each ply (NaN above the last), and the element index, the largest of them, on the last ply (NaN on
-//   the others), by the convention of the failure index table. No rows
-//   without FT, or when a ply's material lacks its allowables.
+// - the failure indices of the plies by the laminate's failureTheory, the bond indices max(|τ1z|, |τ2z|) over the
+//   bondAllowable at the interface above each ply (NaN above the last), and the element index, the largest of them, on
+//   the last ply (NaN on the others), by the convention of the failure index table. No rows without a theory, or when
+//   a ply's material lacks its allowables;
+// - the strength ratios (LayerOutput::StrengthRatios), the same rows: the ratio of each ply (plyStrengthRatio), of the
+//   bond above it (bondStrengthRatio) and, on the last ply, the element's, the smallest of them.
 // LayerOutput::PlyStates: one row per ply with an output, as the failure indices (none when the laminate writes no
 // failure index), the stresses, mechanical strains and transverse shears of the ply (PLY_STATE_COLUMNS).
 void appendLaminateRows(ElementResultBlock& block, std::int64_t row, std::int32_t elementId,
@@ -233,15 +260,16 @@ void appendLaminateRowRates(ElementResultBlock& block, std::int64_t row, std::in
 void completeLaminateRows(LayerOutput output, std::span<ElementResultBlock> blocks);
 void appendLaminateFailureRows(ElementResultBlock& block, std::int64_t row, std::int32_t elementId,
                                const ShellSection& section, const ElementResultBlock& plyStateRows, std::size_t first,
-                               std::size_t last);
+                               std::size_t last, LayerOutput output = LayerOutput::FailureIndices);
 
-// The failure index rows of every element of `blocks` from its ply state rows in `sources` (the same case in each;
+// The failure index rows (or the strength ratio rows: `output`) of every element of `blocks` from its ply state rows
+// in `sources` (the same case in each;
 // ElementFamily::completeRecoveredLayerRows): the rows of an element are consecutive and the same in every source, and
 // `withSection(row, visit)` calls visit(section) with the section of the element of batch row `row`, resolved once for
 // every case.
 template <typename WithSection>
-void completeLaminateFailureRows(std::span<const ElementResultBlock> sources, std::span<ElementResultBlock> blocks,
-                                 WithSection&& withSection)
+void completeLaminateFailureRows(LayerOutput output, std::span<const ElementResultBlock> sources,
+                                 std::span<ElementResultBlock> blocks, WithSection&& withSection)
 {
     if (sources.empty())
         return;
@@ -258,7 +286,8 @@ void completeLaminateFailureRows(std::span<const ElementResultBlock> sources, st
                     [&](const ShellSection& section)
                     {
                         for (std::size_t c = 0; c < sources.size(); ++c)
-                            appendLaminateFailureRows(blocks[c], row, elementId, section, sources[c], first, last);
+                            appendLaminateFailureRows(blocks[c], row, elementId, section, sources[c], first, last,
+                                                      output);
                     });
         first = last;
     }

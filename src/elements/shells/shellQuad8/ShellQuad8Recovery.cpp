@@ -79,12 +79,12 @@ void ShellQuad8Element::completeRecoveredLayerRows(const ElementBatchView& view,
                                                   std::span<const ElementResultBlock> sources,
                                                   std::span<ElementResultBlock> blocks) const
 {
-    if (output != LayerOutput::FailureIndices)
+    if (!isPlyIndexOutput(output))
     {
         completeLaminateRows(output, blocks);
         return;
     }
-    completeHigherOrderShellFailureRows<SerendipityQuadShape>(view, sources, blocks);
+    completeHigherOrderShellFailureRows<SerendipityQuadShape>(view, output, sources, blocks);
 }
 
 } // namespace oos::elements

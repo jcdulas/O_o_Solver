@@ -19,7 +19,7 @@ of the [ply materials](https://github.com/jcdulas/O_o_Model/blob/main/docs/refer
 | Stacking | any sequence of plies, symmetric or not; the options `Symmetry`, `MembraneOnly`, `BendingOnly` and `SmearedLaminate` |
 | Section | classical lamination theory (membrane, coupling and bending stiffness), transverse shear from the stacking sequence, thermal forces and moments of the plies |
 | Analyses | statics, modes, buckling and static aeroelasticity, like any shell section |
-| Ply results | stresses, strains and transverse shear stresses of each ply, failure indices of the plies and of their bonds |
+| Ply results | stresses, strains and transverse shear stresses of each ply, failure indices and strength ratios of the plies and of their bonds |
 | Failure criteria | `Hill`, `Hoffman`, `TsaiWu`, `StrainTheory` (maximum strain) |
 | Design | ply thicknesses as design fields; ply stress, strain, failure index and strength ratio responses; first derivatives by the direct or the adjoint method |
 
@@ -156,7 +156,7 @@ Fields of the element cards that matter for a laminate:
 | Card | What the solver reads |
 | --- | --- |
 | `OrthoMat2D` | `youngsModulus1`, `youngsModulus2`, `poissonRatio12`, `shearModulus12`; the transverse shear moduli `shearModulus1Z`, `shearModulus2Z` (blank: rigid in that direction); `density`; `thermalExpansion1`, `thermalExpansion2`; the strengths `tensionStrength1`, `compressionStrength1`, `tensionStrength2`, `compressionStrength2` (positive values; a blank compression strength takes the tension one), `shearStrength`; `interactionTerm12`, the coefficient F12 of the Tsai-Wu criterion (blank: 0); `strainAllowables` (1: the strengths are strains, for `StrainTheory`) |
-| `AnisoMat2D` | the plane-stress matrix, `density`, the three expansion coefficients; no strengths |
+| `AnisoMat2D` | the plane-stress matrix, `density`, the three expansion coefficients; no strengths, no transverse shear moduli (see [the section](#section-of-the-laminate)) |
 | `IsoMat` | Young's modulus, Poisson's ratio, shear modulus (also the transverse shear modulus), `density`, expansion; no strengths |
 
 The plane-stress matrix of an `OrthoMat2D` ply is that of an orthotropic lamina (Jones, *Mechanics of Composite
@@ -184,6 +184,12 @@ along y. A blank `shearModulus1Z` or `shearModulus2Z` makes a ply rigid along th
 sandwich whose faces leave them blank shears in its core. The laminate is rigid in transverse shear along an axis only
 when every ply is; the element then uses its own stiff shear term.
 
+An `AnisoMat2D` ply gives no transverse shear modulus. In `ClassicFormulation` such a ply is rigid in transverse
+shear, as an `OrthoMat2D` ply whose two moduli are blank: no modulus given, no flexibility. In
+`MixedHybridFormulation` it takes the in-plane shear modulus G33 of its matrix along both axes, the closest estimate
+the card allows (exact for an isotropic material written as an `AnisoMat2D`). Use `OrthoMat2D` plies to give the
+moduli.
+
 **Temperature.** A temperature change `ΔT + z T′` through the thickness (T′ the gradient of a `PlateTemperatureLoad`)
 gives the thermal forces and moments of each ply from its expansion coefficients (Jones, §4.5). The ply stresses
 subtract the thermal strain of each ply.
@@ -205,16 +211,17 @@ point 0); its layer is the ply number, 1 at the bottom.
 | `stress` | `StressOutput` | `o11`, `o22`, `t12`, `t1z`, `t2z`, `angle`, `major`, `minor`, `vonMises` |
 | `strain` | `StrainOutput` | `e11`, `e22`, `e12`, `e1z`, `e2z`, `angle`, `major`, `minor`, `vonMises` |
 | `failureIndices` | `StressOutput`, with a `failureTheory` | `failureIndex`, `bondFailureIndex`, `elementFailureIndex` |
+| `strengthRatios` | `StressOutput`, with a `failureTheory` and `Parameter;StrengthRatioCompositeStress;Yes` | `strengthRatio`, `bondStrengthRatio`, `elementStrengthRatio` |
 
 - The in-plane stresses and strains are those at the mid-thickness of the ply, in the ply axes (1 along the fibres).
   The strains include the thermal strain; the stresses are those of the mechanical strain `ε − α ΔT`. `major` and
   `minor` are the principal values of the in-plane components, `angle` the direction of the major one in degrees from
   axis 1, and `vonMises` their von Mises value.
 - `t1z` and `t2z` are the transverse shear stresses along the material axes x and y of the element, not along the ply
-  axes. In a stack of several materials or angles they are those at the top face of each ply, from the distribution
-  above; the top ply's are zero. In a stack of one material at one angle, in a `SmearedLaminate`, or along an axis in
-  which every ply is rigid, every ply carries the mean stress `Q/t`. `e1z` and `e2z` are those stresses over the ply's
-  modulus in the same direction (0 where the ply is rigid).
+  axes. They are those at the top face of each ply, from the distribution above, whatever the stack: the top ply's
+  are zero, and a stack of equal plies has the parabola of a homogeneous plate, `1.5 Q/t` at its middle. Only a
+  `SmearedLaminate`, whose stacking is ignored, gives every ply the mean stress `Q/t`. `e1z` and `e2z` are those
+  stresses over the ply's modulus in the same direction (0 where the ply is rigid).
 - The element's own `forces` table (`ElemForceOutput`) gives the force and moment resultants of the laminate.
 - The model parameter `NoCompositeStress` chooses what a laminated element writes under `StressOutput` and
   `StrainOutput`: 1 (the default) the ply tables only; 0 the ply tables and the stresses and strains of the equivalent
@@ -238,6 +245,13 @@ The bond index of a ply is `max(|t1z|, |t2z|) / bondAllowable` at its top face, 
 ply has none (NaN). The element index, the largest ply or bond index of the plies with an output, is on the last row
 of the element; the other rows hold NaN.
 
+**Strength ratios.** With `Parameter;StrengthRatioCompositeStress;Yes`, a `strengthRatios` table has the same rows.
+The strength ratio of a ply is the factor λ that would bring it to failure, F(λσ) = 1: `1/√F` for `Hill`, `1/F` for
+`StrainTheory`, and for `Hoffman` and `TsaiWu` the positive root of `a λ² + b λ = 1`, a and b the quadratic and linear
+parts of the criterion at the ply stresses. The bond ratio is the inverse of the bond index. An unloaded ply or bond
+has the ratio 1.0E20. The element ratio, the smallest ply or bond ratio, is on the last row of the element. A ratio
+below 1 means failure, as an index above 1 does.
+
 ## Design and derivatives
 
 The ply thicknesses of a `CompProp` or `CompPropGlobal` are design fields. A deck relation names ply k as
@@ -255,9 +269,7 @@ laminate cards, ply angles included, are refused when the design model is built.
 | `CompositeStrengthRatio` | 5: the ratio of the ply stresses; 7: the bond ratio | as above |
 
 These responses take the elements of a `CompProp` or `CompPropGlobal` among the six shells. The strength ratio is the
-factor λ that would bring the ply to failure, F(λσ) = 1: `1/√F` for `Hill`, `1/F` for `StrainTheory`, and for
-`Hoffman` and `TsaiWu` the positive root of `a λ² + b λ = 1`, a and b the quadratic and linear parts of the criterion
-at the ply stresses. The bond ratio is the inverse of the bond index. An unloaded ply has the ratio 1.0E20.
+one of the [strength ratio table](#ply-results); the response does not need the parameter of the table.
 `CompositeStress` and `CompositeStrain` also take the mode selector of a modal analysis
 ([modal derivatives](modal-derivatives.md)).
 
@@ -347,20 +359,19 @@ std::cout << gradient.report.fieldPerturbations << " " << gradient.report.analys
 
 - The Hashin failure criteria and the `SandwichCore` option are refused (`unsupported-field`). A sandwich is modelled
   as plies: the face sheets and the core, each with its material.
-- `ShellQuad4Drilling` and `ShellTria3Drilling` refuse a laminate that couples membrane and bending: an unsymmetric
-  stack, or a stack off the reference surface. The four other shells take it.
+- In `ClassicFormulation`, `ShellQuad4Drilling` and `ShellTria3Drilling` refuse a laminate that couples membrane and
+  bending: an unsymmetric stack, or a stack off the reference surface. The four other shells take it, and so does
+  `MixedHybridFormulation` on every shell. A coupling that is only round-off (a symmetric stack whose ply heights
+  are not exact in binary) is not a coupling.
 - The ply results are at the centre of the element and at the mid-thickness of each ply only; there are no ply rows
   at the corners, nor at the faces of the plies.
-- In a stack of one material at one angle, every ply carries the mean transverse shear stress `Q/t`, also at the
-  free surface; the equilibrium distribution applies to stacks of several materials or angles.
 - The transverse shear stiffness is formed separately along the two material axes, without a term coupling them.
-- Failure indices need an `OrthoMat2D` with positive `tensionStrength1`, `tensionStrength2` and `shearStrength` for
-  every ply with an output. When one lacks them, the element writes no failure index row, without a diagnostic. The
-  element index covers the plies with an output only.
-- An `AnisoMat2D` ply has no transverse shear moduli of its own: the solver takes its in-plane terms G11 and G22 in
-  their place. Use `OrthoMat2D` plies where the transverse shear of the laminate matters.
-- Strength ratios exist as design responses only: no result table holds them, and the parameter
-  `StrengthRatioCompositeStress` has no effect.
+- Failure indices and strength ratios need an `OrthoMat2D` with positive `tensionStrength1`, `tensionStrength2` and
+  `shearStrength` for every ply with an output. When one lacks them, the elements of the property write no failure
+  index row, and the run warns of it once per property (`failure-index-not-written`). The element index covers the
+  plies with an output only.
+- An `AnisoMat2D` ply has no transverse shear moduli of its own: rigid in `ClassicFormulation`, its in-plane shear
+  modulus in `MixedHybridFormulation`. Use `OrthoMat2D` plies where the transverse shear of the laminate matters.
 - The cards `CompPropIntegration`, `CompPropFreqDamping` and `OrthoMat2DFailure` are not supported: the support check
   refuses a model that has them (`unsupported-card`).
 - Only the ply thicknesses of the laminate cards are design fields; second derivatives along them are differenced.
@@ -375,6 +386,7 @@ std::cout << gradient.report.fieldPerturbations << " " << gradient.report.analys
 | --- | --- |
 | [shell-statics](../wasm/test/validation/shell-statics.test.mjs), section 4 | `MixedHybridFormulation`: simply supported [0/90]s and [0/90] plates under pressure against the Navier solution of the classical lamination theory (deflection within 0.5 %, moments and ply stresses within 1 %) on 4 × 4 `ShellQuad4`, `ShellTria3` and a distorted mesh; exact uniform strain and curvature states of a [0/45/90] laminate (forces, moments, ply stresses); a [0/90]s plate with transverse shear against `ClassicFormulation` extrapolated from 32 × 32 and 64 × 64 elements |
 | [shell-dynamics](../wasm/test/validation/shell-dynamics.test.mjs) | `MixedHybridFormulation`: the first four frequencies of a simply supported [0/90]s plate of 8 × 8 elements against the classical lamination theory |
+| [composites](../wasm/test/cases/composites.mjs) | A symmetric stack of plies of 0.13 on the drilling shells; the parabola of the transverse shear in a stack of equal plies and its bond indices; the failure indices of the four criteria against their formulas and the strength ratios that bring each criterion to one; the warning of a failure theory without strengths; an `AnisoMat2D` ply rigid in transverse shear in `ClassicFormulation`, with its in-plane shear modulus in `MixedHybridFormulation` |
 | [review-elements](../wasm/test/cases/review-elements.mjs) | `ClassicFormulation`: the tip deflection of a sandwich whose faces leave their transverse shear moduli blank, against its bending and shear stiffness; the transverse shear strain of each ply as its stress over the ply's modulus in that direction |
 | [mixed-hybrid](../wasm/test/cases/mixed-hybrid.mjs) | An unsymmetric sandwich whose plies give no transverse shear moduli: the two formulations agree within 3 % |
 | [assemblies](../wasm/test/validation/assemblies.test.mjs) | A band of [0/45/−45/90]s laminate with a material frame on a curved stiffened panel, in an assembly of shells, bars, beams and connections: its equilibrium, strain energy and mass, its results in other displacement systems, and the mixed formulation against finer classic models |

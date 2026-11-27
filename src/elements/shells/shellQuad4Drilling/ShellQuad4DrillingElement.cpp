@@ -76,11 +76,14 @@ Resolution<ShellQuad4DrillingElement::Data> ShellQuad4DrillingElement::resolve(c
     data.geometry = geometry.geometry;
     if (data.section.hasCoupling)
         return Result::failure(elementProblem(
-            view, row, problem_code::UNSUPPORTED_FIELD, "ShellProp.couplingMatId",
+            view, row, problem_code::UNSUPPORTED_FIELD,
+            data.section.isLaminate() ? "propId" : "ShellProp.couplingMatId",
             base::concatenate(
                 {"expected no membrane-bending coupling on the ", view.card(),
-                 " (ShellProp.couplingMatId blank, a laminate "
-                 "with B = 0), found one; the coupling is supported on the ShellQuad4 and ShellTria3 only"})));
+                 data.section.isLaminate() ? " (a stack symmetric about the reference surface)"
+                                           : " (ShellProp.couplingMatId blank)",
+                 ", found one; the ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6 take the coupling: use one of "
+                 "them, or remove the coupling (a symmetric stack with a blank bottomOffset)"})));
     if (data.section.hasBending && !ShellQuad4DrillingBending::hasEdgeShearFrame(data.geometry))
         return Result::failure(
             elementProblem(view, row, problem_code::DEGENERATE_GEOMETRY, "node1",
@@ -139,6 +142,7 @@ void ShellQuad4DrillingElement::check(const ElementBatchView& view, base::Diagno
 void ShellQuad4DrillingElement::checkRows(const ElementBatchView& view, ElementRange range, base::DiagnosticSink& sink) const
 {
     const Columns columns(view);
+    std::int32_t warnedProperty = 0;
     for (std::int64_t row = range.first; row < range.last; ++row)
     {
         Resolution<Data> resolution = resolve(view, columns, row);
@@ -147,6 +151,7 @@ void ShellQuad4DrillingElement::checkRows(const ElementBatchView& view, ElementR
             sink.report(std::move(resolution.problem));
             continue;
         }
+        reportLaminateWarnings(resolution.value->section, warnedProperty, sink);
         const double warp = resolution.value->geometry.warpRatio;
         if (warp > QUAD_WARP_REPORT_RATIO)
         {

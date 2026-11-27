@@ -467,4 +467,34 @@ std::optional<std::string> offsetDefinitionProblem(const input::ModelSnapshot& s
     return message;
 }
 
+void reportLaminateWarnings(const ShellSection& section, std::int32_t& lastReported, base::DiagnosticSink& sink)
+{
+    if (!section.isLaminate())
+        return;
+    const Laminate& laminate = *section.laminate;
+    if (laminate.propId == lastReported || laminate.failureTheory == FailureTheory::None)
+        return;
+    for (const LaminatePly& ply : laminate.plies)
+    {
+        if (!ply.hasOutput || ply.material.allowables.hasStrengths)
+            continue;
+        lastReported = laminate.propId;
+        const char* card = laminate.isCompPropGlobal ? "CompPropGlobal" : "CompProp";
+        base::Diagnostic warning;
+        warning.severity = base::Severity::Warning;
+        warning.code = "failure-index-not-written";
+        warning.card = card;
+        warning.id = laminate.propId;
+        warning.field = "failureTheory";
+        warning.message = base::concatenate(
+            {"expected the strengths of every ply with an output for the failure indices of ", card, " ",
+             std::to_string(laminate.propId), " (an OrthoMat2D with tensionStrength1, tensionStrength2 and "
+             "shearStrength), found none on material ", std::to_string(ply.material.matId), " of ply ",
+             std::to_string(ply.number), "; no failure index is written for the elements of this property: give "
+             "the strengths, or leave failureTheory blank"});
+        sink.report(std::move(warning));
+        return;
+    }
+}
+
 } // namespace oos::elements

@@ -35,11 +35,12 @@ namespace oos::design
 //   component by component, in the displacement system of the grid point (the output system of the result tables).
 // - STRESS, STRAIN, FORCE, ESE: ATTA the item code (locateItem), ATTi the elements (PTYPE = ELEM) or the properties
 //   of type PTYPE, whose elements are taken in increasing ID; one item per element.
-// - CSTRESS, CSTRAIN, CFAILURE, CSTRAT: as above, on CompProp or CompPropGlobal elements, ATTB the lamina (default 1;
-// several
-//   with the caller's plies= selector); one item per element and lamina.
-// A positive integer ATTB on DISP, STRESS, STRAIN or FORCE selects a vibration mode. Caller declarations can use
-// DesignResp1Definition::mode directly, including for CSTRESS and CSTRAIN while keeping ATTB as their ply selector.
+// - CompositeStress, CompositeStrain, CompositeFailure, CompositeStrengthRatio: as above, on CompProp or
+//   CompPropGlobal elements, attributeB the ply (default 1; several with the caller's plies= selector); one item per
+//   element and ply.
+// A positive integer attributeB on a displacement, stress, strain or force response selects a vibration mode. Caller
+// declarations can use DesignResp1Definition::mode directly, including for CompositeStress and CompositeStrain while
+// keeping attributeB as their ply selector.
 //
 // The kinds of the optimisation aids (no ATTA, PTYPE nor ATTB):
 // - COMPLIANCE, MEANDISP: no ATTi; one item per subcase (SelfAdjointResponses: twice the external work of the
