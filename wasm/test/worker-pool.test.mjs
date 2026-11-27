@@ -31,7 +31,15 @@ const nativePool = await createOptimizationWorkerPool(config({ mode: "native", d
   variables: [{ id: 1, initialValue: 2, lower: 0.5, upper: 5 }],
   relations: [{ id: 1, targetKind: "property", targetCard: "RodProp", targetId: 1, field: "area", terms: [{ variableId: 1, coefficient: 1 }] }],
   responses: [{ id: 1, type: "Displacement", attributeA: 1, targets: [2] }], objective: { responseId: 1, subcase: 1 } } }));
-after(() => { sharedPool.close(); timeoutPool.close(); nativePool.close(); });
+// The threaded package's runtime puts the Worker of node:worker_threads on globalThis when it loads: a pool started
+// after it must still use the events of Node.js. The same Worker is put there for the single-threaded package.
+const { Worker: NodeWorker } = await import("node:worker_threads");
+const globalWorker = Object.getOwnPropertyDescriptor(globalThis, "Worker");
+globalThis.Worker = NodeWorker;
+const runtimeWorkerPool = await createOptimizationWorkerPool(config()).finally(() => {
+  if (globalWorker) Object.defineProperty(globalThis, "Worker", globalWorker); else delete globalThis.Worker;
+});
+after(() => { sharedPool.close(); timeoutPool.close(); nativePool.close(); runtimeWorkerPool.close(); });
 
 test("independent package workers transfer results and gradients", { timeout: CASE_CEILING_MS }, async () => {
   const results = await sharedPool.evaluateMany([[2, 10], [3, 12]], { includeResults: true, gradients: true });
@@ -56,6 +64,9 @@ test("native optimization problems use the same worker protocol", { timeout: CAS
   const point = await nativePool.evaluate([2], { gradients: true });
   near(point.values.objective, 0.015); near(point.gradients.objective[0], -0.0075);
 });
+
+test("a pool started after the threaded runtime put a Worker on globalThis evaluates", { timeout: CASE_CEILING_MS },
+  async () => { near((await runtimeWorkerPool.evaluate([2, 10])).values.objective, 0.015); });
 
 // ---- the scheduling of the pool on stand-in workers: they answer at once, so that only the pool is measured.
 // A point whose first value is FAILING is refused as an ordinary error, TRAPPING as a fault of the module.

@@ -15,9 +15,11 @@ export async function createOptimizationWorkerPool(config) {
     ...(input.hooksURL ? { hooksURL: String(input.hooksURL) } : {}) };
   // Fail once, before starting workers, for callbacks or other values that cannot cross a worker boundary.
   const copied = structuredClone(options);
-  let WorkerClass = globalThis.Worker;
-  const node = !WorkerClass;
-  if (node) ({ Worker: WorkerClass } = await import("node:worker_threads"));
+  // Node.js is told by its process, not by a missing global Worker: the threaded package's runtime puts the Worker of
+  // node:worker_threads on globalThis when it loads, and that Worker has no addEventListener. The test is the one of
+  // that runtime (an Electron display process has the process object and the Worker of the web).
+  const node = Boolean(globalThis.process?.versions?.node) && globalThis.process.type !== "renderer";
+  const WorkerClass = node ? (await import("node:worker_threads")).Worker : globalThis.Worker;
   const pool = new OptimizationWorkerPool(WorkerClass, node, copied,
     { workers, initializationTimeoutMs, maximumQueuedPoints });
   try { await pool.initialize(); return pool; }
