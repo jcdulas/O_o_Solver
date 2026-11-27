@@ -7,8 +7,8 @@ Run static, modal, buckling and aeroelastic analyses through the O_o_Solver API 
 
 | Interface | Install |
 | --- | --- |
-| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.4/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.4/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
-| Python | Run `python -m pip install oo-solver==0.2.4` to get the Solver and its `oo-model` dependency. |
+| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.4/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.5/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
+| Python | Run `python -m pip install oo-solver==0.2.5` to get the Solver and its `oo-model` dependency. |
 | C++20 / vcpkg | Add `oo-solver` from the [O_o vcpkg registry](https://github.com/jcdulas/O_o_vcpkg) and link `oos::api`. [Native CMake example](https://github.com/jcdulas/O_o_vcpkg/tree/main/examples/rod) |
 
 ## Run linear statics
