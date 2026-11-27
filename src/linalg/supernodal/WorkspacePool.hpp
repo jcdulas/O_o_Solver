@@ -40,6 +40,9 @@ public:
     WorkspacePool(const WorkspacePool&) = delete;
     WorkspacePool& operator=(const WorkspacePool&) = delete;
 
+    // Another capacity, for a pool no block was taken from yet (the driver that changes its plan before it runs).
+    void setCapacity(std::int64_t capacityValues) noexcept { m_capacity = capacityValues; }
+
     // The size of the block a request of `values` values gets: `values` below KEPT_MINIMUM_VALUES, else the smallest
     // class size at or above it.
     [[nodiscard]] static std::int64_t classSize(std::int64_t values) noexcept;

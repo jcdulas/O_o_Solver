@@ -32,6 +32,7 @@ OutOfCorePencil::OutOfCorePencil(const SymbolicFactor& symbolic, const Symmetric
         m_buckling = std::make_unique<BucklingPencil>(symbolic, stiffness, rightHand, kernels, m_options, budget);
     else
         m_vibration = std::make_unique<SparsePencil>(symbolic, stiffness, rightHand, kernels, m_options, budget);
+    m_scale = pencilScaleOf(stiffness, budget);
 }
 
 OutOfCorePencil::OutOfCorePencil(const SymbolicFactor& symbolic, PencilSource& source, SpectralTransform transform,
@@ -72,6 +73,7 @@ OutOfCorePencil::OutOfCorePencil(const SymbolicFactor& symbolic, PencilSource& s
             bound = std::min(bound, k / std::abs(b));
     }
     m_sourceRayleighBound = bound;
+    m_scale = pencilScaleOf(std::span<const double>(stiffness.data(), n), budget);
 }
 
 ShiftFactorisation OutOfCorePencil::factorise(double shift)
@@ -89,14 +91,17 @@ ShiftFactorisation OutOfCorePencil::factorise(double shift)
     m_factor = OutOfCoreFactor();
     m_shifted = SymmetricCsc();
     if (m_source != nullptr)
-        m_factor = OutOfCoreFactor::factorise(m_symbolic, m_source->shiftedSource(shift), m_kernels, m_options, m_spool,
-                                              m_budget);
+    {
+        ScaledFrontSource scaled(m_source->shiftedSource(shift), m_scale.span(), m_symbolic);
+        m_factor = OutOfCoreFactor::factorise(m_symbolic, scaled, m_kernels, m_options, m_spool, m_budget);
+    }
     else
     {
         // SparsePencil's K − σM, BucklingPencil's K + σK_d: the same matrix to the bit.
         m_shifted = m_transform == SpectralTransform::Buckling
                         ? SymmetricCsc::combine(1.0, *m_stiffness, shift, *m_rightHand, m_budget)
                         : SymmetricCsc::combine(1.0, *m_stiffness, -shift, *m_rightHand, m_budget);
+        m_shifted.scaleSymmetric(m_scale.span());
         m_factor = OutOfCoreFactor::factorise(m_symbolic, m_shifted, m_kernels, m_options, m_spool, m_budget);
     }
     m_largestSpoolBytes = std::max(m_largestSpoolBytes, m_factor.spooledBytes());
@@ -120,7 +125,10 @@ void OutOfCorePencil::solve(DenseMatrixView block) const
 {
     if (!m_hasFactor)
         throw std::logic_error("OutOfCorePencil::solve: no factor yet; call factorise(shift) first");
+    // (K − σB)⁻¹ = S·(S·(K − σB)·S)⁻¹·S.
+    scaleRows(block, m_scale.span());
     m_factor.solve(block, m_kernels, m_options.cancellation);
+    scaleRows(block, m_scale.span());
     sample();
 }
 

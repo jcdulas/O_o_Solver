@@ -236,6 +236,20 @@ SymmetricCsc SymmetricCsc::combine(double alpha, const SymmetricCsc& a, double b
     return result;
 }
 
+void SymmetricCsc::scaleSymmetric(std::span<const double> scale)
+{
+    if (scale.size() != static_cast<std::size_t>(m_dimension))
+        throw std::invalid_argument(
+            base::concatenate({"SymmetricCsc::scaleSymmetric: expected ", std::to_string(m_dimension),
+                               " scales (one per equation), found ", std::to_string(scale.size())}));
+    for (std::size_t j = 0; j < scale.size(); ++j)
+        for (auto k = m_columnOffsets[j]; k < m_columnOffsets[j + 1]; ++k)
+        {
+            const auto term = static_cast<std::size_t>(k);
+            m_values[term] = scale[static_cast<std::size_t>(m_rows[term])] * m_values[term] * scale[j];
+        }
+}
+
 SymmetricCsc SymmetricCsc::leadingBlock(const SymmetricCsc& matrix, std::int32_t size, base::MemoryBudget& budget)
 {
     if (size < 0 || size > matrix.m_dimension)

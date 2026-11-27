@@ -194,6 +194,37 @@ void FactorSchedule::boundWorkspace(const SymbolicFactor& symbolic, std::size_t 
     for (std::size_t k = 0; k < std::min(threadCount, excess.size()); ++k)
         peak += excess[k];
 
+    if (topOrder == TopOrder::Postorder)
+    {
+        // Every task in increasing order of its last supernode: a subtree holds its peak beside the update matrices
+        // alive and leaves its root's; a top supernode makes its update matrix (and, not in place, its front) beside
+        // them, its children's released after it.
+        std::int64_t alive = 0;
+        std::int64_t stackPeak = 0;
+        std::size_t nextTop = 0;
+        const auto runTopsBelow = [&](std::int32_t limit)
+        {
+            for (; nextTop < m_topSupernodes.size() && m_topSupernodes[nextTop] < limit; ++nextTop)
+            {
+                const std::int32_t s = m_topSupernodes[nextTop];
+                if (s == m_excludedTrailing)
+                    continue; // assembled into the Schur complement, budgeted by the caller
+                stackPeak = std::max(stackPeak, alive + (isInPlace ? 0 : frontOf(s)) + updateOf(s));
+                alive += updateOf(s);
+                for (const std::int32_t child : children(s))
+                    alive -= updateOf(child);
+            }
+        };
+        for (const FactorSubtree& subtree : m_subtrees)
+        {
+            runTopsBelow(subtree.last);
+            stackPeak = std::max(stackPeak, alive + subtree.heldValues);
+            alive += subtree.contributionValues;
+        }
+        runTopsBelow(symbolic.supernodeCount());
+        m_workspaceValues = stackPeak;
+        return;
+    }
     if (topOrder == TopOrder::Serial)
     {
         // PERFORMANCE: the top part one supernode after the other in increasing order (the streamed factorisation):

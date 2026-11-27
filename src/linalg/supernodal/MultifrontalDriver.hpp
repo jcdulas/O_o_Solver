@@ -128,6 +128,11 @@ private:
 
     [[nodiscard]] FrontLayout layoutOf(std::int32_t supernode, std::span<const UpdateMatrix> children) const;
     [[nodiscard]] bool areChildrenDone(std::int32_t supernode) const;
+    // Takes the postorder schedule when the options ask for it, or when the parallel one does not fit the memory left
+    // and the postorder one takes less (FactorOrder).
+    void chooseOrder();
+    // The tasks one after the other, in increasing order of their last supernode.
+    void runInPostorder(SupernodalFactor& factor);
     void finish(SupernodalFactor& factor);
 
     const SymbolicFactor& m_symbolic;
@@ -143,6 +148,7 @@ private:
     const FactorOptions& m_options;
     base::MemoryBudget& m_budget;
     FactorSchedule m_schedule;
+    bool m_isPostorder = false;                        // the tasks one after the other (FactorOrder::Postorder)
     std::size_t m_plannedConcurrency = 1;              // the subtrees at once the bound of the schedule assumes
     std::atomic<std::size_t> m_runningSubtrees{0};     // the subtree tasks running now
     std::atomic<std::int64_t> m_subtreesBeyondPlan{0}; // the subtrees that reserved their own storage

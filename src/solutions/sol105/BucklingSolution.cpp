@@ -662,6 +662,9 @@ BucklingResults BucklingSolution::run(base::MemoryBudget& budget) const
         {
             stiffness.emplace(linalg::SymmetricCsc::fromBlocks(system.knn(), dofs, budget, pool));
             differentialStiffness.emplace(linalg::SymmetricCsc::fromBlocks(*kdnn, dofs, budget, pool));
+            // The analysis set's differential stiffness is made: the n-set one is not read again, and the solve needs
+            // the room.
+            kdnn.reset();
         }
         // multilevel substructuring takes its basis from the vibration modes of (K, M): the mass of the analysis set; a
         // model without mass keeps the nodes' own buckling modes, said in an information diagnostic.

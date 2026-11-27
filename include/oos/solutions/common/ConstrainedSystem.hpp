@@ -91,7 +91,7 @@ struct ConstrainedSystemOptions
 // the r set of FreeBodySupport), the node graph and pattern with the m-set couplings, Kgg, Knn = the m set eliminated
 // (MsetElimination), the grid point singularities constrained by AutoSingularityConstr (PARAM AutoSingularityConstr,
 // PivotZeroThreshold, PrintSingularities), and the solved sets. reduce() brings any other g-set matrix assembled on the
-// pattern (the mass, the differential stiffness) to the n set the same way.
+// pattern (the mass, the differential stiffness) to the n set the same way; hasMset() says whether that changes it.
 //
 // The eigenvalue solutions give no r set: in SOL 103 the rigid-body modes of a free structure are found by the
 // Lanczos solver from the free stiffness (a warning says so); in SOL 105 the stiffness must be positive definite. The
@@ -143,6 +143,9 @@ public:
     [[nodiscard]] const linalg::SparsePattern& pattern() const noexcept { return *m_pattern; }
     [[nodiscard]] const linalg::BlockSparseMatrix& kgg() const noexcept { return *m_kgg; }
     [[nodiscard]] const linalg::BlockSparseMatrix& knn() const noexcept { return *m_knn; }
+    // Whether the model has dependent DOFs to eliminate (Gm has rows). Without them a matrix of the g set is its own
+    // reduction to the n set: Knn is Kgg, and a caller need not reduce() its mass or its differential stiffness.
+    [[nodiscard]] bool hasMset() const noexcept { return m_gm->rowCount() > 0; }
     // The table of the singular components as text (empty when nothing was constrained or listed).
     [[nodiscard]] const std::string& singularityTable() const noexcept { return m_singularityTable; }
     // One flag per g-set DOF: held (the s set, AutoSingularityConstr included, and the r set): its SPC force is a
@@ -182,7 +185,8 @@ private:
     std::unique_ptr<linalg::NodeGraph> m_graph;
     std::shared_ptr<const linalg::SparsePattern> m_pattern;
     std::shared_ptr<linalg::BlockSparseMatrix> m_kgg;
-    std::unique_ptr<linalg::BlockSparseMatrix> m_knn;
+    // Knn; Kgg itself when the model has no m set (no relation to eliminate: the two matrices are the same).
+    std::shared_ptr<const linalg::BlockSparseMatrix> m_knn;
     std::string m_singularityTable;
     base::BudgetedBuffer<std::uint8_t> m_isConstrained;
     AnalysisPartTimings m_timings;

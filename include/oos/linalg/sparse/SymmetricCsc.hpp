@@ -54,6 +54,11 @@ public:
     [[nodiscard]] static SymmetricCsc combine(double alpha, const SymmetricCsc& a, double beta, const SymmetricCsc& b,
                                               base::MemoryBudget& budget);
 
+    // The matrix scaled on both sides in place: each term a_ij becomes scale[i]·a_ij·scale[j] (S·A·S, a congruence:
+    // the inertia is kept). With scales that are powers of two no term is rounded. Throws std::invalid_argument when
+    // `scale` has not dimension() values.
+    void scaleSymmetric(std::span<const double> scale);
+
     // The leading principal block of `matrix`, its first `size` equations: the interior block K_oo of a unit whose
     // boundary equations come last (the fixed-interface modes of Craig-Bampton). Its pattern is the pattern
     // of those columns restricted to those rows, so the leading blocks of two matrices of one structure have one

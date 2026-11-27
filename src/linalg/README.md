@@ -99,6 +99,14 @@ the folders in that order, which is the order in which the pieces depend on one 
   reserved in the budget before the first column is eliminated (the positive definite mode's working storage bounded
   without front buffers). `supernodal/FactorStorage`: the panels' memory a factor gives back (`releaseStorage`) for
   the next factorisation of the same structure (`FactorOptions::storage`).
+- The order of the tasks (`FactorOptions::order`, `FactorOrder`): `Parallel` runs the independent subtrees side by
+  side, then the top of the tree in waves; every subtree may be done before the first front above them is assembled,
+  so its plan holds the update matrices of all the subtrees at once. `Postorder` runs one task after the other along
+  a postorder of the tree, the threads working inside the large fronts only: an update matrix waits beside those of
+  the branch being climbed alone, the stack of the multifrontal method (Duff and Reid, ACM Trans. Math. Softw. 9,
+  1983), several times smaller on a tree of many subtrees, for a longer run. `Automatic`, the default, takes
+  `Parallel` when its working storage fits the memory left and `Postorder` otherwise, when that takes less. The factor
+  has the same bits in every order (`FactorWorkspaceUsage::isPostorder` says which ran).
 - `supernodal/FactorSolve`: forward, diagonal and backward sweeps over the panels, each column with the same bits
   whatever its tile. Tiles of 128 columns stored by rows and swept by the row kernels of `DenseKernels`;
   `supernodal/SolvePlan` (built with the factor) groups the supernodes into units whose rows are gathered once per
@@ -116,7 +124,7 @@ the folders in that order, which is the order in which the pieces depend on one 
   `supernodal/WorkspacePool` (the large blocks of the working storage kept for reuse within its bound, by size
   classes), `supernodal/FrontAssembly` (the extend-add of a front, whole or in two parts, by runs of positions, a large
   top front by ranges of its columns on the threads), `supernodal/FactorSchedule` (children, the cut into subtrees and
-  top supernodes, the bound of the working storage).
+  top supernodes, the bound of the working storage in the parallel order and in the postorder).
 - Dense additions: the candidate form of Bunch-Kaufman (`DenseKernels::factorWithPivoting(a, candidates)`, delayed
   candidates), the products of the solves (`subtractProduct`, `subtractTransposedProduct`), and the LDLᵀ of a front in
   two parts (`factorFrontWithoutPivoting`: the panel and the trailing block, the bits of the whole front).
@@ -163,6 +171,27 @@ the folders in that order, which is the order in which the pieces depend on one 
   estimates send the driver to the roots a shift too near the locked ones hides), `eigen/MassOrthogonalizer` (block
   Gram-Schmidt in the M-inner product, its inner products by fixed pieces of rows on the threads),
   `eigen/EigenvectorStore` (the pairs found, locked out of every later basis).
+- `eigen/PencilScaling`: the shifted matrices are scaled by the diagonal of K before they are factorised,
+  S·(K − σB)·S with powers of two near 1/sqrt(K_ii) (Duff, Erisman and Reid, Direct Methods for Sparse Matrices, 2nd
+  ed., 2017, section 4.15), and the solves scale their right-hand sides and solutions by S. Without it the threshold
+  test of the pivots compares terms of different physical dimensions (a rotation with the term that couples it to a
+  deflection): with lengths in metres and elements of a few millimetres the rotations are delayed to their parents by
+  their units alone, and the delayed pivots of a plate of two million DOFs took as much memory as its factor.
+  Measured on the first ten modes of a plate of one million DOFs: the eigenvalue solve from 20.2 s to 10.9 s, the
+  peak of the budget from 9.8 GB to 6.7 GB, the same roots. `SparsePencil`, `BucklingPencil` and `OutOfCorePencil`
+  (its front sources through `ScaledFrontSource`) scale; the inertia, a congruence invariant, is unchanged.
+- `eigen/OutOfCorePencil`: the pencil of `SparsePencil` or `BucklingPencil` with its factor out of core
+  (`supernodal/OutOfCoreFactor`: the multifrontal factorisation hands each panel to a `supernodal/ScratchSpool` once
+  it is final and keeps the factor's rows and plan in memory; the sweeps read one unit's panels at a time). The same
+  panels, sweeps and products as in memory: the block Lanczos solver finds the roots of the in-core path.
+- `eigen/MultilevelSubstructuring`: automated multilevel substructuring on the elimination tree (Bennighof and
+  Lehoucq, An automated multilevel substructuring method for eigenspace computation in linear elastodynamics, SIAM J.
+  Sci. Comput. 25, 2004). The maximal subtrees below `SUBSTRUCTURING_UNIT_DOFS` are units, each reduced to its modes
+  below a cut-off by the block Lanczos solver on its own pencil; every supernode above them is a separator with dense
+  modes; the reduced pencil is solved and the vectors recovered down the tree. Approximate to its cut-off
+  (`SUBSTRUCTURING_CUTOFF_FACTOR`), no factor of the whole matrix; its memory plan is made from the symbolic factor
+  before any work. `eigen/PencilSource`: the pencil given front by front and product by product (the elements), no
+  matrix of it assembled, for both.
 - Sparse additions: `SymmetricCsc::combine`, `hasSameStructure`, `withoutZeroTerms` and the block product
   `multiply(X, Y, pool)` (the columns by groups in one pass over the terms, each column the bits of its own product).
 - `eigen/BorderedEigenSystem`: the sparse linearisation `[K-lambda M, M phi; (M phi)^T, 0]` of a simple

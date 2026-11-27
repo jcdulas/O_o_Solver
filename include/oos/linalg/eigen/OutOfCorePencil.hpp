@@ -80,6 +80,9 @@ private:
     // The in-core pencil of the products (never factorised).
     std::unique_ptr<SparsePencil> m_vibration;
     std::unique_ptr<BucklingPencil> m_buckling;
+    // The scale of each equation for the factorisations (PencilScaling): S·(K − σB)·S is factorised, and a solve
+    // scales its right-hand sides and its solutions by S.
+    base::BudgetedBuffer<double> m_scale;
     SymmetricCsc m_shifted;
     mutable OutOfCoreFactor m_factor;
     bool m_hasFactor = false;

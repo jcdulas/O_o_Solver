@@ -41,11 +41,30 @@ enum class PivotingMode : std::uint8_t
     Indefinite
 };
 
+// The order in which the tasks of a factorisation run. Every order computes each front from the same terms in the
+// same order, so the factor has the same bits; the orders differ in time and in working storage.
+// - Parallel: the independent subtrees side by side, then the top of the tree in waves. Every subtree may be done
+//   before the first front above them is assembled, so the plan holds the update matrices of all of them at once.
+// - Postorder: one task after the other along a postorder of the tree, the threads working inside the large fronts
+//   only. An update matrix waits for its parent beside those of the branch being climbed alone: the stack of the
+//   multifrontal method (Duff and Reid, The multifrontal solution of indefinite sparse symmetric linear equations,
+//   ACM Trans. Math. Softw. 9, 1983), several times smaller on a tree of many subtrees, for a longer run.
+// - Automatic: Parallel when its working storage fits the memory left (in indefinite mode, with room for the growth
+//   of the delayed pivots beside it), else Postorder when that takes less.
+enum class FactorOrder : std::uint8_t
+{
+    Automatic,
+    Parallel,
+    Postorder
+};
+
 // The options of a factorisation. The pool is the one of the DenseKernels given: it runs the independent subtrees
 // and the threads of the kernels inside large fronts.
 struct FactorOptions
 {
     PivotingMode pivoting = PivotingMode::PositiveDefinite;
+    // The order of the tasks (the same factor in every order).
+    FactorOrder order = FactorOrder::Automatic;
     // The MaxDiagonalRatio and SingularityBailOut of the ratio test (positive definite mode only).
     PivotPolicy pivotPolicy;
     // The diagonal the ratio test compares the factor diagonal with, in place of the matrix diagonal, for the
@@ -89,6 +108,9 @@ struct FactorWorkspaceUsage
     std::int64_t peakValues = 0;
     std::int64_t subtreesBeyondPlan = 0;
     std::int64_t heldPeakValues = 0;
+    // Whether the tasks ran one after the other along a postorder (FactorOrder::Postorder, asked for or taken by
+    // Automatic because the parallel order did not fit the memory).
+    bool isPostorder = false;
 };
 
 // A subtree of the supernode tree, the consecutive supernodes [first, last] of a postorder, `last` its root: the

@@ -73,6 +73,7 @@ SparsePencil::SparsePencil(const SymbolicFactor& symbolic, const SymmetricCsc& s
                                "; analyse the pattern the matrices were converted on"}));
     m_options.pivoting = PivotingMode::Indefinite;
     m_diagonalRayleighBound = computeDiagonalRayleighBound(stiffness, mass);
+    m_scale = pencilScaleOf(stiffness, budget);
     // PERFORMANCE: a lumped mass is stored on the pattern of K (one structure for both, so that K − σM is formed term
     // by term), but only its diagonal is non-zero: its products use the diagonal, n multiplications per column in
     // place of a pass over the whole pattern. The bits are those of the general product (the zero terms add ±0).
@@ -117,6 +118,7 @@ ShiftFactorisation SparsePencil::factorise(double shift)
     m_factor = SupernodalFactor();
     m_shifted = SymmetricCsc();
     m_shifted = SymmetricCsc::combine(1.0, m_stiffness, -shift, m_mass, m_budget);
+    m_shifted.scaleSymmetric(m_scale.span());
     m_factor = SupernodalFactor::factorise(m_symbolic, m_shifted, m_kernels, m_options, m_budget);
     m_hasFactor = true;
     ++m_factorisationCount;
@@ -127,7 +129,10 @@ void SparsePencil::solve(DenseMatrixView block) const
 {
     if (!m_hasFactor)
         throw std::logic_error("SparsePencil::solve: no factor yet; call factorise(shift) first");
+    // (K − σM)⁻¹ = S·(S·(K − σM)·S)⁻¹·S.
+    scaleRows(block, m_scale.span());
     FactorSolve(m_factor, m_kernels).solve(block, m_options.cancellation);
+    scaleRows(block, m_scale.span());
 }
 
 void SparsePencil::multiplyMass(ConstDenseMatrixView x, DenseMatrixView y) const

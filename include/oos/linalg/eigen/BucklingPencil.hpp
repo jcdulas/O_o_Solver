@@ -2,6 +2,7 @@
 
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/linalg/dense/DenseKernels.hpp"
+#include "oos/linalg/eigen/PencilScaling.hpp"
 #include "oos/linalg/eigen/ShiftedPencil.hpp"
 #include "oos/linalg/sparse/SymmetricCsc.hpp"
 #include "oos/linalg/supernodal/SupernodalFactor.hpp"
@@ -64,6 +65,9 @@ private:
     double m_diagonalRayleighBound = 0.0;
     std::size_t m_factorisationCount = 0;
     bool m_hasFactor = false;
+    // The scale of each equation for the factorisations (PencilScaling): S·(K + σK_d)·S is factorised, and a solve
+    // scales its right-hand sides and its solutions by S.
+    base::BudgetedBuffer<double> m_scale;
     SymmetricCsc m_shifted;
     SupernodalFactor m_factor;
 };

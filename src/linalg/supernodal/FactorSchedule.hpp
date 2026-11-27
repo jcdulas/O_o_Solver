@@ -59,6 +59,11 @@ struct FactorSubtree
 // increasing order on the calling thread (StreamedFactorisation::runTop), not in waves, so its bound follows that
 // order: each supernode's update matrix beside the ones alive, those of its children released after it.
 //
+// With TopOrder::Postorder (MultifrontalDriver, FactorOrder::Postorder): every task, subtree or top supernode, runs
+// one after the other in increasing order of its last supernode, a postorder of the whole tree. A subtree's update
+// matrix then waits beside those of the branch being climbed only, not beside those of every other subtree: the
+// bound is the stack of the multifrontal method (Duff and Reid, ACM Trans. Math. Softw. 9, 1983).
+//
 // Thread-safety: immutable once built. Ownership: owns its arrays.
 class FactorSchedule
 {
@@ -68,12 +73,14 @@ public:
     // About a millisecond of work: below it a task costs more to schedule than it computes.
     static constexpr double SUBTREE_MIN_FLOPS = 2.0e6;
 
-    // How the top part runs: in waves of independent supernodes (MultifrontalDriver), or one after the other in
-    // increasing order (StreamedFactorisation).
+    // How the top part runs: in waves of independent supernodes (MultifrontalDriver), one after the other in
+    // increasing order once every subtree is done (StreamedFactorisation), or one after the other with the subtrees,
+    // in a postorder of the whole tree (MultifrontalDriver short of memory).
     enum class TopOrder : std::uint8_t
     {
         Waves,
-        Serial
+        Serial,
+        Postorder
     };
 
     // With excludesTrailing, the trailing supernode is not factorised: the driver assembles it last, as the Schur

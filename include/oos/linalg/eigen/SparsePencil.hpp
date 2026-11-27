@@ -3,6 +3,7 @@
 #include "oos/base/memory/BudgetedBuffer.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/linalg/dense/DenseKernels.hpp"
+#include "oos/linalg/eigen/PencilScaling.hpp"
 #include "oos/linalg/eigen/ShiftedPencil.hpp"
 #include "oos/linalg/sparse/SymmetricCsc.hpp"
 #include "oos/linalg/supernodal/SupernodalFactor.hpp"
@@ -70,6 +71,9 @@ private:
     double m_diagonalRayleighBound = 0.0;
     std::size_t m_factorisationCount = 0;
     bool m_hasFactor = false;
+    // The scale of each equation for the factorisations (PencilScaling): S·(K − σM)·S is factorised, and a solve
+    // scales its right-hand sides and its solutions by S.
+    base::BudgetedBuffer<double> m_scale;
     // The diagonal of a lumped M (empty for a coupled one).
     base::BudgetedBuffer<double> m_massDiagonal;
     // The non-zero terms of a coupled M that stores mostly zeros (COMPACT_MASS_SHARE; empty otherwise).

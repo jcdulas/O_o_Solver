@@ -620,7 +620,9 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
             assembly::MassAssembler(model.elementSet(), dofMap, shares,
                                     assembly::MassAssemblyOptions::fromParams(params, first.subcase.label, sink))
                 .assemble(*mgg, pool, cancellation);
-            mnn.emplace(system.reduce(*mgg, budget, "mass Mnn"));
+            // Without an m set Mnn is Mgg (ConstrainedSystem::hasMset): no second matrix.
+            if (system.hasMset())
+                mnn.emplace(system.reduce(*mgg, budget, "mass Mnn"));
         }
         if (weightReferenceNode != NO_WEIGHT_REFERENCE_NODE && !results.gridPointWeight && mgg)
         {
@@ -682,7 +684,9 @@ ModesResults ModesSolution::run(base::MemoryBudget& budget) const
             if (!isFromElements)
             {
                 stiffness.emplace(linalg::SymmetricCsc::fromBlocks(system.knn(), dofs, budget, pool));
-                mass.emplace(linalg::SymmetricCsc::fromBlocks(*mnn, dofs, budget, pool));
+                mass.emplace(linalg::SymmetricCsc::fromBlocks(mnn ? *mnn : *mgg, dofs, budget, pool));
+                // The analysis set's mass is made: the n-set one is not read again, and the solve needs the room.
+                mnn.reset();
             }
             linalg::FactorOptions factorOptions;
             factorOptions.equationNamer = [&dofMap, &dofs](std::int32_t equation)

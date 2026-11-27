@@ -444,8 +444,10 @@ void MultifrontalDriver::runSubtree(const FactorSubtree& subtree, SupernodalFact
     if (isBeyondPlan)
         ++m_subtreesBeyondPlan;
     // The kernels on this thread only: the subtrees are the parallel pieces here (the bits are the same either way).
+    // In postorder no other subtree runs: the kernels keep the pool for the large fronts of this one.
     DenseKernelOptions serialOptions = m_kernels.options();
-    serialOptions.pool = nullptr;
+    if (!m_isPostorder)
+        serialOptions.pool = nullptr;
     const DenseKernels kernels(m_kernels.kind(), serialOptions);
     // The front buffer of the indefinite mode, reused by the fronts of the subtree (a positive definite front needs
     // none: assemble()).
@@ -595,14 +597,76 @@ void MultifrontalDriver::assembleTrailing(std::int32_t supernode, DenseMatrix* s
     m_status[at] = Status::Done;
 }
 
+void MultifrontalDriver::chooseOrder()
+{
+    // In indefinite mode the pivots delayed to their parents grow the panels and the fronts beyond the plan, which the
+    // budget must still hold when they come: the parallel order is kept only with that much room beside it. Measured
+    // on the shifted matrices of plates and barrels of one to two million DOFs: the growth reached 0.27 to 0.40 of
+    // the symbolic panels.
+    constexpr double DELAYED_PIVOT_ROOM = 0.5;
+    const std::uint64_t parallelBytes = static_cast<std::uint64_t>(m_schedule.workspaceValues()) * VALUE_BYTES;
+    const std::uint64_t room =
+        m_options.pivoting == PivotingMode::Indefinite
+            ? static_cast<std::uint64_t>(DELAYED_PIVOT_ROOM * static_cast<double>(m_symbolic.panelValueCount()) *
+                                         static_cast<double>(VALUE_BYTES))
+            : 0;
+    const bool isAsked = m_options.order == FactorOrder::Postorder;
+    const bool isShort = m_options.order == FactorOrder::Automatic && parallelBytes + room > m_budget.available();
+    if (!isAsked && !isShort)
+        return;
+    FactorSchedule postorder(m_symbolic, m_schedule.excludedTrailing() >= 0, 1, m_options.pivoting, m_budget,
+                             FactorSchedule::TopOrder::Postorder);
+    // Short of memory: the postorder only when it takes less (a tree of one branch gains nothing).
+    if (!isAsked && postorder.workspaceValues() >= m_schedule.workspaceValues())
+        return;
+    m_schedule = std::move(postorder);
+    m_isPostorder = true;
+    m_plannedConcurrency = 1;
+    m_pool.setCapacity(m_schedule.workspaceValues());
+}
+
+void MultifrontalDriver::runInPostorder(SupernodalFactor& factor)
+{
+    const std::vector<FactorSubtree>& subtrees = m_schedule.subtrees();
+    const std::vector<std::int32_t>& tops = m_schedule.topSupernodes();
+    std::size_t nextTop = 0;
+    const auto runTopsBelow = [&](std::int32_t limit)
+    {
+        for (; nextTop < tops.size() && tops[nextTop] < limit; ++nextTop)
+        {
+            if (tops[nextTop] == m_schedule.excludedTrailing())
+                assembleTrailing(tops[nextTop], m_schurComplement);
+            else
+                runTopSupernode(tops[nextTop], factor);
+        }
+    };
+    for (const FactorSubtree& subtree : subtrees)
+    {
+        runTopsBelow(subtree.last);
+        runSubtree(subtree, factor);
+    }
+    runTopsBelow(m_symbolic.supernodeCount());
+}
+
 void MultifrontalDriver::run(SupernodalFactor& factor, DenseMatrix* schurComplement)
 {
     m_schurComplement = schurComplement;
     allocateFactor(factor);
+    chooseOrder();
     // The working storage, reserved before any numeric work (refused here when it does not fit).
     const base::MemoryReservation workspace =
         m_budget.reserve(static_cast<std::uint64_t>(m_schedule.workspaceValues()) * VALUE_BYTES,
                          "factorisation: fronts and update matrices");
+    if (m_isPostorder)
+    {
+        runInPostorder(factor);
+        factor.m_workspaceUsage = {m_schedule.workspaceValues(), m_meter.peak(), m_subtreesBeyondPlan.load(),
+                                   m_pool.heldPeak(), true};
+        for (const FactorSubtree& subtree : m_schedule.subtrees())
+            factor.m_subtrees.push_back({subtree.first, subtree.last});
+        finish(factor);
+        return;
+    }
 
     base::TaskGraph graph;
     std::vector<base::TaskGraph::TaskId> taskOfSlot(static_cast<std::size_t>(m_schedule.slotCount()));
@@ -631,7 +695,7 @@ void MultifrontalDriver::run(SupernodalFactor& factor, DenseMatrix* schurComplem
     }
     graph.run(m_kernels.options().pool, m_options.cancellation);
     factor.m_workspaceUsage = {m_schedule.workspaceValues(), m_meter.peak(), m_subtreesBeyondPlan.load(),
-                               m_pool.heldPeak()};
+                               m_pool.heldPeak(), false};
     for (const FactorSubtree& subtree : m_schedule.subtrees())
         factor.m_subtrees.push_back({subtree.first, subtree.last});
     finish(factor);
