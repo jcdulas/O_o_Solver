@@ -18,9 +18,16 @@ with tempfile.TemporaryDirectory() as temporary:
     deck = oo_model.read_model(vm50)
     for formulation, expected in [("ClassicFormulation", 28.758920687), ("MixedHybridFormulation", 28.758260894)]:
         model = oo_solver.model_from_reader(deck, formulation=formulation)
-        modes = model.run("modes")["eigenvalues"][0]["rows"]
+        run = model.run("modes")
+        modes = run["eigenvalues"][0]["rows"]
         assert not modes.flags.writeable
-        del model
+        # Every core by default, one on request: the same bits, and a report of what each run cost.
+        single = model.run("modes", threads=1)
+        assert single["report"]["threads"] == 1 and run["report"]["threads"] >= 1
+        assert list(run["report"]["stages"]) == ["setup", "assembly", "eigenvalues", "recovery"]
+        assert run["report"]["factorisations"] >= 1 and run["report"]["peak_budget_bytes"] > 0
+        np.testing.assert_array_equal(single["eigenvalues"][0]["rows"]["eigenvalue"], modes["eigenvalue"])
+        del model, single, run
         gc.collect()
         np.testing.assert_allclose(modes["cycles"][0], expected, rtol=2e-9)
 
@@ -77,6 +84,12 @@ DesignResp1;10;TIP;Displacement;;;1;;2
     np.testing.assert_allclose(derivative, [[-expected / 2]])
     table = next(t for t in model.run("statics")["nodal_tables"] if t["kind"] == "displacements")
     displacement = table["values"][table["ids"].tolist().index(2)]
+    # The streamed path within a memory bound gives the same displacement.
+    streamed = model.run("statics", streamed=True, memory_bytes=1 << 30)
+    assert streamed["report"]["dofs"] == 12
+    moved = next(t for t in streamed["nodal_tables"] if t["kind"] == "displacements")
+    np.testing.assert_allclose(moved["values"][moved["ids"].tolist().index(2), 0], expected)
+    del streamed, moved
     del model, table
     gc.collect()
     assert not displacement.flags.writeable

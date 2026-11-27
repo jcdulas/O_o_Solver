@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <optional>
 
 namespace py = pybind11;
 using namespace oos;
@@ -255,8 +256,15 @@ py::dict results(api::AnalysisOutput&& run)
     for (const auto& d : r.diagnostics)
         diagnostics.append(py::dict("severity"_a = base::severityName(d.severity), "code"_a = d.code,
                                     "message"_a = d.message, "card"_a = d.card, "id"_a = d.id, "field"_a = d.field));
+    py::dict stages;
+    for (const auto& stage : r.report.stages)
+        stages[py::str(stage.name)] = stage.seconds;
+    const py::dict report("threads"_a = r.report.threads, "kernel"_a = r.report.kernel, "dofs"_a = r.report.dofs,
+                          "solved_dofs"_a = r.report.solvedDofs, "factorisations"_a = r.report.factorisations,
+                          "seconds"_a = r.report.seconds, "stages"_a = stages,
+                          "peak_budget_bytes"_a = r.report.peakBudgetBytes);
     py::dict out("nodal_tables"_a = nodal, "element_tables"_a = elements, "grid_point_forces"_a = forces,
-                 "eigenvalues"_a = eigen, "diagnostics"_a = diagnostics);
+                 "eigenvalues"_a = eigen, "diagnostics"_a = diagnostics, "report"_a = report);
     if (r.selectedQuarticShells)
         out["selected_quartic_shells"] = view(*r.selectedQuarticShells, owner);
     if (r.aeroelastic)
@@ -407,13 +415,17 @@ PYBIND11_MODULE(_native, m)
         })
         .def(
             "run",
-            [](const Model& model, const std::string& name, std::size_t threads,
-               const std::vector<std::int32_t>& subcases)
+            [](const Model& model, const std::string& name, std::optional<std::size_t> threads,
+               const std::vector<std::int32_t>& subcases, std::uint64_t memoryBytes, bool streamed)
             {
                 auto kind = analysis(name);
                 api::AnalysisSettings settings;
-                settings.threads = threads;
+                settings.threads = threads.value_or(api::AUTOMATIC_THREADS);
                 settings.subcases = subcases;
+                // 0: the memory the machine has left (api::AnalysisSettings::memoryBytes).
+                settings.memoryBytes = memoryBytes;
+                // Statics only: the equations solved without a factor of the whole model (a factor too large).
+                settings.isStreamed = streamed;
                 auto run = [&]
                 {
                     py::gil_scoped_release unlock;
@@ -421,13 +433,15 @@ PYBIND11_MODULE(_native, m)
                 }();
                 return results(std::move(run));
             },
-            py::arg("analysis") = "statics", py::kw_only(), py::arg("threads") = 1,
-            py::arg("subcases") = std::vector<std::int32_t>{})
+            py::arg("analysis") = "statics", py::kw_only(), py::arg("threads") = py::none(),
+            py::arg("subcases") = std::vector<std::int32_t>{}, py::arg("memory_bytes") = 0,
+            py::arg("streamed") = false)
         .def("_optimization",
-             [](const Model& model, const py::dict& tables, const py::object& analyses, std::size_t threads)
+             [](const Model& model, const py::dict& tables, const py::object& analyses,
+                std::optional<std::size_t> threads)
              {
                  api::OptimizationSettings settings;
-                 settings.threads = threads;
+                 settings.threads = threads.value_or(api::AUTOMATIC_THREADS);
                  settings.analyses.statics.reset();
                  auto select = [&](const std::string& name, std::vector<std::int32_t> subcases)
                  {

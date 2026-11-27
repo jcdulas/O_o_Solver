@@ -1,5 +1,6 @@
 #pragma once
 
+#include "oos/api/Threading.hpp"
 #include "oos/base/diagnostics/Diagnostic.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/input/snapshot/ModelSnapshot.hpp"
@@ -84,7 +85,8 @@ struct AnalysisSettings
 {
     // The subcases to solve, in this order; empty: every subcase of the Case Control.
     std::vector<std::int32_t> subcases;
-    std::size_t threads = 1;
+    // The threads of the run; AUTOMATIC_THREADS: every core of the machine (automaticThreadCount).
+    std::size_t threads = AUTOMATIC_THREADS;
     // The memory the analysis may use, in bytes; 0: what is left in the module's memory.
     std::uint64_t memoryBytes = 0;
     // Additional links; links exported in the snapshot are read automatically.
@@ -115,6 +117,33 @@ struct CondensationSummary
     bool isUnitByUnit = false;
 };
 
+// One stage of a run and its wall time, in seconds.
+struct RunStage
+{
+    std::string name;
+    double seconds = 0.0;
+};
+
+// What a run cost, for the caller to see without instrumenting it: the threads and dense kernels it ran on, the size of
+// the problem, its wall time stage by stage and the largest memory its budget held. The stages are those the analysis
+// measures (statics: setup, assembly, loadBasis, factorisation, solve, recovery; normal modes: setup, assembly,
+// eigenvalues, recovery; buckling: preload, assembly, eigenvalues, recovery; trim: setup, assembly, factorisation,
+// flexibility, aerodynamics, trim), in the order it runs them; their sum is below `seconds`, which also counts what
+// lies between them (the condensation plan, the hand-over of the tables).
+struct RunReport
+{
+    std::size_t threads = 1;   // the threads of the run, the calling thread included
+    std::string kernel;        // the dense kernel family the factorisations ran on ("avx2", "reference", "wasm128")
+    std::int64_t dofs = 0;     // the degrees of freedom of the model (six per grid point, one per scalar point)
+    std::int64_t solvedDofs = 0; // the equations of the largest system factorised (the free set, or the interface's)
+    std::size_t factorisations = 0; // the sparse factorisations made (0 when the analysis does not count them)
+    double seconds = 0.0;           // the wall time of the run
+    std::vector<RunStage> stages;
+    // The largest memory the run's budget held at once, in bytes: the matrices, factors and result tables the solver
+    // reserves in it (base::MemoryBudget::peak), not the memory of the process.
+    std::uint64_t peakBudgetBytes = 0;
+};
+
 // The outcome of an analysis: the result tables, the eigenvalues and the warnings.
 struct AnalysisOutput
 {
@@ -135,6 +164,8 @@ struct AnalysisOutput
     std::optional<CondensationSummary> condensation;
     // Statics: the envelopes asked for (AnalysisSettings::envelopes).
     std::vector<output::EnvelopeTable> envelopes;
+    // What the run cost (threads, kernels, sizes, stage times, memory).
+    RunReport report;
 };
 
 // The cards and fields of the model the analysis cannot take (refusals: errors) or will not use (ignored: warnings),

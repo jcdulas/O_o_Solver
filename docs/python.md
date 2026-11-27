@@ -53,7 +53,14 @@ the Solver takes ownership of the Arrow buffers through their C release callback
 The nodal and element tables contain read-only NumPy views over the native result storage.
 Retaining a view keeps its result allocation alive. Use `array.copy()` to keep a small
 subset while releasing a much larger run. The solve releases the Python GIL.
-The `threads` argument selects the native thread count.
+The `threads` argument selects the native thread count; left out, the run takes every core of the machine, with the
+same results as on one thread. The `report` entry of a result says what the run cost: `threads`, the dense `kernel`
+family, the degrees of freedom (`dofs`, `solved_dofs`), the `factorisations`, the wall time (`seconds`) and the time of
+each stage (`stages`), and the largest memory the solver's budget held (`peak_budget_bytes`).
+
+`memory_bytes` bounds the memory of a run (0, the default: what the machine has left); a run that would need more stops
+with a message. `streamed=True` solves a static analysis without a factor of the whole
+model, region by region, for a model whose factor would not fit ([large models](large-models.md)).
 
 The analysis names are `statics`, `modes`, `buckling` and `aeroelastic`. Result groups
 include `nodal_tables`, `element_tables`, `grid_point_forces`, `eigenvalues` and

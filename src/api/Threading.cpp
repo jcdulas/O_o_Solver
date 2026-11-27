@@ -1,9 +1,11 @@
 #include "oos/api/Threading.hpp"
 
+#include <algorithm>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <stdexcept>
+#include <thread>
 
 namespace oos::api
 {
@@ -48,11 +50,19 @@ ThreadingInfo threadingInfo()
     return result;
 }
 
+std::size_t automaticThreadCount()
+{
+    const std::size_t reported = std::thread::hardware_concurrency();
+    return std::clamp<std::size_t>(reported, 1, buildInfo().maximumThreads);
+}
+
 std::shared_ptr<base::ThreadPool> acquireThreadPool(std::size_t threads)
 {
     const auto info = buildInfo();
-    if (threads == 0 || threads > info.maximumThreads)
-        throw std::invalid_argument("threads must be between 1 and the module's maximumThreads");
+    if (threads == AUTOMATIC_THREADS)
+        threads = automaticThreadCount();
+    if (threads > info.maximumThreads)
+        throw std::invalid_argument("threads must be 0 (automatic) or between 1 and the module's maximumThreads");
     if (threads == 1)
         return {};
     std::lock_guard lock(poolMutex);

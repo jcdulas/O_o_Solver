@@ -91,8 +91,10 @@ def model_from_reader(deck, *, formulation=None):
     return builder.build()
 
 
-def prepare_optimization(deck, *, analysis="statics", formulation=None, threads=1):
-    """Prepare a C++ design problem. Select an analysis name or a map of names to subcase IDs."""
+def prepare_optimization(deck, *, analysis="statics", formulation=None, threads=None):
+    """Prepare a C++ design problem. Select an analysis name or a map of names to subcase IDs.
+
+    ``threads=None`` runs the evaluations on every core of the machine; the results do not depend on it."""
     deck.validate_design()
     model = model_from_reader(deck, formulation=formulation)
     return model._optimization({name: deck.query(name) for name in _DESIGN_TABLES}, analysis, threads)

@@ -630,6 +630,25 @@ val envelopeTableObject(const output::EnvelopeTable& table)
     return object;
 }
 
+// The report of a run: { threads, kernel, dofs, solvedDofs, factorisations, seconds, stages: { name: seconds },
+// peakBudgetBytes } (api::RunReport).
+val runReportObject(const api::RunReport& report)
+{
+    val stages = val::object();
+    for (const api::RunStage& stage : report.stages)
+        stages.set(stage.name, stage.seconds);
+    val object = val::object();
+    object.set("threads", static_cast<double>(report.threads));
+    object.set("kernel", report.kernel);
+    object.set("dofs", static_cast<double>(report.dofs));
+    object.set("solvedDofs", static_cast<double>(report.solvedDofs));
+    object.set("factorisations", static_cast<double>(report.factorisations));
+    object.set("seconds", report.seconds);
+    object.set("stages", stages);
+    object.set("peakBudgetBytes", static_cast<double>(report.peakBudgetBytes));
+    return object;
+}
+
 val analysisObject(const api::AnalysisOutput& output)
 {
     val nodal = val::array();
@@ -658,6 +677,7 @@ val analysisObject(const api::AnalysisOutput& output)
     result.set("envelopes", envelopes);
     result.set("aeroelastic", output.aeroelastic ? wasm::trimResultsObject(*output.aeroelastic) : val::null());
     result.set("diagnostics", diagnosticArray(output.diagnostics));
+    result.set("report", runReportObject(output.report));
     if (output.condensation)
     {
         val condensation = val::object();

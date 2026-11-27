@@ -219,6 +219,21 @@ export interface AnalysisResult {
   aeroelastic: AeroelasticResult | null;
   // A static analysis asked to condense: what its plan decided; null otherwise.
   condensation: CondensationSummary | null;
+  report: RunReport;
+}
+
+// What a run cost. The stages are those the analysis measures, in the order it runs them (statics: setup, assembly,
+// loadBasis, factorisation, solve, recovery; modes: setup, assembly, eigenvalues, recovery; buckling: preload,
+// assembly, eigenvalues, recovery; aeroelastic: setup, assembly, factorisation, flexibility, aerodynamics, trim).
+export interface RunReport {
+  threads: number;         // the threads of the run, the calling thread included
+  kernel: string;          // the dense kernel family: "reference", "avx2", "avx512" or "wasm128"
+  dofs: number;            // the degrees of freedom of the model
+  solvedDofs: number;      // the equations of the largest system factorised
+  factorisations: number;  // the sparse factorisations made (0 when the analysis does not count them)
+  seconds: number;         // the wall time of the run
+  stages: Record<string, number>; // seconds per stage
+  peakBudgetBytes: number; // the largest memory the solver's budget held at once (not the process memory)
 }
 
 export interface StabilityDerivative {

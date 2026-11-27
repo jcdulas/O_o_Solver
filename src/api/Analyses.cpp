@@ -7,12 +7,14 @@
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/base/errors/SolverError.hpp"
 #include "oos/base/memory/MemoryBudget.hpp"
+#include "oos/base/threading/Stopwatch.hpp"
 #include "oos/base/platform/MemoryInfo.hpp"
 #include "oos/elements/core/ElementRegistry.hpp"
 #include "oos/elements/core/FormulationModel.hpp"
 #include "oos/elements/core/SnapshotIndex.hpp"
 #include "oos/input/contract/TableRole.hpp"
 #include "oos/linalg/dense/KernelSelection.hpp"
+#include "oos/linalg/kernels/KernelKind.hpp"
 #include "oos/reduction/external/ExternalUnit.hpp"
 #include "oos/reduction/units/UnitSet.hpp"
 #include "oos/solutions/common/AnalysisModel.hpp"
@@ -201,6 +203,76 @@ std::shared_ptr<const reduction::ExternalUnit> externalUnitOf(const ExternalUnit
     }
 }
 
+// The report of a static run: its sizes and stages (StaticTimings), the kernel family it was given.
+RunReport staticReport(const solutions::StaticResults& results, linalg::KernelKind kernel)
+{
+    RunReport report;
+    report.kernel = std::string(linalg::kernelName(kernel));
+    report.dofs = results.gSetSize;
+    report.solvedDofs = results.largestFsetSize;
+    report.factorisations = static_cast<std::size_t>(results.constraintSetCount);
+    const solutions::StaticTimings& t = results.timings;
+    report.stages = {{"setup", t.setup},         {"assembly", t.assembly},
+                     {"loadBasis", t.loadBasis}, {"factorisation", t.factorisation},
+                     {"solve", t.solve},         {"recovery", t.recovery}};
+    return report;
+}
+
+// The factorisations of the eigenvalue solves (one per Lanczos shift).
+template <typename Solve>
+std::size_t factorisationsOf(const std::vector<Solve>& solves)
+{
+    std::size_t count = 0;
+    for (const Solve& solve : solves)
+        count += solve.factorisationCount;
+    return count;
+}
+
+RunReport modesReport(const solutions::ModesResults& results, linalg::KernelKind kernel)
+{
+    RunReport report;
+    report.kernel = std::string(linalg::kernelName(kernel));
+    report.dofs = results.gSetSize;
+    report.solvedDofs = results.largestAnalysisSetSize;
+    report.factorisations = factorisationsOf(results.solves);
+    const solutions::ModesTimings& t = results.timings;
+    report.stages = {{"setup", t.setup}, {"assembly", t.assembly}, {"eigenvalues", t.eigenvalues},
+                     {"recovery", t.recovery}};
+    return report;
+}
+
+// A buckling run: the static preload's factorisations and those of the eigenvalue solves.
+RunReport bucklingReport(const solutions::BucklingResults& results, linalg::KernelKind kernel)
+{
+    RunReport report;
+    report.kernel = std::string(linalg::kernelName(kernel));
+    report.dofs = results.preload.gSetSize;
+    report.solvedDofs = std::max(results.preload.largestFsetSize, results.largestAnalysisSetSize);
+    report.factorisations =
+        static_cast<std::size_t>(results.preload.constraintSetCount) + factorisationsOf(results.solves);
+    const solutions::BucklingTimings& t = results.timings;
+    report.stages = {{"preload", t.preload}, {"assembly", t.assembly}, {"eigenvalues", t.eigenvalues},
+                     {"recovery", t.recovery}};
+    return report;
+}
+
+// A trim run: the trim does not count its factorisations.
+RunReport trimReport(const solutions::TrimResults& results, linalg::KernelKind kernel)
+{
+    RunReport report;
+    report.kernel = std::string(linalg::kernelName(kernel));
+    report.dofs = results.gSetSize;
+    report.solvedDofs = results.largestLsetSize;
+    const solutions::TrimTimings& t = results.timings;
+    report.stages = {{"setup", t.setup},
+                     {"assembly", t.assembly},
+                     {"factorisation", t.factorisation},
+                     {"flexibility", t.flexibility},
+                     {"aerodynamics", t.aerodynamics},
+                     {"trim", t.trim}};
+    return report;
+}
+
 AnalysisOutput runStatics(const input::ModelSnapshot& snapshot, const AnalysisSettings& settings,
                           base::MemoryBudget& budget, base::ThreadPool* pool)
 {
@@ -230,6 +302,7 @@ AnalysisOutput runStatics(const input::ModelSnapshot& snapshot, const AnalysisSe
     addPlanDiagnostics(output.diagnostics, planDiagnostics);
     output.tables = std::move(results.arrays);
     output.envelopes = std::move(results.envelopes);
+    output.report = staticReport(results, options.kernel);
     if (options.condensation)
     {
         output.condensation = summaryOf(*options.condensation);
@@ -277,6 +350,7 @@ AnalysisOutput runModes(const input::ModelSnapshot& snapshot, const AnalysisSett
     output.diagnostics = std::move(results.diagnostics);
     addPlanDiagnostics(output.diagnostics, planDiagnostics);
     output.tables = std::move(results.arrays);
+    output.report = modesReport(results, options.kernel);
     if (options.condensation)
         output.condensation = summaryOf(*options.condensation);
     return output;
@@ -305,6 +379,7 @@ AnalysisOutput runBuckling(const input::ModelSnapshot& snapshot, const AnalysisS
     // The static tables of the preload and the buckling shapes are in the same arrays (BucklingSolution adds the shapes
     // to the preload's tables).
     output.tables = std::move(results.preload.arrays);
+    output.report = bucklingReport(results, options.kernel);
     if (options.condensation)
         output.condensation = summaryOf(*options.condensation);
     return output;
@@ -337,6 +412,7 @@ AnalysisOutput runTrim(const input::ModelSnapshot& snapshot, const AnalysisSetti
     output.diagnostics = output.aeroelastic->diagnostics;
     addPlanDiagnostics(output.diagnostics, planDiagnostics);
     output.tables = std::move(output.aeroelastic->arrays);
+    output.report = trimReport(*output.aeroelastic, options.kernel);
     if (options.condensation)
         output.condensation = summaryOf(*options.condensation);
     return output;
@@ -507,6 +583,7 @@ SupportCheck checkTrimPreloadedBuckling(const input::ModelSnapshot& snapshot)
 
 AnalysisOutput runAnalysis(const input::ModelSnapshot& snapshot, Analysis analysis, const AnalysisSettings& settings)
 {
+    base::Stopwatch watch;
     const auto pool = acquireThreadPool(settings.threads);
     auto budget = std::make_shared<base::MemoryBudget>(budgetBytes(settings));
     AnalysisOutput output;
@@ -528,6 +605,9 @@ AnalysisOutput runAnalysis(const input::ModelSnapshot& snapshot, Analysis analys
         output = runTrim(snapshot, settings, *budget, pool.get());
         break;
     }
+    output.report.threads = pool ? pool->threadCount() : 1;
+    output.report.peakBudgetBytes = budget->peak();
+    output.report.seconds = watch.lap();
     output.budget = std::move(budget);
     return output;
 }

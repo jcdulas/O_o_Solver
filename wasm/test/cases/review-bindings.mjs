@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "../helpers/register.mjs";
 import { oor, solver } from "../helpers/runtime.mjs";
-import { axial } from "../helpers/optimization-models.mjs";
+import { axial, column } from "../helpers/optimization-models.mjs";
 
 const near = (actual, expected, tolerance = 2e-5) => assert.ok(Number.isFinite(actual) &&
   Math.abs(actual - expected) <= tolerance * Math.max(1e-8, Math.abs(expected)), `${actual} differs from ${expected}`);
@@ -73,6 +73,33 @@ test("run refuses a setting it does not have and keeps every setting it has", ()
     assert.ok(Array.isArray(run.nodalTables) && Array.isArray(run.envelopes));
     assert.equal(run.diagnostics.filter(diagnostic => diagnostic.severity === "error").length, 0);
   } finally { model.delete(); deck.delete(); }
+});
+
+// The report of a run: its threads and kernels, the size of its problem, its stages in the order it runs them, and a
+// wall time that covers them.
+function checkReport(report, { dofs, stages, factorisations }) {
+  assert.ok(Number.isInteger(report.threads) && report.threads >= 1, `threads ${report.threads}`);
+  assert.ok(["reference", "avx2", "avx512", "wasm128"].includes(report.kernel), `kernel ${report.kernel}`);
+  assert.equal(report.dofs, dofs);
+  assert.ok(report.solvedDofs >= 1 && report.solvedDofs <= report.dofs, `solvedDofs ${report.solvedDofs}`);
+  assert.ok(report.factorisations >= factorisations, `factorisations ${report.factorisations}`);
+  assert.deepEqual(Object.keys(report.stages), stages);
+  const staged = Object.values(report.stages).reduce((sum, seconds) => sum + seconds, 0);
+  assert.ok(Object.values(report.stages).every(seconds => seconds >= 0), "a stage has a negative time");
+  assert.ok(staged <= report.seconds + 1e-6, `the stages (${staged} s) exceed the run (${report.seconds} s)`);
+  assert.ok(report.peakBudgetBytes > 0, "the budget held nothing");
+}
+
+test("a run reports its threads, kernels, sizes, stage times and budget memory", () => {
+  const rod = axial(), rodModel = solver.modelFromReader(oor, rod);
+  const bars = column(), barModel = solver.modelFromReader(oor, bars);
+  try {
+    checkReport(solver.run(rodModel, "statics").report, { dofs: 12, factorisations: 1,
+      stages: ["setup", "assembly", "loadBasis", "factorisation", "solve", "recovery"] });
+    assert.equal(solver.run(rodModel, "statics", { threads: 1 }).report.threads, 1);
+    checkReport(solver.run(barModel, "buckling").report, { dofs: 18, factorisations: 2,
+      stages: ["preload", "assembly", "eigenvalues", "recovery"] });
+  } finally { rodModel.delete(); rod.delete(); barModel.delete(); bars.delete(); }
 });
 
 test("a study definition refuses a key of any level it does not have", () => {
