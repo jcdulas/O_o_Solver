@@ -85,10 +85,10 @@ About two million degrees of freedom:
   those runs, and the eigenvalue runs marked above, with a message naming what they needed; the streamed path solves a
   static analysis whose factor does not fit.
 
-These tables are those of version 0.2.5. The sources of this revision go further on the runs that were over the
-free memory: the plate's first ten modes at two million degrees of freedom take 73 s and 11.2 GB, its first buckling
-factor 39 s and 12.3 GB, and the block of a million degrees of freedom asks 1.9 GB of fronts in place of 13 GB (it then
-needs 18 GB in all). The tables will be measured again with the next version.
+These tables are those of version 0.2.5. Version 0.2.6 goes further on the runs that were over the free memory: the
+plate's first ten modes at two million degrees of freedom take 73 s and 11.2 GB, its first buckling factor 39 s and
+12.3 GB, and the block of a million degrees of freedom asks 1.9 GB of fronts in place of 13 GB (it then needs 18 GB in
+all). The tables will be measured again with that version.
 
 ## Modes and buckling of a model whose factor does not fit
 
@@ -109,9 +109,9 @@ Both take the matrices from the elements, front by front: no matrix of the whole
 need one (the constraint forces, the modal effective mass, the grid point weight) are not produced, which the run says
 in an information diagnostic. Both are refused with a condensation.
 
-The first ten modes of the plate above, on 12 threads of the same machine (sources of this revision; the difference is
-the largest relative difference of the ten eigenvalues from the Lanczos solver in memory; a frequency differs by half
-of it):
+The first ten modes of the plate above, on 12 threads of the same machine (the sources of version 0.2.6; the
+difference is the largest relative difference of the ten eigenvalues from the Lanczos solver in memory; a frequency
+differs by half of it):
 
 | Solver | 1 000 008 DOF | 2 006 238 DOF | Difference |
 | --- | --- | --- | --- |
