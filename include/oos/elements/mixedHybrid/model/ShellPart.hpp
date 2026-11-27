@@ -170,6 +170,9 @@ struct ShellPartInput
     // With `degreeChoice`, the edges whose shells take `degree` whatever their shape: those the shells share with
     // solids, whose ties read as many functions on an edge of the shells as on that of the solids (SolidPart::ties).
     std::set<EdgeKey> fullDegreeEdges;
+    // The edges between two grid points of the solids of the model: a shell follows their skin along them, whatever
+    // holds them (they are not counted among the soft supports, ShellSupports::unresolvedLayerEdges).
+    std::set<EdgeKey> edgesOnSolids;
     // The rule of each shell chosen from its shape (chooseShellPoints): the tolerance of the choice, 0 for the rule
     // above on every shell, and the smallest rule it may take. The rule above is then the largest of a shell: its
     // matrices are integrated on its own rule, everything else of it (the map of its surface, the lines and the
@@ -328,6 +331,31 @@ struct ShellSupports
     std::vector<ShellSupportRow> rows;
     std::vector<std::string> notes;
     std::size_t uncarriedEdges = 0;
+    // The outline edges of shells with transverse shear that hold the deflection and leave the rotation about their
+    // normal in the surface free (a soft support), on an element too deep across the edge to resolve the edge layer
+    // of such a support (ShellPart::EDGE_LAYER_DEPTH_RATIO thicknesses): their count, the first of them and the
+    // largest depth met, in thicknesses.
+    std::size_t unresolvedLayerEdges = 0;
+    std::string firstUnresolvedLayerEdge;
+    double largestLayerDepthRatio = 0.0;
+};
+
+// A force at a grid point of the shells (basic components), for the reading of the forces along the outline.
+struct ShellGridForce
+{
+    std::size_t grid = 0;
+    SpaceVector force{};
+};
+
+// The forces at grid points read as tractions along the outline (ShellPart::forcesAlongEdges): for each force given,
+// whether an edge took it; the loads that replace the forces taken, on the unknowns of the part (the translations of
+// the grids in the basic system, the displacement, shear and rotation unknowns of the edges); and the count of the
+// edges that carry a traction.
+struct ShellEdgeForceReading
+{
+    std::vector<bool> isTaken;
+    std::vector<ShellPartTerm> loads;
+    std::size_t edgeCount = 0;
 };
 
 // A point of a shell where a load per unit area is read: its reference coordinates, its position on the reference
@@ -628,6 +656,34 @@ public:
     // Reference: tdnns/analysis.rs::Analysis::edge_traction (an edge of shells)
     [[nodiscard]] std::variant<ShellEdgeLoad, std::string> edgeLoad(std::size_t gridA, std::size_t gridB,
                                                                     const EdgeTractionField& load) const;
+    // The forces at grid points read as tractions along the outline of the shells (spec section 7; not in the
+    // reference, section 12). A force at a grid point is a concentrated force on a continuum of degree k: the grid
+    // point moves more than the section around it. Forces at both grid points of an edge that one shell has are what
+    // a program writes for a traction along that edge, and are read as one:
+    //   - the traction is linear along the chord of each edge, q = (1 − c) q_a + c q_b at the chord fraction c, and
+    //     continuous from one edge to the next where the outline goes on;
+    //   - its values are those whose consistent forces at the grid points are the forces given, Σ_j M_ij q_j = f_i
+    //     with M_ij = ∫ N_i N_j ds over the edges read (N the linear functions of the chord fraction): a uniform or
+    //     a linear traction written as consistent forces is read back exactly;
+    //   - at a corner of the outline (its tangent turns by more than OUTLINE_CORNER_ANGLE at the grid point) the
+    //     traction of each side is its own, and each side takes of the force of the corner what continues the
+    //     traction of its next grid point, the rest shared equally;
+    //   - the traction acts at the point of the chord and is carried rigidly to the point of the edge (the couple
+    //     (x_c − x) × q on a curved edge), so that the resultant force and moment are those of the forces given.
+    // A force at a grid point with no loaded neighbour along the outline stays a force at that grid point, as do the
+    // forces at the grid points inside the shells.
+    [[nodiscard]] ShellEdgeForceReading forcesAlongEdges(std::span<const ShellGridForce> forces) const;
+    // The depth across an outline edge, in thicknesses, beyond which the element of the edge does not resolve the
+    // edge layer of a soft support (ShellSupports::unresolvedLayerEdges). The layer decays as
+    // exp(−√(12 κ) n / t), n the distance from the edge and κ the shear factor (Arnold and Falk, "Edge effects in
+    // the Reissner-Mindlin plate theory", 1989): a length of a third of the thickness. Measured on a simply
+    // supported square plate of 100 thicknesses at degree 4: the centre deflection is 0.02 % from its limit with
+    // elements 3 thicknesses deep, 0.14 % with 6, 0.39 % with 12.
+    static constexpr double EDGE_LAYER_DEPTH_RATIO = 4.0;
+    // The turn of the tangent of the outline at a grid point beyond which the outline has a corner there. The
+    // outline read from the mesh has a continuous tangent where its line goes on: any turn well above the rounding
+    // of the reading is a corner.
+    static constexpr double OUTLINE_CORNER_ANGLE = 0.1745329251994329577; // 10 degrees
 
     // ---- results
 
@@ -796,6 +852,15 @@ private:
     void checkElements();
     // The local edge of shell `shell` that is edge `edge` of the topology.
     [[nodiscard]] std::size_t localEdgeOf(std::size_t shell, std::size_t edge) const;
+    // A force and a couple per length (basic) at a point of an edge, given its chord fraction from the first grid
+    // and its position.
+    using EdgePointLoad = std::function<std::array<double, 6>(double fraction, const SpaceVector& position)>;
+    // The load of `load` along edge `edge`, from grid `gridA`, on the local unknowns of the first shell of the edge
+    // (edgeLoad). A couple about the normal of the shell is refused, or, when `takesNormalCouple`, works on the
+    // rotation of the edge line in the surface, −μ · du/ds (what a rigid rotation about the normal gives).
+    [[nodiscard]] std::variant<ShellEdgeLoad, std::string> edgeLoadAt(std::size_t edge, std::size_t gridA,
+                                                                      std::size_t gridB, const EdgePointLoad& load,
+                                                                      bool takesNormalCouple) const;
     // The interior projection of the reference element of `element` (it depends on its displacement functions alone).
     [[nodiscard]] const InteriorProjection& projectionOf(const ShellElementData& element) const;
     void addProblem(ShellPartProblem::Subject subject, std::size_t index, std::string message,

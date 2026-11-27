@@ -86,7 +86,16 @@ std::variant<ShellEdgeLoad, std::string> ShellPart::edgeLoad(std::size_t gridA, 
     const auto found = m_topology.edgeIndex.find(EdgeKey::of(gridA, gridB));
     if (gridA >= gridCount() || gridB >= gridCount() || found == m_topology.edgeIndex.end())
         return std::string("edge load: no edge of the shells between the two grids");
-    const std::size_t e = found->second;
+    return edgeLoadAt(found->second, gridA, gridB,
+                      [&](double fraction, const SpaceVector&) { return load(fraction); }, false);
+}
+
+std::variant<ShellEdgeLoad, std::string> ShellPart::edgeLoadAt(std::size_t e, std::size_t gridA, std::size_t gridB,
+                                                               const EdgePointLoad& load,
+                                                               bool takesNormalCouple) const
+{
+    if (m_topology.edgeElements[e].empty())
+        return std::string("edge load: no shell on the edge between the two grids");
     const std::size_t ie = m_topology.edgeElements[e].front();
     const ShellElementData el = element(ie);
     const ShellReferenceElement& re = referenceElement(el);
@@ -109,10 +118,11 @@ std::variant<ShellEdgeLoad, std::string> ShellPart::edgeLoad(std::size_t gridA, 
         const SpaceVector tt = scl3(xt, 1.0 / len);
         const SpaceVector mu = cross3(tt, g.nu);
         // the load at the chord fraction of the point from grid A
-        const std::array<double, 6> v = load(dot3(sub3(g.x, xa), chord) / chordSquared);
+        const std::array<double, 6> v = load(dot3(sub3(g.x, xa), chord) / chordSquared, g.x);
         const SpaceVector force{v[0], v[1], v[2]};
         const SpaceVector couple{v[3], v[4], v[5]};
-        if (std::fabs(dot3(couple, g.nu)) > NORMAL_COUPLE_TOLERANCE * std::fmax(norm3(couple), 1e-300) &&
+        if (!takesNormalCouple &&
+            std::fabs(dot3(couple, g.nu)) > NORMAL_COUPLE_TOLERANCE * std::fmax(norm3(couple), 1e-300) &&
             norm3(couple) > 0.0)
             return "edge load on " + gridName(gridA) + "-" + gridName(gridB) +
                    ": a couple about the normal of the shell is not a load of this shell (" +
@@ -121,12 +131,15 @@ std::variant<ShellEdgeLoad, std::string> ShellPart::edgeLoad(std::size_t gridA, 
         // the couple about the edge (in the canonical direction) and about the conormal
         const double mt = dot3(couple, scl3(tt, sk));
         const double mm = dot3(couple, mu);
+        // The couple about the normal works on the rotation of the edge line in the surface: du/ds = ω × t gives
+        // μ · du/ds = ω · (t × μ) = −ω · ν.
+        const double mn = takesNormalCouple ? dot3(couple, g.nu) : 0.0;
         for (std::size_t i = 0; i < n1; ++i)
         {
             const EdgeJet& h = def.edgeJets[kk][gi * n1 + i];
             const double dtau = h[1] * tv[0] + h[2] * tv[1];
             for (std::size_t c = 0; c < 3; ++c)
-                fl[3 * i + c] += w * len * force[c] * h[0] + w * mm * g.nu[c] * dtau;
+                fl[3 * i + c] += w * len * force[c] * h[0] + w * (mm * g.nu[c] - mn * mu[c]) * dtau;
         }
         // the couple about μ works on −β · t: β = γ − ∇uᵀ ν, its part −ν · du/dτ above, γ · X_τ here
         for (std::size_t i = 0; i < nc; ++i)

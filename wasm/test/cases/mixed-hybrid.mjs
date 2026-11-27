@@ -2281,7 +2281,10 @@ test("the supports of shells of MixedHybridFormulation in a displacement system 
       `SinglePointConstr;1;${id(n, j)};1;${real(delta)}`);
   lines.push(`SinglePointConstrList;1;2;${id(0, 0)}`);
   const run = runShells(lines.join("\n") + "\n", "mixed-turned-shells");
-  assert.ok(!run.diagnostics.some((d) => d.severity === "warning"), JSON.stringify(run.diagnostics));
+  // (The deflection held on two sides of elements 50 thicknesses deep is a soft support, which is told; the plate
+  // does not bend here.)
+  assert.ok(!run.diagnostics.some((d) => d.severity === "warning" && d.code !== "edge-layer-not-resolved"),
+    JSON.stringify(run.diagnostics));
   for (let j = 0; j <= n; ++j)
     for (let i = 0; i <= n; ++i)
       assertClose(nodal(run, "displacements", id(i, j)).slice(0, 3), [(delta * i) / n, (-poisson * delta * j) / n, 0],

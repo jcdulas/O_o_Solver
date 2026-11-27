@@ -122,8 +122,12 @@ function eigenRows(text, options, analysis) {
 }
 
 // The diagnostics of a run that are not information.
+// (Without `edge-layer-not-resolved`: the simple supports of these cases hold the deflection alone on elements many
+// thicknesses deep, a soft support that is told on every one of them; edge-forces.test.mjs checks that warning.)
 function warningsOf(run) {
-  return run.diagnostics.filter((d) => d.severity !== "info" && d.severity !== "information").map((d) => d.text);
+  return run.diagnostics
+    .filter((d) => d.severity !== "info" && d.severity !== "information" && d.code !== "edge-layer-not-resolved")
+    .map((d) => d.text);
 }
 
 // The rows of an element table as objects of its columns, with their element and grid point (0 for the centre).

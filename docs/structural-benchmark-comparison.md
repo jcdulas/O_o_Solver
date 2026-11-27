@@ -15,8 +15,8 @@ The entries are displacement magnitudes in the load direction. The cylinder and 
 | Scordelis–Lo, same point (ft) | Distorted TRIA3, 8 × 8 | 0.3024 | 0.260842 | 0.301329 | Matching distorted mesh unavailable in [OS-V 0730][roof] |
 | Pinched cylinder, inward motion at the force | QUAD4, 10 × 10 | 1.8248 × 10⁻⁵ | 1.73996 × 10⁻⁵ | 1.85469 × 10⁻⁵ | 1.51895 × 10⁻⁵, Abaqus/Standard S4, 10 × 10 [parametric study][pinch] |
 | Open hemisphere, outward motion at the force | QUAD4, 8 × 8 | 0.0940 | 0.0946728 | 0.0935749 | 0.09257, Abaqus S4, regular mesh, N = 8 [Ko et al.][ko] |
-| Twisted cantilever, in-plane tip load (in) | QUAD4, 12 × 2 | 0.005424 | 0.00537751 | 0.00540073 | 0.00539, MSC Nastran QUAD4 [§1.8][twist] |
-| Twisted cantilever, out-of-plane tip load (in) | QUAD4, 12 × 2 | 0.001754 | 0.00172939 | 0.00175325 | 0.00173, MSC Nastran QUAD4 [§1.8][twist] |
+| Twisted cantilever, in-plane tip load (in) | QUAD4, 12 × 2 | 0.005424 | 0.00537751 | 0.00540068 | 0.00539, MSC Nastran QUAD4 [§1.8][twist] |
+| Twisted cantilever, out-of-plane tip load (in) | QUAD4, 12 × 2 | 0.001754 | 0.00172939 | 0.00175317 | 0.00173, MSC Nastran QUAD4 [§1.8][twist] |
 | Simply supported square plate, centre (m) | QUAD4, 8 × 8 quarter | 1.689 × 10⁻⁴ | 1.69959 × 10⁻⁴ | 1.69081 × 10⁻⁴ | 1.675 × 10⁻⁴, ADINA, 64 plate elements on the quarter [A.27][adina] |
 
 **Scordelis–Lo.** The roof has rigid end diaphragms, a free longitudinal edge, a vertical load of 90 lbf/ft² and Poisson's ratio zero. For the distorted case the interior nodes move by up to 20% of a cell in each surface parameter, with the boundary nodes fixed. OptiStruct publishes ratios of 1.020 and 0.886 in its column labeled 8. Multiplication by 0.3024 ft gives the commercial values above. A separate refinement study proposes **0.30200–0.30204 ft** for a shear-flexible shell and **0.3006 ft** for a shear-rigid shell. Against 0.30202 ft, the mixed QUAD4 result on 16 × 16 has **0.052%** error, compared with **0.177%** against the historical target. The local inputs include transverse shear. [OptiStruct verification][roof] · [Krysl and Chen, §2.1][limits]
@@ -85,8 +85,8 @@ For each measurement and formulation, the table gives the computed value, its ab
 | Roof, distorted TRIA3 | 4², 8², 16² | 0.288579 (4.57%), 16² | 0.301658 (0.245%), 16² |
 | Pinched cylinder | 5², 10², 20² | 1.86173 × 10⁻⁵ (2.02%), 20² | 1.85469 × 10⁻⁵ (1.64%), 10² |
 | Open hemisphere | 4², 8², 16² | 0.0937719 (0.243%), 16² | 0.0936068 (0.418%), 16² |
-| Twisted cantilever, in plane | 12 × 2, 24 × 4 | 0.00539060 (0.616%), 24 × 4 | 0.00540080 (0.428%), 24 × 4 |
-| Twisted cantilever, out of plane | 12 × 2, 24 × 4 | 0.00174325 (0.613%), 24 × 4 | 0.00175330 (0.040%), 24 × 4 |
+| Twisted cantilever, in plane | 12 × 2, 24 × 4 | 0.00539060 (0.616%), 24 × 4 | 0.00540078 (0.428%), 24 × 4 |
+| Twisted cantilever, out of plane | 12 × 2, 24 × 4 | 0.00174325 (0.613%), 24 × 4 | 0.00175327 (0.042%), 24 × 4 |
 | Square plate, QUAD4, quarter | 4², 8², 16² | 1.69307 × 10⁻⁴ (0.241%), 16² | 1.69081 × 10⁻⁴ (0.107%), 4² |
 | Regular HEX8 cantilever | 6 × 1 × 1, 12 × 2 × 2 | 0.106228 (1.73%), 12 × 2 × 2 | 0.107783 (0.293%), 12 × 2 × 2 |
 | Trapezoidal HEX8 cantilever | 6 × 1 × 1, 12 × 2 × 2 | 0.0756639 (30.01%), 12 × 2 × 2 | 0.107782 (0.294%), 12 × 2 × 2 |

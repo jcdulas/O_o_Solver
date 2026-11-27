@@ -169,6 +169,9 @@ struct SubcaseState
     bool hasDistributedLoads =
         false; // a PointsPressureLoad, BeamDistributedLoad, ShellPressureLoad or FacePressureLoad in its load set
     bool hasConcentratedLoads = false;                         // a FORCE, MOMENT or their variants, a ScalarPointLoad
+    // Forces read as tractions along the edges of the shells of the element formulation: loads that follow the
+    // positions of the grid points of these edges (assembly::LoadVectorBuilder::readsForcesAlongEdges).
+    bool hasEdgeReadForces = false;
     bool hasEnforcedDisplacements = false;                     // SPC D or EnforcedMotionConstr not zero
     std::optional<base::BudgetedBuffer<double>> elementForces; // Kgg·u, for ESE item 3 and the self-adjoint items
     double totalEnergy = 0.0;
@@ -711,6 +714,7 @@ protected:
                 state.hasInertialLoads = m_loads->hasFamilyLoads(*subcase.load, assembly::LoadFamily::Inertial);
                 state.hasDistributedLoads = m_loads->hasFamilyLoads(*subcase.load, assembly::LoadFamily::Distributed);
                 state.hasConcentratedLoads = m_loads->hasFamilyLoads(*subcase.load, assembly::LoadFamily::Concentrated);
+                state.hasEdgeReadForces = m_loads->readsForcesAlongEdges(*subcase.load);
                 const base::BudgetedBuffer<assembly::LoadVectorBuilder::CardValue> distributed =
                     m_loads->distributedValues(*subcase.load, m_budget);
                 for (std::size_t k = 0; k < distributed.size(); ++k)
@@ -3234,7 +3238,8 @@ protected:
                 addLoadDifference(q, s, perturbation.get(), assembly::LoadFamily::Distributed, *subcase.load, params);
             if (isShape && m_subcases[s].hasInertialLoads)
                 addLoadDifference(q, s, perturbation.get(), assembly::LoadFamily::Inertial, *subcase.load, params);
-            if (turnsLoads && m_subcases[s].hasConcentratedLoads)
+            // (a shape also changes the tractions that the forces of the outline of the shells are read as)
+            if ((turnsLoads || (isShape && m_subcases[s].hasEdgeReadForces)) && m_subcases[s].hasConcentratedLoads)
                 addLoadDifference(q, s, perturbation.get(), assembly::LoadFamily::Concentrated, *subcase.load, params);
         }
         // A shape that moves the relations and the excluded DOFs of an element formulation.

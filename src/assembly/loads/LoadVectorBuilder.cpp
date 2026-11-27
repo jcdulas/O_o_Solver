@@ -9,6 +9,9 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -156,8 +159,14 @@ bool acceptsLoads(Check&& check, base::DiagnosticSink& sink)
 
 } // namespace
 
+struct LoadVectorBuilder::EdgeForceCache
+{
+    std::mutex mutex;
+    std::map<base::EntityId, std::shared_ptr<const EdgeForces>> bySet;
+};
+
 LoadVectorBuilder::LoadVectorBuilder(const ElementSet& set, const DofMap& dofMap, base::MemoryBudget& budget)
-    : m_set(&set), m_dofMap(&dofMap)
+    : m_set(&set), m_dofMap(&dofMap), m_edgeForces(std::make_shared<EdgeForceCache>())
 {
     std::size_t count = 0;
     for (const AssemblyBatch& batch : set.batches())
@@ -227,6 +236,60 @@ std::vector<input::LoadTerm> LoadVectorBuilder::termsOf(base::EntityId loadSetId
     return m_set->index().snapshot().loadTermsOf(loadSetId);
 }
 
+std::shared_ptr<const LoadVectorBuilder::EdgeForces> LoadVectorBuilder::edgeForcesOf(base::EntityId setId) const
+{
+    static const std::shared_ptr<const EdgeForces> NONE = std::make_shared<const EdgeForces>();
+    const elements::FormulationModel* formulation = m_dofMap->formulation();
+    if (formulation == nullptr)
+        return NONE;
+    const std::scoped_lock lock(m_edgeForces->mutex);
+    const auto found = m_edgeForces->bySet.find(setId);
+    if (found != m_edgeForces->bySet.end())
+        return found->second;
+
+    // The forces of the grid points of the set, in the basic system (the rows forEachConcentratedValue applies).
+    const base::ContractReader& table = m_set->index().snapshot().loads().loads();
+    const std::span<const std::int32_t> targets = table.values<std::int32_t>("targetId", base::NullPolicy::Allow);
+    const base::ValidityView validTargets = table.validity("targetId");
+    std::array<std::span<const double>, 3> components;
+    const std::array<const char*, 3> names{"fx", "fy", "fz"};
+    for (std::size_t c = 0; c < 3; ++c)
+        components[c] = table.values<double>(names[c], base::NullPolicy::Allow);
+    std::vector<elements::FormulationModel::GridForce> forces;
+    std::vector<std::int64_t> forceRows;
+    for (const std::int64_t row : m_loadRows.rowsOf(setId))
+    {
+        const auto index = static_cast<std::size_t>(row);
+        if (!isOneOf(m_loadCards[row], NODAL_CARDS) || !validTargets.isValid(row))
+            continue;
+        const std::optional<input::PointRef> point = m_dofMap->points().find(targets[index]);
+        if (!point || point->kind != input::PointKind::Grid)
+            continue;
+        const auto valueOf = [&](std::size_t c)
+        { return std::isfinite(components[c][index]) ? components[c][index] : 0.0; };
+        const base::Vec3 force(valueOf(0), valueOf(1), valueOf(2));
+        if (force[0] == 0.0 && force[1] == 0.0 && force[2] == 0.0)
+            continue;
+        forces.push_back({point->row, force});
+        forceRows.push_back(row);
+    }
+    auto read = std::make_shared<EdgeForces>();
+    if (forces.size() >= 2)
+    {
+        const elements::FormulationModel::EdgeForceReading reading = formulation->readForcesAlongEdges(forces);
+        for (std::size_t i = 0; i < forces.size(); ++i)
+            if (reading.isTaken[i])
+                read->rows.push_back(forceRows[i]);
+        std::sort(read->rows.begin(), read->rows.end());
+        read->loads.reserve(reading.loads.size());
+        for (const elements::FormulationRelationTerm& load : reading.loads)
+            read->loads.emplace_back(m_dofMap->dofOf(load.dof), load.coefficient);
+        read->edgeCount = reading.edgeCount;
+    }
+    m_edgeForces->bySet.emplace(setId, read);
+    return read;
+}
+
 template <typename Visit>
 void LoadVectorBuilder::forEachConcentratedValue(base::EntityId loadSetId, base::DiagnosticSink& sink,
                                                  Visit&& visit) const
@@ -248,6 +311,9 @@ void LoadVectorBuilder::forEachConcentratedValue(base::EntityId loadSetId, base:
     for (const input::LoadTerm& term : termsOf(loadSetId))
     {
         const base::EntityId setId = term.set;
+        // The forces the formulation reads as tractions along the edges of its shells: their rows give no force at
+        // their grid point, and the loads of the tractions come after the rows of the set.
+        const std::shared_ptr<const EdgeForces> edgeForces = edgeForcesOf(setId);
         for (const std::int64_t row : m_loadRows.rowsOf(setId))
         {
             const auto index = static_cast<std::size_t>(row);
@@ -317,12 +383,31 @@ void LoadVectorBuilder::forEachConcentratedValue(base::EntityId loadSetId, base:
             { return std::isfinite(components[c][index]) ? components[c][index] * term.factor : 0.0; };
             const std::array<double, 3> force = intoCd(rotation, valueOf(0), valueOf(1), valueOf(2));
             const std::array<double, 3> moment = intoCd(rotation, valueOf(3), valueOf(4), valueOf(5));
+            const bool isReadAlongEdges =
+                std::binary_search(edgeForces->rows.begin(), edgeForces->rows.end(), row);
             for (int k = 0; k < 3; ++k)
             {
-                visit(m_dofMap->gridDof(point->row, k + 1), force[static_cast<std::size_t>(k)], row, term);
+                if (!isReadAlongEdges)
+                    visit(m_dofMap->gridDof(point->row, k + 1), force[static_cast<std::size_t>(k)], row, term);
                 visit(m_dofMap->gridDof(point->row, k + 4), moment[static_cast<std::size_t>(k)], row, term);
             }
         }
+        if (edgeForces->rows.empty())
+            continue;
+        // The loads of the tractions, named by the first row read (its card and its precision stand for them).
+        for (const auto& [dof, value] : edgeForces->loads)
+            visit(dof, value * term.factor, edgeForces->rows.front(), term);
+        base::Diagnostic note =
+            loadProblem("forces-read-along-edges", cards[edgeForces->rows.front()], setId,
+                        base::concatenate({"load set ", std::to_string(setId), ": ",
+                                           std::to_string(edgeForces->rows.size()),
+                                           " forces at grid points of the outline of the shells are read as "
+                                           "tractions along ",
+                                           std::to_string(edgeForces->edgeCount),
+                                           " edges (forces at both grid points of an edge are the consistent forces "
+                                           "of a traction along it; the resultant force and moment are unchanged)"}));
+        note.severity = base::Severity::Information;
+        sink.report(std::move(note));
     }
 }
 
@@ -370,6 +455,15 @@ bool LoadVectorBuilder::hasFamilyLoads(base::EntityId loadSetId, LoadFamily fami
                            { return m_pressures.hasRows(term.set) || !m_lineLoadRows.rowsOf(term.set).empty(); });
     }
     return false;
+}
+
+bool LoadVectorBuilder::readsForcesAlongEdges(base::EntityId loadSetId) const
+{
+    if (m_dofMap->formulation() == nullptr || !m_set->index().snapshot().hasTable(input::TableRole::Loads))
+        return false;
+    const std::vector<input::LoadTerm> terms = termsOf(loadSetId);
+    return std::any_of(terms.begin(), terms.end(),
+                       [&](const input::LoadTerm& term) { return !edgeForcesOf(term.set)->rows.empty(); });
 }
 
 bool LoadVectorBuilder::holdsOwnCards(base::EntityId setId) const
@@ -523,7 +617,10 @@ base::BudgetedBuffer<LoadVectorBuilder::DofValue> LoadVectorBuilder::concentrate
         if (precision == nullptr)
             return 0.0;
         const auto index = static_cast<std::size_t>(row);
-        const bool isMoment = m_dofMap->labelOf(dof).component >= 4;
+        // (a load of a traction read along an edge, on a grid translation or on a DOF of the edge, has the precision
+        // of the force of its row)
+        const DofLabel label = m_dofMap->labelOf(dof);
+        const bool isMoment = label.kind == input::PointKind::Grid && label.component >= 4;
         const std::size_t first = isMoment ? 3 : 0;
         double magnitude = 0.0;
         for (std::size_t c = first; c < first + 3; ++c)

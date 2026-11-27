@@ -321,6 +321,7 @@ void MixedHybridModel::buildShellPart(const SnapshotIndex& index, const std::set
         input.degreeChoice = ShellDegreeChoice{};
         input.fullDegreeEdges = shellEdgesOnSolids();
     }
+    input.edgesOnSolids = shellEdgesOnSolids();
     input.withMass = true;
     input.matrixCacheBytes = SHELL_MATRIX_CACHE_BYTES;
     input.recoveryCacheBytes = SHELL_RECOVERY_CACHE_BYTES;
@@ -1120,6 +1121,32 @@ void MixedHybridModel::appendPartTerms(std::span<const ShellPartTerm> partTerms,
     }
 }
 
+FormulationModel::EdgeForceReading MixedHybridModel::readForcesAlongEdges(std::span<const GridForce> forces) const
+{
+    EdgeForceReading reading;
+    reading.isTaken.assign(forces.size(), false);
+    if (m_shellPart == nullptr || !m_shellPart->usable())
+        return reading;
+    // the forces at grid points of the formulation, with their place in `forces`
+    std::vector<ShellGridForce> partForces;
+    std::vector<std::size_t> places;
+    for (std::size_t i = 0; i < forces.size(); ++i)
+    {
+        const std::int32_t grid = gridIndexOfRow(forces[i].gridRow);
+        if (grid < 0)
+            continue;
+        const base::Vec3& force = forces[i].force;
+        partForces.push_back({static_cast<std::size_t>(grid), SpaceVector{force[0], force[1], force[2]}});
+        places.push_back(i);
+    }
+    const ShellEdgeForceReading read = m_shellPart->forcesAlongEdges(partForces);
+    for (std::size_t i = 0; i < places.size(); ++i)
+        reading.isTaken[places[i]] = read.isTaken[i];
+    appendPartTerms(read.loads, 1.0, reading.loads);
+    reading.edgeCount = read.edgeCount;
+    return reading;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // What the formulation tells the solver
 
@@ -1587,6 +1614,22 @@ void MixedHybridModel::shellSupports(const std::map<std::int32_t, BasicSupport>&
              " have their two grid points held along directions that differ (a displacement system that turns along "
              "the edge: a cylindrical system along a circle): the grid points hold their directions, the edge between "
              "them is free along them; hold both directions of the plane they turn in, or refine the mesh there"});
+        sink.report(std::move(diagnostic));
+    }
+    if (derived.unresolvedLayerEdges > 0)
+    {
+        base::Diagnostic diagnostic;
+        diagnostic.severity = base::Severity::Warning;
+        diagnostic.code = "edge-layer-not-resolved";
+        diagnostic.message = base::concatenate(
+            {std::to_string(derived.unresolvedLayerEdges), " outline edges of shells of ", MIXED_HYBRID_FORMULATION,
+             " hold the deflection and leave the rotation about their normal free (a soft support) on elements up to ",
+             std::to_string(std::lround(derived.largestLayerDepthRatio)),
+             " thicknesses deep across the edge (the first is edge ", derived.firstUnresolvedLayerEdge,
+             "): a shell with transverse shear has an edge layer a third of the thickness long there, which these "
+             "elements do not resolve, and the result is slightly stiffer than that of a mesh that does; add a row of "
+             "elements about one thickness wide along these edges, or hold that rotation too when the support is a "
+             "hard one (the thin-plate formulas are those of the hard support)"});
         sink.report(std::move(diagnostic));
     }
 }

@@ -224,6 +224,31 @@ public:
         return std::nullopt;
     }
 
+    // A force at a grid point (node table row), in the basic system.
+    struct GridForce
+    {
+        std::int32_t gridRow = 0;
+        base::Vec3 force;
+    };
+    // The forces of one load set that the formulation reads along the edges of its shells (section 7): forces at
+    // both grid points of an outline edge are the consistent forces of a traction along it, and act as that traction
+    // (a force at a grid point is a concentrated force on the continuum of the formulation). `isTaken[i]` says
+    // whether forces[i] is read so; `loads` are the loads that replace the forces taken, each a value on a DOF (the
+    // grid components in their CD systems, the entity DOFs as they are), with the same resultant force and moment.
+    // `edgeCount` is the count of edges read. Nothing is taken by default.
+    struct EdgeForceReading
+    {
+        std::vector<bool> isTaken;
+        std::vector<FormulationRelationTerm> loads;
+        std::size_t edgeCount = 0;
+    };
+    [[nodiscard]] virtual EdgeForceReading readForcesAlongEdges(std::span<const GridForce> forces) const
+    {
+        EdgeForceReading reading;
+        reading.isTaken.assign(forces.size(), false);
+        return reading;
+    }
+
     // The motion of a point of an element of the formulation as rows on its DOFs (section 5.10): the translations
     // (rows 0 to 2) and the rotations (rows 3 to 5) of the point in the basic system; the grid components in their CD
     // systems, the entity DOFs as they are.

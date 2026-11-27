@@ -385,8 +385,13 @@ function warpedStrip(loads) {
     text: deckText(101, [...STATIC_CASE, "DisplacementOutput;All", "StressOutput;All"], records) };
 }
 
+// The third load: forces at the three grid points 4, 6 and 8 of one side, which the formulation reads as a traction
+// along the two edges between them (spec section 7). The variable moves grid point 6: the traction follows the
+// edges, and the loads change with the shape as no force at a grid point does.
 for (const [name, loads] of [["a pressure", ["ShellPressureLoad;2;1.;1;Through;3"]],
-  ["its weight", ["GravityLoad;2;;10.;0.;0.;-1."]]])
+  ["its weight", ["GravityLoad;2;;10.;0.;0.;-1."]],
+  ["forces along a side", ["PointForceLoad;2;4;;1.;0.;0.;1.", "PointForceLoad;2;6;;1.;0.;0.;1.",
+    "PointForceLoad;2;8;;1.;0.;0.;0.5"]]])
   test(`the shape gradient of a strip in MixedHybridFormulation under ${name} is the analysis'`, () => {
     const strip = warpedStrip(loads);
     withDeckDesign(strip.text, "mixed-shape-load",

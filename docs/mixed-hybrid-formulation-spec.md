@@ -355,7 +355,22 @@ These are properties of the formulation; the port reproduces them and does not t
   mesh and 6 to 16 % more on coarse ones, a corner force on one solid several times more than the uniform traction
   of the same resultant. `ClassicFormulation` elements, whose grid point forces are the consistent loads of a
   traction, do not show it. Loads meant as tractions are given as pressures or line loads; a displacement wanted at
-  a load introduction is read a few elements away.
+  a load introduction is read a few elements away. One case is lifted here (section 7; not in the reference): forces
+  at both grid points of an edge of the outline of the shells are read as a traction along that edge. The limit
+  stays for a force at a grid point alone, at a grid point inside the shells and on solids.
+- A soft support (the deflection held along an edge of the outline, the rotation about the normal of the edge in the
+  surface free) of a shell with transverse shear has an edge layer: the twisting moment falls to zero at the edge
+  over a length t / √(12 κ), a third of the thickness (Arnold and Falk, "Edge effects in the Reissner-Mindlin plate
+  theory", 1989). The plate is softer with it than the thin plate, by about the thickness over its size: the
+  thin-plate formulas are those of the hard support. An element much deeper than the thickness across the edge
+  does not resolve the layer and stays between the two. Measured on a simply supported square plate of side 100
+  thicknesses under pressure, in vibration and in buckling (centre deflection, first frequency, critical load; the
+  limits of the model, +0.91 %, −0.48 % and −0.94 % from the thin-plate values, are those of 64 × 64 elements of
+  degree 4, which the `ClassicFormulation` reaches at 256 × 256): 8 × 8 elements give +0.52 %, −0.28 % and −0.54 %;
+  2 × 2 elements with one more row of elements one thickness wide along each edge give the limits to 0.01 %. A row
+  from half a thickness to two thicknesses wide does as well. The solver counts the edges whose element is deeper
+  than 4 thicknesses across them (`edge-layer-not-resolved`, section 5.6); the mesh carries the row. A free edge
+  has a layer of the same kind where the plate twists (the first failure listed above); it is not counted.
 
 ## 4. Input
 
@@ -701,6 +716,13 @@ document 35). For each constraint set the formulation derives supports of entity
 - Enforced values (`EnforcedMotionConstr`) are carried along the edge as by a rod: linear along the chord, cubic
   Hermite across it with the rotations held at both grid points. The edge rotation takes W² θ · X_τ with θ linear
   along the chord.
+- A soft support of a shell with transverse shear (an outline edge that holds the translation along the normal of
+  the shell and not the shear γ · t: the rotation about the conormal is free) on an element deeper than 4
+  thicknesses across the edge (`ShellPart::EDGE_LAYER_DEPTH_RATIO`; the depth is the area of the element over the
+  length of the edge, twice that for a triangle) is counted, and one warning `edge-layer-not-resolved` gives the
+  count, the first edge and the largest depth: the edge layer of section 3.6 is not resolved there. The results are
+  not changed. Kirchhoff and membrane-only shells have no such layer and are not counted, nor is an edge of a shell
+  on solids, which follows their skin.
 
 Directions. The reference states supports in global axes. Here the held components are in each grid point's CD
 system, and an edge or a face holds the directions its grid points share:
@@ -1229,7 +1251,7 @@ computation changing (the default `FieldUse`).
 
 | Load | Treatment |
 |---|---|
-| PointForceLoad, PointForceLoad1, PointForceLoad2 | on the grid translations |
+| PointForceLoad, PointForceLoad1, PointForceLoad2 | on the grid translations; along the edges of the outline of the shells whose two grid points carry a force, as a traction (below) |
 | PointMomentLoad, PointMomentLoad1, PointMomentLoad2 | on Λ at grid points with lines; on the mean shell corner rotation elsewhere (observer relation, section 5.4); refused at a grid point with solids only (no rotation) |
 | ShellPressureLoad, FacePressureLoad on shells | pressure facet: along the normal of the element surface, corner values interpolated on the element; with a direction (CID, N1-N3), a traction |
 | FacePressureLoad on solids | pressure facet on the face named by `faceNodes` |
@@ -1239,6 +1261,43 @@ computation changing (the default `FieldUse`).
 | NodeTemperatureLoad, DefaultTemperatureLoad, PlateTemperatureLoad, LineElemTemperatureLoad | thermal facet: free strains of the shells (mean and gradient), of the lines (axial and gradients), of the solids |
 | AxialDeformationLoad | free axial strain of the lines (phase 4) |
 | EnforcedMotionConstr | section 5.6 |
+
+Forces along the outline of the shells (`ShellPart::forcesAlongEdges`, `FormulationModel::readForcesAlongEdges`,
+`LoadVectorBuilder::edgeForcesOf`; not in the reference). A program writes a traction along an edge as forces at its
+grid points, which are its consistent loads on elements with straight sides and linear traces. On a continuum of
+degree k such a force is a concentrated force (section 3.6): a plate compressed by forces at the grid points of two
+edges has, on 2 × 2 elements of degree 4, a critical load 4.8 % under that of the uniform compression. The forces
+of one load set (its own cards: a combination reads each of its sets apart, then scales and adds) are therefore
+read along the edges, as the supports are (section 5.6):
+
+- an edge is read when one shell has it and both its grid points carry a force of the set. A force at a grid point
+  none of whose edges is read stays a force at the grid point: a force alone on the outline, any force inside the
+  shells. Moments are not read. A force at a mid-side grid point of an 8- or 6-node shell stays a force at that grid
+  point too: of the consistent forces of a traction on such an edge, a sixth at each corner and two thirds at the
+  mid-side grid point, only the corner parts are read as a traction (later work, section 14);
+- the traction is linear along the chord of each edge read, q = (1 − c) q_a + c q_b at the chord fraction c, with one
+  value per grid point: it is continuous where the outline goes on;
+- the values are those whose consistent forces are the forces given: Σ_j M_ij q_j = f_i for each grid point i, with
+  M_ij = Σ_edges ∫ N_i N_j ds, N the two linear functions of the chord fraction of an edge and ds the length of the
+  edge as read. A uniform traction, or a linear one, written as consistent forces is read back exactly, whatever the
+  lengths of the edges. The system is solved by conjugate gradients on each component (its matrix scaled by its
+  diagonal has a condition number under 3);
+- at a corner of the outline (its tangent, that of the edges as read, turns by more than 10° at the grid point:
+  `ShellPart::OUTLINE_CORNER_ANGLE`; or more than two read edges meet there) each side has its own value, and the
+  force of the corner is shared between the sides: each takes what continues the uniform traction of its next grid
+  point (the force of that grid point over half the length of its edges, times ∫ N ds of the corner on the side),
+  and the rest is shared equally, among the sides whose next grid point is a corner too when there are some. The
+  forces of a biaxial traction, or of a shear flow around a panel, are read back exactly;
+- the traction acts at the point of the chord and is carried rigidly to the point of the edge: the load of an edge
+  is that of the force q and of the couple (x_c − x) × q per length, x_c the point of the chord and x that of the
+  edge. The couple about the edge works on the rotation of the edge, that about the conormal on −β · t, that about
+  the normal on the rotation of the edge line in the surface, −μ · du/ds. For a rigid motion the work is that of q at
+  the point of the chord, which is linear along it: the resultant force and moment of the loads are those of the
+  forces given, on a curved edge too;
+- the loads act on the translations of the grid points and on the displacement, shear and rotation unknowns of the
+  edges. The applied load table gives them at the grid points with their resultant (section 10.1): its rows at the
+  grid points of an edge read differ from the forces of the cards, with the same sum. An information
+  `forces-read-along-edges` gives, for each load set, the count of forces and of edges read.
 
 A following pressure (load stiffness in buckling) is not in phase 3. The differential stiffness facet receives the
 preload displacements, not its loads; adding the loads (`ElementLoadContext`) to that facet is later work (section
@@ -1397,6 +1456,8 @@ shows what the fold angle alone decides, which is what a preprocessor shows befo
 | The functions of the corners and edges of a shell triangle are orthogonal to its interior functions on the triangle itself (`h1Space`) | The reference takes the product of the reference square for the triangle too: the functions then depend on the corner the element starts from, and with them the share of a distributed load between the grid points in the applied load table (22 % on one grid point of an assembly). The space and the solution are the same. |
 | A held direction is read along an edge to within 1e-4 rad, and from the spans of what its two grid points hold when one states it by basic axes and the other by directions off them (section 5.6) | The reference has global axes and exact planes. With the round-off of the arithmetic as tolerance, the edges of a plane of symmetry whose grid points have coordinates of seven digits kept their rotation free (a hinge along the plane), and the edge between a clamped grid point and the first grid point of a turned plane of symmetry was held along nothing. |
 | Warnings for what is read without effect or under a limit: a rotation both grid points of an edge hold and the edge does not take (`support-note`), triangular shells on a quadrilateral face of solids (`shell-triangles-on-solid-face`), a mid-side node under a line alone (`mid-side-grid-ignored`), declarations that change nothing (`geometry-declaration-not-applied`); a declared mesh line goes to a part of the skin only by edges of that part (sections 3.6, 4.4, 5.6) | The reference states its supports and its raw edges on the edges themselves and has no model file to check; here a model file may say more than the reading takes, and it is told. |
+| Forces at both grid points of an edge of the outline of the shells are read as a traction along the edge, with the resultant force and moment of the forces (section 7) | The reference puts a force on the translations of its grid point and states tractions on the edges; a model file states the traction of an edge as forces at its grid points, concentrated forces on elements of degree 4 (a critical load 4.8 % low on 2 × 2 elements). The owner's decision of 26 November 2026. |
+| A warning counts the soft supports on elements too deep across the edge for their edge layer (`edge-layer-not-resolved`, sections 3.6 and 5.6) | The reference says nothing of it; a comparison with a thin-plate formula then reads the layer as an error of the element. The owner's decision of 26 November 2026. |
 | A shell can have a degree of its own, chosen from its shape, and its edges with a shell of a lower degree take that one: transition elements (section 3.1) | The reference has one degree for all its elements. |
 | The matrices of a shell are integrated on a rule chosen from its shape, of 6 to 2k + 4 points per direction (section 6) | The reference has 2k + 4 points on every element, which an affine element needs a quarter of and a curved element of a regular mesh less than half; the results are those of 2k + 4 points to 3e-11 on the meshes measured. |
 
@@ -1466,6 +1527,24 @@ In `wasm/test`, tiny models within one second per case:
 - a cantilever of one line element alone: exact;
 - the support forces balance the loads.
 
+In `wasm/test/validation/edge-forces.test.mjs`, the forces read along the outline (section 7) and the edge layer
+(sections 3.6 and 5.6):
+
+- a square plate compressed by forces at the grid points of two sides buckles at the load of the plate whose sides
+  are moved in (1e-6), on 2 × 2 and 4 × 4 elements, and at the closed form of the plate with transverse shear;
+- biaxial tractions and a shear flow given as forces at the grid points of the four sides of a rectangle are the
+  uniform states (displacements to 1e-6): the forces of the corners are shared between their sides;
+- forces at the grid points of the rim of a quarter cylinder and of the inner arc of a flat ring sector: the support
+  forces and the applied load table have their resultant force and moment (1e-8);
+- two forces on a side with a grid point without force between them stay forces at their grid points;
+- `edge-layer-not-resolved` is given for a soft support on deep elements, and not for a hard support, a section
+  without transverse shear, a row of elements one thickness wide along the sides, nor `ClassicFormulation`;
+- 2 × 2 elements with such a row give the limits of the soft simply supported plate (deflection, first frequency,
+  critical load) to 1e-4.
+
+`wasm/test/cases/review-design.mjs` checks the shape gradient of a strip loaded by forces read along a side against
+differences of the analysis.
+
 ### 13.5 Non-regression
 
 - Every existing test passes unchanged.
@@ -1493,7 +1572,7 @@ Each phase ends with the full test suite passing and its own checks of section 1
 | 5 | solids of every shape, mid-side nodes, skin reading, ties 1 to 4, solid loads and recovery, the grid point stress table | the same, for solids and mixed models |
 | 6 | the extensions the owner chose (section 15): point interpolation facet (fasteners, welds, glue), pin flags of lines alone, membrane-only and bending-only shells, condensed and streamed paths, components, superelements and the condensation cache, design derivatives | each with its own checks |
 | 7 | finishing: supports read along the edges inside the shells and along directions that are no basic axis, rigid elements and multipoint constraints read along the edges, rotations no edge reads tied to the mean rotation of the shells, rotations the lines do not stiffen following the shells, grid point force balance and force tables carried to the grid points, entity names in the messages of the factorisations, the pivot ratio test at entity DOFs, the geometry report as warnings, the validation suite of section 13.3 (`wasm/test/validation`) and the defects it found, the particular stresses of body forces in the solids (section 10.3), the formulation's refusals listed by the support check before a run (`api::checkSupport`), curved edges that follow a relation of the model (section 5.6), mesh transitions on straight boundaries and re-entrant corners beside triangles (section 4.4) | each with its own checks |
-| later | not chosen yet: supports along a direction that turns along an edge (a cylindrical CD along a circle, section 5.6), the particular stresses of the inertia of an inertia relief, of a trim analysis and of the vectors of a kept load basis in the solids (section 10.3), loads in the differential stiffness facet (following pressure), the pivot reference on the condensed and streamed paths | |
+| later | not chosen yet: supports along a direction that turns along an edge (a cylindrical CD along a circle, section 5.6), the particular stresses of the inertia of an inertia relief, of a trim analysis and of the vectors of a kept load basis in the solids (section 10.3), loads in the differential stiffness facet (following pressure), the pivot reference on the condensed and streamed paths, the forces at the mid-side grid points of the outline read as tractions and the forces at the grid points of the skin of solids (section 7), a subdivision of the elements of a soft-supported or free edge by the solver itself (section 3.6: the mesh carries the row today) | |
 
 ## 15. Decisions of the owner (15 November 2026)
 

@@ -784,7 +784,10 @@ private:
         {
             const detail::SubcaseState& subcase = m_subcases[s];
             const bool hasThermal = subcase.temperatures != nullptr;
-            const bool hasTurnedLoads = turnsLoads && subcase.hasConcentratedLoads;
+            // (the forces read as tractions along the edges of the shells change with any shape)
+            const bool hasTurnedLoads =
+                (turnsLoads || (!m_in.design->shapes.empty() && subcase.hasEdgeReadForces)) &&
+                subcase.hasConcentratedLoads;
             if (!hasThermal && !subcase.hasDistributedLoads && !subcase.hasInertialLoads && !hasTurnedLoads)
                 continue;
             std::vector<double>& loads = state.loads[s];

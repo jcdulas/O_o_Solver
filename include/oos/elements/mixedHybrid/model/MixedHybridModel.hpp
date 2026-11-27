@@ -239,6 +239,8 @@ public:
     void gridPointStresses(EntityLayout::Kind kind, const NodalDisplacements& displacements,
                            const SolidSelection& takes, std::vector<GridPointStress>& stresses) const override;
     [[nodiscard]] std::optional<FormulationFace> faceOf(std::span<const std::int32_t> gridRows) const override;
+    // The forces at the grid points of the outline of the shells read as tractions (ShellPart::forcesAlongEdges).
+    [[nodiscard]] EdgeForceReading readForcesAlongEdges(std::span<const GridForce> forces) const override;
     // The grids of the elements of two rings around the element's grids (describeSurroundings).
     [[nodiscard]] std::vector<std::int32_t> readGridRows(std::string_view card, std::int64_t batchRow) const override;
     // From the name of the entity: the element of an interior or a line end, the elements at its first grid point that

@@ -15,9 +15,11 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace oos::assembly
@@ -108,6 +110,10 @@ public:
     void checkLoads(base::EntityId loadSetId, const linalg::BlockSparseMatrix* mass, base::MemoryBudget& budget,
                     base::DiagnosticSink& sink, bool checksInertial = true) const;
 
+    // Whether forces at grid points of the set are read as tractions along the edges of the shells of the element
+    // formulation (docs/mixed-hybrid-formulation-spec.md section 7): its concentrated loads then change with the
+    // positions of the grid points of these edges, which a force at a grid point does not.
+    [[nodiscard]] bool readsForcesAlongEdges(base::EntityId loadSetId) const;
     // Whether the set holds loads of a family (Concentrated, Distributed, Inertial).
     [[nodiscard]] bool hasFamilyLoads(base::EntityId loadSetId, LoadFamily family) const;
 
@@ -242,6 +248,19 @@ private:
     // and the rows; reports into `sink` the rows it cannot apply, named by the set of their card.
     template <typename Visit>
     void forEachConcentratedValue(base::EntityId loadSetId, base::DiagnosticSink& sink, Visit&& visit) const;
+    // The forces at grid points of the own rows of a load set that the formulation reads as tractions along the edges
+    // of its shells (elements::FormulationModel::readForcesAlongEdges; docs/mixed-hybrid-formulation-spec.md section
+    // 7): the rows of loadsTable whose force is read so, increasing, the loads that replace these forces (with the
+    // factor 1) and the count of edges read. The forces of a set are read together, whatever combination brings the
+    // set: the reading is kept for the builder's life.
+    struct EdgeForces
+    {
+        std::vector<std::int64_t> rows;
+        std::vector<std::pair<base::DofIndex, double>> loads;
+        std::size_t edgeCount = 0;
+    };
+    // Empty without a formulation that reads forces along edges.
+    [[nodiscard]] std::shared_ptr<const EdgeForces> edgeForcesOf(base::EntityId setId) const;
     void addPressures(base::EntityId loadSetId, std::span<double> loadsG, base::DiagnosticSink& sink) const;
     // Calls visit(dof, value) for each nodal load of the PointsPressureLoad rows of the set (pressures on the faces of
     // grid points), in table order; reports into `sink` the rows it cannot apply.
@@ -288,6 +307,9 @@ private:
     base::DictionaryView m_lineLoadTypes;
     base::DictionaryView m_lineScaleTypes;
     std::optional<InertialLoads> m_inertial; // built last: it borrows m_loadRows
+    // The readings of edgeForcesOf by load set, under a lock (the load cases of a run ask from several threads).
+    struct EdgeForceCache;
+    std::shared_ptr<EdgeForceCache> m_edgeForces;
 };
 
 } // namespace oos::assembly

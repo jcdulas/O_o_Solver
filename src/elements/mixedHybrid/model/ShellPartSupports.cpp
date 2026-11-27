@@ -537,6 +537,36 @@ ShellSupports ShellPart::supportsOf(std::span<const ShellGridSupport> grids) con
                                     ": rotation across the edge held with the normal displacement free: not "
                                     "represented");
         }
+        // A soft support: an outline edge that holds the deflection and leaves the rotation about its normal in the
+        // surface free. A shell with transverse shear has an edge layer there, a third of the thickness long
+        // (EDGE_LAYER_DEPTH_RATIO): an element much deeper than the thickness across the edge does not resolve it,
+        // and the shell is then stiffer than its model (the count and the first edge are reported). An edge on solids
+        // is not counted: the shell follows their skin there, whatever holds them.
+        const bool isSoft = isExternal && normalHeld && !(shearHeld && anyRotation) &&
+                            !m_input.edgesOnSolids.contains(m_topology.edges[e]);
+        if (isSoft && !m_shells[ie].kirchhoff && carriesMoments(ie))
+        {
+            double area = 0.0;
+            for (std::size_t q = 0; q < re.points.size(); ++q)
+                area += re.weights[q] * volumeGeometry(def, re.h1Count, q).j;
+            double length = 0.0;
+            for (std::size_t gi = 0; gi < re.edgeParameters.size(); ++gi)
+            {
+                const PointGeometry g = edgeGeometry(def, re.h1Count, kk, gi);
+                const auto tv = referenceEdgePointAndDirection(el.cornerCount, kk, re.edgeParameters[gi]).second;
+                length += re.edgeWeights[gi] * norm3(add3(scl3(g.a[0], tv[0]), scl3(g.a[1], tv[1])));
+            }
+            // the mean depth of a quadrilateral across its edge, the height of a triangle on it
+            const double depth = (el.cornerCount == 3 ? 2.0 : 1.0) * area / length;
+            const double ratio = depth / edgeFibre(ie, kk, 0.5).thickness;
+            if (ratio > EDGE_LAYER_DEPTH_RATIO)
+            {
+                if (out.unresolvedLayerEdges == 0)
+                    out.firstUnresolvedLayerEdge = gridName(ga) + "-" + gridName(gb);
+                ++out.unresolvedLayerEdges;
+                out.largestLayerDepthRatio = std::fmax(out.largestLayerDepthRatio, ratio);
+            }
+        }
         // A direction d that one grid holds off the basic axes and the other by its basic flags: the same row as
         // below, the grid of the flags entering by its basic components (d · u = Σ_c d_c u_c). A direction the flags
         // of both grids hold is held component by component above.

@@ -108,6 +108,10 @@ folders in that order, which is the order in which the pieces depend on one anot
   face of its grid points: a triangle's P·A·n in thirds, a quadrilateral as two sets of overlapping triangles at half
   the pressure each) and lineLoadsTable (BeamDistributedLoad through the line-load facet); everything else is a diagnostic.
   `lineLoadsOf` gives the BeamDistributedLoad of a load set per batch, grouped by element, for the recovery under line loads.
+  The forces of a load set at both grid points of an edge of the outline of the shells of a formulation with
+  entities are read as a traction along the edge (`edgeForcesOf`, `elements::FormulationModel::readForcesAlongEdges`;
+  docs/mixed-hybrid-formulation-spec.md section 7): their rows give no force at their grid point, and the loads of
+  the traction, on the grid points and on the DOFs of the edges, take their place with the same resultant.
   `checkThermalLoads` and `addThermalLoads` add the thermal loads of every family under the temperatures of a subcase.
 - `loads/TemperatureField`: the temperatures of a TEMPERATURE(LoadCombination) set and of the TEMPERATURE(INITIAL) set from
   temperatureTable (NodeTemperatureLoad per grid point, the DefaultTemperatureLoad default, PlateTemperatureLoad and LineElemTemperatureLoad per element), and the element

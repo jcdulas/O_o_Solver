@@ -209,4 +209,24 @@ result = model.run("statics")
 const auto result = oos::api::runAnalysis(*model, oos::api::Analysis::Statics, {});
 ```
 
+### Loads and supports along the edges of mixed shells
+
+A mixed hybrid shell resolves what a load or a support at grid points really states. Two readings follow, both
+described in the [specification](mixed-hybrid-formulation-spec.md) (sections 3.6, 5.6 and 7).
+
+- **Forces along an edge.** Forces at both grid points of an edge of the outline of the shells are read as the
+  traction they stand for, with the same resultant force and moment; the information `forces-read-along-edges` gives
+  the count. A force at a grid point alone, or inside the shells, stays a concentrated force: the grid point then
+  moves more than the section around it, so read the displacement a few elements away.
+- **Soft supports.** A simple support that holds the deflection alone leaves the rotation about the normal of the
+  edge free. A shell with transverse shear then has an edge layer a third of the thickness long, and the plate is
+  softer than the thin-plate formulas say, by about the thickness over its size: these formulas are those of the
+  hard support, which holds that rotation too. The warning `edge-layer-not-resolved` counts the supported edges
+  whose elements are deeper than four thicknesses. A row of elements about one thickness wide along these edges
+  resolves the layer on any mesh.
+
+To compare a result with a thin-plate formula, hold the rotation about the normal of each supported edge, or leave
+the transverse shear material of the shell property blank. To compare two solvers on a soft support, compare each
+with the limit of the model on refined meshes.
+
 The [module guide](modules.md) covers assembly, linear algebra, reduction, output and design calculations.
