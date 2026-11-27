@@ -228,6 +228,10 @@ register it in `ElementRegistry::standard()` after the card's default.
   `ShellTria3DrillingMembrane`. Neither takes a membrane-bending coupling. The section (`shells/ShellSection`), the passage to the
   displacement systems with ZOFFS (`shells/ShellNodeFrames`) and the output rows (`shells/ShellRecovery`) are shared by
   every shell.
+- `shells/Laminate`: the convention of the transverse shear stiffness of a laminate is the model parameter
+  `LaminateTransverseShear` (`LaminateShearConvention`: `Equilibrium`, the default, or `FiveSixths`, 5/6 of the
+  plies' shear moduli times their thicknesses); `summariseLaminateShear` (`ShellSection`) gives the stiffness and the
+  factor of each laminate property for the report of a run.
 - `shells/Laminate`: the transverse shear of a laminate from the equilibrium of cylindrical bending (`H_x`, `H_y` and
   the shear at the top of each ply), the plies rigid in a direction (a blank G1Z or G2Z) without shear strain;
   `ShellRecovery` gives each ply that distribution, or the mean `Q / t` for a homogeneous stack or a direction in

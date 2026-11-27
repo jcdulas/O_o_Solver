@@ -274,12 +274,19 @@ std::shared_ptr<const LoadVectorBuilder::EdgeForces> LoadVectorBuilder::edgeForc
         forceRows.push_back(row);
     }
     auto read = std::make_shared<EdgeForces>();
-    if (forces.size() >= 2)
+    if (!forces.empty())
     {
         const elements::FormulationModel::EdgeForceReading reading = formulation->readForcesAlongEdges(forces);
         for (std::size_t i = 0; i < forces.size(); ++i)
+        {
             if (reading.isTaken[i])
                 read->rows.push_back(forceRows[i]);
+            if (i >= reading.isConcentrated.size() || !reading.isConcentrated[i])
+                continue;
+            if (read->concentratedCount == 0 || forceRows[i] < read->firstConcentratedRow)
+                read->firstConcentratedRow = forceRows[i];
+            ++read->concentratedCount;
+        }
         std::sort(read->rows.begin(), read->rows.end());
         read->loads.reserve(reading.loads.size());
         for (const elements::FormulationRelationTerm& load : reading.loads)
@@ -391,6 +398,20 @@ void LoadVectorBuilder::forEachConcentratedValue(base::EntityId loadSetId, base:
                     visit(m_dofMap->gridDof(point->row, k + 1), force[static_cast<std::size_t>(k)], row, term);
                 visit(m_dofMap->gridDof(point->row, k + 4), moment[static_cast<std::size_t>(k)], row, term);
             }
+        }
+        if (edgeForces->concentratedCount > 0)
+        {
+            base::Diagnostic note = loadProblem(
+                "point-forces-on-shells", cards[edgeForces->firstConcentratedRow], setId,
+                base::concatenate(
+                    {"load set ", std::to_string(setId), ": ", std::to_string(edgeForces->concentratedCount),
+                     " forces at grid points of the shells stay concentrated forces (the formulation of the model "
+                     "takes a force at a point as it is: the loaded grid point moves more than the section around it, "
+                     "and the more so as the mesh is refined); read the displacements away from these grid points, or "
+                     "give the load it stands for: ShellPressureLoad for a load per unit area, forces at both grid "
+                     "points of each loaded edge of the outline for a load along it"}));
+            note.severity = base::Severity::Information;
+            sink.report(std::move(note));
         }
         if (edgeForces->rows.empty())
             continue;

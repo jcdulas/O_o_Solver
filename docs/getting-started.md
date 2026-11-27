@@ -154,6 +154,11 @@ python checks/verify_memory_plate.py path/to/model/index.js path/to/solver/index
 In JavaScript, call `model.checkSupport` for the requested analysis before solving. Inspect both `refusals` and `ignored`; a loaded model
 does not imply that every card or option participates in the calculation.
 
+A run shows its warnings and information as it ends: on the console in JavaScript (`console.warn`, `console.info`,
+each message once; `loadOosSolver({ diagnostics: "silent" })` or `solver.diagnosticOutput = "silent"` shows nothing),
+through the `warnings` module in Python (`oo_solver.SolverWarning`, `oo_solver.SolverInformation`). They stay in the
+`diagnostics` of the result.
+
 In Python, `model.run("statics")["diagnostics"]` gives the analysis diagnostics. Result arrays are row-major. A nodal displacement row contains six components; element tables describe their own
 component order. Match rows by their `ids` rather than assuming the input order.
 In C++, inspect the refusals and ignored entries from `oos::api::checkSupport(*model, oos::api::Analysis::Statics)` and the diagnostics in the analysis output.
@@ -217,7 +222,9 @@ described in the [specification](mixed-hybrid-formulation-spec.md) (sections 3.6
 - **Forces along an edge.** Forces at both grid points of an edge of the outline of the shells are read as the
   traction they stand for, with the same resultant force and moment; the information `forces-read-along-edges` gives
   the count. A force at a grid point alone, or inside the shells, stays a concentrated force: the grid point then
-  moves more than the section around it, so read the displacement a few elements away.
+  moves more than the section around it, so read the displacement a few elements away. The information
+  `point-forces-on-shells` counts these forces; a load per unit area is given as a `ShellPressureLoad`, never as a
+  force at each grid point.
 - **Soft supports.** A simple support that holds the deflection alone leaves the rotation about the normal of the
   edge free. A shell with transverse shear then has an edge layer a third of the thickness long, and the plate is
   softer than the thin-plate formulas say, by about the thickness over its size: these formulas are those of the

@@ -417,6 +417,7 @@ private:
     std::map<std::int32_t, std::int32_t> m_gridIndexOfRow; // and back
     std::vector<base::Mat3> m_gridFrames;                  // the CD-to-basic rotation of each grid of the model
     std::set<std::int32_t> m_lineGrids;                    // the grid indices of the line elements
+    std::set<std::int32_t> m_shellGrids;                   // those of the shells, corners and mid-side grid points
     std::vector<MixedLine> m_lines;
     std::map<std::string, std::vector<std::int32_t>, std::less<>> m_lineOfRow; // per line card: per batch row, or −1
     std::vector<MixedEdge> m_edges;

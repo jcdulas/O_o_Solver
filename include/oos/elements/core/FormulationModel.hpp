@@ -237,9 +237,13 @@ public:
     // whether forces[i] is read so; `loads` are the loads that replace the forces taken, each a value on a DOF (the
     // grid components in their CD systems, the entity DOFs as they are), with the same resultant force and moment.
     // `edgeCount` is the count of edges read. Nothing is taken by default.
+    // `isConcentrated[i]` says whether forces[i], not taken, is at a grid point of a shell of the formulation that no
+    // line element has: a concentrated force on the continuum of the shell, where the loaded grid point moves more
+    // than the section and the more so as the mesh is refined (the caller tells the user).
     struct EdgeForceReading
     {
         std::vector<bool> isTaken;
+        std::vector<bool> isConcentrated;
         std::vector<FormulationRelationTerm> loads;
         std::size_t edgeCount = 0;
     };
@@ -247,6 +251,7 @@ public:
     {
         EdgeForceReading reading;
         reading.isTaken.assign(forces.size(), false);
+        reading.isConcentrated.assign(forces.size(), false);
         return reading;
     }
 

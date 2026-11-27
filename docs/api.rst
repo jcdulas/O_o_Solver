@@ -196,7 +196,9 @@ Import ``model_from_reader(deck, *, formulation=None)`` and
   degrees of freedom, factorisations, wall time per stage, peak budgeted memory, eigenvalue solver). Analyses are
   ``statics``, ``modes``, ``buckling`` and ``aeroelastic``; ``streamed`` applies to ``statics``; ``eigen_solver``
   (``lanczos``, ``substructuring`` or ``out_of_core``), ``scratch_dir`` and ``cutoff_factor`` to ``modes`` and
-  ``buckling``.
+  ``buckling``. The ``report`` also lists the transverse shear stiffness and factor of each laminate property
+  (``laminate_shear``). The warnings and information of the run are shown through the ``warnings`` module
+  (``oo_solver.SolverWarning``, ``oo_solver.SolverInformation``) and stay in ``diagnostics``.
 * ``OptimizationProblem.variables`` and ``initial_values`` give the independent variables in vector order.
   ``problem.evaluate(x)`` returns a retained ``DesignPoint``.
 * ``point.objective``, ``point.constraints`` and ``point.responses`` describe that evaluation.

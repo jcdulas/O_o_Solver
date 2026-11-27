@@ -630,8 +630,17 @@ val envelopeTableObject(const output::EnvelopeTable& table)
     return object;
 }
 
+// A pair of values along the material axes x and y, as a JavaScript array.
+val axisPair(const std::array<double, 2>& values)
+{
+    val pair = val::array();
+    pair.call<void>("push", values[0]);
+    pair.call<void>("push", values[1]);
+    return pair;
+}
+
 // The report of a run: { threads, kernel, dofs, solvedDofs, factorisations, seconds, stages: { name: seconds },
-// peakBudgetBytes } (api::RunReport).
+// peakBudgetBytes, laminateShear: [{ card, propId, stiffness: [x, y], factor: [x, y] }] } (api::RunReport).
 val runReportObject(const api::RunReport& report)
 {
     val stages = val::object();
@@ -647,6 +656,17 @@ val runReportObject(const api::RunReport& report)
     object.set("seconds", report.seconds);
     object.set("stages", stages);
     object.set("peakBudgetBytes", static_cast<double>(report.peakBudgetBytes));
+    val laminates = val::array();
+    for (const api::LaminateShear& row : report.laminateShear)
+    {
+        val laminate = val::object();
+        laminate.set("card", row.card);
+        laminate.set("propId", row.propId);
+        laminate.set("stiffness", axisPair(row.stiffness));
+        laminate.set("factor", axisPair(row.factor));
+        laminates.call<void>("push", laminate);
+    }
+    object.set("laminateShear", laminates);
     return object;
 }
 

@@ -48,12 +48,22 @@ export async function loadOosSolver(options = {}) {
   if (THREADED_BUILD && typeof window !== "undefined" && typeof document !== "undefined")
     throw new Error("load the threaded solver inside a dedicated Worker, outside the display thread");
   const suggested = Math.min(4, globalThis.navigator?.hardwareConcurrency ?? 4, MAXIMUM_THREADS);
-  const { threads = THREADED_BUILD ? suggested : 1, ...moduleOptions } = options;
+  const { threads = THREADED_BUILD ? suggested : 1, diagnostics = "console", ...moduleOptions } = options;
   if (!Number.isInteger(threads) || threads < 1 || threads > MAXIMUM_THREADS)
     throw new RangeError(`threads must be an integer from 1 to ${MAXIMUM_THREADS} for this build`);
+  if (!DIAGNOSTIC_OUTPUTS.includes(diagnostics))
+    throw new RangeError(`diagnostics must be one of ${DIAGNOSTIC_OUTPUTS.join(", ")}`);
   const core = await createOosSolverCore(moduleOptions);
-  return new OosSolver(core, threads);
+  const solver = new OosSolver(core, threads);
+  solver.diagnosticOutput = diagnostics;
+  return solver;
 }
+
+// Where the warnings and information of a run are shown beside the `diagnostics` of its result: "console"
+// (console.warn and console.info, each message once) or "silent".
+const DIAGNOSTIC_OUTPUTS = ["console", "silent"];
+// The messages remembered so that each is shown once; beyond this count the memory starts again.
+const ANNOUNCED_MESSAGES_LIMIT = 1000;
 
 // ---- what the solver reads from the reader (the same tables, under the same names, as the model snapshot)
 //
@@ -143,6 +153,25 @@ export class OosSolver {
     this.core = core;
     this.defaultThreads = threads;
     this.readerCatalogues = new WeakMap();
+    this.diagnosticOutput = "console";
+    this.announcedMessages = new Set();
+  }
+
+  // Shows the warnings and information of a run on the console, each message once for this solver, and gives the
+  // result back. They stay in result.diagnostics. Set solver.diagnosticOutput = "silent" (or load the solver with
+  // { diagnostics: "silent" }) to show nothing.
+  announceDiagnostics(result) {
+    if (this.diagnosticOutput !== "console") return result;
+    for (const diagnostic of result?.diagnostics ?? []) {
+      if (diagnostic.severity !== "warning" && diagnostic.severity !== "information") continue;
+      const text = `O_o_Solver ${diagnostic.severity} [${diagnostic.code}] ${diagnostic.message}`;
+      if (this.announcedMessages.has(text)) continue;
+      if (this.announcedMessages.size >= ANNOUNCED_MESSAGES_LIMIT) this.announcedMessages.clear();
+      this.announcedMessages.add(text);
+      if (diagnostic.severity === "warning") console.warn(text);
+      else console.info(text);
+    }
+    return result;
   }
 
   threading() { return { ...this.core.threadingInfo(), defaultThreads: this.defaultThreads }; }
@@ -457,13 +486,15 @@ export class OosSolver {
   // far less memory and time on a large model) or "outOfCore" (the Lanczos solver with its factor in scratch files),
   // or { solver, scratchFolder?: string, cutoffFactor?: number }.
   // Gives { nodalTables, elementTables, gridPointForces, eigenvalues, diagnostics, condensation } (condensation: null,
-  // or { condensedUnits, fullUnits, interfaceDofs, note } when a condensation was asked).
+  // or { condensedUnits, fullUnits, interfaceDofs, note } when a condensation was asked). The warnings and information
+  // of the run are also shown on the console (announceDiagnostics).
   run(model, analysis = "statics", settings = {}) {
     requireKnownKeys(settings, RUN_SETTING_KEYS, "run settings");
     requireKnownKeys(settings?.condensation, CONDENSATION_KEYS, "run settings.condensation");
     if (typeof settings?.eigenSolver === "object")
       requireKnownKeys(settings.eigenSolver, EIGEN_SOLVER_KEYS, "run settings.eigenSolver");
-    return this.core.runAnalysis(model, analysis, { threads: this.defaultThreads, ...settings });
+    return this.announceDiagnostics(
+      this.core.runAnalysis(model, analysis, { threads: this.defaultThreads, ...settings }));
   }
 
   // Runs "statics" or "modes" of the residual structure `residual` (a Model) with superelements upstream of it:
@@ -473,7 +504,8 @@ export class OosSolver {
   // residual structure (id 0) first.
   runSuperelements(residual, parts, analysis = "statics", settings = {}) {
     requireKnownKeys(settings, SUPERELEMENT_SETTING_KEYS, "runSuperelements settings");
-    return this.core.runSuperelements(residual, parts, analysis, { threads: this.defaultThreads, ...settings });
+    return this.announceDiagnostics(
+      this.core.runSuperelements(residual, parts, analysis, { threads: this.defaultThreads, ...settings }));
   }
 
   // A condensation cache that lives in memory, shared by the analyses given it (settings.condensation.cache): a unit

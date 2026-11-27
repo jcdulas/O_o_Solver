@@ -88,6 +88,7 @@ function checkReport(report, { dofs, stages, factorisations }) {
   assert.ok(Object.values(report.stages).every(seconds => seconds >= 0), "a stage has a negative time");
   assert.ok(staged <= report.seconds + 1e-6, `the stages (${staged} s) exceed the run (${report.seconds} s)`);
   assert.ok(report.peakBudgetBytes > 0, "the budget held nothing");
+  assert.ok(Array.isArray(report.laminateShear), "the laminates of the report are a list");
 }
 
 test("a run reports its threads, kernels, sizes, stage times and budget memory", () => {

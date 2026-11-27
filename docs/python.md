@@ -56,7 +56,9 @@ subset while releasing a much larger run. The solve releases the Python GIL.
 The `threads` argument selects the native thread count; left out, the run takes every core of the machine, with the
 same results as on one thread. The `report` entry of a result says what the run cost: `threads`, the dense `kernel`
 family, the degrees of freedom (`dofs`, `solved_dofs`), the `factorisations`, the wall time (`seconds`) and the time of
-each stage (`stages`), and the largest memory the solver's budget held (`peak_budget_bytes`).
+each stage (`stages`), and the largest memory the solver's budget held (`peak_budget_bytes`). Its `laminate_shear`
+lists the transverse shear stiffness of each laminate property and the shear factor it amounts to
+([laminated shells](composites.md#section-of-the-laminate)).
 
 `memory_bytes` bounds the memory of a run (0, the default: what the machine has left); a run that would need more stops
 with a message. `streamed=True` solves a static analysis without a factor of the whole
@@ -67,6 +69,18 @@ model, region by region, for a model whose factor would not fit ([large models](
 scratch files of `scratch_dir`, by default a folder of the temporary one). `cutoff_factor` raises the accuracy of the
 substructuring. The `report` names the solver that ran in `eigen_solver`
 ([large models](large-models.md#modes-and-buckling-of-a-model-whose-factor-does-not-fit)).
+
+`model.run` shows the warnings and the information of the analysis through Python's `warnings` module, as
+`oo_solver.SolverWarning` and `oo_solver.SolverInformation` (a subclass of it); they stay in the `diagnostics` of the
+result. They say how the solver read the model where another program may read it otherwise: a soft support whose edge
+layer the mesh does not resolve, forces left at grid points of mixed shells, a laminate whose shear factor is not 5/6,
+shells computed in the classic formulation ([comparing with another solver](comparing-solvers.md)). Python shows a
+given message once per calling line. To silence the information, or everything:
+
+```python
+import warnings
+warnings.simplefilter("ignore", oo_solver.SolverInformation)   # or oo_solver.SolverWarning for both
+```
 
 The analysis names are `statics`, `modes`, `buckling` and `aeroelastic`. Result groups
 include `nodal_tables`, `element_tables`, `grid_point_forces`, `eigenvalues` and

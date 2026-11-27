@@ -7,7 +7,9 @@
 // - a failure theory without the strengths of a ply warns once per property;
 // - an AnisoMat2D ply is rigid in transverse shear in the classic formulation and takes its in-plane shear modulus in
 //   the mixed hybrid one;
-// - a Hashin failure theory is refused by its name in the model.
+// - a Hashin failure theory is refused by its name in the model;
+// - the transverse shear stiffness of a stack follows the equilibrium of its plies, or 5/6 of their sheared sum under
+//   LaminateTransverseShear = FiveSixths, and the report of a run gives it with its factor.
 
 import assert from "node:assert/strict";
 import { test } from "../helpers/register.mjs";
@@ -296,4 +298,153 @@ test("a Hashin failure theory is refused by its name in the model", () => {
     assert.match(message, /found HashinTape/);
     return true;
   });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// 7. The transverse shear stiffness of a stack, its convention and the report of a run.
+//
+// A thick cross-ply strip, four plies of 5 for a length of 100. Along x the plies at 0 degrees are the stiff ones
+// (E1) and shear with G1Z, those at 90 degrees are the soft ones (E2) and shear with G2Z; along y the roles swap.
+// - Equilibrium (the default): the shear stress at a height z under a unit shear force is the first moment of the
+//   ply moduli below z over the bending stiffness (the stack is symmetric: its neutral axis is its middle), and the
+//   stiffness H follows from the shear energy, 1/H = ∫ τ²/G dz (Whitney, Structural Analysis of Laminated Anisotropic
+//   Plates, 1987, section 4.6). Integrated here by the midpoint rule on thin slices, apart from the solver's own sums.
+// - FiveSixths: H = 5/6 Σ G t, whatever the order of the plies.
+// The report of a run gives H and the factor H / Σ G t of each laminate. The tip deflection of the cantilever differs
+// between the two conventions by its shear part, P L / (H b), the bending part being the same.
+const CROSS_PLY = { angles: [0, 90, 90, 0], ply: 5, length: 100 };
+const FIVE_SIXTHS = 5 / 6;
+
+// The plane-stress moduli of the ply along its fibres and across them: E / (1 − ν12 ν21), ν21 = ν12 E2 / E1.
+function plyModuli() {
+  const reduction = 1 - (PLY.poisson * PLY.poisson * PLY.young2) / PLY.young1;
+  return { along: PLY.young1 / reduction, across: PLY.young2 / reduction };
+}
+
+// The plies of the cross-ply stack seen along the axis `axis` (0: x, 1: y): modulus, shear modulus and thickness.
+function crossPlyAlong(axis) {
+  const { along, across } = plyModuli();
+  return CROSS_PLY.angles.map((angle) => {
+    const isAlongFibres = (angle === 0) === (axis === 0);
+    return { modulus: isAlongFibres ? along : across, shear: isAlongFibres ? PLY.shear1Z : PLY.shear2Z,
+      thickness: CROSS_PLY.ply };
+  });
+}
+
+// H of a symmetric stack by the midpoint rule: τ(z) = S(z) / D, S the first moment of the moduli below z.
+function equilibriumShearStiffness(plies, slicesPerPly = 4000) {
+  const total = plies.reduce((sum, ply) => sum + ply.thickness, 0);
+  let [z, bending] = [-total / 2, 0];
+  for (const ply of plies) {
+    bending += (ply.modulus * ((z + ply.thickness) ** 3 - z ** 3)) / 3;
+    z += ply.thickness;
+  }
+  let [moment, compliance] = [0, 0];
+  z = -total / 2;
+  for (const ply of plies) {
+    const step = ply.thickness / slicesPerPly;
+    for (let k = 0; k < slicesPerPly; ++k) {
+      const middle = z + step / 2;
+      const atMiddle = moment + ply.modulus * middle * (step / 2);
+      compliance += (step * (atMiddle / bending) ** 2) / ply.shear;
+      moment += ply.modulus * middle * step;
+      z += step;
+    }
+  }
+  return 1 / compliance;
+}
+
+const shearSum = (plies) => plies.reduce((sum, ply) => sum + ply.shear * ply.thickness, 0);
+
+function crossPlyStrip({ angles = CROSS_PLY.angles, parameters = [] } = {}) {
+  const section = [laminate({ angles, thickness: CROSS_PLY.ply }), plyMaterial(10)];
+  return strip({ section, parameters, outputs: [] })
+    .replace(`Node;2;;${real(STRIP.length)};0.;0.`, `Node;2;;${real(CROSS_PLY.length)};0.;0.`)
+    .replace(`Node;3;;${real(STRIP.length)};${real(STRIP.width)};0.`,
+      `Node;3;;${real(CROSS_PLY.length)};${real(STRIP.width)};0.`);
+}
+
+const FIVE_SIXTHS_PARAMETER = ["Parameter;LaminateTransverseShear;FiveSixths"];
+
+test("the report of a run gives the transverse shear stiffness of each laminate and its factor", () => {
+  const run = solve(crossPlyStrip());
+  assert.equal(run.report.laminateShear.length, 1);
+  const [row] = run.report.laminateShear;
+  assert.equal(row.card, "CompProp");
+  assert.equal(row.propId, 1);
+  for (const axis of [0, 1]) {
+    const plies = crossPlyAlong(axis);
+    const expected = equilibriumShearStiffness(plies);
+    assertRatio(row.stiffness[axis], expected, 1e-6, `H along axis ${axis}`);
+    assertRatio(row.factor[axis], expected / shearSum(plies), 1e-6, `the factor along axis ${axis}`);
+  }
+  // Neither is the 5/6 of a homogeneous plate: 0.778 along x and 0.660 along y.
+  assertRatio(row.factor[0], 0.778, 1e-3, "the factor along x");
+  assertRatio(row.factor[1], 0.660, 1e-3, "the factor along y");
+
+  // One material: the factor of a homogeneous plate along both axes.
+  const [uniform] = solve(crossPlyStrip({ angles: [0, 0, 0, 0] })).report.laminateShear;
+  const thickness = 4 * CROSS_PLY.ply;
+  assertRatio(uniform.factor[0], FIVE_SIXTHS, 1e-12, "one material, along x");
+  assertRatio(uniform.factor[1], FIVE_SIXTHS, 1e-12, "one material, along y");
+  assertRatio(uniform.stiffness[0], FIVE_SIXTHS * PLY.shear1Z * thickness, 1e-12, "5/6 G1Z t");
+  assertRatio(uniform.stiffness[1], FIVE_SIXTHS * PLY.shear2Z * thickness, 1e-12, "5/6 G2Z t");
+
+  // A model without a laminate has no row.
+  const homogeneous = solve(strip({ section: ["ShellProp;1;10;1.;10;;10", "IsoMat;10;70000.;;0.3"], outputs: [] }));
+  assert.deepEqual(homogeneous.report.laminateShear, []);
+});
+
+test("LaminateTransverseShear = FiveSixths takes 5/6 of the plies' shear moduli times their thicknesses", () => {
+  const equilibrium = solve(crossPlyStrip());
+  const named = solve(crossPlyStrip({ parameters: ["Parameter;LaminateTransverseShear;Equilibrium"] }));
+  const fiveSixths = solve(crossPlyStrip({ parameters: FIVE_SIXTHS_PARAMETER }));
+  assert.equal(displacement(named, 2, ALONG_Z), displacement(equilibrium, 2, ALONG_Z), "Equilibrium is the default");
+
+  const [row] = fiveSixths.report.laminateShear;
+  for (const axis of [0, 1]) {
+    assertRatio(row.stiffness[axis], FIVE_SIXTHS * shearSum(crossPlyAlong(axis)), 1e-12, `H along axis ${axis}`);
+    assertRatio(row.factor[axis], FIVE_SIXTHS, 1e-12, `the factor along axis ${axis}`);
+  }
+  // The shear part of the tip deflection, P L / (H b), is all that changes.
+  const [before] = equilibrium.report.laminateShear;
+  const shearPart = (stiffness) => (STRIP.force * CROSS_PLY.length) / (stiffness * STRIP.width);
+  const expected = shearPart(before.stiffness[0]) - shearPart(row.stiffness[0]);
+  const found = displacement(equilibrium, 2, ALONG_Z) - displacement(fiveSixths, 2, ALONG_Z);
+  assert.ok(expected > 1e-3 * displacement(equilibrium, 2, ALONG_Z), "the two conventions differ visibly here");
+  assertRatio(found, expected, 1e-6, "the difference of the tip deflections");
+
+  // The stresses of the plies are those of the equilibrium in both conventions.
+  const withStress = (parameters) => plyRows(solve(crossPlyStrip({ parameters })
+    .replace("DisplacementOutput;All", "DisplacementOutput;All\nStressOutput;All")), "stress");
+  const [a, b] = [withStress([]), withStress(FIVE_SIXTHS_PARAMETER)];
+  a.forEach((ply, k) => assertRatio(b[k].t1z || 1, ply.t1z || 1, 1e-9, `the shear stress of ply ${k + 1}`));
+});
+
+test("a LaminateTransverseShear that is neither Equilibrium nor FiveSixths is refused", () => {
+  const text = crossPlyStrip({ parameters: ["Parameter;LaminateTransverseShear;Sometimes"] });
+  withModel(text, (model) => {
+    const refusals = model.checkSupport("statics").refusals.filter((d) => d.code === "invalid-parameter");
+    assert.equal(refusals.length, 1, JSON.stringify(model.checkSupport("statics").refusals));
+    assert.equal(refusals[0].field, "LaminateTransverseShear");
+    assert.match(refusals[0].text, /Equilibrium/);
+    assert.match(refusals[0].text, /FiveSixths/);
+    assert.match(refusals[0].text, /found Sometimes/);
+    assert.throws(() => solver.run(model, "statics"), /LaminateTransverseShear/);
+  });
+});
+
+test("a run tells the laminates whose transverse shear stiffness is not 5/6 of their sheared sum", () => {
+  const notes = (run) => run.diagnostics.filter((d) => d.code === "laminate-shear-factor");
+  const told = notes(solve(crossPlyStrip()));
+  assert.equal(told.length, 1, JSON.stringify(told));
+  assert.equal(told[0].severity, "information");
+  assert.equal(told[0].card, "CompProp");
+  assert.equal(told[0].id, 1);
+  assert.match(told[0].message, /^1 of the 1 laminate properties/);
+  assert.match(told[0].message, /the furthest: CompProp 1, factor 0\.660\d* along y/);
+  assert.match(told[0].message, /LaminateTransverseShear = FiveSixths/);
+  // One material has the factor 5/6, and so has every stack under FiveSixths: nothing to tell.
+  assert.deepEqual(notes(solve(crossPlyStrip({ angles: [0, 0, 0, 0] }))), []);
+  assert.deepEqual(notes(solve(crossPlyStrip({ parameters: FIVE_SIXTHS_PARAMETER }))), []);
 });

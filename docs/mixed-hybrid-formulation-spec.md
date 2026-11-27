@@ -1297,7 +1297,11 @@ read along the edges, as the supports are (section 5.6):
 - the loads act on the translations of the grid points and on the displacement, shear and rotation unknowns of the
   edges. The applied load table gives them at the grid points with their resultant (section 10.1): its rows at the
   grid points of an edge read differ from the forces of the cards, with the same sum. An information
-  `forces-read-along-edges` gives, for each load set, the count of forces and of edges read.
+  `forces-read-along-edges` gives, for each load set, the count of forces and of edges read;
+- a force that is not read so stays a concentrated force at its grid point. At a grid point of a shell that no line
+  element has, an information `point-forces-on-shells` counts these forces for each load set and names the loads that
+  spread them (`ShellPressureLoad`, forces at both grid points of an edge): a comparison that loads a surface by
+  nodal forces otherwise reads the dimple at each loaded grid point as an error of the element.
 
 A following pressure (load stiffness in buckling) is not in phase 3. The differential stiffness facet receives the
 preload displacements, not its loads; adding the loads (`ElementLoadContext`) to that facet is later work (section

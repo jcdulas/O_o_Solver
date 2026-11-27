@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "../helpers/register.mjs";
-import { oor, solver } from "../helpers/runtime.mjs";
+import { loadOosSolver, oor, solver } from "../helpers/runtime.mjs";
 
 // A real as a model file writes it: with a decimal point or an exponent.
 function real(value) {
@@ -2575,3 +2575,88 @@ for (const shape of ["ShellTria3", "ShellQuad4"]) {
     });
   }
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Forces at the grid points of the shells (docs/comparing-solvers.md, "Loads along an edge"): a force at both grid
+// points of an outline edge is read as a traction along it; a force that stays at its grid point is a concentrated
+// force on the continuum of the shell, which the run tells once per load set, naming the loads that spread it.
+
+test("forces that stay at grid points of the shells are told, those read along an edge and those of a pressure are not", () => {
+  const clamped = (node, ny) => Array.from({ length: ny + 1 }, (_, j) => `SinglePointConstrList;1;123456;${node(0, j)}`);
+  const withForces = (grids) => loadedStrip({ nx: 2, ny: 2, records: (node, nx, ny) =>
+    clamped(node, ny).concat(grids(node, nx, ny).map((id) => `PointForceLoad;2;${id};;1.;0.;0.;1.`)) });
+  const notes = (run) => run.diagnostics.filter((d) => d.code === "point-forces-on-shells");
+
+  // One force inside the strip and one alone at a corner of its outline: both stay where they are.
+  const alone = withForces((node, nx) => [node(1, 1), node(nx, 0)]);
+  const told = notes(runShells(alone.text, "mixed-point-forces"));
+  assert.equal(told.length, 1, JSON.stringify(told));
+  assert.equal(told[0].severity, "information");
+  assert.match(told[0].message, /load set 2: 2 forces at grid points of the shells stay concentrated forces/);
+  assert.match(told[0].message, /ShellPressureLoad/);
+
+  // The forces of the whole free end are the traction along it: nothing stays at a grid point.
+  const alongEnd = withForces((node, nx, ny) => Array.from({ length: ny + 1 }, (_, j) => node(nx, j)));
+  const read = runShells(alongEnd.text, "mixed-edge-forces");
+  assert.deepEqual(notes(read), []);
+  assert.ok(read.diagnostics.some((d) => d.code === "forces-read-along-edges"), "the end forces are read along the end");
+
+  // A pressure has no force at a grid point.
+  const pressed = loadedStrip({ nx: 2, ny: 2, records: (node, nx, ny) =>
+    clamped(node, ny).concat(`ShellPressureLoad;2;100.;1;Through;${nx * ny}`) });
+  assert.deepEqual(notes(runShells(pressed.text, "mixed-pressure-no-note")), []);
+
+  // The classic formulation takes nodal forces as they are and says nothing.
+  withModel(alone.text, "classic-point-forces", {}, (model) =>
+    assert.deepEqual(notes(solver.run(model, "statics")), []));
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// What a run tells of the formulation, and where the interface shows it (docs/comparing-solvers.md).
+
+test("a run of shells in the classic formulation tells that the mixed hybrid one exists, once", () => {
+  const notes = (run) => run.diagnostics.filter((d) => d.code === "mixed-formulation-available");
+  withModel(plate(), "classic-note", {}, (model) => {
+    const told = notes(solver.run(model, "statics"));
+    assert.equal(told.length, 1, JSON.stringify(told));
+    assert.equal(told[0].severity, "information");
+    assert.match(told[0].message, /ClassicFormulation/);
+    assert.match(told[0].message, /Parameter ElementFormulation = MixedHybridFormulation/);
+  });
+  withModel(plate(), "mixed-no-note", SHELL_OPTIONS, (model) =>
+    assert.deepEqual(notes(solver.run(model, "statics")), []));
+  // A model without shells has nothing to put in the other formulation for this note.
+  const beam = cantilever({ load: [0, 0, 1] });
+  withModel(beam.text ?? beam, "lines-no-note", {}, (model) =>
+    assert.deepEqual(notes(solver.run(model, "statics")), []));
+});
+
+test("the solver shows the warnings and information of a run on the console, each once, unless it is silent", async () => {
+  const shown = [];
+  const [info, warn, output] = [console.info, console.warn, solver.diagnosticOutput];
+  console.info = (text) => shown.push(["info", text]);
+  console.warn = (text) => shown.push(["warn", text]);
+  try {
+    solver.diagnosticOutput = "console";
+    solver.announcedMessages.clear();
+    withModel(plate(), "console-note", {}, (model) => {
+      const first = solver.run(model, "statics");
+      solver.run(model, "statics");
+      const expected = first.diagnostics.filter((d) => d.severity === "warning" || d.severity === "information");
+      assert.ok(expected.length >= 1, "the run has something to tell");
+      assert.equal(shown.length, expected.length, "each message is shown once over the two runs");
+      const note = shown.find(([, text]) => text.includes("[mixed-formulation-available]"));
+      assert.ok(note, JSON.stringify(shown));
+      assert.equal(note[0], "info");
+      assert.match(note[1], /^O_o_Solver information \[mixed-formulation-available\] the shells of the model/);
+    });
+    shown.length = 0;
+    solver.diagnosticOutput = "silent";
+    solver.announcedMessages.clear();
+    withModel(plate(), "console-silent", {}, (model) => solver.run(model, "statics"));
+    assert.deepEqual(shown, []);
+  } finally {
+    [console.info, console.warn, solver.diagnosticOutput] = [info, warn, output];
+  }
+  await assert.rejects(() => loadOosSolver({ diagnostics: "loud" }), /diagnostics must be one of console, silent/);
+});

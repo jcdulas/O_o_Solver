@@ -184,6 +184,37 @@ along y. A blank `shearModulus1Z` or `shearModulus2Z` makes a ply rigid along th
 sandwich whose faces leave them blank shears in its core. The laminate is rigid in transverse shear along an axis only
 when every ply is; the element then uses its own stiff shear term.
 
+This stiffness depends on the stacking sequence. Written as `H = κ Σ Gk tk`, with `Gk` the shear modulus of ply k
+along the axis and `tk` its thickness, the factor κ is 5/6 for one material and takes another value for plies of
+different moduli: the cross-ply [0/90]s of the example above has κ = 0.778 along x and 0.660 along y.
+
+**Convention of the transverse shear.** The first-order shear deformation theory as it is often programmed takes one
+factor for every stack, `H = 5/6 Σ Gk tk` (Reddy, *Mechanics of Laminated Composite Plates and Shells*, 2nd ed., 2004,
+§3.4, with the shear correction coefficient 5/6). A model parameter chooses between the two:
+
+| `Parameter;LaminateTransverseShear;…` | Transverse shear stiffness of a laminate |
+| --- | --- |
+| `Equilibrium` (the default) | from the shear stresses of the stack, as above |
+| `FiveSixths` | `5/6 Σ Gk tk`, whatever the order of the plies; a ply rigid along an axis makes the laminate rigid along it |
+
+The parameter holds for the whole model and for both formulations; any other value is refused (`invalid-parameter`).
+The transverse shear stresses of the plies are those of the equilibrium under both. Use `FiveSixths` to compare with a
+program or a closed form that takes that factor; `Equilibrium` is the closer of the two to a solid model of the stack.
+
+The `report` of every run lists, for each laminate property the shells use, the stiffness along the two material
+axes and the factor κ it amounts to, so that the convention can be read before two results are compared:
+
+```python
+for row in result["report"]["laminate_shear"]:
+    print(row["card"], row["prop_id"], row["stiffness"], row["factor"])
+# The laminate of the example above: CompProp 1 (3306.7, 2806.7) (0.778, 0.660)
+```
+
+In JavaScript the rows are `run.report.laminateShear`, each `{ card, propId, stiffness: [x, y], factor: [x, y] }`.
+A factor of 0 means that it is not defined: the laminate, or one of its plies, is rigid along that axis. When a
+factor is more than 1 % from 5/6, the run says so with the information `laminate-shear-factor`, which counts these
+properties, names the furthest and gives the parameter above.
+
 An `AnisoMat2D` ply gives no transverse shear modulus. In `ClassicFormulation` such a ply is rigid in transverse
 shear, as an `OrthoMat2D` ply whose two moduli are blank: no modulus given, no flexibility. In
 `MixedHybridFormulation` it takes the in-plane shear modulus G33 of its matrix along both axes, the closest estimate
@@ -366,6 +397,7 @@ std::cout << gradient.report.fieldPerturbations << " " << gradient.report.analys
 - The ply results are at the centre of the element and at the mid-thickness of each ply only; there are no ply rows
   at the corners, nor at the faces of the plies.
 - The transverse shear stiffness is formed separately along the two material axes, without a term coupling them.
+- The convention of the transverse shear stiffness (`LaminateTransverseShear`) is one for the model, not per property.
 - Failure indices and strength ratios need an `OrthoMat2D` with positive `tensionStrength1`, `tensionStrength2` and
   `shearStrength` for every ply with an output. When one lacks them, the elements of the property write no failure
   index row, and the run warns of it once per property (`failure-index-not-written`). The element index covers the
@@ -391,7 +423,8 @@ std::cout << gradient.report.fieldPerturbations << " " << gradient.report.analys
 | [mixed-hybrid](../wasm/test/cases/mixed-hybrid.mjs) | An unsymmetric sandwich whose plies give no transverse shear moduli: the two formulations agree within 3 % |
 | [assemblies](../wasm/test/validation/assemblies.test.mjs) | A band of [0/45/−45/90]s laminate with a material frame on a curved stiffened panel, in an assembly of shells, bars, beams and connections: its equilibrium, strain energy and mass, its results in other displacement systems, and the mixed formulation against finer classic models |
 | [review-design](../wasm/test/cases/review-design.mjs) | A ply response whose ply number is not an integer is refused |
-| [TransverseShearModulusChecks](../checks/shells/TransverseShearModulusChecks.cpp) | The transverse shear modulus of a ply by its angle, and a blank modulus as a rigid one |
+| [composites](../wasm/test/cases/composites.mjs), section 7 | The transverse shear stiffness of a thick cross-ply stack against the shear energy integrated apart from the solver, its factor in the report of the run, `LaminateTransverseShear = FiveSixths` and the tip deflection it changes, a wrong value of the parameter |
+| [TransverseShearModulusChecks](../checks/shells/TransverseShearModulusChecks.cpp) | The transverse shear modulus of a ply by its angle, and a blank modulus as a rigid one; the sum of the plies' shear moduli and the rate of the stiffness along a ply thickness under `FiveSixths` |
 
 The section and the ply results are in [Laminate.hpp](../include/oos/elements/shells/Laminate.hpp) and
 [ShellRecovery.hpp](../include/oos/elements/shells/ShellRecovery.hpp), the strength ratio in

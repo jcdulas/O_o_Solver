@@ -1,6 +1,7 @@
 #include "oos/solutions/common/RunCatalog.hpp"
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/elements/shells/Laminate.hpp"
 #include "oos/input/tables/ConstraintTable.hpp"
 #include "oos/input/tables/ParamTable.hpp"
 
@@ -227,6 +228,16 @@ base::SupportReport checkSupport(const input::ModelSnapshot& snapshot, const ele
     // The element formulations the model chose that the registry could not follow (a name a card does not have).
     for (const base::Diagnostic& problem : registry.selectionProblems())
         refusals.push_back(problem);
+    // A convention of the laminates' transverse shear that is not one of its names: said once here, before every
+    // laminated element refuses it.
+    if (std::optional<std::string> problem = elements::laminateShearParameterProblem(snapshot))
+    {
+        base::Diagnostic diagnostic;
+        diagnostic.code = "invalid-parameter";
+        diagnostic.field = std::string(elements::LAMINATE_SHEAR_PARAMETER);
+        diagnostic.message = std::move(*problem);
+        refusals.push_back(std::move(diagnostic));
+    }
     report.refusals = std::move(refusals);
     if (snapshot.hasTable(input::TableRole::Subcases))
     {

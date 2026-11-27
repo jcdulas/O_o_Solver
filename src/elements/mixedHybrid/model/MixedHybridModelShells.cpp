@@ -1125,6 +1125,7 @@ FormulationModel::EdgeForceReading MixedHybridModel::readForcesAlongEdges(std::s
 {
     EdgeForceReading reading;
     reading.isTaken.assign(forces.size(), false);
+    reading.isConcentrated.assign(forces.size(), false);
     if (m_shellPart == nullptr || !m_shellPart->usable())
         return reading;
     // the forces at grid points of the formulation, with their place in `forces`
@@ -1144,6 +1145,15 @@ FormulationModel::EdgeForceReading MixedHybridModel::readForcesAlongEdges(std::s
         reading.isTaken[places[i]] = read.isTaken[i];
     appendPartTerms(read.loads, 1.0, reading.loads);
     reading.edgeCount = read.edgeCount;
+
+    // The forces left at the grid points of the shells: concentrated forces on their continuum. A grid point of a
+    // line element is not counted (the line carries the force along its length).
+    for (std::size_t i = 0; i < places.size(); ++i)
+    {
+        const auto grid = static_cast<std::int32_t>(partForces[i].grid);
+        reading.isConcentrated[places[i]] =
+            !read.isTaken[i] && m_shellGrids.count(grid) != 0 && m_lineGrids.count(grid) == 0;
+    }
     return reading;
 }
 

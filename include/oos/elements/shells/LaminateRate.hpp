@@ -14,7 +14,8 @@
 // z_j the top of ply j. The transverse shear H of the equilibrium distribution (Laminate.cpp: setTransverseShear,
 // rational in the z of every ply through the neutral axis B/A, D* = D − B²/A and the shear energy's three-point Gauss
 // sums) and each ply's shear at its top per unit force are differentiated forward through the same operations
-// (a value with its rate per quantity), exact. LAM = MEM leaves dB = dD = 0, BEND dA = dB = 0, SMEAR D = A T²/12 (dD =
+// (a value with its rate per quantity), exact. Under the FiveSixths convention (LaminateShearConvention)
+// H = 5/6 Σ G_j t_j and dH = 5/6 Σ G_j dt_j, the shears at the tops of the plies as above. LAM = MEM leaves dB = dD = 0, BEND dA = dB = 0, SMEAR D = A T²/12 (dD =
 // dA T²/12 + A T dT/6), B = 0 and a rigid transverse shear. The mass per area Σ ρ_j t_j moves by Σ ρ_j dt_j.
 //
 // Not given (the caller differences): a field of another card or PID, an item out of the card's plies. The thermal

@@ -3,10 +3,12 @@
 #include "oos/base/errors/ErrorMessage.hpp"
 #include "oos/elements/core/MaterialMatrices.hpp"
 #include "oos/input/tables/ParamTable.hpp"
+#include "oos/input/tables/PiercingFootprint.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -495,6 +497,50 @@ void reportLaminateWarnings(const ShellSection& section, std::int32_t& lastRepor
         sink.report(std::move(warning));
         return;
     }
+}
+
+std::vector<LaminateShearSummary> summariseLaminateShear(const SnapshotIndex& index)
+{
+    const input::ModelSnapshot& snapshot = index.snapshot();
+    std::vector<LaminateShearSummary> summaries;
+    std::set<std::pair<bool, std::int32_t>> seen; // (a CompPropGlobal, its ID): the IDs are unique within a card
+    for (const std::string_view card : input::PIERCED_SHELL_CARDS)
+    {
+        const input::ElementBatch* batch = snapshot.findElementBatch(card);
+        if (batch == nullptr || batch->rowCount() == 0)
+            continue;
+        const ElementBatchView view(*batch, index);
+        const ShellSectionColumns columns(view);
+        for (std::int64_t row = 0; row < view.rowCount(); ++row)
+        {
+            if (!columns.shellProps.valid.isValid(row))
+                continue;
+            const std::string_view type = columns.shellProps.types[row];
+            const bool isGlobal = type == "CompPropGlobal";
+            if (!isGlobal && type != "CompProp")
+                continue;
+            const std::int32_t propId = columns.shellProps.propIds[static_cast<std::size_t>(row)];
+            if (!seen.insert({isGlobal, propId}).second)
+                continue;
+            const Resolution<ShellSection> section = resolveShellSection(view, columns, row);
+            if (!section || !section.value->isLaminate())
+                continue;
+            const Laminate& laminate = *section.value->laminate;
+            LaminateShearSummary summary;
+            summary.card = std::string(type);
+            summary.propId = propId;
+            summary.stiffness = laminate.transverseShear;
+            for (std::size_t d = 0; d < 2; ++d)
+            {
+                const double sum = plyShearSum(laminate, d);
+                summary.factor[d] = sum > 0.0 ? laminate.transverseShear[d] / sum : 0.0;
+            }
+            summaries.push_back(std::move(summary));
+        }
+    }
+    std::sort(summaries.begin(), summaries.end(), [](const LaminateShearSummary& a, const LaminateShearSummary& b)
+              { return a.card != b.card ? a.card < b.card : a.propId < b.propId; });
+    return summaries;
 }
 
 } // namespace oos::elements

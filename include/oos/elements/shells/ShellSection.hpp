@@ -36,6 +36,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace oos::elements
 {
@@ -213,5 +214,25 @@ template <std::size_t N>
 // the first; the consecutive elements of one property then report once, and the sink lists once a diagnostic that
 // other ranges or batches report again.
 void reportLaminateWarnings(const ShellSection& section, std::int32_t& lastReported, base::DiagnosticSink& sink);
+
+// The transverse shear of one laminate property, along the material axes x and y of the element, as the model's
+// convention forms it (LaminateShearConvention):
+// - stiffness: H_x and H_y, a force per unit length per unit shear strain; 0 along an axis the laminate is rigid in;
+// - factor: κ = H / Σ G_k t_k, the shear correction factor the stiffness amounts to against the plies sheared
+//   together (plyShearSum): 5/6 for one material and under the FiveSixths convention, another value for a stack of
+//   plies of different moduli; 0 where it is not defined (the laminate, or one of its plies, rigid along the axis).
+struct LaminateShearSummary
+{
+    std::string card; // "CompProp" or "CompPropGlobal"
+    std::int32_t propId = 0;
+    std::array<double, 2> stiffness{};
+    std::array<double, 2> factor{};
+};
+
+// The summary of each laminate property that a shell of the model uses, by card then by ID: what a comparison with
+// another program or a formula needs to know of the convention before it reads a difference as an error. A property
+// whose section cannot be resolved is left out (the analysis reports it). One pass over the shells; a stack is
+// resolved once.
+[[nodiscard]] std::vector<LaminateShearSummary> summariseLaminateShear(const SnapshotIndex& index);
 
 } // namespace oos::elements

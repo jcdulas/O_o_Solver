@@ -32,12 +32,12 @@ struct CacheParameter
 // the unit's singularity processor holds), ShellDrillingStiffness and ShellNormalAngle (the drilling factor of the
 // ShellQuad4, ShellTria3, ShellQuad8 and ShellTria6 and the normals they share at their grid points:
 // ShellDirectors.hpp), MixedHybridDegree (the degree of the elements of that formulation, and with it their
-// unknowns).
+// unknowns), LaminateTransverseShear (the transverse shear stiffness of the laminates: elements::Laminate).
 // MaxDiagonalRatio and SingularityBailOut only test the pivots (the same bits when the factorisation goes through)
 // and stay out. By their neutral names (the names of the params table).
-inline constexpr std::array<std::string_view, 7> MATRIX_PARAMETERS{
-    "AutoSingularityConstr", "CoupledMass", "MixedHybridDegree", "PivotZeroThreshold", "ShellDrillingStiffness",
-    "ShellNormalAngle", "WeightToMass"};
+inline constexpr std::array<std::string_view, 8> MATRIX_PARAMETERS{
+    "AutoSingularityConstr", "CoupledMass",            "LaminateTransverseShear", "MixedHybridDegree",
+    "PivotZeroThreshold",    "ShellDrillingStiffness", "ShellNormalAngle",        "WeightToMass"};
 
 // The model parameter beside them, under this name in CacheKey::parameters with the value
 // input::offsetDefinitionName gives: ModelParams OffsetDefinition, where the mass of the offset elements is (the

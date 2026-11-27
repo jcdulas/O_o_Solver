@@ -1,19 +1,23 @@
 // The checks of the transverse shear moduli a shell section reads from its materials: the modulus of a ply in a
 // direction of the laminate (elements::plyShearModulus: G1Z and G2Z turned by the ply angle, a blank one rigid), and
 // the modulus a ShellQuad8 or ShellTria6 without shear material takes from its bending material, which is that of
-// the material frame whatever the direction of the element's x axis (ShellSection::materialShearTermOf).
+// the material frame whatever the direction of the element's x axis (ShellSection::materialShearTermOf); the sum of
+// the plies' moduli times their thicknesses (elements::plyShearSum) and the rate of the laminate's stiffness along a
+// ply thickness under the FiveSixths convention (elements::laminateThicknessRate).
 
 #include "CheckRunner.hpp"
 #include "oos/base/math/Mat3.hpp"
 #include "oos/base/math/Vec3.hpp"
 #include "oos/elements/core/MaterialMatrices.hpp"
 #include "oos/elements/shells/Laminate.hpp"
+#include "oos/elements/shells/LaminateRate.hpp"
 #include "oos/elements/shells/MindlinShell.hpp"
 #include "oos/elements/shells/ShellSection.hpp"
 
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <string>
 
@@ -159,4 +163,57 @@ CHECK_CASE("shells: the transverse shear of a ShellQuad8 without shear material 
         runner.expectNear(shear(1, 1), expected, 1.0e-10, "S22 at the centre" + at);
         runner.expectNear(shear(0, 1), 0.0, 1.0e-10, "S12 at the centre" + at);
     }
+}
+
+CHECK_CASE("shells: the sheared sum of the plies of a stack and its rate along a ply thickness under FiveSixths")
+{
+    using oos::elements::Laminate;
+    using oos::elements::LaminateShearConvention;
+    using oos::elements::plyShearSum;
+    // Two plies at 0 degrees from the bottom at z = −0.4: thicknesses 0.3 and 0.5, G1Z 4 and 2, G2Z 2 and 1.
+    constexpr std::array<double, 2> THICKNESSES{0.3, 0.5};
+    constexpr std::array<std::array<double, 2>, 2> MODULI{{{4.0, 2.0}, {2.0, 1.0}}};
+    constexpr std::int32_t PROPERTY = 7;
+    Laminate laminate;
+    laminate.propId = PROPERTY;
+    laminate.shearConvention = LaminateShearConvention::FiveSixths;
+    double z = -0.4;
+    for (std::size_t k = 0; k < 2; ++k)
+    {
+        LaminatePly ply = plyOf(0.0, MODULI[k][0], MODULI[k][1]);
+        ply.number = static_cast<std::int32_t>(k) + 1;
+        ply.cardPly = static_cast<std::int32_t>(k);
+        ply.thickness = THICKNESSES[k];
+        ply.zBottom = z;
+        ply.zTop = z + THICKNESSES[k];
+        // In-plane moduli for the equilibrium sums of the rate, which need a bending stiffness.
+        ply.stiffness(0, 0) = 100.0 * static_cast<double>(k + 1);
+        ply.stiffness(1, 1) = 10.0 * static_cast<double>(k + 1);
+        laminate.thickness += THICKNESSES[k];
+        laminate.plies.push_back(ply);
+        z += THICKNESSES[k];
+    }
+    // Σ G t: 4 × 0.3 + 2 × 0.5 along x, 2 × 0.3 + 1 × 0.5 along y.
+    runner.expectNear(plyShearSum(laminate, 0), 2.2, TOLERANCE, "the sheared sum along x");
+    runner.expectNear(plyShearSum(laminate, 1), 1.1, TOLERANCE, "the sheared sum along y");
+    for (std::size_t d = 0; d < 2; ++d)
+        laminate.transverseShear[d] = SHEAR_RATIO * plyShearSum(laminate, d);
+
+    // H = 5/6 Σ G t: its rate along the thickness of the second ply of the card is 5/6 of that ply's modulus.
+    const oos::elements::DesignedField secondPly{"CompProp", "plyThickness", PROPERTY, 1};
+    const auto rate = oos::elements::laminateThicknessRate(laminate, secondPly);
+    runner.expect(rate.has_value(), "the thickness of a ply of the card has a rate");
+    if (rate)
+    {
+        runner.expectNear(rate->transverseShear[0], SHEAR_RATIO * 2.0, TOLERANCE, "dH along x");
+        runner.expectNear(rate->transverseShear[1], SHEAR_RATIO * 1.0, TOLERANCE, "dH along y");
+    }
+
+    // A ply rigid along x (a blank G1Z) makes the sum infinite there: no sum, a rigid laminate and no rate.
+    laminate.plies[0].material.transverseShear = {0.0, 2.0};
+    runner.expect(plyShearSum(laminate, 0) == 0.0, "a rigid ply: no sheared sum along x");
+    runner.expectNear(plyShearSum(laminate, 1), 1.1, TOLERANCE, "the sum along y is unchanged");
+    laminate.transverseShear[0] = 0.0;
+    const auto rigidRate = oos::elements::laminateThicknessRate(laminate, secondPly);
+    runner.expect(rigidRate && rigidRate->transverseShear[0] == 0.0, "a rigid direction stays rigid");
 }

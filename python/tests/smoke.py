@@ -1,6 +1,7 @@
 """Exercise the installed Reader/Solver wheels, including native gradients and buffer lifetimes."""
 import gc
 import tempfile
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -26,6 +27,10 @@ with tempfile.TemporaryDirectory() as temporary:
         assert single["report"]["threads"] == 1 and run["report"]["threads"] >= 1
         assert list(run["report"]["stages"]) == ["setup", "assembly", "eigenvalues", "recovery"]
         assert run["report"]["factorisations"] >= 1 and run["report"]["peak_budget_bytes"] > 0
+        # The transverse shear of the laminates: this model has no laminate property.
+        assert run["report"]["laminate_shear"] == []
+        # A model of bars has no shell to put in the other formulation: that note is not given.
+        assert all(d["code"] != "mixed-formulation-available" for d in run["diagnostics"])
         np.testing.assert_array_equal(single["eigenvalues"][0]["rows"]["eigenvalue"], modes["eigenvalue"])
         assert run["report"]["eigen_solver"] == "lanczos"
         # The solvers of large models: the factor in scratch files gives the same roots, the substructuring
@@ -39,6 +44,58 @@ with tempfile.TemporaryDirectory() as temporary:
         del model, single, run, on_disk, reduced
         gc.collect()
         np.testing.assert_allclose(modes["cycles"][0], expected, rtol=2e-9)
+
+    # A laminated strip in the classic formulation: the run shows its information through the warnings module (they
+    # stay in the result), and its report gives the transverse shear of the laminate under both conventions.
+    strip = directory / "laminate.oos"
+    laminate_text = """[executive]
+SolutionSequence;101
+[case]
+SubcaseStart;1
+SinglePointConstrSelection;1
+StaticLoadSelection;2
+DisplacementOutput;All
+[model]
+Node;1;;0.;0.;0.
+Node;2;;200.;0.;0.
+Node;3;;200.;50.;0.
+Node;4;;0.;50.;0.
+ShellQuad4;1;1;1;2;3;4
+CompProp;1;;;;;;;;10;0.25;0.;Yes;10;0.25;90.;Yes;10;0.25;90.;Yes;10;0.25;0.;Yes
+OrthoMat2D;10;140000.;10000.;0.3;5000.;5000.;3500.;1.6e-9
+SinglePointConstrList;1;123456;1;4
+PointForceLoad;2;2;;0.5;0.;0.;1.
+PointForceLoad;2;3;;0.5;0.;0.;1.
+"""
+    strip.write_text(laminate_text, encoding="utf-8")
+    model = oo_solver.model_from_reader(oo_model.read_model(strip))
+    with warnings.catch_warnings(record=True) as shown:
+        warnings.simplefilter("always")
+        run = model.run("statics")
+    told = [d for d in run["diagnostics"] if d["severity"] in ("warning", "information")]
+    assert {"mixed-formulation-available", "laminate-shear-factor"} <= {d["code"] for d in told}
+    assert len(shown) == len(told)
+    for entry, diagnostic in zip(shown, told):
+        assert entry.filename == __file__
+        assert str(entry.message) == f"[{diagnostic['code']}] {diagnostic['message']}"
+        expected = oo_solver.SolverInformation if diagnostic["severity"] == "information" else oo_solver.SolverWarning
+        assert entry.category is expected
+    (row,) = run["report"]["laminate_shear"]
+    assert (row["card"], row["prop_id"]) == ("CompProp", 1)
+    np.testing.assert_allclose(row["factor"], (0.778051, 0.660405), rtol=1e-5)
+    # Silenced by category, as the documentation says.
+    with warnings.catch_warnings(record=True) as shown:
+        warnings.simplefilter("always")
+        warnings.simplefilter("ignore", oo_solver.SolverInformation)
+        model.run("statics")
+    assert not any(issubclass(w.category, oo_solver.SolverInformation) for w in shown)
+    strip.write_text(laminate_text + "Parameter;LaminateTransverseShear;FiveSixths\n", encoding="utf-8")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", oo_solver.SolverWarning)
+        five_sixths = oo_solver.model_from_reader(oo_model.read_model(strip)).run("statics")
+    np.testing.assert_allclose(five_sixths["report"]["laminate_shear"][0]["factor"], (5 / 6, 5 / 6), rtol=1e-12)
+    assert all(d["code"] != "laminate-shear-factor" for d in five_sixths["diagnostics"])
+    del model, run, five_sixths
 
     bar = directory / "axial.oos"
     bar.write_text("""[executive]

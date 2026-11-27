@@ -15,7 +15,8 @@
 // and the transverse shear H_x, H_y from the shear stresses of cylindrical bending, 1/H = ∫ τ²/G dz (Laminate.cpp,
 // setTransverseShear; κ G t with κ = 5/6 for one material). A blank shearModulus1Z or shearModulus2Z is an infinite
 // modulus: such a ply is rigid in transverse shear along that axis and adds nothing to the integral, and the laminate
-// is rigid in a direction (H = 0) only when every one of its plies is. A ply material without transverse shear moduli
+// is rigid in a direction (H = 0) only when every one of its plies is. The model parameter LaminateTransverseShear
+// (LaminateShearConvention) takes H = 5/6 Σ G_k t_k instead. A ply material without transverse shear moduli
 // (AnisoMat2D) follows AnisotropicPlyShear. The thermal resultants of a temperature change ΔT(z) =
 // ΔT + z·T' (Jones §4.5): N_T = Σ Q̄_k ᾱ_k (ΔT t_k + T' ½ (z_k² − z_{k−1}²)), M_T = Σ Q̄_k ᾱ_k (ΔT ½ (z_k² − z_{k−1}²)
 // + T' ⅓ (z_k³ − z_{k−1}³)), ᾱ_k = T(θ_k)⁻¹ α_k. Every matrix and vector is in the material frame of the element
@@ -33,8 +34,10 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace oos::elements
@@ -72,6 +75,28 @@ enum class AnisotropicPlyShear : std::uint8_t
     Rigid,
     InPlaneShearModulus
 };
+
+// How the transverse shear stiffness H of a stack is formed along each material axis: the model parameter
+// LaminateTransverseShear.
+// - Equilibrium (the default): from the shear stresses that the equilibrium gives in cylindrical bending,
+//   1/H = ∫ τ²/G dz (Whitney, "Structural Analysis of Laminated Anisotropic Plates", 1987, §4.6). The stiffness
+//   depends on the stacking sequence: 5/6 G t for one material, another share of Σ G_k t_k for plies of different
+//   moduli (0.78 and 0.66 along the two axes of a carbon/epoxy [0/90]s).
+// - FiveSixths: the first-order shear deformation theory with the correction factor of a homogeneous section,
+//   H = 5/6 Σ G_k t_k (Reddy, "Mechanics of Laminated Composite Plates and Shells", 2nd ed., 2004, §3.4, with the
+//   shear correction coefficient K = 5/6). The stiffness does not depend on the stacking sequence; a ply rigid along
+//   the axis (a blank modulus) makes the sum infinite and the laminate rigid along it. For a comparison with a
+//   program or a formula that uses this theory.
+// The shear stresses of the plies are those of the equilibrium in both (LaminatePly::shearAtTopPerForce).
+enum class LaminateShearConvention : std::uint8_t
+{
+    Equilibrium,
+    FiveSixths
+};
+
+inline constexpr std::string_view LAMINATE_SHEAR_PARAMETER = "LaminateTransverseShear";
+inline constexpr std::string_view LAMINATE_SHEAR_EQUILIBRIUM = "Equilibrium";
+inline constexpr std::string_view LAMINATE_SHEAR_FIVE_SIXTHS = "FiveSixths";
 
 // One ply, from the bottom.
 struct LaminatePly
@@ -125,6 +150,8 @@ struct Laminate
     base::Mat3 b;                            // membrane-bending coupling
     base::Mat3 d;                            // bending
     std::array<double, 2> transverseShear{}; // H_x, H_y; 0: rigid in that direction (every ply rigid in it)
+    // How H was formed (the model's LaminateTransverseShear): its rate along a ply thickness follows it.
+    LaminateShearConvention shearConvention = LaminateShearConvention::Equilibrium;
     // The plies' interlaminar shear follows the equilibrium distribution (shearAtTopPerForce), whatever the stack: one
     // material or several, flexible or rigid in transverse shear. Only SmearedLaminate, which ignores the stacking,
     // gives every ply the mean shear Q / t (ShellRecovery).
@@ -150,9 +177,24 @@ struct LaminateColumns
     ShellMaterialColumns materials;
     // By the formulation of the model: Rigid in the classic one, InPlaneShearModulus in the mixed hybrid one.
     AnisotropicPlyShear anisotropicPlyShear = AnisotropicPlyShear::Rigid;
+    // The model parameter LaminateTransverseShear; Equilibrium without it.
+    LaminateShearConvention shearConvention = LaminateShearConvention::Equilibrium;
+    // Why the parameter cannot be read (laminateShearParameterProblem), empty when it can: every laminate is then
+    // refused with it.
+    std::string shearConventionProblem;
 
     explicit LaminateColumns(const ElementBatchView& view);
 };
+
+// The sum Σ G_k t_k of the transverse shear moduli of the plies along direction d (0: x, 1: y) of the material frame
+// of the element, each times its thickness (plyShearModulus): the stiffness of the plies sheared together, which the
+// FiveSixths convention multiplies by 5/6 and the shear factor of a stack is measured against. 0 when a ply is rigid
+// along d (its modulus is infinite, and the sum with it).
+[[nodiscard]] double plyShearSum(const Laminate& laminate, std::size_t d);
+
+// What is wrong with the model parameter LaminateTransverseShear, or nothing: a value that is not Equilibrium or
+// FiveSixths. The message names the parameter, what was expected and found, and what to do.
+[[nodiscard]] std::optional<std::string> laminateShearParameterProblem(const input::ModelSnapshot& snapshot);
 
 // The laminate of property `propId` (a CompProp or CompPropGlobal, `property` its table and `propertyRow` its row) for
 // the shell of batch row `row`. Problems: no ply stack for the property (or a snapshot taken without

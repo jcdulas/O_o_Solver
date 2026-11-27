@@ -265,6 +265,13 @@ py::dict results(api::AnalysisOutput&& run)
                           "peak_budget_bytes"_a = r.report.peakBudgetBytes);
     // Normal modes and buckling: "lanczos", "substructuring", "out_of_core" or "condensed"; "" otherwise.
     report["eigen_solver"] = r.report.eigenSolver == "outOfCore" ? std::string("out_of_core") : r.report.eigenSolver;
+    // The transverse shear of each laminate property of the shells, along the material axes x and y.
+    py::list laminates;
+    for (const auto& row : r.report.laminateShear)
+        laminates.append(py::dict("card"_a = row.card, "prop_id"_a = row.propId,
+                                  "stiffness"_a = py::make_tuple(row.stiffness[0], row.stiffness[1]),
+                                  "factor"_a = py::make_tuple(row.factor[0], row.factor[1])));
+    report["laminate_shear"] = laminates;
     py::dict out("nodal_tables"_a = nodal, "element_tables"_a = elements, "grid_point_forces"_a = forces,
                  "eigenvalues"_a = eigen, "diagnostics"_a = diagnostics, "report"_a = report);
     if (r.selectedQuarticShells)

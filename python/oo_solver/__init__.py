@@ -1,7 +1,46 @@
 """Native structural analyses and design evaluations using oo_model decks."""
+import functools
+import warnings
+
 from oo_model import card_columns
 
 from ._native import AeroModalBasis, AeroStaticPreload, AeroTransfer, DesignPoint, Model, OptimizationProblem, _Builder
+
+
+
+class SolverWarning(UserWarning):
+    """A warning of an analysis: the run went through, and something in it deserves a look."""
+
+
+class SolverInformation(SolverWarning):
+    """An information of an analysis: how the solver read the model where another program may read it otherwise."""
+
+
+def _announce(result):
+    """Shows the warnings and information of a run through the ``warnings`` module, and gives the result back.
+
+    They stay in ``result["diagnostics"]``. Python shows a given message once per calling line by default; silence
+    them with ``warnings.simplefilter("ignore", oo_solver.SolverWarning)`` (``SolverInformation`` for the information
+    alone), or turn them into errors with ``"error"``.
+    """
+    categories = {"warning": SolverWarning, "information": SolverInformation}
+    for diagnostic in result.get("diagnostics", ()):
+        category = categories.get(diagnostic["severity"])
+        if category is not None:
+            # stacklevel 3: the line of the caller of Model.run.
+            warnings.warn(f"[{diagnostic['code']}] {diagnostic['message']}", category, stacklevel=3)
+    return result
+
+
+_native_run = Model.run
+
+
+@functools.wraps(_native_run)
+def _run(self, *args, **kwargs):
+    return _announce(_native_run(self, *args, **kwargs))
+
+
+Model.run = _run
 
 _DESIGN_TABLES = (
     "designVariablesTable", "designLinksTable", "designRelationsTable", "designConstantsTable",
@@ -103,4 +142,6 @@ def prepare_optimization(deck, *, analysis="statics", formulation=None, threads=
 optimization_from_reader = prepare_optimization
 
 
-__all__ = ["AeroModalBasis", "AeroStaticPreload", "AeroTransfer", "DesignPoint", "Model", "OptimizationProblem", "model_from_reader", "optimization_from_reader", "prepare_optimization"]
+__all__ = ["AeroModalBasis", "AeroStaticPreload", "AeroTransfer", "DesignPoint", "Model", "OptimizationProblem",
+           "SolverInformation", "SolverWarning", "model_from_reader", "optimization_from_reader",
+           "prepare_optimization"]

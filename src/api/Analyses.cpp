@@ -9,10 +9,14 @@
 #include "oos/base/memory/MemoryBudget.hpp"
 #include "oos/base/threading/Stopwatch.hpp"
 #include "oos/base/platform/MemoryInfo.hpp"
+#include "oos/elements/core/ElementFormulation.hpp"
 #include "oos/elements/core/ElementRegistry.hpp"
 #include "oos/elements/core/FormulationModel.hpp"
 #include "oos/elements/core/SnapshotIndex.hpp"
+#include "oos/elements/shells/ShellSection.hpp"
+#include "oos/elements/shells/Laminate.hpp"
 #include "oos/input/contract/TableRole.hpp"
+#include "oos/input/tables/PiercingFootprint.hpp"
 #include "oos/linalg/dense/KernelSelection.hpp"
 #include "oos/linalg/kernels/KernelKind.hpp"
 #include "oos/reduction/external/ExternalUnit.hpp"
@@ -27,6 +31,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <span>
 #include <stdexcept>
@@ -651,6 +656,115 @@ SupportCheck checkTrimPreloadedBuckling(const input::ModelSnapshot& snapshot)
     return checkAnalysisSupport(snapshot, Analysis::Buckling, solutions::AnalysisKind::TrimPreloadedBuckling);
 }
 
+namespace
+{
+
+// The laminates of the report: the transverse shear of each laminate property the shells use. A model without a
+// laminate property builds nothing. The lookups of the model are built again for it, in a budget of their own (the
+// run's is held by its results); a model that cannot afford them gets no table rather than a failed run, since the
+// analysis is done.
+std::vector<LaminateShear> laminateShearOf(const input::ModelSnapshot& snapshot, const AnalysisSettings& settings)
+{
+    std::vector<LaminateShear> rows;
+    if (snapshot.findPropertyTable("CompProp") == nullptr && snapshot.findPropertyTable("CompPropGlobal") == nullptr)
+        return rows;
+    try
+    {
+        base::MemoryBudget budget(budgetBytes(settings));
+        const elements::SnapshotIndex index(snapshot, budget);
+        for (elements::LaminateShearSummary& summary : elements::summariseLaminateShear(index))
+            rows.push_back({std::move(summary.card), summary.propId, summary.stiffness, summary.factor});
+    }
+    catch (const std::exception&)
+    {
+        rows.clear();
+    }
+    return rows;
+}
+
+// A shear factor of a laminate further than this from 5/6, relatively, is told to the user: below it the two
+// conventions of the transverse shear give the same results to the digits a comparison reads.
+constexpr double LAMINATE_FACTOR_NOTICE = 0.01;
+
+// What a comparison with another program or a formula should know of the laminates before it reads a difference as
+// an error: one information when the transverse shear stiffness of some laminate is not 5/6 of the sheared sum of
+// its plies, which many programs and closed forms take for every stack. It counts these properties, names the
+// furthest and the model parameter that takes 5/6. Nothing under that parameter (the factors are then 5/6).
+void addLaminateShearNote(const std::vector<LaminateShear>& laminates, std::vector<base::Diagnostic>& diagnostics)
+{
+    std::size_t count = 0;
+    const LaminateShear* furthest = nullptr;
+    std::size_t furthestAxis = 0;
+    double furthestGap = 0.0;
+    for (const LaminateShear& laminate : laminates)
+    {
+        bool isTold = false;
+        for (std::size_t axis = 0; axis < 2; ++axis)
+        {
+            if (!(laminate.factor[axis] > 0.0))
+                continue; // rigid along the axis: no factor
+            const double gap = std::abs(laminate.factor[axis] / elements::LAMINATE_SHEAR_FACTOR - 1.0);
+            isTold = isTold || gap > LAMINATE_FACTOR_NOTICE;
+            if (gap > furthestGap)
+            {
+                furthestGap = gap;
+                furthest = &laminate;
+                furthestAxis = axis;
+            }
+        }
+        count += isTold ? 1 : 0;
+    }
+    if (count == 0)
+        return;
+    base::Diagnostic note;
+    note.severity = base::Severity::Information;
+    note.code = "laminate-shear-factor";
+    note.card = furthest->card;
+    note.id = furthest->propId;
+    note.field = std::string(elements::LAMINATE_SHEAR_PARAMETER);
+    note.message = base::concatenate(
+        {std::to_string(count), " of the ", std::to_string(laminates.size()),
+         " laminate properties of the shells have a transverse shear stiffness that is not 5/6 of the sum of their "
+         "plies' shear moduli times their thicknesses (the furthest: ", furthest->card, " ",
+         std::to_string(furthest->propId), ", factor ", std::to_string(furthest->factor[furthestAxis]), " along ",
+         furthestAxis == 0 ? "x" : "y", "): the stiffness follows the shear stresses of the stack (Parameter ",
+         elements::LAMINATE_SHEAR_PARAMETER, " = ", elements::LAMINATE_SHEAR_EQUILIBRIUM,
+         ", the default); a program or a formula that takes the factor 5/6 for every stack has another transverse "
+         "shear stiffness, in the ratio of the factors; to compare with one, give Parameter ",
+         elements::LAMINATE_SHEAR_PARAMETER, " = ", elements::LAMINATE_SHEAR_FIVE_SIXTHS,
+         " (the laminate rows of the report of the run give the stiffness and the factor of each property)"});
+    diagnostics.push_back(std::move(note));
+}
+
+// One information when the shells of the model are computed in the classic formulation: the model can be put in the
+// mixed hybrid one, which reaches the converged values on coarse meshes. The text is the same for every model, so
+// that an interface that shows each message once shows it once.
+void addFormulationNote(const input::ModelSnapshot& snapshot, std::vector<base::Diagnostic>& diagnostics)
+{
+    const bool hasShells =
+        std::any_of(input::PIERCED_SHELL_CARDS.begin(), input::PIERCED_SHELL_CARDS.end(), [&](std::string_view card) {
+            const input::ElementBatch* batch = snapshot.findElementBatch(card);
+            return batch != nullptr && batch->rowCount() > 0;
+        });
+    if (!hasShells || elements::ElementRegistry::forModel(snapshot).isMixedHybrid())
+        return;
+    base::Diagnostic note;
+    note.severity = base::Severity::Information;
+    note.code = "mixed-formulation-available";
+    note.field = std::string(elements::MODEL_FORMULATION_PARAMETER);
+    note.message = base::concatenate(
+        {"the shells of the model are computed in ", elements::CLASSIC_FORMULATION,
+         ": displacement elements, which approach the converged values as the mesh is refined; ",
+         elements::MIXED_HYBRID_FORMULATION,
+         " reaches these values on coarse meshes, at a higher cost per element; to compare the two, or to compare "
+         "with another program at a given accuracy, choose it with Parameter ",
+         elements::MODEL_FORMULATION_PARAMETER, " = ", elements::MIXED_HYBRID_FORMULATION,
+         " (or the element formulation option of the interface) and the geometry declarations of the model"});
+    diagnostics.push_back(std::move(note));
+}
+
+} // namespace
+
 AnalysisOutput runAnalysis(const input::ModelSnapshot& snapshot, Analysis analysis, const AnalysisSettings& settings)
 {
     base::Stopwatch watch;
@@ -679,6 +793,9 @@ AnalysisOutput runAnalysis(const input::ModelSnapshot& snapshot, Analysis analys
     }
     output.report.threads = pool ? pool->threadCount() : 1;
     output.report.peakBudgetBytes = budget->peak();
+    output.report.laminateShear = laminateShearOf(snapshot, settings);
+    addLaminateShearNote(output.report.laminateShear, output.diagnostics);
+    addFormulationNote(snapshot, output.diagnostics);
     output.report.seconds = watch.lap();
     output.budget = std::move(budget);
     return output;

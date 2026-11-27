@@ -560,6 +560,9 @@ void MixedHybridModel::buildGridsAndEdges(const SnapshotIndex& index)
             const std::int32_t a = m_gridIndexOfRow.at(shell.gridRows[k]);
             const std::int32_t b = m_gridIndexOfRow.at(shell.gridRows[(k + 1) % shell.cornerCount]);
             shellEdges.insert({std::min(a, b), std::max(a, b)});
+            m_shellGrids.insert(a);
+            if (shell.midRows[k] >= 0)
+                m_shellGrids.insert(m_gridIndexOfRow.at(shell.midRows[k]));
         }
 
     // The edges of the lines, by their grid indices lower first (the order of the grid IDs).

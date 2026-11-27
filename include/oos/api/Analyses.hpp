@@ -12,6 +12,7 @@
 #include "oos/reduction/scheduling/MemoryMode.hpp"
 #include "oos/solutions/sol144/TrimSolution.hpp"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -161,6 +162,23 @@ struct RunStage
 // eigenvalues, recovery; buckling: preload, assembly, eigenvalues, recovery; trim: setup, assembly, factorisation,
 // flexibility, aerodynamics, trim), in the order it runs them; their sum is below `seconds`, which also counts what
 // lies between them (the condensation plan, the hand-over of the tables).
+// The transverse shear of one laminate property (CompProp, CompPropGlobal) that a shell of the model uses, along the
+// material axes x and y of the element, as the model's convention forms it (Parameter LaminateTransverseShear:
+// Equilibrium, the default, or FiveSixths):
+// - stiffness: H_x and H_y, a force per unit length per unit shear strain; 0 along an axis the laminate is rigid in;
+// - factor: κ = H / Σ G_k t_k, the shear correction factor the stiffness amounts to (G_k the transverse shear modulus
+//   of ply k along the axis, t_k its thickness): 5/6 for one material and under FiveSixths, another value for a
+//   stack of plies of different moduli; 0 where it is not defined (the laminate, or one of its plies, rigid along the
+//   axis).
+// A program that takes 5/6 Σ G_k t_k for every stack differs from the default by the ratio of the factor to 5/6.
+struct LaminateShear
+{
+    std::string card; // "CompProp" or "CompPropGlobal"
+    std::int32_t propId = 0;
+    std::array<double, 2> stiffness{};
+    std::array<double, 2> factor{};
+};
+
 struct RunReport
 {
     std::size_t threads = 1;   // the threads of the run, the calling thread included
@@ -176,6 +194,8 @@ struct RunReport
     // The largest memory the run's budget held at once, in bytes: the matrices, factors and result tables the solver
     // reserves in it (base::MemoryBudget::peak), not the memory of the process.
     std::uint64_t peakBudgetBytes = 0;
+    // The laminates of the shells, by card then by ID (empty for a model without one).
+    std::vector<LaminateShear> laminateShear;
 };
 
 // The outcome of an analysis: the result tables, the eigenvalues and the warnings.

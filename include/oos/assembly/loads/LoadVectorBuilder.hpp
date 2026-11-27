@@ -252,12 +252,16 @@ private:
     // of its shells (elements::FormulationModel::readForcesAlongEdges; docs/mixed-hybrid-formulation-spec.md section
     // 7): the rows of loadsTable whose force is read so, increasing, the loads that replace these forces (with the
     // factor 1) and the count of edges read. The forces of a set are read together, whatever combination brings the
-    // set: the reading is kept for the builder's life.
+    // set: the reading is kept for the builder's life. Beside them, the forces the formulation leaves as concentrated
+    // forces on its shells (FormulationModel::EdgeForceReading::isConcentrated): their count and the first of their
+    // rows (−1 without one), for the information given to the user.
     struct EdgeForces
     {
         std::vector<std::int64_t> rows;
         std::vector<std::pair<base::DofIndex, double>> loads;
         std::size_t edgeCount = 0;
+        std::size_t concentratedCount = 0;
+        std::int64_t firstConcentratedRow = -1;
     };
     // Empty without a formulation that reads forces along edges.
     [[nodiscard]] std::shared_ptr<const EdgeForces> edgeForcesOf(base::EntityId setId) const;

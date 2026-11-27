@@ -45,6 +45,22 @@ enum class FailureTheoryCode : std::uint8_t
     return value && value->kind == input::ParamValue::Kind::Text && value->text == MIXED_HYBRID_FORMULATION;
 }
 
+// The model parameter LaminateTransverseShear as the snapshot gives it: nothing when the model does not give it.
+[[nodiscard]] std::optional<input::ParamValue> laminateShearParameter(const input::ModelSnapshot& snapshot)
+{
+    if (!snapshot.hasTable(input::TableRole::Params))
+        return std::nullopt;
+    return snapshot.params().find(LAMINATE_SHEAR_PARAMETER);
+}
+
+[[nodiscard]] LaminateShearConvention laminateShearConventionOf(const input::ModelSnapshot& snapshot)
+{
+    const std::optional<input::ParamValue> value = laminateShearParameter(snapshot);
+    const bool isFiveSixths =
+        value && value->kind == input::ParamValue::Kind::Text && value->text == LAMINATE_SHEAR_FIVE_SIXTHS;
+    return isFiveSixths ? LaminateShearConvention::FiveSixths : LaminateShearConvention::Equilibrium;
+}
+
 // The rows [first, last) of laminatePliesTable holding the plies of `propId`: the table is sorted by propId, then ply.
 struct PlyRows
 {
@@ -220,6 +236,37 @@ struct TheoryReading
 
 } // namespace
 
+double plyShearSum(const Laminate& laminate, std::size_t d)
+{
+    double sum = 0.0;
+    for (const LaminatePly& ply : laminate.plies)
+    {
+        const double modulus = plyShearModulus(ply, d);
+        if (!(modulus > 0.0))
+            return 0.0; // a rigid ply: an infinite modulus
+        sum += modulus * ply.thickness;
+    }
+    return sum;
+}
+
+std::optional<std::string> laminateShearParameterProblem(const input::ModelSnapshot& snapshot)
+{
+    const std::optional<input::ParamValue> value = laminateShearParameter(snapshot);
+    if (!value)
+        return std::nullopt;
+    const bool isText = value->kind == input::ParamValue::Kind::Text;
+    if (isText && (value->text == LAMINATE_SHEAR_EQUILIBRIUM || value->text == LAMINATE_SHEAR_FIVE_SIXTHS))
+        return std::nullopt;
+    const std::string found = isText                                          ? std::string(value->text)
+                              : value->kind == input::ParamValue::Kind::Integer ? std::to_string(value->integer)
+                                                                                : std::to_string(value->real);
+    return base::concatenate(
+        {"expected the model parameter ", LAMINATE_SHEAR_PARAMETER, " to be ", LAMINATE_SHEAR_EQUILIBRIUM,
+         " (the transverse shear stiffness of a laminate from the shear stresses of its stack, the default) or ",
+         LAMINATE_SHEAR_FIVE_SIXTHS, " (5/6 of the sum of the plies' shear moduli times their thicknesses), found ",
+         found, "; give one of these two names, or remove the parameter"});
+}
+
 double plyShearModulus(const LaminatePly& ply, std::size_t d)
 {
     const double c2 = std::cos(ply.angle) * std::cos(ply.angle);
@@ -248,6 +295,9 @@ LaminateColumns::LaminateColumns(const ElementBatchView& view) : materials(view)
         summary = &snapshot.laminateSummary();
     anisotropicPlyShear =
         isMixedHybridModel(snapshot) ? AnisotropicPlyShear::InPlaneShearModulus : AnisotropicPlyShear::Rigid;
+    shearConvention = laminateShearConventionOf(snapshot);
+    if (std::optional<std::string> problem = laminateShearParameterProblem(snapshot))
+        shearConventionProblem = std::move(*problem);
 }
 
 Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const LaminateColumns& columns, std::int64_t row,
@@ -260,6 +310,10 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
     laminate.isCompPropGlobal = property.card() == "CompPropGlobal";
     const std::string propId = std::to_string(laminate.propId);
     const std::string_view type = property.card();
+    if (!columns.shearConventionProblem.empty())
+        return Result::failure(elementProblem(view, row, problem_code::INVALID_FIELD,
+                                              std::string(LAMINATE_SHEAR_PARAMETER), columns.shearConventionProblem));
+    laminate.shearConvention = columns.shearConvention;
 
     const PlyRows rows = columns.plies != nullptr ? plyRowsOf(*columns.plies, laminate.propId) : PlyRows{};
     if (rows.first == rows.last)
@@ -395,6 +449,9 @@ Resolution<Laminate> resolveLaminate(const ElementBatchView& view, const Laminat
     {
         setTransverseShear(laminate, d);
         laminate.hasShearDistribution[d] = true;
+        // The stresses stay those of the equilibrium; the stiffness alone follows the convention.
+        if (laminate.shearConvention == LaminateShearConvention::FiveSixths)
+            laminate.transverseShear[d] = LAMINATE_SHEAR_FACTOR * plyShearSum(laminate, d);
     }
 
     switch (laminate.option)

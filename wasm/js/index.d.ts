@@ -11,7 +11,11 @@ export * from "./study-workers.js";
 
 export declare function supportsMemory64(): boolean;
 export declare function supportsWasmThreads(): boolean;
-export declare function loadOosSolver(options?: Record<string, unknown> & { threads?: number }): Promise<OosSolver>;
+// diagnostics: where the warnings and information of a run are shown beside the `diagnostics` of its result:
+// "console" (the default: console.warn and console.info, each message once) or "silent".
+export type DiagnosticOutput = "console" | "silent";
+export declare function loadOosSolver(
+  options?: Record<string, unknown> & { threads?: number; diagnostics?: DiagnosticOutput }): Promise<OosSolver>;
 
 export type Analysis = "statics" | "modes" | "buckling" | "aeroelastic";
 
@@ -237,6 +241,18 @@ export interface EigenSolverSettings {
   cutoffFactor?: number;  // "substructuring": more modes kept in each subtree above 1; 0: the default
 }
 
+// The transverse shear of one laminate property (CompProp, CompPropGlobal) that a shell of the model uses, along the
+// material axes x and y of the element, as the model's convention forms it (Parameter;LaminateTransverseShear:
+// Equilibrium, the default, or FiveSixths).
+export interface LaminateShear {
+  card: "CompProp" | "CompPropGlobal";
+  propId: number;
+  stiffness: [number, number]; // H along x and y, force per length per unit shear strain; 0: rigid along that axis
+  // H / sum(G_k t_k): the shear correction factor the stiffness amounts to; 5/6 for one material and under
+  // FiveSixths; 0 where it is not defined (the laminate, or one of its plies, rigid along the axis)
+  factor: [number, number];
+}
+
 // What a run cost. The stages are those the analysis measures, in the order it runs them (statics: setup, assembly,
 // loadBasis, factorisation, solve, recovery; modes: setup, assembly, eigenvalues, recovery; buckling: preload,
 // assembly, eigenvalues, recovery; aeroelastic: setup, assembly, factorisation, flexibility, aerodynamics, trim).
@@ -250,6 +266,7 @@ export interface RunReport {
   seconds: number;         // the wall time of the run
   stages: Record<string, number>; // seconds per stage
   peakBudgetBytes: number; // the largest memory the solver's budget held at once (not the process memory)
+  laminateShear: LaminateShear[]; // the laminates of the shells, by card then by ID (empty without one)
 }
 
 export interface StabilityDerivative {
@@ -324,6 +341,10 @@ export interface OptimizationPreparation {
 }
 
 export declare class OosSolver {
+  // Where run and runSuperelements show the warnings and information of a run; may be set at any time.
+  diagnosticOutput: DiagnosticOutput;
+  // Shows the warnings and information of `result.diagnostics` as run does, and gives `result` back.
+  announceDiagnostics<T extends { diagnostics?: Diagnostic[] }>(result: T): T;
   createStudy(reader: import("oo-model").OoModel, deck: import("oo-model").Deck,
     definition: import("./study.js").StudyDefinition, settings?: import("./study.js").StudySettings,
     hooks?: import("./study.js").StudyHooks): import("./study.js").OptimizationStudy;

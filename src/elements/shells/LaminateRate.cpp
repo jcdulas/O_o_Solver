@@ -133,7 +133,16 @@ std::optional<LaminateRate> laminateThicknessRate(const Laminate& laminate, cons
         rate.massPerArea += ply.material.density * rate.plyThickness[k];
     }
     for (std::size_t d = 0; d < 2; ++d)
+    {
         setTransverseShearRate(laminate, rate, d);
+        if (laminate.shearConvention != LaminateShearConvention::FiveSixths)
+            continue;
+        // H = 5/6 Σ G_k t_k (Laminate.cpp): dH = 5/6 Σ G_k dt_k; a direction rigid by one of its plies stays rigid.
+        double sumRate = 0.0;
+        for (std::size_t k = 0; k < count; ++k)
+            sumRate += plyShearModulus(laminate.plies[k], d) * rate.plyThickness[k];
+        rate.transverseShear[d] = laminate.transverseShear[d] > 0.0 ? LAMINATE_SHEAR_FACTOR * sumRate : 0.0;
+    }
     switch (laminate.option)
     {
     case LaminateOption::Full:
