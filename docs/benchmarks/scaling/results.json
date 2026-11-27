@@ -1,0 +1,6814 @@
+{
+ "format_version": 1,
+ "date": "2026-11-27T09:13:31+00:00",
+ "machine": {
+  "cpu": "12th Gen Intel(R) Core(TM) i5-12400F",
+  "physical_cores": 6,
+  "logical_cores": 12,
+  "memory_bytes": 34164101120,
+  "os": "Windows-11-10.0.26200-SP0"
+ },
+ "software": {
+  "python": "3.13.3",
+  "oo-solver": "0.2.5",
+  "oo-model": "0.2.4",
+  "numpy": "2.5.5"
+ },
+ "settings": {
+  "models": [
+   "plate",
+   "cylinder",
+   "wingbox",
+   "block"
+  ],
+  "dofs": [
+   10000.0,
+   30000.0,
+   100000.0,
+   300000.0,
+   1000000.0,
+   2000000.0
+  ],
+  "sizes": null,
+  "analyses": [
+   "statics",
+   "modes",
+   "buckling"
+  ],
+  "threads": [
+   1,
+   12
+  ],
+  "formulation": null,
+  "repeat": 3,
+  "repeat_below": 10.0,
+  "time_limit": 1800.0,
+  "kill_after": 5400.0,
+  "memory_limit": 30747691008.0,
+  "resume": false,
+  "work_dir": null,
+  "keep_models": false
+ },
+ "references": {
+  "plate": {
+   "statics": {
+    "value": 0.0006337270150713713,
+    "quantity": "centre deflection against Navier's thin-plate series"
+   },
+   "modes": {
+    "value": 48.406723927944356,
+    "quantity": "first frequency against the thin-plate value \u03c0/a\u00b2 \u221a(D/\u03c1t)"
+   },
+   "buckling": {
+    "value": 2.530667795151118,
+    "quantity": "first factor against the thin-plate value 4\u03c0\u00b2D/(a\u00b2 N)"
+   }
+  },
+  "cylinder": {
+   "statics": {
+    "value": 0.00014285714285714287,
+    "quantity": "mean radial displacement at mid-length against the membrane value p R\u00b2/(E t)"
+   },
+   "modes": {
+    "value": 95.33834122446405,
+    "quantity": "first frequency against Sanders' shell theory (end diaphragms)"
+   },
+   "buckling": {
+    "value": 3.9266205008107713,
+    "quantity": "first factor against Sanders' shell theory (end diaphragms)"
+   }
+  },
+  "wingbox": {
+   "statics": {
+    "value": 0.03398367505273957,
+    "quantity": "mean tip deflection against Timoshenko beam theory (bending + shear of the webs)"
+   },
+   "modes": {
+    "value": 3.012905290475502,
+    "quantity": "first frequency against a Timoshenko beam with the ribs' mass spread along the span"
+   },
+   "buckling": {
+    "value": null,
+    "quantity": "no reference (skin panel buckling between ribs and spars)"
+   }
+  },
+  "block": {
+   "statics": {
+    "value": 0.009868952380952381,
+    "quantity": "mean end deflection against Timoshenko beam theory (Cowper's shear coefficient)"
+   },
+   "modes": {
+    "value": 12.939283004596238,
+    "quantity": "first frequency against a Timoshenko beam"
+   },
+   "buckling": {
+    "value": 6.681117475191851,
+    "quantity": "first factor against the column with shear (Engesser)"
+   }
+  }
+ },
+ "runs": [
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 40,
+   "grid_points": 1681,
+   "dofs": 9720,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.026030999957583845,
+   "snapshot_s": 0.00719909998588264,
+   "run_s": 0.10023760003969073,
+   "peak_memory_bytes": 90890240,
+   "stage_peaks_bytes": {
+    "imports": 38248448,
+    "read": 50778112,
+    "snapshot": 51163136,
+    "run": 90890240
+   },
+   "measured": 0.0006345968326246159,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.02642279991414398,
+     "snapshot_s": 0.007878100033849478,
+     "run_s": 0.10023760003969073,
+     "peak_memory_bytes": 90890240
+    },
+    {
+     "read_s": 0.026030999957583845,
+     "snapshot_s": 0.00719909998588264,
+     "run_s": 0.10280250001233071,
+     "peak_memory_bytes": 90877952
+    },
+    {
+     "read_s": 0.021916499943472445,
+     "snapshot_s": 0.005964500014670193,
+     "run_s": 0.09745220001786947,
+     "peak_memory_bytes": 90603520
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.001372542960231371
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 40,
+   "grid_points": 1681,
+   "dofs": 9720,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.02610859996639192,
+   "snapshot_s": 0.006624200032092631,
+   "run_s": 0.06208049994893372,
+   "peak_memory_bytes": 96051200,
+   "stage_peaks_bytes": {
+    "imports": 38133760,
+    "read": 50679808,
+    "snapshot": 50987008,
+    "run": 93388800
+   },
+   "measured": 0.0006345968326246159,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.02610859996639192,
+     "snapshot_s": 0.006624200032092631,
+     "run_s": 0.06208049994893372,
+     "peak_memory_bytes": 93388800
+    },
+    {
+     "read_s": 0.021174800000153482,
+     "snapshot_s": 0.007273599971085787,
+     "run_s": 0.059949600021354854,
+     "peak_memory_bytes": 95903744
+    },
+    {
+     "read_s": 0.028203199966810644,
+     "snapshot_s": 0.005880500073544681,
+     "run_s": 0.06329189997632056,
+     "peak_memory_bytes": 96051200
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.001372542960231371
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 70,
+   "grid_points": 5041,
+   "dofs": 29610,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.025819399976171553,
+   "snapshot_s": 0.007991899969056249,
+   "run_s": 0.30070849996991456,
+   "peak_memory_bytes": 167563264,
+   "stage_peaks_bytes": {
+    "imports": 38227968,
+    "read": 53338112,
+    "snapshot": 53346304,
+    "run": 166240256
+   },
+   "measured": 0.0006342323347976261,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.025819399976171553,
+     "snapshot_s": 0.008327600080519915,
+     "run_s": 0.29928129992913455,
+     "peak_memory_bytes": 166240256
+    },
+    {
+     "read_s": 0.025648799957707524,
+     "snapshot_s": 0.007991899969056249,
+     "run_s": 0.30070849996991456,
+     "peak_memory_bytes": 167563264
+    },
+    {
+     "read_s": 0.030755399959161878,
+     "snapshot_s": 0.00791909999679774,
+     "run_s": 0.3013125999132171,
+     "peak_memory_bytes": 165994496
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0007973775998770805
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 70,
+   "grid_points": 5041,
+   "dofs": 29610,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.030290599912405014,
+   "snapshot_s": 0.00843319995328784,
+   "run_s": 0.15808590000960976,
+   "peak_memory_bytes": 179740672,
+   "stage_peaks_bytes": {
+    "imports": 38002688,
+    "read": 53104640,
+    "snapshot": 53215232,
+    "run": 179740672
+   },
+   "measured": 0.0006342323347976261,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.02545570000074804,
+     "snapshot_s": 0.007854999974370003,
+     "run_s": 0.15015879995189607,
+     "peak_memory_bytes": 179740672
+    },
+    {
+     "read_s": 0.03569589997641742,
+     "snapshot_s": 0.015230800025165081,
+     "run_s": 0.19780829991213977,
+     "peak_memory_bytes": 176336896
+    },
+    {
+     "read_s": 0.030290599912405014,
+     "snapshot_s": 0.00843319995328784,
+     "run_s": 0.15808590000960976,
+     "peak_memory_bytes": 177786880
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0007973775998770805
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 128,
+   "grid_points": 16641,
+   "dofs": 98688,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.05056130001321435,
+   "snapshot_s": 0.015901700011454523,
+   "run_s": 1.0842615000437945,
+   "peak_memory_bytes": 460922880,
+   "stage_peaks_bytes": {
+    "imports": 37838848,
+    "read": 61403136,
+    "snapshot": 61403136,
+    "run": 460660736
+   },
+   "measured": 0.0006341083075287056,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.05056130001321435,
+     "snapshot_s": 0.013717900030314922,
+     "run_s": 1.1144293999532238,
+     "peak_memory_bytes": 460660736
+    },
+    {
+     "read_s": 0.06359850009903312,
+     "snapshot_s": 0.020304900011979043,
+     "run_s": 1.0842615000437945,
+     "peak_memory_bytes": 460632064
+    },
+    {
+     "read_s": 0.04847999999765307,
+     "snapshot_s": 0.015901700011454523,
+     "run_s": 0.9905889999354258,
+     "peak_memory_bytes": 460922880
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0006016667244197471
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 128,
+   "grid_points": 16641,
+   "dofs": 98688,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04857119999360293,
+   "snapshot_s": 0.014975799946114421,
+   "run_s": 0.5328137999167666,
+   "peak_memory_bytes": 471695360,
+   "stage_peaks_bytes": {
+    "imports": 37957632,
+    "read": 61345792,
+    "snapshot": 61345792,
+    "run": 471392256
+   },
+   "measured": 0.0006341083075287056,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.06735590007156134,
+     "snapshot_s": 0.014975799946114421,
+     "run_s": 0.5328137999167666,
+     "peak_memory_bytes": 471392256
+    },
+    {
+     "read_s": 0.04857119999360293,
+     "snapshot_s": 0.016302500036545098,
+     "run_s": 0.5269087000051513,
+     "peak_memory_bytes": 471695360
+    },
+    {
+     "read_s": 0.04554449999704957,
+     "snapshot_s": 0.0131375000346452,
+     "run_s": 0.5446371999569237,
+     "peak_memory_bytes": 470589440
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0006016667244197471
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 224,
+   "grid_points": 50625,
+   "dofs": 301728,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.11599699989892542,
+   "snapshot_s": 0.02928979997523129,
+   "run_s": 3.6545936999609694,
+   "peak_memory_bytes": 1356828672,
+   "stage_peaks_bytes": {
+    "imports": 38064128,
+    "read": 86048768,
+    "snapshot": 86048768,
+    "run": 1355673600
+   },
+   "measured": 0.0006340726622077468,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.11599699989892542,
+     "snapshot_s": 0.03428000002168119,
+     "run_s": 3.6545936999609694,
+     "peak_memory_bytes": 1355673600
+    },
+    {
+     "read_s": 0.11836070008575916,
+     "snapshot_s": 0.027312400052323937,
+     "run_s": 3.6889130999334157,
+     "peak_memory_bytes": 1356828672
+    },
+    {
+     "read_s": 0.1074253999395296,
+     "snapshot_s": 0.02928979997523129,
+     "run_s": 3.485331100062467,
+     "peak_memory_bytes": 1355563008
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0005454196020608926
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 224,
+   "grid_points": 50625,
+   "dofs": 301728,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.10377060004975647,
+   "snapshot_s": 0.028500800020992756,
+   "run_s": 1.4534712000750005,
+   "peak_memory_bytes": 1381629952,
+   "stage_peaks_bytes": {
+    "imports": 38121472,
+    "read": 86032384,
+    "snapshot": 86032384,
+    "run": 1376854016
+   },
+   "measured": 0.0006340726622077468,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.10993679997045547,
+     "snapshot_s": 0.02975520002655685,
+     "run_s": 1.530877499957569,
+     "peak_memory_bytes": 1376854016
+    },
+    {
+     "read_s": 0.10261289996560663,
+     "snapshot_s": 0.028500800020992756,
+     "run_s": 1.4534712000750005,
+     "peak_memory_bytes": 1379889152
+    },
+    {
+     "read_s": 0.10377060004975647,
+     "snapshot_s": 0.027200300013646483,
+     "run_s": 1.408461399958469,
+     "peak_memory_bytes": 1381629952
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0005454196020608926
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 408,
+   "grid_points": 167281,
+   "dofs": 1000008,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.384170199977234,
+   "snapshot_s": 0.10249550000298768,
+   "run_s": 13.982390100019984,
+   "peak_memory_bytes": 4615786496,
+   "stage_peaks_bytes": {
+    "imports": 38137856,
+    "read": 185008128,
+    "snapshot": 185008128,
+    "run": 4615786496
+   },
+   "measured": 0.0006340605880500587,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.384170199977234,
+     "snapshot_s": 0.10249550000298768,
+     "run_s": 13.982390100019984,
+     "peak_memory_bytes": 4615786496
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0005263669857120679
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 408,
+   "grid_points": 167281,
+   "dofs": 1000008,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.31495000002905726,
+   "snapshot_s": 0.09264839999377728,
+   "run_s": 5.231609899899922,
+   "peak_memory_bytes": 4622848000,
+   "stage_peaks_bytes": {
+    "imports": 38084608,
+    "read": 185425920,
+    "snapshot": 185425920,
+    "run": 4622848000
+   },
+   "measured": 0.0006340605880500587,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.31495000002905726,
+     "snapshot_s": 0.09264839999377728,
+     "run_s": 5.231609899899922,
+     "peak_memory_bytes": 4622848000
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0005263669857120679
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 578,
+   "grid_points": 335241,
+   "dofs": 2006238,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6510281999362633,
+   "snapshot_s": 0.1838497999124229,
+   "run_s": 32.90412760002073,
+   "peak_memory_bytes": 9593262080,
+   "stage_peaks_bytes": {
+    "imports": 38072320,
+    "read": 321798144,
+    "snapshot": 321798144,
+    "run": 9593262080
+   },
+   "measured": 0.0006340579742726439,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.6510281999362633,
+     "snapshot_s": 0.1838497999124229,
+     "run_s": 32.90412760002073,
+     "peak_memory_bytes": 9593262080
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0005222425325128732
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 578,
+   "grid_points": 335241,
+   "dofs": 2006238,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6302048999350518,
+   "snapshot_s": 0.1804800999816507,
+   "run_s": 11.573200999991968,
+   "peak_memory_bytes": 9602584576,
+   "stage_peaks_bytes": {
+    "imports": 38080512,
+    "read": 321921024,
+    "snapshot": 321921024,
+    "run": 9602584576
+   },
+   "measured": 0.0006340579742726439,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.6302048999350518,
+     "snapshot_s": 0.1804800999816507,
+     "run_s": 11.573200999991968,
+     "peak_memory_bytes": 9602584576
+    }
+   ],
+   "reference": 0.0006337270150713713,
+   "relative_error": 0.0005222425325128732
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 40,
+   "grid_points": 1681,
+   "dofs": 9720,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.01790810003876686,
+   "snapshot_s": 0.005584100028499961,
+   "run_s": 0.3246394000016153,
+   "peak_memory_bytes": 116084736,
+   "stage_peaks_bytes": {
+    "imports": 38236160,
+    "read": 50753536,
+    "snapshot": 51052544,
+    "run": 114925568
+   },
+   "measured": 48.34904198013055,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.34904198013055,
+    120.75573477706038,
+    120.75573477711004,
+    192.70749198512846,
+    241.29764924814,
+    241.297649248164,
+    307.45393360736483,
+    312.49573754090085,
+    312.4957375409144,
+    409.7687791786124
+   ],
+   "samples": [
+    {
+     "read_s": 0.01966690004337579,
+     "snapshot_s": 0.005961499991826713,
+     "run_s": 0.33711889991536736,
+     "peak_memory_bytes": 114925568
+    },
+    {
+     "read_s": 0.01790810003876686,
+     "snapshot_s": 0.005509500042535365,
+     "run_s": 0.32242500002030283,
+     "peak_memory_bytes": 116084736
+    },
+    {
+     "read_s": 0.017541600042022765,
+     "snapshot_s": 0.005584100028499961,
+     "run_s": 0.3246394000016153,
+     "peak_memory_bytes": 115617792
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.0011916102378600746
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 40,
+   "grid_points": 1681,
+   "dofs": 9720,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.020682599977590144,
+   "snapshot_s": 0.005413000006228685,
+   "run_s": 0.3113885000348091,
+   "peak_memory_bytes": 124354560,
+   "stage_peaks_bytes": {
+    "imports": 37847040,
+    "read": 50757632,
+    "snapshot": 50872320,
+    "run": 123543552
+   },
+   "measured": 48.34904198013055,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.34904198013055,
+    120.75573477706038,
+    120.75573477711004,
+    192.70749198512846,
+    241.29764924814,
+    241.297649248164,
+    307.45393360736483,
+    312.49573754090085,
+    312.4957375409144,
+    409.7687791786124
+   ],
+   "samples": [
+    {
+     "read_s": 0.020107500022277236,
+     "snapshot_s": 0.005413000006228685,
+     "run_s": 0.3216523000737652,
+     "peak_memory_bytes": 123543552
+    },
+    {
+     "read_s": 0.020682599977590144,
+     "snapshot_s": 0.005615000030957162,
+     "run_s": 0.3113885000348091,
+     "peak_memory_bytes": 124354560
+    },
+    {
+     "read_s": 0.020748900016769767,
+     "snapshot_s": 0.005397400003857911,
+     "run_s": 0.2884190999902785,
+     "peak_memory_bytes": 122941440
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.0011916102378600746
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 70,
+   "grid_points": 5041,
+   "dofs": 29610,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.024632700020447373,
+   "snapshot_s": 0.007633000030182302,
+   "run_s": 0.9031668999232352,
+   "peak_memory_bytes": 250617856,
+   "stage_peaks_bytes": {
+    "imports": 38092800,
+    "read": 53145600,
+    "snapshot": 53145600,
+    "run": 250474496
+   },
+   "measured": 48.37868714262502,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.37868714262502,
+    120.87404402723864,
+    120.87404402730525,
+    193.17902978577396,
+    241.56348087427762,
+    241.5634808742917,
+    293.1102376145786,
+    313.55207235525813,
+    313.5520723552914,
+    410.2428609472604
+   ],
+   "samples": [
+    {
+     "read_s": 0.024632700020447373,
+     "snapshot_s": 0.007815799908712506,
+     "run_s": 0.9031668999232352,
+     "peak_memory_bytes": 250474496
+    },
+    {
+     "read_s": 0.024543700041249394,
+     "snapshot_s": 0.007177900057286024,
+     "run_s": 0.9079781000036746,
+     "peak_memory_bytes": 250617856
+    },
+    {
+     "read_s": 0.024772599921561778,
+     "snapshot_s": 0.007633000030182302,
+     "run_s": 0.9021724000340328,
+     "peak_memory_bytes": 250339328
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.0005791919602133877
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 70,
+   "grid_points": 5041,
+   "dofs": 29610,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.024969800026156008,
+   "snapshot_s": 0.007231399999000132,
+   "run_s": 0.6197227999800816,
+   "peak_memory_bytes": 260755456,
+   "stage_peaks_bytes": {
+    "imports": 38121472,
+    "read": 53313536,
+    "snapshot": 53313536,
+    "run": 259018752
+   },
+   "measured": 48.37868714262502,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.37868714262502,
+    120.87404402723864,
+    120.87404402730525,
+    193.17902978577396,
+    241.56348087427762,
+    241.5634808742917,
+    293.1102376145786,
+    313.55207235525813,
+    313.5520723552914,
+    410.2428609472604
+   ],
+   "samples": [
+    {
+     "read_s": 0.024969800026156008,
+     "snapshot_s": 0.00719909998588264,
+     "run_s": 0.6414374000160024,
+     "peak_memory_bytes": 259018752
+    },
+    {
+     "read_s": 0.025351100019179285,
+     "snapshot_s": 0.007231399999000132,
+     "run_s": 0.6197227999800816,
+     "peak_memory_bytes": 260755456
+    },
+    {
+     "read_s": 0.02339170000050217,
+     "snapshot_s": 0.007961899973452091,
+     "run_s": 0.5984646999277174,
+     "peak_memory_bytes": 259887104
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.0005791919602133877
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 128,
+   "grid_points": 16641,
+   "dofs": 98688,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.045012100017629564,
+   "snapshot_s": 0.011609299923293293,
+   "run_s": 3.3503497999627143,
+   "peak_memory_bytes": 743104512,
+   "stage_peaks_bytes": {
+    "imports": 38215680,
+    "read": 61517824,
+    "snapshot": 61517824,
+    "run": 742526976
+   },
+   "measured": 48.38877429887074,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.38877429887074,
+    120.91436886834622,
+    120.91436886855753,
+    193.3400689339025,
+    241.65429370221418,
+    241.6542937022872,
+    279.63353056815487,
+    313.9138955539108,
+    313.91389555399303,
+    410.4051305473499
+   ],
+   "samples": [
+    {
+     "read_s": 0.04314279998652637,
+     "snapshot_s": 0.011632899986580014,
+     "run_s": 3.5407754000043496,
+     "peak_memory_bytes": 742526976
+    },
+    {
+     "read_s": 0.045012100017629564,
+     "snapshot_s": 0.011609299923293293,
+     "run_s": 3.345876699895598,
+     "peak_memory_bytes": 743104512
+    },
+    {
+     "read_s": 0.045998599962331355,
+     "snapshot_s": 0.010925999958999455,
+     "run_s": 3.3503497999627143,
+     "peak_memory_bytes": 742895616
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.00037080859056548565
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 128,
+   "grid_points": 16641,
+   "dofs": 98688,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04295319993980229,
+   "snapshot_s": 0.011411699932068586,
+   "run_s": 2.166534399962984,
+   "peak_memory_bytes": 757137408,
+   "stage_peaks_bytes": {
+    "imports": 37998592,
+    "read": 61325312,
+    "snapshot": 61325312,
+    "run": 756338688
+   },
+   "measured": 48.38877429887074,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.38877429887074,
+    120.91436886834622,
+    120.91436886855753,
+    193.3400689339025,
+    241.65429370221418,
+    241.6542937022872,
+    279.63353056815487,
+    313.9138955539108,
+    313.91389555399303,
+    410.4051305473499
+   ],
+   "samples": [
+    {
+     "read_s": 0.04364960000384599,
+     "snapshot_s": 0.011411699932068586,
+     "run_s": 2.179154000012204,
+     "peak_memory_bytes": 756338688
+    },
+    {
+     "read_s": 0.04285389999859035,
+     "snapshot_s": 0.014137400081381202,
+     "run_s": 2.166534399962984,
+     "peak_memory_bytes": 755564544
+    },
+    {
+     "read_s": 0.04295319993980229,
+     "snapshot_s": 0.011099700001068413,
+     "run_s": 2.143836500006728,
+     "peak_memory_bytes": 757137408
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.00037080859056548565
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 224,
+   "grid_points": 50625,
+   "dofs": 301728,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.10258179996162653,
+   "snapshot_s": 0.024754300015047193,
+   "run_s": 13.526867700042203,
+   "peak_memory_bytes": 2328326144,
+   "stage_peaks_bytes": {
+    "imports": 38080512,
+    "read": 86142976,
+    "snapshot": 86142976,
+    "run": 2328326144
+   },
+   "measured": 48.39167366175185,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.39167366175185,
+    120.92596374286383,
+    120.92596374336127,
+    193.38639452675395,
+    241.6804166903997,
+    241.68041669089024,
+    268.6335201739621,
+    314.01804631765555,
+    314.0180463180519,
+    410.45181838354824
+   ],
+   "samples": [
+    {
+     "read_s": 0.10258179996162653,
+     "snapshot_s": 0.024754300015047193,
+     "run_s": 13.526867700042203,
+     "peak_memory_bytes": 2328326144
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.00031091271978878066
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 224,
+   "grid_points": 50625,
+   "dofs": 301728,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.10223519999999553,
+   "snapshot_s": 0.02368909993674606,
+   "run_s": 7.888380200020038,
+   "peak_memory_bytes": 2312740864,
+   "stage_peaks_bytes": {
+    "imports": 37978112,
+    "read": 86355968,
+    "snapshot": 86355968,
+    "run": 2312740864
+   },
+   "measured": 48.39167366175185,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.39167366175185,
+    120.92596374286383,
+    120.92596374336127,
+    193.38639452675395,
+    241.6804166903997,
+    241.68041669089024,
+    268.6335201739621,
+    314.01804631765555,
+    314.0180463180519,
+    410.45181838354824
+   ],
+   "samples": [
+    {
+     "read_s": 0.10223519999999553,
+     "snapshot_s": 0.02368909993674606,
+     "run_s": 7.888380200020038,
+     "peak_memory_bytes": 2312740864
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.00031091271978878066
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 408,
+   "grid_points": 167281,
+   "dofs": 1000008,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.39065539999864995,
+   "snapshot_s": 0.08113079995382577,
+   "run_s": 58.29753330000676,
+   "peak_memory_bytes": 8159408128,
+   "stage_peaks_bytes": {
+    "imports": 37937152,
+    "read": 185032704,
+    "snapshot": 185032704,
+    "run": 8159408128
+   },
+   "measured": 48.39265571756326,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.39265571756326,
+    120.9298915613359,
+    120.92989156703136,
+    193.40208939992036,
+    241.6892668220818,
+    241.6892668246767,
+    258.1534166832571,
+    314.0533376000756,
+    314.053337601502,
+    410.4676359165919
+   ],
+   "samples": [
+    {
+     "read_s": 0.39065539999864995,
+     "snapshot_s": 0.08113079995382577,
+     "run_s": 58.29753330000676,
+     "peak_memory_bytes": 8159408128
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.00029062512889821424
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 408,
+   "grid_points": 167281,
+   "dofs": 1000008,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.33851550007238984,
+   "snapshot_s": 0.07751079997979105,
+   "run_s": 32.39886860002298,
+   "peak_memory_bytes": 7975772160,
+   "stage_peaks_bytes": {
+    "imports": 38162432,
+    "read": 184508416,
+    "snapshot": 184508416,
+    "run": 7975772160
+   },
+   "measured": 48.39265571756326,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    48.39265571756326,
+    120.9298915613359,
+    120.92989156703136,
+    193.40208939992036,
+    241.6892668220818,
+    241.6892668246767,
+    258.1534166832571,
+    314.0533376000756,
+    314.053337601502,
+    410.4676359165919
+   ],
+   "samples": [
+    {
+     "read_s": 0.33851550007238984,
+     "snapshot_s": 0.07751079997979105,
+     "run_s": 32.39886860002298,
+     "peak_memory_bytes": 7975772160
+    }
+   ],
+   "reference": 48.406723927944356,
+   "relative_error": -0.00029062512889821424
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 578,
+   "grid_points": 335241,
+   "dofs": 2006238,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factor: panels grown by delays' needs 107 kB, 78.9 kB of the budget of 16.3 GB are left; largest consumers: factor: panels (5.99 GB), factorisation: fronts and update matrices (3.59 GB), symmetric CSC: values (1.32 GB), Lanczos: eigenvectors found (835 MB), Lanczos: basis (674 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 48.406723927944356
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 578,
+   "grid_points": 335241,
+   "dofs": 2006238,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factor: panels grown by delays' needs 29.9 kB, 25.2 kB of the budget of 16.4 GB are left; largest consumers: factor: panels (5.99 GB), factorisation: fronts and update matrices (3.59 GB), symmetric CSC: values (1.32 GB), Lanczos: eigenvectors found (835 MB), Lanczos: basis (674 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 48.406723927944356
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 40,
+   "grid_points": 1681,
+   "dofs": 9720,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.01939300005324185,
+   "snapshot_s": 0.0057249999372288585,
+   "run_s": 0.30877240002155304,
+   "peak_memory_bytes": 112201728,
+   "stage_peaks_bytes": {
+    "imports": 38223872,
+    "read": 50597888,
+    "snapshot": 50597888,
+    "run": 111853568
+   },
+   "measured": 2.528536631978154,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.528536631978154
+   ],
+   "samples": [
+    {
+     "read_s": 0.01889179996214807,
+     "snapshot_s": 0.0057249999372288585,
+     "run_s": 0.28160119999665767,
+     "peak_memory_bytes": 111853568
+    },
+    {
+     "read_s": 0.01939300005324185,
+     "snapshot_s": 0.005660600028932095,
+     "run_s": 0.30877240002155304,
+     "peak_memory_bytes": 111398912
+    },
+    {
+     "read_s": 0.022060699993744493,
+     "snapshot_s": 0.0071573000168427825,
+     "run_s": 0.3186258999630809,
+     "peak_memory_bytes": 112201728
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0008421347033567006
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 40,
+   "grid_points": 1681,
+   "dofs": 9720,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.019209399935789406,
+   "snapshot_s": 0.0059624999994412065,
+   "run_s": 0.20947060000617057,
+   "peak_memory_bytes": 120221696,
+   "stage_peaks_bytes": {
+    "imports": 38031360,
+    "read": 50761728,
+    "snapshot": 50966528,
+    "run": 119103488
+   },
+   "measured": 2.528536631978154,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.528536631978154
+   ],
+   "samples": [
+    {
+     "read_s": 0.019209399935789406,
+     "snapshot_s": 0.006282399990595877,
+     "run_s": 0.19692599994596094,
+     "peak_memory_bytes": 119103488
+    },
+    {
+     "read_s": 0.018217399949207902,
+     "snapshot_s": 0.0057070000329986215,
+     "run_s": 0.20947060000617057,
+     "peak_memory_bytes": 120221696
+    },
+    {
+     "read_s": 0.02004029997624457,
+     "snapshot_s": 0.0059624999994412065,
+     "run_s": 0.21206699998583645,
+     "peak_memory_bytes": 119439360
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0008421347033567006
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 70,
+   "grid_points": 5041,
+   "dofs": 29610,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.02450439997483045,
+   "snapshot_s": 0.007473800098523498,
+   "run_s": 0.9291705000214279,
+   "peak_memory_bytes": 235253760,
+   "stage_peaks_bytes": {
+    "imports": 37908480,
+    "read": 53186560,
+    "snapshot": 53186560,
+    "run": 235098112
+   },
+   "measured": 2.5290103320667066,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.5290103320667066
+   ],
+   "samples": [
+    {
+     "read_s": 0.024173200014047325,
+     "snapshot_s": 0.006957500008866191,
+     "run_s": 0.9304838000098243,
+     "peak_memory_bytes": 235098112
+    },
+    {
+     "read_s": 0.025231000036001205,
+     "snapshot_s": 0.007555800024420023,
+     "run_s": 0.9270714999875054,
+     "peak_memory_bytes": 235155456
+    },
+    {
+     "read_s": 0.02450439997483045,
+     "snapshot_s": 0.007473800098523498,
+     "run_s": 0.9291705000214279,
+     "peak_memory_bytes": 235253760
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0006549508740686383
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 70,
+   "grid_points": 5041,
+   "dofs": 29610,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.024994999985210598,
+   "snapshot_s": 0.007401700015179813,
+   "run_s": 0.48451029998250306,
+   "peak_memory_bytes": 244707328,
+   "stage_peaks_bytes": {
+    "imports": 37986304,
+    "read": 53334016,
+    "snapshot": 53334016,
+    "run": 244551680
+   },
+   "measured": 2.5290103320667066,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.5290103320667066
+   ],
+   "samples": [
+    {
+     "read_s": 0.024994999985210598,
+     "snapshot_s": 0.007288499968126416,
+     "run_s": 0.49379189999308437,
+     "peak_memory_bytes": 244551680
+    },
+    {
+     "read_s": 0.02546879998408258,
+     "snapshot_s": 0.007401700015179813,
+     "run_s": 0.47542139992583543,
+     "peak_memory_bytes": 244707328
+    },
+    {
+     "read_s": 0.024413099978119135,
+     "snapshot_s": 0.00774300005286932,
+     "run_s": 0.48451029998250306,
+     "peak_memory_bytes": 244080640
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0006549508740686383
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 128,
+   "grid_points": 16641,
+   "dofs": 98688,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04428430006373674,
+   "snapshot_s": 0.011334599927067757,
+   "run_s": 3.430543199996464,
+   "peak_memory_bytes": 691064832,
+   "stage_peaks_bytes": {
+    "imports": 38064128,
+    "read": 61333504,
+    "snapshot": 61333504,
+    "run": 691064832
+   },
+   "measured": 2.5291722167139064,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.5291722167139064
+   ],
+   "samples": [
+    {
+     "read_s": 0.04428430006373674,
+     "snapshot_s": 0.011569399968720973,
+     "run_s": 3.4511105999117717,
+     "peak_memory_bytes": 691064832
+    },
+    {
+     "read_s": 0.0432432999368757,
+     "snapshot_s": 0.011001400067470968,
+     "run_s": 3.430543199996464,
+     "peak_memory_bytes": 690741248
+    },
+    {
+     "read_s": 0.04547669994644821,
+     "snapshot_s": 0.011334599927067757,
+     "run_s": 3.3915888000046834,
+     "peak_memory_bytes": 690921472
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0005909817322041766
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 128,
+   "grid_points": 16641,
+   "dofs": 98688,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.044294700026512146,
+   "snapshot_s": 0.011307299952022731,
+   "run_s": 1.6171507999533787,
+   "peak_memory_bytes": 706002944,
+   "stage_peaks_bytes": {
+    "imports": 38096896,
+    "read": 61394944,
+    "snapshot": 61394944,
+    "run": 702955520
+   },
+   "measured": 2.5291722167139064,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.5291722167139064
+   ],
+   "samples": [
+    {
+     "read_s": 0.044294700026512146,
+     "snapshot_s": 0.011506199953146279,
+     "run_s": 1.6171507999533787,
+     "peak_memory_bytes": 702955520
+    },
+    {
+     "read_s": 0.04671339993365109,
+     "snapshot_s": 0.011275899945758283,
+     "run_s": 1.5915825000265613,
+     "peak_memory_bytes": 702730240
+    },
+    {
+     "read_s": 0.04408989998046309,
+     "snapshot_s": 0.011307299952022731,
+     "run_s": 1.6269892998971045,
+     "peak_memory_bytes": 706002944
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0005909817322041766
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 224,
+   "grid_points": 50625,
+   "dofs": 301728,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.11430239991750568,
+   "snapshot_s": 0.022822099970653653,
+   "run_s": 13.705422500032,
+   "peak_memory_bytes": 2171576320,
+   "stage_peaks_bytes": {
+    "imports": 37978112,
+    "read": 86097920,
+    "snapshot": 86097920,
+    "run": 2171576320
+   },
+   "measured": 2.5292187783213826,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.5292187783213826
+   ],
+   "samples": [
+    {
+     "read_s": 0.11430239991750568,
+     "snapshot_s": 0.022822099970653653,
+     "run_s": 13.705422500032,
+     "peak_memory_bytes": 2171576320
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0005725827911952086
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 224,
+   "grid_points": 50625,
+   "dofs": 301728,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.10330980003345758,
+   "snapshot_s": 0.022005200036801398,
+   "run_s": 5.976357099949382,
+   "peak_memory_bytes": 2166153216,
+   "stage_peaks_bytes": {
+    "imports": 38174720,
+    "read": 86110208,
+    "snapshot": 86110208,
+    "run": 2166153216
+   },
+   "measured": 2.5292187783213826,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.5292187783213826
+   ],
+   "samples": [
+    {
+     "read_s": 0.10330980003345758,
+     "snapshot_s": 0.022005200036801398,
+     "run_s": 5.976357099949382,
+     "peak_memory_bytes": 2166153216
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0005725827911952086
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 408,
+   "grid_points": 167281,
+   "dofs": 1000008,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3475933000445366,
+   "snapshot_s": 0.06743589998222888,
+   "run_s": 60.31004400004167,
+   "peak_memory_bytes": 7628644352,
+   "stage_peaks_bytes": {
+    "imports": 38158336,
+    "read": 185196544,
+    "snapshot": 185196544,
+    "run": 7628644352
+   },
+   "measured": 2.5292345546441837,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.5292345546441837
+   ],
+   "samples": [
+    {
+     "read_s": 0.3475933000445366,
+     "snapshot_s": 0.06743589998222888,
+     "run_s": 60.31004400004167,
+     "peak_memory_bytes": 7628644352
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0005663487359662822
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 408,
+   "grid_points": 167281,
+   "dofs": 1000008,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.33051500003784895,
+   "snapshot_s": 0.06821159995160997,
+   "run_s": 24.392859800020233,
+   "peak_memory_bytes": 7455334400,
+   "stage_peaks_bytes": {
+    "imports": 38043648,
+    "read": 185303040,
+    "snapshot": 185303040,
+    "run": 7455334400
+   },
+   "measured": 2.5292345546441837,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.5292345546441837
+   ],
+   "samples": [
+    {
+     "read_s": 0.33051500003784895,
+     "snapshot_s": 0.06821159995160997,
+     "run_s": 24.392859800020233,
+     "peak_memory_bytes": 7455334400
+    }
+   ],
+   "reference": 2.530667795151118,
+   "relative_error": -0.0005663487359662822
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 578,
+   "grid_points": 335241,
+   "dofs": 2006238,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factorisation: front (old contents while they are copied)' needs 23.1 MB, 16.6 MB of the budget of 17.1 GB are left; largest consumers: factor: panels (5.99 GB), factorisation: fronts and update matrices (3.59 GB), factor: panels grown by delays (2.34 GB), symmetric CSC: values (1.32 GB), symmetric CSC: rows (660 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 2.530667795151118
+  },
+  {
+   "model": "plate",
+   "title": "Square plate, ShellQuad4",
+   "size": 578,
+   "grid_points": 335241,
+   "dofs": 2006238,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factor: panels grown by delays' needs 12.2 MB, 1.54 MB of the budget of 17.1 GB are left; largest consumers: factor: panels (5.99 GB), factorisation: fronts and update matrices (3.59 GB), factor: panels grown by delays (2.38 GB), symmetric CSC: values (1.32 GB), symmetric CSC: rows (660 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 2.530667795151118
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 72,
+   "grid_points": 1656,
+   "dofs": 9576,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.01922209991607815,
+   "snapshot_s": 0.006024800008162856,
+   "run_s": 0.08226479997392744,
+   "peak_memory_bytes": 87425024,
+   "stage_peaks_bytes": {
+    "imports": 38166528,
+    "read": 50982912,
+    "snapshot": 51376128,
+    "run": 87425024
+   },
+   "measured": 0.00014271123715833543,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.025429400033317506,
+     "snapshot_s": 0.00665540003683418,
+     "run_s": 0.08962440001778305,
+     "peak_memory_bytes": 87425024
+    },
+    {
+     "read_s": 0.019029199960641563,
+     "snapshot_s": 0.006024800008162856,
+     "run_s": 0.0811779999639839,
+     "peak_memory_bytes": 87117824
+    },
+    {
+     "read_s": 0.01922209991607815,
+     "snapshot_s": 0.0057761999778449535,
+     "run_s": 0.08226479997392744,
+     "peak_memory_bytes": 86609920
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -0.0010213398916520955
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 72,
+   "grid_points": 1656,
+   "dofs": 9576,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.019752099993638694,
+   "snapshot_s": 0.0057137999683618546,
+   "run_s": 0.056784900021739304,
+   "peak_memory_bytes": 94564352,
+   "stage_peaks_bytes": {
+    "imports": 37904384,
+    "read": 50786304,
+    "snapshot": 51281920,
+    "run": 94564352
+   },
+   "measured": 0.00014271123715833543,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.019752099993638694,
+     "snapshot_s": 0.0057137999683618546,
+     "run_s": 0.056784900021739304,
+     "peak_memory_bytes": 94564352
+    },
+    {
+     "read_s": 0.01994720008224249,
+     "snapshot_s": 0.005779300001449883,
+     "run_s": 0.059779000002890825,
+     "peak_memory_bytes": 93708288
+    },
+    {
+     "read_s": 0.018737399950623512,
+     "snapshot_s": 0.005537600023671985,
+     "run_s": 0.054529799963347614,
+     "peak_memory_bytes": 94507008
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -0.0010213398916520955
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 124,
+   "grid_points": 5084,
+   "dofs": 29884,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.02503480005543679,
+   "snapshot_s": 0.007643999997526407,
+   "run_s": 0.28215819993056357,
+   "peak_memory_bytes": 172818432,
+   "stage_peaks_bytes": {
+    "imports": 37937152,
+    "read": 53182464,
+    "snapshot": 53182464,
+    "run": 171773952
+   },
+   "measured": 0.00014280192266599297,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.0240639999974519,
+     "snapshot_s": 0.007643999997526407,
+     "run_s": 0.28050340001937,
+     "peak_memory_bytes": 171773952
+    },
+    {
+     "read_s": 0.02503480005543679,
+     "snapshot_s": 0.008459700038656592,
+     "run_s": 0.2871488999808207,
+     "peak_memory_bytes": 171892736
+    },
+    {
+     "read_s": 0.029906700015999377,
+     "snapshot_s": 0.007477200007997453,
+     "run_s": 0.28215819993056357,
+     "peak_memory_bytes": 172818432
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -0.00038654133804927326
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 124,
+   "grid_points": 5084,
+   "dofs": 29884,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.02567010000348091,
+   "snapshot_s": 0.007498599938116968,
+   "run_s": 0.15510919992811978,
+   "peak_memory_bytes": 182263808,
+   "stage_peaks_bytes": {
+    "imports": 37978112,
+    "read": 53198848,
+    "snapshot": 53198848,
+    "run": 180494336
+   },
+   "measured": 0.00014280192266599297,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.024543500039726496,
+     "snapshot_s": 0.007498599938116968,
+     "run_s": 0.16302059998270124,
+     "peak_memory_bytes": 180494336
+    },
+    {
+     "read_s": 0.029001999995671213,
+     "snapshot_s": 0.009082000004127622,
+     "run_s": 0.1539686000905931,
+     "peak_memory_bytes": 180412416
+    },
+    {
+     "read_s": 0.02567010000348091,
+     "snapshot_s": 0.007442699978128076,
+     "run_s": 0.15510919992811978,
+     "peak_memory_bytes": 182263808
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -0.00038654133804927326
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 228,
+   "grid_points": 16644,
+   "dofs": 98724,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04640859994105995,
+   "snapshot_s": 0.01330790005158633,
+   "run_s": 1.0348944999277592,
+   "peak_memory_bytes": 464809984,
+   "stage_peaks_bytes": {
+    "imports": 38084608,
+    "read": 61353984,
+    "snapshot": 61353984,
+    "run": 464441344
+   },
+   "measured": 0.00014283435934202447,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.05046439997386187,
+     "snapshot_s": 0.01330790005158633,
+     "run_s": 1.0348944999277592,
+     "peak_memory_bytes": 464441344
+    },
+    {
+     "read_s": 0.046036899904720485,
+     "snapshot_s": 0.012942099943757057,
+     "run_s": 1.02235889993608,
+     "peak_memory_bytes": 464809984
+    },
+    {
+     "read_s": 0.04640859994105995,
+     "snapshot_s": 0.013410800020210445,
+     "run_s": 1.0565247000195086,
+     "peak_memory_bytes": 464801792
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -0.00015948460582870805
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 228,
+   "grid_points": 16644,
+   "dofs": 98724,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04785329999867827,
+   "snapshot_s": 0.013112899963743985,
+   "run_s": 0.4852007000008598,
+   "peak_memory_bytes": 483725312,
+   "stage_peaks_bytes": {
+    "imports": 38060032,
+    "read": 61411328,
+    "snapshot": 61411328,
+    "run": 483311616
+   },
+   "measured": 0.00014283435934202447,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.04785329999867827,
+     "snapshot_s": 0.01288570009637624,
+     "run_s": 0.4830140999983996,
+     "peak_memory_bytes": 483311616
+    },
+    {
+     "read_s": 0.048028199933469296,
+     "snapshot_s": 0.013355199946090579,
+     "run_s": 0.5148345000343397,
+     "peak_memory_bytes": 482160640
+    },
+    {
+     "read_s": 0.046626599971204996,
+     "snapshot_s": 0.013112899963743985,
+     "run_s": 0.4852007000008598,
+     "peak_memory_bytes": 483725312
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -0.00015948460582870805
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 396,
+   "grid_points": 50292,
+   "dofs": 299772,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.10774509992916137,
+   "snapshot_s": 0.02715340000577271,
+   "run_s": 3.5596196999540552,
+   "peak_memory_bytes": 1357008896,
+   "stage_peaks_bytes": {
+    "imports": 38129664,
+    "read": 86073344,
+    "snapshot": 86073344,
+    "run": 1356173312
+   },
+   "measured": 0.0001428434711537701,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.10774509992916137,
+     "snapshot_s": 0.02715340000577271,
+     "run_s": 3.6141641000285745,
+     "peak_memory_bytes": 1356173312
+    },
+    {
+     "read_s": 0.10940740001387894,
+     "snapshot_s": 0.026759699918329716,
+     "run_s": 3.531815499998629,
+     "peak_memory_bytes": 1356075008
+    },
+    {
+     "read_s": 0.10305340006016195,
+     "snapshot_s": 0.0288484999909997,
+     "run_s": 3.5596196999540552,
+     "peak_memory_bytes": 1357008896
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -9.570192360930374e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 396,
+   "grid_points": 50292,
+   "dofs": 299772,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.10695889999624342,
+   "snapshot_s": 0.027531700092367828,
+   "run_s": 1.4877381999976933,
+   "peak_memory_bytes": 1397641216,
+   "stage_peaks_bytes": {
+    "imports": 38096896,
+    "read": 86044672,
+    "snapshot": 86044672,
+    "run": 1397641216
+   },
+   "measured": 0.0001428434711537701,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.10695889999624342,
+     "snapshot_s": 0.027531700092367828,
+     "run_s": 1.4556031000101939,
+     "peak_memory_bytes": 1397641216
+    },
+    {
+     "read_s": 0.10309409990441054,
+     "snapshot_s": 0.02797559997998178,
+     "run_s": 1.5079751999583095,
+     "peak_memory_bytes": 1391976448
+    },
+    {
+     "read_s": 0.10754669993184507,
+     "snapshot_s": 0.027426799992099404,
+     "run_s": 1.4877381999976933,
+     "peak_memory_bytes": 1392009216
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -9.570192360930374e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 724,
+   "grid_points": 167244,
+   "dofs": 999844,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3184952000156045,
+   "snapshot_s": 0.09451439999975264,
+   "run_s": 14.869235399994068,
+   "peak_memory_bytes": 4599439360,
+   "stage_peaks_bytes": {
+    "imports": 38117376,
+    "read": 184741888,
+    "snapshot": 184741888,
+    "run": 4599439360
+   },
+   "measured": 0.00014284663747680712,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.3184952000156045,
+     "snapshot_s": 0.09451439999975264,
+     "run_s": 14.869235399994068,
+     "peak_memory_bytes": 4599439360
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -7.35376623501871e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 724,
+   "grid_points": 167244,
+   "dofs": 999844,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3233120000222698,
+   "snapshot_s": 0.11605320009402931,
+   "run_s": 5.386271399911493,
+   "peak_memory_bytes": 4662013952,
+   "stage_peaks_bytes": {
+    "imports": 37986304,
+    "read": 185843712,
+    "snapshot": 185843712,
+    "run": 4662013952
+   },
+   "measured": 0.00014284663747680712,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.3233120000222698,
+     "snapshot_s": 0.11605320009402931,
+     "run_s": 5.386271399911493,
+     "peak_memory_bytes": 4662013952
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -7.35376623501871e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 1024,
+   "grid_points": 334848,
+   "dofs": 2003968,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6930097999284044,
+   "snapshot_s": 0.19177659996785223,
+   "run_s": 35.315161200007424,
+   "peak_memory_bytes": 9468182528,
+   "stage_peaks_bytes": {
+    "imports": 38084608,
+    "read": 322916352,
+    "snapshot": 322916352,
+    "run": 9468182528
+   },
+   "measured": 0.0001428473134639301,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.6930097999284044,
+     "snapshot_s": 0.19177659996785223,
+     "run_s": 35.315161200007424,
+     "peak_memory_bytes": 9468182528
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -6.880575248946474e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 1024,
+   "grid_points": 334848,
+   "dofs": 2003968,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6321000999305397,
+   "snapshot_s": 0.1800178000703454,
+   "run_s": 11.830683100037277,
+   "peak_memory_bytes": 9541566464,
+   "stage_peaks_bytes": {
+    "imports": 38133760,
+    "read": 322428928,
+    "snapshot": 322428928,
+    "run": 9541566464
+   },
+   "measured": 0.0001428473134639301,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.6321000999305397,
+     "snapshot_s": 0.1800178000703454,
+     "run_s": 11.830683100037277,
+     "peak_memory_bytes": 9541566464
+    }
+   ],
+   "reference": 0.00014285714285714287,
+   "relative_error": -6.880575248946474e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 72,
+   "grid_points": 1656,
+   "dofs": 9576,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.018144200090318918,
+   "snapshot_s": 0.005466500064358115,
+   "run_s": 0.2938799998955801,
+   "peak_memory_bytes": 114167808,
+   "stage_peaks_bytes": {
+    "imports": 37912576,
+    "read": 50577408,
+    "snapshot": 50802688,
+    "run": 114167808
+   },
+   "measured": 95.29827495172871,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.29827495172871,
+    95.29827495173824,
+    103.66576849066553,
+    103.66576849103842,
+    112.60940725275414,
+    112.60940725307687,
+    127.80096788859997,
+    127.80096788860394,
+    161.29820357338392,
+    161.29820357351466
+   ],
+   "samples": [
+    {
+     "read_s": 0.018847699975594878,
+     "snapshot_s": 0.005466500064358115,
+     "run_s": 0.33931319997645915,
+     "peak_memory_bytes": 114167808
+    },
+    {
+     "read_s": 0.017904800013639033,
+     "snapshot_s": 0.005362999974749982,
+     "run_s": 0.2938799998955801,
+     "peak_memory_bytes": 114020352
+    },
+    {
+     "read_s": 0.018144200090318918,
+     "snapshot_s": 0.005762499989941716,
+     "run_s": 0.2910726999398321,
+     "peak_memory_bytes": 113848320
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": -0.0004202535120786388
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 72,
+   "grid_points": 1656,
+   "dofs": 9576,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.018966799951158464,
+   "snapshot_s": 0.005653299973346293,
+   "run_s": 0.2600240999599919,
+   "peak_memory_bytes": 125304832,
+   "stage_peaks_bytes": {
+    "imports": 37949440,
+    "read": 50745344,
+    "snapshot": 51015680,
+    "run": 122368000
+   },
+   "measured": 95.29827495172871,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.29827495172871,
+    95.29827495173824,
+    103.66576849066553,
+    103.66576849103842,
+    112.60940725275414,
+    112.60940725307687,
+    127.80096788859997,
+    127.80096788860394,
+    161.29820357338392,
+    161.29820357351466
+   ],
+   "samples": [
+    {
+     "read_s": 0.02169220009818673,
+     "snapshot_s": 0.006546200020238757,
+     "run_s": 0.27885250002145767,
+     "peak_memory_bytes": 122368000
+    },
+    {
+     "read_s": 0.018966799951158464,
+     "snapshot_s": 0.005653299973346293,
+     "run_s": 0.2600240999599919,
+     "peak_memory_bytes": 125304832
+    },
+    {
+     "read_s": 0.018073300016112626,
+     "snapshot_s": 0.00542709999717772,
+     "run_s": 0.2568085000384599,
+     "peak_memory_bytes": 124260352
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": -0.0004202535120786388
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 124,
+   "grid_points": 5084,
+   "dofs": 29884,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.02465100004337728,
+   "snapshot_s": 0.007223500055260956,
+   "run_s": 1.0323712999233976,
+   "peak_memory_bytes": 254164992,
+   "stage_peaks_bytes": {
+    "imports": 38154240,
+    "read": 53325824,
+    "snapshot": 53325824,
+    "run": 253968384
+   },
+   "measured": 95.33070406064516,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.33070406064516,
+    95.33070406065328,
+    103.8041845833727,
+    103.80418458381537,
+    112.54672681822288,
+    112.54672681846279,
+    128.03120395341253,
+    128.03120395341995,
+    161.61260797155458,
+    161.6126079715621
+   ],
+   "samples": [
+    {
+     "read_s": 0.024616199894808233,
+     "snapshot_s": 0.007223500055260956,
+     "run_s": 1.0323712999233976,
+     "peak_memory_bytes": 253968384
+    },
+    {
+     "read_s": 0.026188199990428984,
+     "snapshot_s": 0.008128000074066222,
+     "run_s": 1.0381330999080092,
+     "peak_memory_bytes": 254164992
+    },
+    {
+     "read_s": 0.02465100004337728,
+     "snapshot_s": 0.007215400109998882,
+     "run_s": 1.019682800048031,
+     "peak_memory_bytes": 253841408
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": -8.010590199913903e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 124,
+   "grid_points": 5084,
+   "dofs": 29884,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.025949299917556345,
+   "snapshot_s": 0.007542300038039684,
+   "run_s": 0.6863747999304906,
+   "peak_memory_bytes": 264171520,
+   "stage_peaks_bytes": {
+    "imports": 38096896,
+    "read": 53411840,
+    "snapshot": 53411840,
+    "run": 264171520
+   },
+   "measured": 95.33070406064516,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.33070406064516,
+    95.33070406065328,
+    103.8041845833727,
+    103.80418458381537,
+    112.54672681822288,
+    112.54672681846279,
+    128.03120395341253,
+    128.03120395341995,
+    161.61260797155458,
+    161.6126079715621
+   ],
+   "samples": [
+    {
+     "read_s": 0.027846500044688582,
+     "snapshot_s": 0.008815999957732856,
+     "run_s": 0.7211926999734715,
+     "peak_memory_bytes": 264171520
+    },
+    {
+     "read_s": 0.025949299917556345,
+     "snapshot_s": 0.007542300038039684,
+     "run_s": 0.6863747999304906,
+     "peak_memory_bytes": 262397952
+    },
+    {
+     "read_s": 0.023782299947924912,
+     "snapshot_s": 0.007203900022432208,
+     "run_s": 0.6832355000078678,
+     "peak_memory_bytes": 263634944
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": -8.010590199913903e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 228,
+   "grid_points": 16644,
+   "dofs": 98724,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.046392699936404824,
+   "snapshot_s": 0.011170900077559054,
+   "run_s": 4.447735599940643,
+   "peak_memory_bytes": 734978048,
+   "stage_peaks_bytes": {
+    "imports": 38109184,
+    "read": 61526016,
+    "snapshot": 61526016,
+    "run": 734654464
+   },
+   "measured": 95.34452583923196,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.34452583923196,
+    95.34452583926895,
+    103.85835058637329,
+    103.8583505865352,
+    112.52588046257628,
+    112.52588046262734,
+    128.1228376431734,
+    128.12283764318656,
+    161.74073020551282,
+    161.7407302056147
+   ],
+   "samples": [
+    {
+     "read_s": 0.046392699936404824,
+     "snapshot_s": 0.011170900077559054,
+     "run_s": 4.644633199903183,
+     "peak_memory_bytes": 734654464
+    },
+    {
+     "read_s": 0.04861909989267588,
+     "snapshot_s": 0.01107629993930459,
+     "run_s": 4.447735599940643,
+     "peak_memory_bytes": 734978048
+    },
+    {
+     "read_s": 0.045596899930387735,
+     "snapshot_s": 0.011508199968375266,
+     "run_s": 4.420691299950704,
+     "peak_memory_bytes": 734830592
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": 6.487017383016713e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 228,
+   "grid_points": 16644,
+   "dofs": 98724,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04493600002024323,
+   "snapshot_s": 0.011422800016589463,
+   "run_s": 2.6274433999788016,
+   "peak_memory_bytes": 753565696,
+   "stage_peaks_bytes": {
+    "imports": 38154240,
+    "read": 61407232,
+    "snapshot": 61407232,
+    "run": 749039616
+   },
+   "measured": 95.34452583923196,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.34452583923196,
+    95.34452583926895,
+    103.85835058637329,
+    103.8583505865352,
+    112.52588046257628,
+    112.52588046262734,
+    128.1228376431734,
+    128.12283764318656,
+    161.74073020551282,
+    161.7407302056147
+   ],
+   "samples": [
+    {
+     "read_s": 0.053347500041127205,
+     "snapshot_s": 0.011912600020878017,
+     "run_s": 2.7217970000347123,
+     "peak_memory_bytes": 749039616
+    },
+    {
+     "read_s": 0.04493600002024323,
+     "snapshot_s": 0.011422800016589463,
+     "run_s": 2.5851458000252023,
+     "peak_memory_bytes": 751190016
+    },
+    {
+     "read_s": 0.044882099959068,
+     "snapshot_s": 0.01121569995302707,
+     "run_s": 2.6274433999788016,
+     "peak_memory_bytes": 753565696
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": 6.487017383016713e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 396,
+   "grid_points": 50292,
+   "dofs": 299772,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.1022506000008434,
+   "snapshot_s": 0.022298299940302968,
+   "run_s": 12.954362399992533,
+   "peak_memory_bytes": 2209153024,
+   "stage_peaks_bytes": {
+    "imports": 38035456,
+    "read": 85774336,
+    "snapshot": 85774336,
+    "run": 2209153024
+   },
+   "measured": 95.34784670509183,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.34784670509183,
+    95.34784670518,
+    103.87340114379603,
+    103.87340114399052,
+    112.51949908395258,
+    112.51949908401336,
+    128.14915659926004,
+    128.14915659929667,
+    161.77825235613545,
+    161.77825235616982
+   ],
+   "samples": [
+    {
+     "read_s": 0.1022506000008434,
+     "snapshot_s": 0.022298299940302968,
+     "run_s": 12.954362399992533,
+     "peak_memory_bytes": 2209153024
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": 9.970260134273268e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 396,
+   "grid_points": 50292,
+   "dofs": 299772,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.10441949998494238,
+   "snapshot_s": 0.02217199990991503,
+   "run_s": 6.802854800014757,
+   "peak_memory_bytes": 2201473024,
+   "stage_peaks_bytes": {
+    "imports": 38100992,
+    "read": 86425600,
+    "snapshot": 86425600,
+    "run": 2201473024
+   },
+   "measured": 95.34784670509183,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.34784670509183,
+    95.34784670518,
+    103.87340114379603,
+    103.87340114399052,
+    112.51949908395258,
+    112.51949908401336,
+    128.14915659926004,
+    128.14915659929667,
+    161.77825235613545,
+    161.77825235616982
+   ],
+   "samples": [
+    {
+     "read_s": 0.10441949998494238,
+     "snapshot_s": 0.02217199990991503,
+     "run_s": 6.802854800014757,
+     "peak_memory_bytes": 2201473024
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": 9.970260134273268e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 724,
+   "grid_points": 167244,
+   "dofs": 999844,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3533744999440387,
+   "snapshot_s": 0.08190629992168397,
+   "run_s": 60.6866082000779,
+   "peak_memory_bytes": 7407120384,
+   "stage_peaks_bytes": {
+    "imports": 38060032,
+    "read": 185245696,
+    "snapshot": 185245696,
+    "run": 7407120384
+   },
+   "measured": 95.34766916085759,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.34766916085759,
+    95.34766916162602,
+    103.87678025818104,
+    103.87678025896929,
+    112.5166201456478,
+    112.51662014653316,
+    128.15618968003753,
+    128.15618968069907,
+    161.78904383153272,
+    161.78904383210448
+   ],
+   "samples": [
+    {
+     "read_s": 0.3533744999440387,
+     "snapshot_s": 0.08190629992168397,
+     "run_s": 60.6866082000779,
+     "peak_memory_bytes": 7407120384
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": 9.784034706017408e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 724,
+   "grid_points": 167244,
+   "dofs": 999844,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.33782640006393194,
+   "snapshot_s": 0.07090450008399785,
+   "run_s": 36.61636169999838,
+   "peak_memory_bytes": 7315873792,
+   "stage_peaks_bytes": {
+    "imports": 38092800,
+    "read": 184696832,
+    "snapshot": 184696832,
+    "run": 7315873792
+   },
+   "measured": 95.34766916085759,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.34766916085759,
+    95.34766916162602,
+    103.87678025818104,
+    103.87678025896929,
+    112.5166201456478,
+    112.51662014653316,
+    128.15618968003753,
+    128.15618968069907,
+    161.78904383153272,
+    161.78904383210448
+   ],
+   "samples": [
+    {
+     "read_s": 0.33782640006393194,
+     "snapshot_s": 0.07090450008399785,
+     "run_s": 36.61636169999838,
+     "peak_memory_bytes": 7315873792
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": 9.784034706017408e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 1024,
+   "grid_points": 334848,
+   "dofs": 2003968,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6627778999973089,
+   "snapshot_s": 0.13893520005512983,
+   "run_s": 121.85606179991737,
+   "peak_memory_bytes": 15077568512,
+   "stage_peaks_bytes": {
+    "imports": 38105088,
+    "read": 322097152,
+    "snapshot": 322097152,
+    "run": 15077568512
+   },
+   "measured": 95.34718215630677,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.34718215630677,
+    95.34718215793029,
+    103.87688846994817,
+    103.8768884718139,
+    112.51577537984585,
+    112.51577538155225,
+    128.15700079982923,
+    128.1570008009151,
+    161.79062340373585,
+    161.7906234046731
+   ],
+   "samples": [
+    {
+     "read_s": 0.6627778999973089,
+     "snapshot_s": 0.13893520005512983,
+     "run_s": 121.85606179991737,
+     "peak_memory_bytes": 15077568512
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": 9.273217604977013e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 1024,
+   "grid_points": 334848,
+   "dofs": 2003968,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.656093499972485,
+   "snapshot_s": 0.1542703000595793,
+   "run_s": 64.60053179995157,
+   "peak_memory_bytes": 14857617408,
+   "stage_peaks_bytes": {
+    "imports": 38096896,
+    "read": 321990656,
+    "snapshot": 321990656,
+    "run": 14857617408
+   },
+   "measured": 95.34718215630677,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    95.34718215630677,
+    95.34718215793029,
+    103.87688846994817,
+    103.8768884718139,
+    112.51577537984585,
+    112.51577538155225,
+    128.15700079982923,
+    128.1570008009151,
+    161.79062340373585,
+    161.7906234046731
+   ],
+   "samples": [
+    {
+     "read_s": 0.656093499972485,
+     "snapshot_s": 0.1542703000595793,
+     "run_s": 64.60053179995157,
+     "peak_memory_bytes": 14857617408
+    }
+   ],
+   "reference": 95.33834122446405,
+   "relative_error": 9.273217604977013e-05
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 72,
+   "grid_points": 1656,
+   "dofs": 9576,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.018452699994668365,
+   "snapshot_s": 0.005477399914525449,
+   "run_s": 0.5414690000470728,
+   "peak_memory_bytes": 110153728,
+   "stage_peaks_bytes": {
+    "imports": 38158336,
+    "read": 50708480,
+    "snapshot": 51040256,
+    "run": 110153728
+   },
+   "measured": 4.048134142013877,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    4.048134142013877
+   ],
+   "samples": [
+    {
+     "read_s": 0.01840870000887662,
+     "snapshot_s": 0.005400600028224289,
+     "run_s": 0.604576800018549,
+     "peak_memory_bytes": 110153728
+    },
+    {
+     "read_s": 0.018841400044038892,
+     "snapshot_s": 0.0055868999334052205,
+     "run_s": 0.5379141999874264,
+     "peak_memory_bytes": 109936640
+    },
+    {
+     "read_s": 0.018452699994668365,
+     "snapshot_s": 0.005477399914525449,
+     "run_s": 0.5414690000470728,
+     "peak_memory_bytes": 109985792
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.03094611286678095
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 72,
+   "grid_points": 1656,
+   "dofs": 9576,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.021351900068111718,
+   "snapshot_s": 0.005469699972309172,
+   "run_s": 0.46814899996388704,
+   "peak_memory_bytes": 126386176,
+   "stage_peaks_bytes": {
+    "imports": 38125568,
+    "read": 50847744,
+    "snapshot": 51060736,
+    "run": 124825600
+   },
+   "measured": 4.048134142013877,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    4.048134142013877
+   ],
+   "samples": [
+    {
+     "read_s": 0.02334539999719709,
+     "snapshot_s": 0.005659299902617931,
+     "run_s": 0.46814899996388704,
+     "peak_memory_bytes": 124825600
+    },
+    {
+     "read_s": 0.018934099934995174,
+     "snapshot_s": 0.005469699972309172,
+     "run_s": 0.46587089996319264,
+     "peak_memory_bytes": 126386176
+    },
+    {
+     "read_s": 0.021351900068111718,
+     "snapshot_s": 0.005456500104628503,
+     "run_s": 0.4688905000220984,
+     "peak_memory_bytes": 123011072
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.03094611286678095
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 124,
+   "grid_points": 5084,
+   "dofs": 29884,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.024798200000077486,
+   "snapshot_s": 0.007949299993924797,
+   "run_s": 1.9187053999630734,
+   "peak_memory_bytes": 238608384,
+   "stage_peaks_bytes": {
+    "imports": 38252544,
+    "read": 53325824,
+    "snapshot": 53325824,
+    "run": 238415872
+   },
+   "measured": 3.9735560331407282,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.9735560331407282
+   ],
+   "samples": [
+    {
+     "read_s": 0.02572329994291067,
+     "snapshot_s": 0.00801400002092123,
+     "run_s": 1.9944458999671042,
+     "peak_memory_bytes": 238415872
+    },
+    {
+     "read_s": 0.024798200000077486,
+     "snapshot_s": 0.007949299993924797,
+     "run_s": 1.9187053999630734,
+     "peak_memory_bytes": 238608384
+    },
+    {
+     "read_s": 0.024539100006222725,
+     "snapshot_s": 0.0072064000414684415,
+     "run_s": 1.909811899997294,
+     "peak_memory_bytes": 238604288
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.011953162349217505
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 124,
+   "grid_points": 5084,
+   "dofs": 29884,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.024937200010754168,
+   "snapshot_s": 0.008607800002209842,
+   "run_s": 1.1818339999299496,
+   "peak_memory_bytes": 248352768,
+   "stage_peaks_bytes": {
+    "imports": 37974016,
+    "read": 53305344,
+    "snapshot": 53305344,
+    "run": 247873536
+   },
+   "measured": 3.9735560331407282,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.9735560331407282
+   ],
+   "samples": [
+    {
+     "read_s": 0.024937200010754168,
+     "snapshot_s": 0.008617800078354776,
+     "run_s": 1.1818339999299496,
+     "peak_memory_bytes": 247873536
+    },
+    {
+     "read_s": 0.02562879992183298,
+     "snapshot_s": 0.008607800002209842,
+     "run_s": 1.173569199978374,
+     "peak_memory_bytes": 248352768
+    },
+    {
+     "read_s": 0.024502400076016784,
+     "snapshot_s": 0.007242699968628585,
+     "run_s": 1.2338055999716744,
+     "peak_memory_bytes": 247013376
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.011953162349217505
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 228,
+   "grid_points": 16644,
+   "dofs": 98724,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04580670001450926,
+   "snapshot_s": 0.01168100000359118,
+   "run_s": 7.063179899938405,
+   "peak_memory_bytes": 683229184,
+   "stage_peaks_bytes": {
+    "imports": 38100992,
+    "read": 61485056,
+    "snapshot": 61485056,
+    "run": 682610688
+   },
+   "measured": 3.94755105532109,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.94755105532109
+   ],
+   "samples": [
+    {
+     "read_s": 0.04580670001450926,
+     "snapshot_s": 0.01168100000359118,
+     "run_s": 7.063179899938405,
+     "peak_memory_bytes": 682610688
+    },
+    {
+     "read_s": 0.0447961000027135,
+     "snapshot_s": 0.011907699983567,
+     "run_s": 7.234864500002004,
+     "peak_memory_bytes": 683053056
+    },
+    {
+     "read_s": 0.04610279994085431,
+     "snapshot_s": 0.011331000016070902,
+     "run_s": 6.99929070007056,
+     "peak_memory_bytes": 683229184
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.005330424599473638
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 228,
+   "grid_points": 16644,
+   "dofs": 98724,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04522249998990446,
+   "snapshot_s": 0.011507099959999323,
+   "run_s": 3.5704669000115246,
+   "peak_memory_bytes": 698253312,
+   "stage_peaks_bytes": {
+    "imports": 38141952,
+    "read": 61444096,
+    "snapshot": 61444096,
+    "run": 697765888
+   },
+   "measured": 3.94755105532109,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.94755105532109
+   ],
+   "samples": [
+    {
+     "read_s": 0.04522249998990446,
+     "snapshot_s": 0.011116900015622377,
+     "run_s": 3.5704669000115246,
+     "peak_memory_bytes": 697765888
+    },
+    {
+     "read_s": 0.04837729991413653,
+     "snapshot_s": 0.011878499994054437,
+     "run_s": 3.6305996000301093,
+     "peak_memory_bytes": 698253312
+    },
+    {
+     "read_s": 0.04487750004045665,
+     "snapshot_s": 0.011507099959999323,
+     "run_s": 3.56676710001193,
+     "peak_memory_bytes": 696578048
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.005330424599473638
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 396,
+   "grid_points": 50292,
+   "dofs": 299772,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.10673250001855195,
+   "snapshot_s": 0.022583800018765032,
+   "run_s": 24.046892699901946,
+   "peak_memory_bytes": 2048724992,
+   "stage_peaks_bytes": {
+    "imports": 37892096,
+    "read": 86843392,
+    "snapshot": 86843392,
+    "run": 2048724992
+   },
+   "measured": 3.940206826098806,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.940206826098806
+   ],
+   "samples": [
+    {
+     "read_s": 0.10673250001855195,
+     "snapshot_s": 0.022583800018765032,
+     "run_s": 24.046892699901946,
+     "peak_memory_bytes": 2048724992
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.0034600556089465773
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 396,
+   "grid_points": 50292,
+   "dofs": 299772,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.10559450008440763,
+   "snapshot_s": 0.02361220004968345,
+   "run_s": 10.713344600051641,
+   "peak_memory_bytes": 2043002880,
+   "stage_peaks_bytes": {
+    "imports": 38211584,
+    "read": 86650880,
+    "snapshot": 86650880,
+    "run": 2043002880
+   },
+   "measured": 3.940206826098806,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.940206826098806
+   ],
+   "samples": [
+    {
+     "read_s": 0.10559450008440763,
+     "snapshot_s": 0.02361220004968345,
+     "run_s": 10.713344600051641,
+     "peak_memory_bytes": 2043002880
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.0034600556089465773
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 724,
+   "grid_points": 167244,
+   "dofs": 999844,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3123353000264615,
+   "snapshot_s": 0.06747440004255623,
+   "run_s": 91.83334209991153,
+   "peak_memory_bytes": 6872924160,
+   "stage_peaks_bytes": {
+    "imports": 38150144,
+    "read": 186073088,
+    "snapshot": 186073088,
+    "run": 6872924160
+   },
+   "measured": 3.9375379391509364,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.9375379391509364
+   ],
+   "samples": [
+    {
+     "read_s": 0.3123353000264615,
+     "snapshot_s": 0.06747440004255623,
+     "run_s": 91.83334209991153,
+     "peak_memory_bytes": 6872924160
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.0027803650334710106
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 724,
+   "grid_points": 167244,
+   "dofs": 999844,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3159872000105679,
+   "snapshot_s": 0.08289239997975528,
+   "run_s": 50.29164409998339,
+   "peak_memory_bytes": 6781300736,
+   "stage_peaks_bytes": {
+    "imports": 38146048,
+    "read": 185417728,
+    "snapshot": 185417728,
+    "run": 6781300736
+   },
+   "measured": 3.9375379391509364,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.9375379391509364
+   ],
+   "samples": [
+    {
+     "read_s": 0.3159872000105679,
+     "snapshot_s": 0.08289239997975528,
+     "run_s": 50.29164409998339,
+     "peak_memory_bytes": 6781300736
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.0027803650334710106
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 1024,
+   "grid_points": 334848,
+   "dofs": 2003968,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6861933999462053,
+   "snapshot_s": 0.1389184999279678,
+   "run_s": 211.46852070000023,
+   "peak_memory_bytes": 14006218752,
+   "stage_peaks_bytes": {
+    "imports": 37937152,
+    "read": 322301952,
+    "snapshot": 322301952,
+    "run": 14006218752
+   },
+   "measured": 3.936926452798555,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.936926452798555
+   ],
+   "samples": [
+    {
+     "read_s": 0.6861933999462053,
+     "snapshot_s": 0.1389184999279678,
+     "run_s": 211.46852070000023,
+     "peak_memory_bytes": 14006218752
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.002624636627261312
+  },
+  {
+   "model": "cylinder",
+   "title": "Cylinder, ShellQuad4",
+   "size": 1024,
+   "grid_points": 334848,
+   "dofs": 2003968,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6463240999728441,
+   "snapshot_s": 0.14169900002889335,
+   "run_s": 107.69370050006546,
+   "peak_memory_bytes": 13793132544,
+   "stage_peaks_bytes": {
+    "imports": 38019072,
+    "read": 322793472,
+    "snapshot": 322793472,
+    "run": 13793132544
+   },
+   "measured": 3.936926452798555,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    3.936926452798555
+   ],
+   "samples": [
+    {
+     "read_s": 0.6463240999728441,
+     "snapshot_s": 0.14169900002889335,
+     "run_s": 107.69370050006546,
+     "peak_memory_bytes": 13793132544
+    }
+   ],
+   "reference": 3.9266205008107713,
+   "relative_error": 0.002624636627261312
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 2,
+   "grid_points": 1760,
+   "dofs": 10440,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.028060900047421455,
+   "snapshot_s": 0.007487699971534312,
+   "run_s": 0.13610390003304929,
+   "peak_memory_bytes": 97292288,
+   "stage_peaks_bytes": {
+    "imports": 37883904,
+    "read": 50880512,
+    "snapshot": 51232768,
+    "run": 97292288
+   },
+   "measured": 0.03388418327423616,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.019380399957299232,
+     "snapshot_s": 0.005751800024881959,
+     "run_s": 0.08629030000884086,
+     "peak_memory_bytes": 97292288
+    },
+    {
+     "read_s": 0.028060900047421455,
+     "snapshot_s": 0.007487699971534312,
+     "run_s": 0.14757629996165633,
+     "peak_memory_bytes": 96022528
+    },
+    {
+     "read_s": 0.03288910002447665,
+     "snapshot_s": 0.009438500041142106,
+     "run_s": 0.13610390003304929,
+     "peak_memory_bytes": 96509952
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.002927634470050844
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 2,
+   "grid_points": 1760,
+   "dofs": 10440,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.025562399998307228,
+   "snapshot_s": 0.006167900050058961,
+   "run_s": 0.06402759999036789,
+   "peak_memory_bytes": 106065920,
+   "stage_peaks_bytes": {
+    "imports": 38121472,
+    "read": 51044352,
+    "snapshot": 51044352,
+    "run": 105267200
+   },
+   "measured": 0.03388418327423616,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.018192899995483458,
+     "snapshot_s": 0.005391699960455298,
+     "run_s": 0.06341199995949864,
+     "peak_memory_bytes": 105267200
+    },
+    {
+     "read_s": 0.025562399998307228,
+     "snapshot_s": 0.008086099987849593,
+     "run_s": 0.06627049995586276,
+     "peak_memory_bytes": 106057728
+    },
+    {
+     "read_s": 0.02642879995983094,
+     "snapshot_s": 0.006167900050058961,
+     "run_s": 0.06402759999036789,
+     "peak_memory_bytes": 106065920
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.002927634470050844
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 3,
+   "grid_points": 4070,
+   "dofs": 24240,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.030607399996370077,
+   "snapshot_s": 0.0067393999779596925,
+   "run_s": 0.23251999996136874,
+   "peak_memory_bytes": 165314560,
+   "stage_peaks_bytes": {
+    "imports": 38125568,
+    "read": 52396032,
+    "snapshot": 52781056,
+    "run": 163418112
+   },
+   "measured": 0.033895638283428724,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.023115199990570545,
+     "snapshot_s": 0.0067393999779596925,
+     "run_s": 0.2625413000350818,
+     "peak_memory_bytes": 163418112
+    },
+    {
+     "read_s": 0.031030299956910312,
+     "snapshot_s": 0.006678699981421232,
+     "run_s": 0.23251999996136874,
+     "peak_memory_bytes": 165314560
+    },
+    {
+     "read_s": 0.030607399996370077,
+     "snapshot_s": 0.00684789998922497,
+     "run_s": 0.2224038999993354,
+     "peak_memory_bytes": 164020224
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.002590560590466362
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 3,
+   "grid_points": 4070,
+   "dofs": 24240,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.026687300065532327,
+   "snapshot_s": 0.0074136999901384115,
+   "run_s": 0.11734920006711036,
+   "peak_memory_bytes": 175550464,
+   "stage_peaks_bytes": {
+    "imports": 38100992,
+    "read": 52490240,
+    "snapshot": 52613120,
+    "run": 173944832
+   },
+   "measured": 0.033895638283428724,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.025605899980291724,
+     "snapshot_s": 0.00795320002362132,
+     "run_s": 0.12546230002772063,
+     "peak_memory_bytes": 173944832
+    },
+    {
+     "read_s": 0.026687300065532327,
+     "snapshot_s": 0.0074136999901384115,
+     "run_s": 0.11557339993305504,
+     "peak_memory_bytes": 173088768
+    },
+    {
+     "read_s": 0.027260700007900596,
+     "snapshot_s": 0.006669700029306114,
+     "run_s": 0.11734920006711036,
+     "peak_memory_bytes": 175550464
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.002590560590466362
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 6,
+   "grid_points": 16760,
+   "dofs": 100200,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04592519998550415,
+   "snapshot_s": 0.012185500003397465,
+   "run_s": 1.0543443999486044,
+   "peak_memory_bytes": 571637760,
+   "stage_peaks_bytes": {
+    "imports": 38035456,
+    "read": 61825024,
+    "snapshot": 61825024,
+    "run": 571338752
+   },
+   "measured": 0.03390495991967084,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.047545399982482195,
+     "snapshot_s": 0.012612099992111325,
+     "run_s": 1.0580020999768749,
+     "peak_memory_bytes": 571338752
+    },
+    {
+     "read_s": 0.04560070007573813,
+     "snapshot_s": 0.012185500003397465,
+     "run_s": 1.0174186999211088,
+     "peak_memory_bytes": 571637760
+    },
+    {
+     "read_s": 0.04592519998550415,
+     "snapshot_s": 0.011697600013576448,
+     "run_s": 1.0543443999486044,
+     "peak_memory_bytes": 571510784
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.0023162631159393543
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 6,
+   "grid_points": 16760,
+   "dofs": 100200,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.045306399930268526,
+   "snapshot_s": 0.01231339992955327,
+   "run_s": 0.45058479998260736,
+   "peak_memory_bytes": 591106048,
+   "stage_peaks_bytes": {
+    "imports": 38064128,
+    "read": 61882368,
+    "snapshot": 61882368,
+    "run": 582643712
+   },
+   "measured": 0.03390495991967084,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.04497260006610304,
+     "snapshot_s": 0.011717800050973892,
+     "run_s": 0.42517020006198436,
+     "peak_memory_bytes": 582643712
+    },
+    {
+     "read_s": 0.045306399930268526,
+     "snapshot_s": 0.012643800000660121,
+     "run_s": 0.4583293000468984,
+     "peak_memory_bytes": 590176256
+    },
+    {
+     "read_s": 0.04746380005963147,
+     "snapshot_s": 0.01231339992955327,
+     "run_s": 0.45058479998260736,
+     "peak_memory_bytes": 591106048
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.0023162631159393543
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 10,
+   "grid_points": 47120,
+   "dofs": 282120,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.09684799995739013,
+   "snapshot_s": 0.021126100094988942,
+   "run_s": 3.237626799964346,
+   "peak_memory_bytes": 1589059584,
+   "stage_peaks_bytes": {
+    "imports": 38141952,
+    "read": 83951616,
+    "snapshot": 83951616,
+    "run": 1589059584
+   },
+   "measured": 0.033907620059951814,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.09317910007666796,
+     "snapshot_s": 0.021126100094988942,
+     "run_s": 3.422902600024827,
+     "peak_memory_bytes": 1589059584
+    },
+    {
+     "read_s": 0.09684799995739013,
+     "snapshot_s": 0.021040700026787817,
+     "run_s": 3.237626799964346,
+     "peak_memory_bytes": 1589006336
+    },
+    {
+     "read_s": 0.09858340001665056,
+     "snapshot_s": 0.021704499959014356,
+     "run_s": 3.2207331000827253,
+     "peak_memory_bytes": 1588981760
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.0022379861115586763
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 10,
+   "grid_points": 47120,
+   "dofs": 282120,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.09541419998276979,
+   "snapshot_s": 0.02183620003052056,
+   "run_s": 1.230158699909225,
+   "peak_memory_bytes": 1607737344,
+   "stage_peaks_bytes": {
+    "imports": 38068224,
+    "read": 84164608,
+    "snapshot": 84164608,
+    "run": 1605042176
+   },
+   "measured": 0.033907620059951814,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.09541419998276979,
+     "snapshot_s": 0.022681199945509434,
+     "run_s": 1.2409303999738768,
+     "peak_memory_bytes": 1605042176
+    },
+    {
+     "read_s": 0.09636440000031143,
+     "snapshot_s": 0.02163450000807643,
+     "run_s": 1.2270065000047907,
+     "peak_memory_bytes": 1604689920
+    },
+    {
+     "read_s": 0.09306679992005229,
+     "snapshot_s": 0.02183620003052056,
+     "run_s": 1.230158699909225,
+     "peak_memory_bytes": 1607737344
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.0022379861115586763
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 19,
+   "grid_points": 171590,
+   "dofs": 1028400,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3389430999523029,
+   "snapshot_s": 0.08911379997152835,
+   "run_s": 15.449079600046389,
+   "peak_memory_bytes": 5716103168,
+   "stage_peaks_bytes": {
+    "imports": 38141952,
+    "read": 189513728,
+    "snapshot": 189513728,
+    "run": 5716103168
+   },
+   "measured": 0.03390881238199907,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.3389430999523029,
+     "snapshot_s": 0.08911379997152835,
+     "run_s": 15.449079600046389,
+     "peak_memory_bytes": 5716103168
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.0022029009700781366
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 19,
+   "grid_points": 171590,
+   "dofs": 1028400,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.35863130004145205,
+   "snapshot_s": 0.0750955999828875,
+   "run_s": 5.0400989999761805,
+   "peak_memory_bytes": 5739618304,
+   "stage_peaks_bytes": {
+    "imports": 38166528,
+    "read": 189640704,
+    "snapshot": 189640704,
+    "run": 5739618304
+   },
+   "measured": 0.03390881238199907,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.35863130004145205,
+     "snapshot_s": 0.0750955999828875,
+     "run_s": 5.0400989999761805,
+     "peak_memory_bytes": 5739618304
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.0022029009700781366
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 26,
+   "grid_points": 322160,
+   "dofs": 1931400,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6380084999836981,
+   "snapshot_s": 0.13335370004642755,
+   "run_s": 34.15945979999378,
+   "peak_memory_bytes": 10844901376,
+   "stage_peaks_bytes": {
+    "imports": 37933056,
+    "read": 314105856,
+    "snapshot": 314105856,
+    "run": 10844901376
+   },
+   "measured": 0.03390900999539056,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.6380084999836981,
+     "snapshot_s": 0.13335370004642755,
+     "run_s": 34.15945979999378,
+     "peak_memory_bytes": 10844901376
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.0021970860194824304
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 26,
+   "grid_points": 322160,
+   "dofs": 1931400,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6002553000580519,
+   "snapshot_s": 0.1286124000325799,
+   "run_s": 10.636683600023389,
+   "peak_memory_bytes": 10864619520,
+   "stage_peaks_bytes": {
+    "imports": 38191104,
+    "read": 313909248,
+    "snapshot": 313909248,
+    "run": 10864619520
+   },
+   "measured": 0.03390900999539056,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.6002553000580519,
+     "snapshot_s": 0.1286124000325799,
+     "run_s": 10.636683600023389,
+     "peak_memory_bytes": 10864619520
+    }
+   ],
+   "reference": 0.03398367505273957,
+   "relative_error": -0.0021970860194824304
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 2,
+   "grid_points": 1760,
+   "dofs": 10440,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.018534199916757643,
+   "snapshot_s": 0.005684399977326393,
+   "run_s": 0.3943333000643179,
+   "peak_memory_bytes": 127877120,
+   "stage_peaks_bytes": {
+    "imports": 38027264,
+    "read": 50982912,
+    "snapshot": 51204096,
+    "run": 127877120
+   },
+   "measured": 2.995609655558897,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.995609655558897,
+    9.439703238225498,
+    17.9903079993643,
+    39.38471400694142,
+    45.643973100942915,
+    54.82379005603895,
+    54.84707616991726,
+    55.28082380984649,
+    56.0565451512128,
+    57.18088293253615
+   ],
+   "samples": [
+    {
+     "read_s": 0.018534199916757643,
+     "snapshot_s": 0.005772999953478575,
+     "run_s": 0.3943333000643179,
+     "peak_memory_bytes": 127877120
+    },
+    {
+     "read_s": 0.019879700033925474,
+     "snapshot_s": 0.005378600093536079,
+     "run_s": 0.4007778000086546,
+     "peak_memory_bytes": 127270912
+    },
+    {
+     "read_s": 0.018013999913819134,
+     "snapshot_s": 0.005684399977326393,
+     "run_s": 0.3938871000427753,
+     "peak_memory_bytes": 127733760
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.005740517291160985
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 2,
+   "grid_points": 1760,
+   "dofs": 10440,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.019077799981459975,
+   "snapshot_s": 0.005635900073684752,
+   "run_s": 0.38028770009987056,
+   "peak_memory_bytes": 145227776,
+   "stage_peaks_bytes": {
+    "imports": 38154240,
+    "read": 51281920,
+    "snapshot": 51298304,
+    "run": 145227776
+   },
+   "measured": 2.995609655558897,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.995609655558897,
+    9.439703238225498,
+    17.9903079993643,
+    39.38471400694142,
+    45.643973100942915,
+    54.82379005603895,
+    54.84707616991726,
+    55.28082380984649,
+    56.0565451512128,
+    57.18088293253615
+   ],
+   "samples": [
+    {
+     "read_s": 0.019077799981459975,
+     "snapshot_s": 0.00588489999063313,
+     "run_s": 0.4219206999987364,
+     "peak_memory_bytes": 145227776
+    },
+    {
+     "read_s": 0.019433600013144314,
+     "snapshot_s": 0.005398599896579981,
+     "run_s": 0.3728202000493184,
+     "peak_memory_bytes": 145125376
+    },
+    {
+     "read_s": 0.01885019999463111,
+     "snapshot_s": 0.005635900073684752,
+     "run_s": 0.38028770009987056,
+     "peak_memory_bytes": 145092608
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.005740517291160985
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 3,
+   "grid_points": 4070,
+   "dofs": 24240,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.02339760004542768,
+   "snapshot_s": 0.0065388999646529555,
+   "run_s": 0.9588234999682754,
+   "peak_memory_bytes": 241217536,
+   "stage_peaks_bytes": {
+    "imports": 38072320,
+    "read": 52523008,
+    "snapshot": 52523008,
+    "run": 241164288
+   },
+   "measured": 2.995124273478092,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.995124273478092,
+    9.436776682148423,
+    17.98219372452506,
+    39.59002668248016,
+    45.58171102371869,
+    54.78529833992262,
+    55.620953479270675,
+    56.054308864142186,
+    56.82714185368817,
+    57.94596579624337
+   ],
+   "samples": [
+    {
+     "read_s": 0.02631309989374131,
+     "snapshot_s": 0.0064981000032275915,
+     "run_s": 0.9516666999552399,
+     "peak_memory_bytes": 241164288
+    },
+    {
+     "read_s": 0.022526900051161647,
+     "snapshot_s": 0.0065388999646529555,
+     "run_s": 0.9588234999682754,
+     "peak_memory_bytes": 240574464
+    },
+    {
+     "read_s": 0.02339760004542768,
+     "snapshot_s": 0.007076599984429777,
+     "run_s": 0.9629483000608161,
+     "peak_memory_bytes": 241217536
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.005901618299659073
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 3,
+   "grid_points": 4070,
+   "dofs": 24240,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.023257399909198284,
+   "snapshot_s": 0.007322499994188547,
+   "run_s": 0.6972188000800088,
+   "peak_memory_bytes": 250904576,
+   "stage_peaks_bytes": {
+    "imports": 38334464,
+    "read": 52613120,
+    "snapshot": 53284864,
+    "run": 250904576
+   },
+   "measured": 2.995124273478092,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.995124273478092,
+    9.436776682148423,
+    17.98219372452506,
+    39.59002668248016,
+    45.58171102371869,
+    54.78529833992262,
+    55.620953479270675,
+    56.054308864142186,
+    56.82714185368817,
+    57.94596579624337
+   ],
+   "samples": [
+    {
+     "read_s": 0.023257399909198284,
+     "snapshot_s": 0.007322499994188547,
+     "run_s": 0.6972188000800088,
+     "peak_memory_bytes": 250904576
+    },
+    {
+     "read_s": 0.02720669994596392,
+     "snapshot_s": 0.008706700056791306,
+     "run_s": 0.6983351999660954,
+     "peak_memory_bytes": 250744832
+    },
+    {
+     "read_s": 0.022866900078952312,
+     "snapshot_s": 0.006694099982269108,
+     "run_s": 0.661422900040634,
+     "peak_memory_bytes": 249970688
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.005901618299659073
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 6,
+   "grid_points": 16760,
+   "dofs": 100200,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.0482954999897629,
+   "snapshot_s": 0.011628299951553345,
+   "run_s": 4.648535400046967,
+   "peak_memory_bytes": 905060352,
+   "stage_peaks_bytes": {
+    "imports": 37998592,
+    "read": 61669376,
+    "snapshot": 61669376,
+    "run": 905060352
+   },
+   "measured": 2.994715620854256,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.994715620854256,
+    9.434375531319734,
+    17.978516767327022,
+    39.727584324330714,
+    45.58431638793533,
+    54.76230907588603,
+    56.300358195101126,
+    56.73518634082369,
+    57.51047699540488,
+    58.63271727998059
+   ],
+   "samples": [
+    {
+     "read_s": 0.0482954999897629,
+     "snapshot_s": 0.011901799938641489,
+     "run_s": 4.648535400046967,
+     "peak_memory_bytes": 905060352
+    },
+    {
+     "read_s": 0.0515493000857532,
+     "snapshot_s": 0.01145430002361536,
+     "run_s": 4.611268499982543,
+     "peak_memory_bytes": 904179712
+    },
+    {
+     "read_s": 0.04621279996354133,
+     "snapshot_s": 0.011628299951553345,
+     "run_s": 4.680012500029989,
+     "peak_memory_bytes": 904679424
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.006037252375223234
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 6,
+   "grid_points": 16760,
+   "dofs": 100200,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.045389499980956316,
+   "snapshot_s": 0.01158459996804595,
+   "run_s": 2.7241480000084266,
+   "peak_memory_bytes": 911200256,
+   "stage_peaks_bytes": {
+    "imports": 37859328,
+    "read": 61739008,
+    "snapshot": 61739008,
+    "run": 911200256
+   },
+   "measured": 2.994715620854256,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.994715620854256,
+    9.434375531319734,
+    17.978516767327022,
+    39.727584324330714,
+    45.58431638793533,
+    54.76230907588603,
+    56.300358195101126,
+    56.73518634082369,
+    57.51047699540488,
+    58.63271727998059
+   ],
+   "samples": [
+    {
+     "read_s": 0.04716209997422993,
+     "snapshot_s": 0.011988900019787252,
+     "run_s": 2.7241480000084266,
+     "peak_memory_bytes": 911200256
+    },
+    {
+     "read_s": 0.045389499980956316,
+     "snapshot_s": 0.011566100060008466,
+     "run_s": 2.676043599960394,
+     "peak_memory_bytes": 905949184
+    },
+    {
+     "read_s": 0.04486309993080795,
+     "snapshot_s": 0.01158459996804595,
+     "run_s": 2.7281571000348777,
+     "peak_memory_bytes": 910274560
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.006037252375223234
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 10,
+   "grid_points": 47120,
+   "dofs": 282120,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.09993259992916137,
+   "snapshot_s": 0.026364599936641753,
+   "run_s": 14.3520572000416,
+   "peak_memory_bytes": 2558201856,
+   "stage_peaks_bytes": {
+    "imports": 37826560,
+    "read": 83476480,
+    "snapshot": 83476480,
+    "run": 2558201856
+   },
+   "measured": 2.9945947578468664,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.9945947578468664,
+    9.433695314450887,
+    17.977914795199833,
+    39.760787190370685,
+    45.59347264334484,
+    54.757457671053025,
+    56.4960215719965,
+    56.93194319834474,
+    57.7092455474748,
+    58.834419888784765
+   ],
+   "samples": [
+    {
+     "read_s": 0.09993259992916137,
+     "snapshot_s": 0.026364599936641753,
+     "run_s": 14.3520572000416,
+     "peak_memory_bytes": 2558201856
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.006077367478665607
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 10,
+   "grid_points": 47120,
+   "dofs": 282120,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.09701650007627904,
+   "snapshot_s": 0.024345500045455992,
+   "run_s": 7.289439400075935,
+   "peak_memory_bytes": 2503958528,
+   "stage_peaks_bytes": {
+    "imports": 37949440,
+    "read": 84348928,
+    "snapshot": 84348928,
+    "run": 2503958528
+   },
+   "measured": 2.9945947578468664,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.9945947578468664,
+    9.433695314450887,
+    17.977914795199833,
+    39.760787190370685,
+    45.59347264334484,
+    54.757457671053025,
+    56.4960215719965,
+    56.93194319834474,
+    57.7092455474748,
+    58.834419888784765
+   ],
+   "samples": [
+    {
+     "read_s": 0.09701650007627904,
+     "snapshot_s": 0.024345500045455992,
+     "run_s": 7.289439400075935,
+     "peak_memory_bytes": 2503958528
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.006077367478665607
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 19,
+   "grid_points": 171590,
+   "dofs": 1028400,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3298937000799924,
+   "snapshot_s": 0.07998869998846203,
+   "run_s": 65.25661219994072,
+   "peak_memory_bytes": 9033707520,
+   "stage_peaks_bytes": {
+    "imports": 38023168,
+    "read": 190124032,
+    "snapshot": 190124032,
+    "run": 9033707520
+   },
+   "measured": 2.9945385595500866,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.9945385595500866,
+    9.433394081963511,
+    17.9776928814325,
+    39.77510985120077,
+    45.59870139620908,
+    54.75563321993651,
+    56.58257722747522,
+    57.019143732845194,
+    57.79756869467228,
+    58.924351827251954
+   ],
+   "samples": [
+    {
+     "read_s": 0.3298937000799924,
+     "snapshot_s": 0.07998869998846203,
+     "run_s": 65.25661219994072,
+     "peak_memory_bytes": 9033707520
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.006096020005499914
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 19,
+   "grid_points": 171590,
+   "dofs": 1028400,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.33241179992910475,
+   "snapshot_s": 0.07082020002417266,
+   "run_s": 30.523640800034627,
+   "peak_memory_bytes": 8899584000,
+   "stage_peaks_bytes": {
+    "imports": 38260736,
+    "read": 189976576,
+    "snapshot": 189976576,
+    "run": 8899584000
+   },
+   "measured": 2.9945385595500866,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    2.9945385595500866,
+    9.433394081963511,
+    17.9776928814325,
+    39.77510985120077,
+    45.59870139620908,
+    54.75563321993651,
+    56.58257722747522,
+    57.019143732845194,
+    57.79756869467228,
+    58.924351827251954
+   ],
+   "samples": [
+    {
+     "read_s": 0.33241179992910475,
+     "snapshot_s": 0.07082020002417266,
+     "run_s": 30.523640800034627,
+     "peak_memory_bytes": 8899584000
+    }
+   ],
+   "reference": 3.012905290475502,
+   "relative_error": -0.006096020005499914
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 26,
+   "grid_points": 322160,
+   "dofs": 1931400,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factorisation: fronts and update matrices' needs 5.9 GB, 5.73 GB of the budget of 18.1 GB are left; largest consumers: factor: panels (6.5 GB), symmetric CSC: values (1.28 GB), Lanczos: eigenvectors found (803 MB), Lanczos: basis (649 MB), symmetric CSC: rows (640 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 3.012905290475502
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 26,
+   "grid_points": 322160,
+   "dofs": 1931400,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factorisation: fronts and update matrices' needs 5.9 GB, 4.85 GB of the budget of 17.3 GB are left; largest consumers: factor: panels (6.5 GB), symmetric CSC: values (1.28 GB), Lanczos: eigenvectors found (803 MB), Lanczos: basis (649 MB), symmetric CSC: rows (640 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 3.012905290475502
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 2,
+   "grid_points": 1760,
+   "dofs": 10440,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.019445699988864362,
+   "snapshot_s": 0.007297699921764433,
+   "run_s": 0.48655439994763583,
+   "peak_memory_bytes": 123625472,
+   "stage_peaks_bytes": {
+    "imports": 38047744,
+    "read": 51023872,
+    "snapshot": 51064832,
+    "run": 122712064
+   },
+   "measured": 1.3584490986356477,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3584490986356477
+   ],
+   "samples": [
+    {
+     "read_s": 0.019937400007620454,
+     "snapshot_s": 0.005673400009982288,
+     "run_s": 0.5137467000167817,
+     "peak_memory_bytes": 122712064
+    },
+    {
+     "read_s": 0.019445699988864362,
+     "snapshot_s": 0.0076830999460071325,
+     "run_s": 0.47232209995854646,
+     "peak_memory_bytes": 123625472
+    },
+    {
+     "read_s": 0.019248600001446903,
+     "snapshot_s": 0.007297699921764433,
+     "run_s": 0.48655439994763583,
+     "peak_memory_bytes": 123002880
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 2,
+   "grid_points": 1760,
+   "dofs": 10440,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.019734099972993135,
+   "snapshot_s": 0.005955299944616854,
+   "run_s": 0.37200460000894964,
+   "peak_memory_bytes": 140402688,
+   "stage_peaks_bytes": {
+    "imports": 37998592,
+    "read": 50933760,
+    "snapshot": 51494912,
+    "run": 140402688
+   },
+   "measured": 1.3584490986356477,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3584490986356477
+   ],
+   "samples": [
+    {
+     "read_s": 0.01987259997986257,
+     "snapshot_s": 0.006960500031709671,
+     "run_s": 0.38014749996364117,
+     "peak_memory_bytes": 140402688
+    },
+    {
+     "read_s": 0.01916429994162172,
+     "snapshot_s": 0.005955299944616854,
+     "run_s": 0.3643528000684455,
+     "peak_memory_bytes": 139227136
+    },
+    {
+     "read_s": 0.019734099972993135,
+     "snapshot_s": 0.005690200021490455,
+     "run_s": 0.37200460000894964,
+     "peak_memory_bytes": 139812864
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 3,
+   "grid_points": 4070,
+   "dofs": 24240,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.023007499985396862,
+   "snapshot_s": 0.007286699954420328,
+   "run_s": 1.1800716000143439,
+   "peak_memory_bytes": 228773888,
+   "stage_peaks_bytes": {
+    "imports": 38072320,
+    "read": 52596736,
+    "snapshot": 52596736,
+    "run": 228622336
+   },
+   "measured": 1.3178661224358816,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3178661224358816
+   ],
+   "samples": [
+    {
+     "read_s": 0.026045299950055778,
+     "snapshot_s": 0.00736370007507503,
+     "run_s": 1.197999400086701,
+     "peak_memory_bytes": 228622336
+    },
+    {
+     "read_s": 0.023007499985396862,
+     "snapshot_s": 0.007286699954420328,
+     "run_s": 1.1800716000143439,
+     "peak_memory_bytes": 228773888
+    },
+    {
+     "read_s": 0.02261089999228716,
+     "snapshot_s": 0.006717600044794381,
+     "run_s": 1.1480032000690699,
+     "peak_memory_bytes": 228683776
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 3,
+   "grid_points": 4070,
+   "dofs": 24240,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.02431599993724376,
+   "snapshot_s": 0.006845199968665838,
+   "run_s": 0.6976228000130504,
+   "peak_memory_bytes": 237469696,
+   "stage_peaks_bytes": {
+    "imports": 37883904,
+    "read": 52371456,
+    "snapshot": 52371456,
+    "run": 235843584
+   },
+   "measured": 1.3178661224358816,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3178661224358816
+   ],
+   "samples": [
+    {
+     "read_s": 0.02431599993724376,
+     "snapshot_s": 0.006845199968665838,
+     "run_s": 0.6976228000130504,
+     "peak_memory_bytes": 235843584
+    },
+    {
+     "read_s": 0.032591499970294535,
+     "snapshot_s": 0.0074977000476792455,
+     "run_s": 0.7001922000199556,
+     "peak_memory_bytes": 237469696
+    },
+    {
+     "read_s": 0.022599900024943054,
+     "snapshot_s": 0.0067205000668764114,
+     "run_s": 0.6559926000190899,
+     "peak_memory_bytes": 237326336
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 6,
+   "grid_points": 16760,
+   "dofs": 100200,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04572400008328259,
+   "snapshot_s": 0.011796400067396462,
+   "run_s": 5.600474199978635,
+   "peak_memory_bytes": 851210240,
+   "stage_peaks_bytes": {
+    "imports": 38014976,
+    "read": 61693952,
+    "snapshot": 61693952,
+    "run": 850841600
+   },
+   "measured": 1.3049995566692578,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3049995566692578
+   ],
+   "samples": [
+    {
+     "read_s": 0.044723200029693544,
+     "snapshot_s": 0.011984199983999133,
+     "run_s": 5.600474199978635,
+     "peak_memory_bytes": 850841600
+    },
+    {
+     "read_s": 0.04836819996125996,
+     "snapshot_s": 0.011796400067396462,
+     "run_s": 5.441526199923828,
+     "peak_memory_bytes": 851062784
+    },
+    {
+     "read_s": 0.04572400008328259,
+     "snapshot_s": 0.011648999992758036,
+     "run_s": 5.708359099924564,
+     "peak_memory_bytes": 851210240
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 6,
+   "grid_points": 16760,
+   "dofs": 100200,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.04713860002811998,
+   "snapshot_s": 0.012319099972955883,
+   "run_s": 2.716366000007838,
+   "peak_memory_bytes": 854900736,
+   "stage_peaks_bytes": {
+    "imports": 37896192,
+    "read": 61612032,
+    "snapshot": 61612032,
+    "run": 854900736
+   },
+   "measured": 1.3049995566692578,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3049995566692578
+   ],
+   "samples": [
+    {
+     "read_s": 0.05636739998590201,
+     "snapshot_s": 0.012319099972955883,
+     "run_s": 2.716366000007838,
+     "peak_memory_bytes": 854900736
+    },
+    {
+     "read_s": 0.04559950006660074,
+     "snapshot_s": 0.01199370005633682,
+     "run_s": 2.6531557000707835,
+     "peak_memory_bytes": 853438464
+    },
+    {
+     "read_s": 0.04713860002811998,
+     "snapshot_s": 0.014207099913619459,
+     "run_s": 2.7429187999805436,
+     "peak_memory_bytes": 853102592
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 10,
+   "grid_points": 47120,
+   "dofs": 282120,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.0968406000174582,
+   "snapshot_s": 0.02345380000770092,
+   "run_s": 17.37381749995984,
+   "peak_memory_bytes": 2408607744,
+   "stage_peaks_bytes": {
+    "imports": 38096896,
+    "read": 84062208,
+    "snapshot": 84062208,
+    "run": 2408607744
+   },
+   "measured": 1.3049883670607312,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3049883670607312
+   ],
+   "samples": [
+    {
+     "read_s": 0.0968406000174582,
+     "snapshot_s": 0.02345380000770092,
+     "run_s": 17.37381749995984,
+     "peak_memory_bytes": 2408607744
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 10,
+   "grid_points": 47120,
+   "dofs": 282120,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.09571230004075915,
+   "snapshot_s": 0.02123279997613281,
+   "run_s": 7.403889699955471,
+   "peak_memory_bytes": 2350718976,
+   "stage_peaks_bytes": {
+    "imports": 37974016,
+    "read": 84078592,
+    "snapshot": 84078592,
+    "run": 2350718976
+   },
+   "measured": 1.3049883670607312,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3049883670607312
+   ],
+   "samples": [
+    {
+     "read_s": 0.09571230004075915,
+     "snapshot_s": 0.02123279997613281,
+     "run_s": 7.403889699955471,
+     "peak_memory_bytes": 2350718976
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 19,
+   "grid_points": 171590,
+   "dofs": 1028400,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3340745000168681,
+   "snapshot_s": 0.0791686000302434,
+   "run_s": 98.73668820003513,
+   "peak_memory_bytes": 8488415232,
+   "stage_peaks_bytes": {
+    "imports": 38031360,
+    "read": 190349312,
+    "snapshot": 190349312,
+    "run": 8488415232
+   },
+   "measured": 1.305357930173329,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.305357930173329
+   ],
+   "samples": [
+    {
+     "read_s": 0.3340745000168681,
+     "snapshot_s": 0.0791686000302434,
+     "run_s": 98.73668820003513,
+     "peak_memory_bytes": 8488415232
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 19,
+   "grid_points": 171590,
+   "dofs": 1028400,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3215580000542104,
+   "snapshot_s": 0.0724916000617668,
+   "run_s": 34.00702739995904,
+   "peak_memory_bytes": 8354877440,
+   "stage_peaks_bytes": {
+    "imports": 38223872,
+    "read": 190541824,
+    "snapshot": 190541824,
+    "run": 8354877440
+   },
+   "measured": 1.305357930173329,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.305357930173329
+   ],
+   "samples": [
+    {
+     "read_s": 0.3215580000542104,
+     "snapshot_s": 0.0724916000617668,
+     "run_s": 34.00702739995904,
+     "peak_memory_bytes": 8354877440
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 26,
+   "grid_points": 322160,
+   "dofs": 1931400,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6570127999875695,
+   "snapshot_s": 0.1431196000194177,
+   "run_s": 164.23736439994536,
+   "peak_memory_bytes": 15852285952,
+   "stage_peaks_bytes": {
+    "imports": 38084608,
+    "read": 314384384,
+    "snapshot": 314384384,
+    "run": 15852285952
+   },
+   "measured": 1.3054302270855207,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3054302270855207
+   ],
+   "samples": [
+    {
+     "read_s": 0.6570127999875695,
+     "snapshot_s": 0.1431196000194177,
+     "run_s": 164.23736439994536,
+     "peak_memory_bytes": 15852285952
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "wingbox",
+   "title": "Wing box, ShellQuad4",
+   "size": 26,
+   "grid_points": 322160,
+   "dofs": 1931400,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.6005903999321163,
+   "snapshot_s": 0.12605239998083562,
+   "run_s": 73.36457799992058,
+   "peak_memory_bytes": 15822999552,
+   "stage_peaks_bytes": {
+    "imports": 38121472,
+    "read": 313995264,
+    "snapshot": 313995264,
+    "run": 15822999552
+   },
+   "measured": 1.3054302270855207,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    1.3054302270855207
+   ],
+   "samples": [
+    {
+     "read_s": 0.6005903999321163,
+     "snapshot_s": 0.12605239998083562,
+     "run_s": 73.36457799992058,
+     "peak_memory_bytes": 15822999552
+    }
+   ],
+   "reference": null
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 7,
+   "grid_points": 3648,
+   "dofs": 10752,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.022608899977058172,
+   "snapshot_s": 0.006543700001202524,
+   "run_s": 0.1896736000198871,
+   "peak_memory_bytes": 146202624,
+   "stage_peaks_bytes": {
+    "imports": 38178816,
+    "read": 52944896,
+    "snapshot": 52944896,
+    "run": 145842176
+   },
+   "measured": 0.009771096754096407,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.022608899977058172,
+     "snapshot_s": 0.007813800009898841,
+     "run_s": 0.18739019997883588,
+     "peak_memory_bytes": 145842176
+    },
+    {
+     "read_s": 0.024157000007107854,
+     "snapshot_s": 0.006543700001202524,
+     "run_s": 0.19175580004230142,
+     "peak_memory_bytes": 146202624
+    },
+    {
+     "read_s": 0.02203160000499338,
+     "snapshot_s": 0.006347500020638108,
+     "run_s": 0.1896736000198871,
+     "peak_memory_bytes": 145891328
+    }
+   ],
+   "reference": 0.009868952380952381,
+   "relative_error": -0.009915502991466596
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 7,
+   "grid_points": 3648,
+   "dofs": 10752,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.022615800029598176,
+   "snapshot_s": 0.006574900005944073,
+   "run_s": 0.08535639999900013,
+   "peak_memory_bytes": 156172288,
+   "stage_peaks_bytes": {
+    "imports": 38113280,
+    "read": 52805632,
+    "snapshot": 52805632,
+    "run": 154062848
+   },
+   "measured": 0.009771096754096407,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.022029000101611018,
+     "snapshot_s": 0.006354099954478443,
+     "run_s": 0.08535639999900013,
+     "peak_memory_bytes": 154062848
+    },
+    {
+     "read_s": 0.022615800029598176,
+     "snapshot_s": 0.006574900005944073,
+     "run_s": 0.08565919997636229,
+     "peak_memory_bytes": 156172288
+    },
+    {
+     "read_s": 0.02293939993251115,
+     "snapshot_s": 0.006632199976593256,
+     "run_s": 0.08428509999066591,
+     "peak_memory_bytes": 154931200
+    }
+   ],
+   "reference": 0.009868952380952381,
+   "relative_error": -0.009915502991466596
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 10,
+   "grid_points": 9801,
+   "dofs": 29040,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.038142999983392656,
+   "snapshot_s": 0.01057399995625019,
+   "run_s": 0.6304272999987006,
+   "peak_memory_bytes": 370122752,
+   "stage_peaks_bytes": {
+    "imports": 38088704,
+    "read": 58232832,
+    "snapshot": 58232832,
+    "run": 370122752
+   },
+   "measured": 0.009777800018214707,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.038142999983392656,
+     "snapshot_s": 0.01057399995625019,
+     "run_s": 0.6133666000096127,
+     "peak_memory_bytes": 370122752
+    },
+    {
+     "read_s": 0.03392549999989569,
+     "snapshot_s": 0.009931599954143167,
+     "run_s": 0.6304272999987006,
+     "peak_memory_bytes": 369729536
+    },
+    {
+     "read_s": 0.04033870005514473,
+     "snapshot_s": 0.011582300066947937,
+     "run_s": 0.6513766000280157,
+     "peak_memory_bytes": 369602560
+    }
+   ],
+   "reference": 0.009868952380952381,
+   "relative_error": -0.009236275464618027
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 10,
+   "grid_points": 9801,
+   "dofs": 29040,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.03566519997548312,
+   "snapshot_s": 0.010127500048838556,
+   "run_s": 0.24405470001511276,
+   "peak_memory_bytes": 383025152,
+   "stage_peaks_bytes": {
+    "imports": 38141952,
+    "read": 58220544,
+    "snapshot": 58220544,
+    "run": 383025152
+   },
+   "measured": 0.009777800018214707,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.0376226999796927,
+     "snapshot_s": 0.011112499982118607,
+     "run_s": 0.2644049000227824,
+     "peak_memory_bytes": 383025152
+    },
+    {
+     "read_s": 0.03566519997548312,
+     "snapshot_s": 0.009889199980534613,
+     "run_s": 0.24405470001511276,
+     "peak_memory_bytes": 382676992
+    },
+    {
+     "read_s": 0.033889199956320226,
+     "snapshot_s": 0.010127500048838556,
+     "run_s": 0.24167069990653545,
+     "peak_memory_bytes": 382910464
+    }
+   ],
+   "reference": 0.009868952380952381,
+   "relative_error": -0.009236275464618027
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 15,
+   "grid_points": 30976,
+   "dofs": 92160,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.08209309994708747,
+   "snapshot_s": 0.018875799956731498,
+   "run_s": 2.9748212000122294,
+   "peak_memory_bytes": 1345556480,
+   "stage_peaks_bytes": {
+    "imports": 37965824,
+    "read": 78442496,
+    "snapshot": 78442496,
+    "run": 1345236992
+   },
+   "measured": 0.009782393872196631,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.08059619995765388,
+     "snapshot_s": 0.018875799956731498,
+     "run_s": 2.9374363999813795,
+     "peak_memory_bytes": 1345236992
+    },
+    {
+     "read_s": 0.08209309994708747,
+     "snapshot_s": 0.01828169997315854,
+     "run_s": 3.0142191000049934,
+     "peak_memory_bytes": 1345396736
+    },
+    {
+     "read_s": 0.08375500002875924,
+     "snapshot_s": 0.021274699945934117,
+     "run_s": 2.9748212000122294,
+     "peak_memory_bytes": 1345556480
+    }
+   ],
+   "reference": 0.009868952380952381,
+   "relative_error": -0.008770789990112049
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 15,
+   "grid_points": 30976,
+   "dofs": 92160,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.08239990007132292,
+   "snapshot_s": 0.01901050005108118,
+   "run_s": 0.9945199999492615,
+   "peak_memory_bytes": 1390411776,
+   "stage_peaks_bytes": {
+    "imports": 38043648,
+    "read": 78704640,
+    "snapshot": 78704640,
+    "run": 1390411776
+   },
+   "measured": 0.009782393872196631,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.08239990007132292,
+     "snapshot_s": 0.01901050005108118,
+     "run_s": 0.9566503999521956,
+     "peak_memory_bytes": 1390411776
+    },
+    {
+     "read_s": 0.08634159993380308,
+     "snapshot_s": 0.019233500002883375,
+     "run_s": 1.0145226999884471,
+     "peak_memory_bytes": 1382432768
+    },
+    {
+     "read_s": 0.07858640002086759,
+     "snapshot_s": 0.01896300003863871,
+     "run_s": 0.9945199999492615,
+     "peak_memory_bytes": 1385365504
+    }
+   ],
+   "reference": 0.009868952380952381,
+   "relative_error": -0.008770789990112049
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 23,
+   "grid_points": 106560,
+   "dofs": 317952,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.2553402000339702,
+   "snapshot_s": 0.0531617000233382,
+   "run_s": 20.614599299966358,
+   "peak_memory_bytes": 5986893824,
+   "stage_peaks_bytes": {
+    "imports": 38064128,
+    "read": 163336192,
+    "snapshot": 163336192,
+    "run": 5986893824
+   },
+   "measured": 0.009785161842657673,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.2553402000339702,
+     "snapshot_s": 0.0531617000233382,
+     "run_s": 20.614599299966358,
+     "peak_memory_bytes": 5986893824
+    }
+   ],
+   "reference": 0.009868952380952381,
+   "relative_error": -0.008490317417725879
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 23,
+   "grid_points": 106560,
+   "dofs": 317952,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.24379059998318553,
+   "snapshot_s": 0.054946199990808964,
+   "run_s": 5.280347099993378,
+   "peak_memory_bytes": 6047789056,
+   "stage_peaks_bytes": {
+    "imports": 37949440,
+    "read": 163618816,
+    "snapshot": 163618816,
+    "run": 6047789056
+   },
+   "measured": 0.009785161842657673,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "samples": [
+    {
+     "read_s": 0.24379059998318553,
+     "snapshot_s": 0.054946199990808964,
+     "run_s": 5.280347099993378,
+     "peak_memory_bytes": 6047789056
+    }
+   ],
+   "reference": 0.009868952380952381,
+   "relative_error": -0.008490317417725879
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 34,
+   "grid_points": 334425,
+   "dofs": 999600,
+   "analysis": "statics",
+   "threads": 1,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factorisation: fronts and update matrices' needs 13.1 GB, 952 MB of the budget of 18.4 GB are left; largest consumers: factor: panels (14.2 GB), stiffness Kgg (1.3 GB), stiffness Knn (1.3 GB), symmetric CSC: values (315 MB), symmetric CSC: rows (157 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 0.009868952380952381
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 34,
+   "grid_points": 334425,
+   "dofs": 999600,
+   "analysis": "statics",
+   "threads": 12,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factorisation: fronts and update matrices' needs 13.1 GB, 1.01 GB of the budget of 18.5 GB are left; largest consumers: factor: panels (14.2 GB), stiffness Kgg (1.3 GB), stiffness Knn (1.3 GB), symmetric CSC: values (315 MB), symmetric CSC: rows (157 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 0.009868952380952381
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 7,
+   "grid_points": 3648,
+   "dofs": 10752,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.02262689999770373,
+   "snapshot_s": 0.006669900030829012,
+   "run_s": 0.4776100000599399,
+   "peak_memory_bytes": 208666624,
+   "stage_peaks_bytes": {
+    "imports": 38191104,
+    "read": 52715520,
+    "snapshot": 52715520,
+    "run": 207314944
+   },
+   "measured": 13.021220156341473,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    13.021220156341473,
+    13.02122015646774,
+    76.34468558464481,
+    76.34468558466844,
+    91.51446158113482,
+    162.7713294945589,
+    195.9121571678763,
+    195.91215716788702,
+    274.45456085211316,
+    346.7949866311566
+   ],
+   "samples": [
+    {
+     "read_s": 0.02212350000627339,
+     "snapshot_s": 0.006859500077553093,
+     "run_s": 0.4776100000599399,
+     "peak_memory_bytes": 207314944
+    },
+    {
+     "read_s": 0.02262689999770373,
+     "snapshot_s": 0.006341200089082122,
+     "run_s": 0.47803220001515,
+     "peak_memory_bytes": 208666624
+    },
+    {
+     "read_s": 0.022703800001181662,
+     "snapshot_s": 0.006669900030829012,
+     "run_s": 0.43518909998238087,
+     "peak_memory_bytes": 208441344
+    }
+   ],
+   "reference": 12.939283004596238,
+   "relative_error": 0.006332433699466122
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 7,
+   "grid_points": 3648,
+   "dofs": 10752,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.023965899948962033,
+   "snapshot_s": 0.006683100014925003,
+   "run_s": 0.22746369999367744,
+   "peak_memory_bytes": 217092096,
+   "stage_peaks_bytes": {
+    "imports": 37851136,
+    "read": 52699136,
+    "snapshot": 52699136,
+    "run": 213872640
+   },
+   "measured": 13.021220156341473,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    13.021220156341473,
+    13.02122015646774,
+    76.34468558464481,
+    76.34468558466844,
+    91.51446158113482,
+    162.7713294945589,
+    195.9121571678763,
+    195.91215716788702,
+    274.45456085211316,
+    346.7949866311566
+   ],
+   "samples": [
+    {
+     "read_s": 0.0317205999745056,
+     "snapshot_s": 0.007020900025963783,
+     "run_s": 0.25789650005754083,
+     "peak_memory_bytes": 213872640
+    },
+    {
+     "read_s": 0.023965899948962033,
+     "snapshot_s": 0.006683100014925003,
+     "run_s": 0.22746369999367744,
+     "peak_memory_bytes": 217092096
+    },
+    {
+     "read_s": 0.022768700029700994,
+     "snapshot_s": 0.0063720999751240015,
+     "run_s": 0.2217649999074638,
+     "peak_memory_bytes": 216055808
+    }
+   ],
+   "reference": 12.939283004596238,
+   "relative_error": 0.006332433699466122
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 10,
+   "grid_points": 9801,
+   "dofs": 29040,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.03750010009389371,
+   "snapshot_s": 0.010305300005711615,
+   "run_s": 1.5193812999641523,
+   "peak_memory_bytes": 568168448,
+   "stage_peaks_bytes": {
+    "imports": 37937152,
+    "read": 58167296,
+    "snapshot": 58167296,
+    "run": 568168448
+   },
+   "measured": 13.016923622555119,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    13.016923622555119,
+    13.016923622812307,
+    76.32020038528364,
+    76.32020038531675,
+    92.03653079934942,
+    162.74659257814528,
+    195.84185954442884,
+    195.84185954443998,
+    276.0586623541499,
+    346.67463875574435
+   ],
+   "samples": [
+    {
+     "read_s": 0.03750010009389371,
+     "snapshot_s": 0.010305300005711615,
+     "run_s": 1.5201187999919057,
+     "peak_memory_bytes": 568168448
+    },
+    {
+     "read_s": 0.04046450008172542,
+     "snapshot_s": 0.009990100050345063,
+     "run_s": 1.5193812999641523,
+     "peak_memory_bytes": 568008704
+    },
+    {
+     "read_s": 0.0333795000333339,
+     "snapshot_s": 0.010892399935983121,
+     "run_s": 1.487582299974747,
+     "peak_memory_bytes": 567742464
+    }
+   ],
+   "reference": 12.939283004596238,
+   "relative_error": 0.006000380232142888
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 10,
+   "grid_points": 9801,
+   "dofs": 29040,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.03628200001548976,
+   "snapshot_s": 0.01082460000179708,
+   "run_s": 0.6197514999657869,
+   "peak_memory_bytes": 576503808,
+   "stage_peaks_bytes": {
+    "imports": 38072320,
+    "read": 58257408,
+    "snapshot": 58257408,
+    "run": 572964864
+   },
+   "measured": 13.016923622555119,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    13.016923622555119,
+    13.016923622812307,
+    76.32020038528364,
+    76.32020038531675,
+    92.03653079934942,
+    162.74659257814528,
+    195.84185954442884,
+    195.84185954443998,
+    276.0586623541499,
+    346.67463875574435
+   ],
+   "samples": [
+    {
+     "read_s": 0.03669930004980415,
+     "snapshot_s": 0.01082460000179708,
+     "run_s": 0.6431903999764472,
+     "peak_memory_bytes": 572964864
+    },
+    {
+     "read_s": 0.03628200001548976,
+     "snapshot_s": 0.01078160002361983,
+     "run_s": 0.6197514999657869,
+     "peak_memory_bytes": 576503808
+    },
+    {
+     "read_s": 0.034541299915872514,
+     "snapshot_s": 0.01158030005171895,
+     "run_s": 0.6160587000194937,
+     "peak_memory_bytes": 573677568
+    }
+   ],
+   "reference": 12.939283004596238,
+   "relative_error": 0.006000380232142888
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 15,
+   "grid_points": 30976,
+   "dofs": 92160,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.07960990001447499,
+   "snapshot_s": 0.018756600096821785,
+   "run_s": 7.582181100035086,
+   "peak_memory_bytes": 2014482432,
+   "stage_peaks_bytes": {
+    "imports": 38027264,
+    "read": 79020032,
+    "snapshot": 79020032,
+    "run": 2013700096
+   },
+   "measured": 13.013726804700308,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    13.013726804700308,
+    13.013726804827293,
+    76.30149104147188,
+    76.30149104149622,
+    92.3171482719078,
+    162.72884265333954,
+    195.789887926157,
+    195.78988792616497,
+    276.9207965961518,
+    346.585976177896
+   ],
+   "samples": [
+    {
+     "read_s": 0.07960990001447499,
+     "snapshot_s": 0.018756600096821785,
+     "run_s": 7.596325499936938,
+     "peak_memory_bytes": 2013700096
+    },
+    {
+     "read_s": 0.07882960001006722,
+     "snapshot_s": 0.01774939999449998,
+     "run_s": 7.4411235000006855,
+     "peak_memory_bytes": 2013605888
+    },
+    {
+     "read_s": 0.0877517000772059,
+     "snapshot_s": 0.019341400009579957,
+     "run_s": 7.582181100035086,
+     "peak_memory_bytes": 2014482432
+    }
+   ],
+   "reference": 12.939283004596238,
+   "relative_error": 0.005753317249311829
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 15,
+   "grid_points": 30976,
+   "dofs": 92160,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.08035379997454584,
+   "snapshot_s": 0.01835560007020831,
+   "run_s": 2.5627702999627218,
+   "peak_memory_bytes": 2010537984,
+   "stage_peaks_bytes": {
+    "imports": 37953536,
+    "read": 78499840,
+    "snapshot": 78499840,
+    "run": 2010537984
+   },
+   "measured": 13.013726804700308,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    13.013726804700308,
+    13.013726804827293,
+    76.30149104147188,
+    76.30149104149622,
+    92.3171482719078,
+    162.72884265333954,
+    195.789887926157,
+    195.78988792616497,
+    276.9207965961518,
+    346.585976177896
+   ],
+   "samples": [
+    {
+     "read_s": 0.08071999996900558,
+     "snapshot_s": 0.017632799921557307,
+     "run_s": 2.5607191999442875,
+     "peak_memory_bytes": 2010537984
+    },
+    {
+     "read_s": 0.07868339994456619,
+     "snapshot_s": 0.019389899913221598,
+     "run_s": 2.597827499965206,
+     "peak_memory_bytes": 2008653824
+    },
+    {
+     "read_s": 0.08035379997454584,
+     "snapshot_s": 0.01835560007020831,
+     "run_s": 2.5627702999627218,
+     "peak_memory_bytes": 2006814720
+    }
+   ],
+   "reference": 12.939283004596238,
+   "relative_error": 0.005753317249311829
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 23,
+   "grid_points": 106560,
+   "dofs": 317952,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.2379679000005126,
+   "snapshot_s": 0.05485309998039156,
+   "run_s": 51.44066970003769,
+   "peak_memory_bytes": 8931180544,
+   "stage_peaks_bytes": {
+    "imports": 37908480,
+    "read": 162512896,
+    "snapshot": 162512896,
+    "run": 8931180544
+   },
+   "measured": 13.011672697084036,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    13.011672697084036,
+    13.0116726973147,
+    76.28932531609199,
+    76.28932531613546,
+    92.44595883140569,
+    162.71768323156599,
+    195.75717317297637,
+    195.75717317299728,
+    277.31654403576,
+    346.530911065904
+   ],
+   "samples": [
+    {
+     "read_s": 0.2379679000005126,
+     "snapshot_s": 0.05485309998039156,
+     "run_s": 51.44066970003769,
+     "peak_memory_bytes": 8931180544
+    }
+   ],
+   "reference": 12.939283004596238,
+   "relative_error": 0.005594567524497718
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 23,
+   "grid_points": 106560,
+   "dofs": 317952,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.24658899998757988,
+   "snapshot_s": 0.05266800010576844,
+   "run_s": 16.383547300007194,
+   "peak_memory_bytes": 8762048512,
+   "stage_peaks_bytes": {
+    "imports": 38084608,
+    "read": 164335616,
+    "snapshot": 164335616,
+    "run": 8762048512
+   },
+   "measured": 13.011672697084036,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    13.011672697084036,
+    13.0116726973147,
+    76.28932531609199,
+    76.28932531613546,
+    92.44595883140569,
+    162.71768323156599,
+    195.75717317297637,
+    195.75717317299728,
+    277.31654403576,
+    346.530911065904
+   ],
+   "samples": [
+    {
+     "read_s": 0.24658899998757988,
+     "snapshot_s": 0.05266800010576844,
+     "run_s": 16.383547300007194,
+     "peak_memory_bytes": 8762048512
+    }
+   ],
+   "reference": 12.939283004596238,
+   "relative_error": 0.005594567524497718
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 34,
+   "grid_points": 334425,
+   "dofs": 999600,
+   "analysis": "modes",
+   "threads": 1,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factor: panels' needs 14.2 GB, 10.7 GB of the budget of 18.5 GB are left; largest consumers: mass Mgg (1.3 GB), mass Mnn (1.3 GB), stiffness Kgg (1.3 GB), stiffness Knn (1.3 GB), symmetric CSC: values (945 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 12.939283004596238
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 34,
+   "grid_points": 334425,
+   "dofs": 999600,
+   "analysis": "modes",
+   "threads": 12,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factor: panels' needs 14.2 GB, 10.8 GB of the budget of 18.6 GB are left; largest consumers: mass Mgg (1.3 GB), mass Mnn (1.3 GB), stiffness Kgg (1.3 GB), stiffness Knn (1.3 GB), symmetric CSC: values (945 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 12.939283004596238
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 7,
+   "grid_points": 3648,
+   "dofs": 10752,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.023571699974127114,
+   "snapshot_s": 0.006842900067567825,
+   "run_s": 0.8873050999827683,
+   "peak_memory_bytes": 195260416,
+   "stage_peaks_bytes": {
+    "imports": 38146048,
+    "read": 52813824,
+    "snapshot": 52813824,
+    "run": 193835008
+   },
+   "measured": 6.707032935389324,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    6.707032935389324
+   ],
+   "samples": [
+    {
+     "read_s": 0.023571699974127114,
+     "snapshot_s": 0.006842900067567825,
+     "run_s": 0.8661700999364257,
+     "peak_memory_bytes": 193835008
+    },
+    {
+     "read_s": 0.02226570004131645,
+     "snapshot_s": 0.006742900004610419,
+     "run_s": 0.8873050999827683,
+     "peak_memory_bytes": 194232320
+    },
+    {
+     "read_s": 0.025081299943849444,
+     "snapshot_s": 0.006922099972143769,
+     "run_s": 0.9268575999885798,
+     "peak_memory_bytes": 195260416
+    }
+   ],
+   "reference": 6.681117475191851,
+   "relative_error": 0.003878911019556508
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 7,
+   "grid_points": 3648,
+   "dofs": 10752,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.023587799980305135,
+   "snapshot_s": 0.006768599967472255,
+   "run_s": 0.39135849999729544,
+   "peak_memory_bytes": 204120064,
+   "stage_peaks_bytes": {
+    "imports": 38219776,
+    "read": 52875264,
+    "snapshot": 52875264,
+    "run": 203808768
+   },
+   "measured": 6.707032935389324,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    6.707032935389324
+   ],
+   "samples": [
+    {
+     "read_s": 0.023587799980305135,
+     "snapshot_s": 0.00805689999833703,
+     "run_s": 0.44011850003153086,
+     "peak_memory_bytes": 203808768
+    },
+    {
+     "read_s": 0.026082800002768636,
+     "snapshot_s": 0.006768599967472255,
+     "run_s": 0.39135849999729544,
+     "peak_memory_bytes": 204120064
+    },
+    {
+     "read_s": 0.02241500001400709,
+     "snapshot_s": 0.006642300053499639,
+     "run_s": 0.3911748999962583,
+     "peak_memory_bytes": 201629696
+    }
+   ],
+   "reference": 6.681117475191851,
+   "relative_error": 0.003878911019556508
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 10,
+   "grid_points": 9801,
+   "dofs": 29040,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.03409470000769943,
+   "snapshot_s": 0.010533299995586276,
+   "run_s": 2.4483023000648245,
+   "peak_memory_bytes": 528384000,
+   "stage_peaks_bytes": {
+    "imports": 38084608,
+    "read": 58224640,
+    "snapshot": 58224640,
+    "run": 528384000
+   },
+   "measured": 6.703575609726404,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    6.703575609726404
+   ],
+   "samples": [
+    {
+     "read_s": 0.038126799976453185,
+     "snapshot_s": 0.010204400052316487,
+     "run_s": 2.556605700054206,
+     "peak_memory_bytes": 528384000
+    },
+    {
+     "read_s": 0.03340840002056211,
+     "snapshot_s": 0.010533299995586276,
+     "run_s": 2.420869700028561,
+     "peak_memory_bytes": 528371712
+    },
+    {
+     "read_s": 0.03409470000769943,
+     "snapshot_s": 0.011640000040642917,
+     "run_s": 2.4483023000648245,
+     "peak_memory_bytes": 528363520
+    }
+   ],
+   "reference": 6.681117475191851,
+   "relative_error": 0.003361433864610852
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 10,
+   "grid_points": 9801,
+   "dofs": 29040,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.03439739998430014,
+   "snapshot_s": 0.01143209997098893,
+   "run_s": 0.9099115000572056,
+   "peak_memory_bytes": 535990272,
+   "stage_peaks_bytes": {
+    "imports": 38068224,
+    "read": 58179584,
+    "snapshot": 58179584,
+    "run": 535990272
+   },
+   "measured": 6.703575609726404,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    6.703575609726404
+   ],
+   "samples": [
+    {
+     "read_s": 0.03439739998430014,
+     "snapshot_s": 0.011776900035329163,
+     "run_s": 0.9052342999493703,
+     "peak_memory_bytes": 535990272
+    },
+    {
+     "read_s": 0.03483979997690767,
+     "snapshot_s": 0.010588300065137446,
+     "run_s": 0.9170275999931619,
+     "peak_memory_bytes": 534691840
+    },
+    {
+     "read_s": 0.033699399908073246,
+     "snapshot_s": 0.01143209997098893,
+     "run_s": 0.9099115000572056,
+     "peak_memory_bytes": 534544384
+    }
+   ],
+   "reference": 6.681117475191851,
+   "relative_error": 0.003361433864610852
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 15,
+   "grid_points": 30976,
+   "dofs": 92160,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.07911359996069223,
+   "snapshot_s": 0.019430099986493587,
+   "run_s": 11.604381599929184,
+   "peak_memory_bytes": 1884618752,
+   "stage_peaks_bytes": {
+    "imports": 38068224,
+    "read": 78663680,
+    "snapshot": 78663680,
+    "run": 1884618752
+   },
+   "measured": 6.701279393982155,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    6.701279393982155
+   ],
+   "samples": [
+    {
+     "read_s": 0.07911359996069223,
+     "snapshot_s": 0.019430099986493587,
+     "run_s": 11.604381599929184,
+     "peak_memory_bytes": 1884618752
+    }
+   ],
+   "reference": 6.681117475191851,
+   "relative_error": 0.0030177464870464465
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 15,
+   "grid_points": 30976,
+   "dofs": 92160,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.07999220001511276,
+   "snapshot_s": 0.01801500003784895,
+   "run_s": 3.759463299997151,
+   "peak_memory_bytes": 1883074560,
+   "stage_peaks_bytes": {
+    "imports": 38010880,
+    "read": 79781888,
+    "snapshot": 79781888,
+    "run": 1883074560
+   },
+   "measured": 6.701279393982155,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    6.701279393982155
+   ],
+   "samples": [
+    {
+     "read_s": 0.07999220001511276,
+     "snapshot_s": 0.01801500003784895,
+     "run_s": 3.759463299997151,
+     "peak_memory_bytes": 1883074560
+    }
+   ],
+   "reference": 6.681117475191851,
+   "relative_error": 0.0030177464870464465
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 23,
+   "grid_points": 106560,
+   "dofs": 317952,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.3541354000335559,
+   "snapshot_s": 0.05612780002411455,
+   "run_s": 75.81900739995763,
+   "peak_memory_bytes": 8471265280,
+   "stage_peaks_bytes": {
+    "imports": 37969920,
+    "read": 163008512,
+    "snapshot": 163008512,
+    "run": 8471265280
+   },
+   "measured": 6.699933688140662,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    6.699933688140662
+   ],
+   "samples": [
+    {
+     "read_s": 0.3541354000335559,
+     "snapshot_s": 0.05612780002411455,
+     "run_s": 75.81900739995763,
+     "peak_memory_bytes": 8471265280
+    }
+   ],
+   "reference": 6.681117475191851,
+   "relative_error": 0.002816327211530023
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 23,
+   "grid_points": 106560,
+   "dofs": 317952,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "ok",
+   "read_s": 0.24317789997439831,
+   "snapshot_s": 0.053662799997255206,
+   "run_s": 22.552066900068894,
+   "peak_memory_bytes": 8293441536,
+   "stage_peaks_bytes": {
+    "imports": 38178816,
+    "read": 164220928,
+    "snapshot": 164220928,
+    "run": 8293441536
+   },
+   "measured": 6.699933688140662,
+   "deck_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "solver_diagnostics": {
+    "counts": {},
+    "messages": []
+   },
+   "eigenvalues": [
+    6.699933688140662
+   ],
+   "samples": [
+    {
+     "read_s": 0.24317789997439831,
+     "snapshot_s": 0.053662799997255206,
+     "run_s": 22.552066900068894,
+     "peak_memory_bytes": 8293441536
+    }
+   ],
+   "reference": 6.681117475191851,
+   "relative_error": 0.002816327211530023
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 34,
+   "grid_points": 334425,
+   "dofs": 999600,
+   "analysis": "buckling",
+   "threads": 1,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factorisation: fronts and update matrices' needs 13.1 GB, 1 GB of the budget of 18.5 GB are left; largest consumers: factor: panels (14.2 GB), stiffness Kgg (1.3 GB), stiffness Knn (1.3 GB), symmetric CSC: values (315 MB), symmetric CSC: rows (157 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 6.681117475191851
+  },
+  {
+   "model": "block",
+   "title": "Block, SolidHexa",
+   "size": 34,
+   "grid_points": 334425,
+   "dofs": 999600,
+   "analysis": "buckling",
+   "threads": 12,
+   "formulation": null,
+   "status": "failed",
+   "error": "RuntimeError: memory budget exceeded: 'factorisation: fronts and update matrices' needs 13.1 GB, 1.05 GB of the budget of 18.6 GB are left; largest consumers: factor: panels (14.2 GB), stiffness Kgg (1.3 GB), stiffness Knn (1.3 GB), symmetric CSC: values (315 MB), symmetric CSC: rows (157 MB). Raise memory=, condense more units, or restrict the requested outputs",
+   "reference": 6.681117475191851
+  }
+ ]
+}

@@ -5,16 +5,38 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "oo-solver"
 version = "0.2.5"
-description = "Solve in-memory finite element models for statics, vibration, buckling and aeroelastic trim, and evaluate design sensitivities. Native Python interface to the O_o C++ library, also available for JavaScript/WebAssembly."
+description = "Linear finite element solver: statics, normal modes, buckling and aeroelastic trim, laminated shells, direct and adjoint design sensitivities, a multithreaded sparse direct solver. Native Python interface to a C++20 library, also for JavaScript/WebAssembly."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = ["oo-model>=0.2.0,<0.3", "numpy>=1.23"]
+keywords = ["finite element", "FEA", "structural analysis", "linear statics", "modal analysis", "buckling",
+            "aeroelasticity", "composites", "laminated shells", "sensitivity analysis", "adjoint", "optimization",
+            "sparse direct solver", "WebAssembly"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 
 [project.urls]
 Documentation = "https://jcdulas.github.io/O_o_Solver/"
 Repository = "https://github.com/jcdulas/O_o_Solver"
+"Large models" = "https://jcdulas.github.io/O_o_Solver/docs/large-models.html"
+"Benchmark comparison" = "https://jcdulas.github.io/O_o_Solver/docs/structural-benchmark-comparison.html"
+Validation = "https://jcdulas.github.io/O_o_Solver/docs/testing.html"
 
 [tool.scikit-build]
 minimum-version = "0.11"

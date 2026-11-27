@@ -1,12 +1,36 @@
 # O_o_Solver
 
-Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembly), Python or native C++20. An application builds a deck with O_o_Model, passes it to the Solver and reads result arrays directly.
+A linear finite element solver for statics, normal modes, buckling and static aeroelastic trim, with design
+sensitivities, for Python, JavaScript (in a browser or Node.js) and C++20. Its sparse direct solver, eigenvalue solver
+and dense kernels are written in the project; an analysis runs on every core of the machine, gives the same results on
+any number of threads, and reports what it cost. An application builds a model with O_o_Model, passes it to the Solver
+and reads the results as arrays.
 
-**[Sphinx documentation](https://jcdulas.github.io/O_o_Solver/)** ·
-**[Benchmark comparison — Classic, Mixed Auto and commercial solvers](docs/structural-benchmark-comparison.md)** ·
-**[External aeroelastic coupling guide](docs/external-aeroelastic-coupling.md)** ·
+[![Native](https://github.com/jcdulas/O_o_Solver/actions/workflows/native.yml/badge.svg)](https://github.com/jcdulas/O_o_Solver/actions/workflows/native.yml)
+[![WebAssembly](https://github.com/jcdulas/O_o_Solver/actions/workflows/webassembly.yml/badge.svg)](https://github.com/jcdulas/O_o_Solver/actions/workflows/webassembly.yml)
+[![Python wheels](https://github.com/jcdulas/O_o_Solver/actions/workflows/python-wheels.yml/badge.svg)](https://github.com/jcdulas/O_o_Solver/actions/workflows/python-wheels.yml)
+[![PyPI](https://img.shields.io/pypi/v/oo-solver)](https://pypi.org/project/oo-solver/)
+
+**[Documentation](https://jcdulas.github.io/O_o_Solver/)** ·
+**[Large models](https://jcdulas.github.io/O_o_Solver/docs/large-models.html)** ·
+**[Benchmark comparison](https://jcdulas.github.io/O_o_Solver/docs/structural-benchmark-comparison.html)** ·
+**[Comparing with another solver](https://jcdulas.github.io/O_o_Solver/docs/comparing-solvers.html)** ·
+[Composites](https://jcdulas.github.io/O_o_Solver/docs/composites.html) ·
 [Derivative coverage](https://jcdulas.github.io/O_o_Solver/docs/derivatives.html) ·
+[External aeroelastic coupling](https://jcdulas.github.io/O_o_Solver/docs/external-aeroelastic-coupling.html) ·
 [API reference](https://jcdulas.github.io/O_o_Solver/docs/api.html)
+
+## What it does
+
+| Area | What the solver offers |
+| --- | --- |
+| Analyses | Linear statics with any number of load cases (SOL 101), normal modes (SOL 103), linear buckling (SOL 105), static aeroelastic trim with a doublet lattice (SOL 144); condensed components, superelements, and streamed statics for a model whose factor does not fit in memory |
+| Elements | Shells of three, four, six and eight nodes, shear panels, tetrahedra, pentahedra, pyramids and hexahedra, rods, tubes, bars, beams, springs, bushings, gaps, masses, fasteners and welds, rigid and interpolation elements. Each in a classic formulation, and in a [mixed hybrid formulation](https://jcdulas.github.io/O_o_Solver/docs/mixed-hybrid-formulation-spec.html) that stays accurate on coarse and distorted meshes |
+| Composites | [Laminated shells](https://jcdulas.github.io/O_o_Solver/docs/composites.html) (`CompProp`) in both formulations: classical lamination theory with the transverse shear of the stack, ply stresses, strains, failure and bond indices (four criteria), ply thicknesses as design variables with their derivatives |
+| Design sensitivities | Sizing and shape variables; derivatives of displacements, stresses, mass, frequencies, buckling factors and trim results by direct or adjoint solves; Jacobian-vector and vector-Jacobian products for external optimizers ([coverage](https://jcdulas.github.io/O_o_Solver/docs/derivatives.html)) |
+| Large models | A supernodal multifrontal LDLᵀ with nested-dissection ordering, AVX2 kernels, and a block Lanczos eigensolver with Sturm checks; every core by default. On a six-core desktop computer, the statics of a shell model of two million degrees of freedom take 12 s, its first ten modes about a minute ([measured scaling](https://jcdulas.github.io/O_o_Solver/docs/large-models.html)) |
+| Interfaces | Python (results as NumPy arrays without copies), JavaScript/WebAssembly (a single-threaded and a shared-memory package), C++20 (vcpkg) |
+| Validation | More than 900 validation tests against closed-form solutions and published values, more than 3 000 input combination cases and more than 250 native kernel checks, run by the continuous integration on every change ([testing](https://jcdulas.github.io/O_o_Solver/docs/testing.html)); a published [benchmark comparison](https://jcdulas.github.io/O_o_Solver/docs/structural-benchmark-comparison.html) |
 
 ## Install
 
@@ -15,6 +39,9 @@ Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembl
 | JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.4/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.5/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
 | Python | Run `python -m pip install oo-solver==0.2.5` to get the Solver and its `oo-model` dependency. |
 | C++20 / vcpkg | Add `oo-solver` from the [O_o vcpkg registry](https://github.com/jcdulas/O_o_vcpkg) and link `oos::api`. [Native CMake example](https://github.com/jcdulas/O_o_vcpkg/tree/main/examples/rod) |
+
+Each [release](https://github.com/jcdulas/O_o_Solver/releases) also holds `O_o_Solver-wasm-threads.zip`, the
+shared-memory WebAssembly package whose analyses run on several threads ([threading guide](https://jcdulas.github.io/O_o_Solver/docs/threading.html)).
 
 Applications can link an external optimizer to the [JavaScript, Python or C++ evaluation API](docs/optimization.md). The [client benchmark](docs/benchmarks/optimizer-api/README.md) exercises all three interfaces on identical inputs.
 

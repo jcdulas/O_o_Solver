@@ -10,7 +10,12 @@ Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembl
 - [JavaScript, Python and C++ analysis examples](docs/python.md) cover modal frequencies and optimization gradients.
 - [Project overview](README.md): capabilities, repository layout and build commands.
 - [API reference](docs/api.rst): JavaScript, Python and C++ operations, TypeScript declarations and C++ headers.
-- [WebAssembly threads](docs/threading.md): shared-memory builds, runtime settings and browser Workers.
+- [Threads](docs/threading.md): the native thread count, the shared-memory WebAssembly package and browser Workers.
+- [Large models](docs/large-models.md): the sparse direct and eigenvalue solvers, the settings that matter for size and
+  the measured scaling.
+- [Comparing with another solver](docs/comparing-solvers.md): what to align before reading a difference of results or
+  of run time.
+- [Composites](docs/composites.md): laminated shells, ply results and their design variables.
 - [Couple an external aerodynamic solver](docs/external-aeroelastic-coupling.md) with SOL 101, 103 and 105, or use the built-in SOL 144 trim. The RBE3 wing example gives results for JavaScript, Python and C++.
 - [External optimizer API for JavaScript, Python and C++](docs/optimization.md) covers retained points, batched derivatives and CSR callbacks.
 - [External optimization](docs/external-optimization.md): SOL 101, 103, 105 and 144 studies, workers and archives.
@@ -21,6 +26,8 @@ Run static, modal, buckling and aeroelastic analyses from JavaScript (WebAssembl
 
 ## Detailed guides
 
+- [Scaling benchmark](docs/benchmarks/scaling/README.md): time and memory against model size and thread count, with
+  the generated models and the script that measures them.
 - [Structural benchmark comparison](docs/structural-benchmark-comparison.md) compares both formulations across shells, solids, vibration and buckling with analytical targets and published commercial results.
 - [Thin-plate bending with solid elements](docs/thin-plate-solid-bending.md) compares element degree, mesh
   distortion and the number of layers against a three-dimensional elasticity solution.
@@ -51,6 +58,11 @@ JavaScript transfers typed table packages between the two WASM memories. Python 
 docs/getting-started
 docs/python
 docs/threading
+docs/large-models
+docs/benchmarks/scaling/README
+docs/benchmarks/scaling/results
+docs/comparing-solvers
+docs/composites
 docs/static-inputs
 docs/external-aeroelastic-coupling
 docs/testing
