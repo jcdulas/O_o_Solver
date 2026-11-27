@@ -1,8 +1,9 @@
 name: WebAssembly
 
-# Builds the default WebAssembly package (single-threaded, 64-bit WebAssembly), archives build/wasm/dist, runs the test
-# suites on it and, on the main branch, publishes it as the release that follows the branch and as the release kept
-# for its version. A package whose suites fail is not published.
+# Builds the two WebAssembly packages (64-bit WebAssembly): the default one, single-threaded (preset wasm,
+# build/wasm/dist), and the shared-memory one (preset wasm-threads, build/wasm-threads/dist, docs/threading.md). It runs
+# the test suites on each and, on the main branch, publishes both as the release that follows the branch and as the
+# release kept for their version. Packages whose suites fail are not published.
 # The suites need the O_o_Model package, which this repository does not build: they take the one that repository
 # publishes for its main branch.
 
@@ -60,9 +61,17 @@ env:
 
 jobs:
   package:
-    name: Build the WebAssembly package
+    name: Build the ${{ matrix.variant.title }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - { preset: wasm, artifact: O_o_Solver-wasm, title: single-threaded package }
+          - { preset: wasm-threads, artifact: O_o_Solver-wasm-threads, title: shared-memory package }
+    env:
+      PRESET: ${{ matrix.variant.preset }}
     steps:
       - name: Check out sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,38 +87,51 @@ jobs:
       - name: Build the package
         run: |
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
-          emcmake cmake -S . -B build/wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOS_BUILD_WASM=ON \
-            -DOOS_WARNINGS_AS_ERRORS=OFF
-          cmake --build build/wasm -j "$(nproc)"
+          if [ "$PRESET" = wasm ]; then
+            emcmake cmake -S . -B build/wasm -G Ninja -DCMAKE_BUILD_TYPE=Release -DOOS_BUILD_WASM=ON \
+              -DOOS_WARNINGS_AS_ERRORS=OFF
+          else
+            cmake --preset "$PRESET" -DOOS_WARNINGS_AS_ERRORS=OFF
+          fi
+          cmake --build "build/$PRESET" -j "$(nproc)"
       - name: Load the module
         # The module needs 64-bit WebAssembly: the Node.js of the SDK runs it.
         run: |
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           "${EMSDK_NODE:-node}" --input-type=module -e "
-            import { loadOosSolver } from './build/wasm/dist/index.js';
+            import { loadOosSolver } from './build/$PRESET/dist/index.js';
             const solver = await loadOosSolver();
-            console.log('module loaded:', solver.constructor.name);"
+            console.log('module loaded:', solver.constructor.name, JSON.stringify(solver.threading()));"
       - name: Archive the package
         id: archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: O_o_Solver-wasm
-          path: build/wasm/dist/
+          name: ${{ matrix.variant.artifact }}
+          path: build/${{ matrix.variant.preset }}/dist/
           if-no-files-found: error
           retention-days: 90
       - name: Add download instructions
         env:
           ARTIFACT_URL: ${{ steps.archive.outputs.artifact-url }}
         run: |
-          echo '## WebAssembly package' >> "$GITHUB_STEP_SUMMARY"
+          echo '## WebAssembly package (${{ matrix.variant.title }})' >> "$GITHUB_STEP_SUMMARY"
           echo "[Download the package]($ARTIFACT_URL) built from commit \`$GITHUB_SHA\` with Emscripten $EMSCRIPTEN_VERSION." >> "$GITHUB_STEP_SUMMARY"
           echo 'Extract the archive and import index.js; the module needs a runtime with 64-bit WebAssembly (Node.js 24 or later).' >> "$GITHUB_STEP_SUMMARY"
 
   tests:
-    name: Run the fast suite
+    name: Run the fast suite (${{ matrix.variant.title }})
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - { preset: wasm, artifact: O_o_Solver-wasm, title: single-threaded package }
+          - { preset: wasm-threads, artifact: O_o_Solver-wasm-threads, title: shared-memory package }
+    env:
+      OOS_SOLVER_DIST: build/${{ matrix.variant.preset }}/dist
+      OOS_TEST_RESULTS: build/test-results-${{ matrix.variant.preset }}
     steps:
       - name: Check out sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -120,8 +142,8 @@ jobs:
       - name: Fetch the package
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: O_o_Solver-wasm
-          path: build/wasm/dist
+          name: ${{ matrix.variant.artifact }}
+          path: build/${{ matrix.variant.preset }}/dist
       - name: Fetch the O_o_Model package
         run: bash .github/scripts/fetch-reader-package.sh
       - name: Run the input combination and derivative cases
@@ -133,13 +155,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: O_o_Solver-test-timings
-          path: build/test-results/
+          name: O_o_Solver-test-timings-${{ matrix.variant.preset }}
+          path: build/test-results-${{ matrix.variant.preset }}/
           if-no-files-found: ignore
           retention-days: 30
 
   validation:
-    name: Run the validation suite (part ${{ matrix.part }} of 4)
+    name: Run the validation suite (${{ matrix.variant.title }}, part ${{ matrix.part }} of 4)
     # The benchmarks of docs/testing.md, without a time limit per case. Its files are dealt to four runners by their
     # rank in the folder, so that a new file needs no edit here.
     needs: package
@@ -149,8 +171,12 @@ jobs:
       fail-fast: false
       matrix:
         part: [1, 2, 3, 4]
+        variant:
+          - { preset: wasm, artifact: O_o_Solver-wasm, title: single-threaded package }
+          - { preset: wasm-threads, artifact: O_o_Solver-wasm-threads, title: shared-memory package }
     env:
       PART_COUNT: 4
+      OOS_SOLVER_DIST: build/${{ matrix.variant.preset }}/dist
     steps:
       - name: Check out sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -161,8 +187,8 @@ jobs:
       - name: Fetch the package
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: O_o_Solver-wasm
-          path: build/wasm/dist
+          name: ${{ matrix.variant.artifact }}
+          path: build/${{ matrix.variant.preset }}/dist
       - name: Fetch the O_o_Model package
         run: bash .github/scripts/fetch-reader-package.sh
       - name: Run the files of this part
@@ -192,27 +218,38 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       BRANCH_TAG: wasm-latest
-      BRANCH_TITLE: WebAssembly package of the main branch
+      BRANCH_TITLE: WebAssembly packages of the main branch
       ARCHIVE: O_o_Solver-wasm.zip
+      THREADED_ARCHIVE: O_o_Solver-wasm-threads.zip
     steps:
-      - name: Fetch the package
+      - name: Fetch the single-threaded package
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: O_o_Solver-wasm
           path: package
-      - name: Make the archive and its notes
+      - name: Fetch the shared-memory package
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: O_o_Solver-wasm-threads
+          path: package-threads
+      - name: Make the archives and their notes
         run: |
           (cd package && zip --recurse-paths "../$ARCHIVE" .)
+          (cd package-threads && zip --recurse-paths "../$THREADED_ARCHIVE" .)
           VERSION="$(jq --raw-output '.version // empty' package/package.json)"
           test -n "$VERSION"
+          test "$VERSION" = "$(jq --raw-output '.version // empty' package-threads/package.json)"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           {
-            echo "Version $VERSION of the package, built from commit $GITHUB_SHA with Emscripten $EMSCRIPTEN_VERSION:"
-            echo "the default package, single-threaded."
+            echo "Version $VERSION of the packages, built from commit $GITHUB_SHA with Emscripten $EMSCRIPTEN_VERSION:"
             echo
-            echo "Extract $ARCHIVE and import index.js; the module needs a runtime with 64-bit WebAssembly"
+            echo "- $ARCHIVE: the default package, single-threaded;"
+            echo "- $THREADED_ARCHIVE: the shared-memory package, whose analyses run on several threads (Web"
+            echo "  Workers). In a browser, the page needs cross-origin isolation (docs/threading.md)."
+            echo
+            echo "Extract an archive and import index.js; the module needs a runtime with 64-bit WebAssembly"
             echo "(Node.js 24 or later, or a browser that supports it). The test suites of the repository passed on"
-            echo "this package, with the O_o_Model package of the main branch of its repository."
+            echo "both packages, with the O_o_Model package of the main branch of its repository."
           } > notes.md
           {
             echo "The latest build of the main branch, replaced at every change of its sources."
@@ -224,22 +261,28 @@ jobs:
           if gh release view "$BRANCH_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$BRANCH_TAG" \
               --raw-field sha="$GITHUB_SHA" --field force=true > /dev/null
-            gh release upload "$BRANCH_TAG" "$ARCHIVE" --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$BRANCH_TAG" "$ARCHIVE" "$THREADED_ARCHIVE" --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$BRANCH_TAG" --title "$BRANCH_TITLE" --notes-file branch-notes.md --prerelease \
               --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$BRANCH_TAG" "$ARCHIVE" --target "$GITHUB_SHA" --title "$BRANCH_TITLE" \
+            gh release create "$BRANCH_TAG" "$ARCHIVE" "$THREADED_ARCHIVE" --target "$GITHUB_SHA" \
+              --title "$BRANCH_TITLE" \
               --notes-file branch-notes.md --prerelease --repo "$GITHUB_REPOSITORY"
           fi
           echo '## Releases' >> "$GITHUB_STEP_SUMMARY"
-          echo "[$ARCHIVE of the main branch]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$BRANCH_TAG/$ARCHIVE) is published." >> "$GITHUB_STEP_SUMMARY"
+          for archive in "$ARCHIVE" "$THREADED_ARCHIVE"; do
+            echo "[$archive of the main branch]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$BRANCH_TAG/$archive) is published." >> "$GITHUB_STEP_SUMMARY"
+          done
       - name: Keep the release of a new version
         run: |
           VERSION_TAG="v$VERSION"
           if gh release view "$VERSION_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "Version $VERSION has its release, kept as it is." >> "$GITHUB_STEP_SUMMARY"
           else
-            gh release create "$VERSION_TAG" "$ARCHIVE" --target "$GITHUB_SHA" --title "Version $VERSION" \
+            gh release create "$VERSION_TAG" "$ARCHIVE" "$THREADED_ARCHIVE" --target "$GITHUB_SHA" \
+              --title "Version $VERSION" \
               --notes-file notes.md --latest --repo "$GITHUB_REPOSITORY"
-            echo "[$ARCHIVE of version $VERSION]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$VERSION_TAG/$ARCHIVE) is published and kept." >> "$GITHUB_STEP_SUMMARY"
+            for archive in "$ARCHIVE" "$THREADED_ARCHIVE"; do
+              echo "[$archive of version $VERSION]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$VERSION_TAG/$archive) is published and kept." >> "$GITHUB_STEP_SUMMARY"
+            done
           fi

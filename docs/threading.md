@@ -1,8 +1,20 @@
-# Shared-memory WebAssembly threads
+# Threads
 
-The solver has two Memory64 build variants. `wasm` runs on its calling thread. `wasm-threads` compiles the same C++
-algorithms with shared-memory workers and uses `base::ThreadPool` for assembly, factorisation, solves, recovery and
-derivatives. Model remains a separate module; it does not need a threaded build.
+The native libraries (Python wheels, C++) run an analysis on every core of the machine unless the caller asks for
+another count. The WebAssembly solver has two Memory64 build variants. `wasm` runs on its calling thread.
+`wasm-threads` compiles the same C++ algorithms with shared-memory workers and uses `base::ThreadPool` for assembly,
+factorisation, solves, recovery and derivatives. Model remains a separate module; it does not need a threaded build.
+
+The thread count changes the time of a run, never its results: the assembly sums every term in the order of a serial
+loop, and the dense kernels keep one order of operations for each result element whatever the tiles and threads
+([linear algebra guide](../src/linalg/README.md)). The kernel family does change the last bits: the AVX2 kernels of a
+recent x86-64 processor use fused multiply-adds, the reference kernels do not.
+
+## Download
+
+Each [release](https://github.com/jcdulas/O_o_Solver/releases) holds both WebAssembly packages:
+`O_o_Solver-wasm.zip` (single-threaded) and `O_o_Solver-wasm-threads.zip` (shared memory). The `WebAssembly` workflow
+builds both and runs the test suites on each before it publishes them.
 
 ## Build and test
 
@@ -66,10 +78,15 @@ settings.threads = 4;
 const auto problem = oos::api::prepareOptimization(deck, settings);
 ```
 
-`threads` counts the caller and its C++ workers: 4 means the calling worker plus 3 C++ workers. Without an explicit
-load setting, a threaded build defaults to at most 4 threads, capped by the reported hardware concurrency and the
-build's limit. A build without threads defaults to 1 and refuses larger counts. Per-analysis and per-problem settings
-override the load default. Counts must be positive integers within `maximumThreads`.
+`threads` counts the caller and its C++ workers: 4 means the calling worker plus 3 C++ workers.
+
+- Python and C++: an analysis or a design problem that leaves `threads` out runs on every logical core the machine
+  reports (`threads=None` in Python, `oos::api::AUTOMATIC_THREADS`, which is 0, in C++); `threads=1` keeps the work on
+  the calling thread. The `report` of a run gives the count it used.
+- JavaScript: without an explicit load setting, a threaded build defaults to at most 4 threads, capped by the reported
+  hardware concurrency and the build's limit; a build without threads defaults to 1 and refuses larger counts.
+  Per-analysis and per-problem settings override the load default. Counts must be positive integers within
+  `maximumThreads`.
 
 Problems with the same count share a pool. Its owner is retained by optimization evaluations and their derivative
 factors, even when the JavaScript problem handle is deleted. Delete the evaluations and problem after use.
