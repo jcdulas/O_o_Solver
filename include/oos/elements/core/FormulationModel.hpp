@@ -4,6 +4,7 @@
 #include "oos/base/math/Mat3.hpp"
 #include "oos/base/math/Vec3.hpp"
 #include "oos/elements/core/ElementDof.hpp"
+#include "oos/base/threading/ThreadPool.hpp"
 #include "oos/elements/core/EntityLayout.hpp"
 
 #include <array>
@@ -340,8 +341,10 @@ public:
 };
 
 // The formulation model of the snapshot of `index` in the formulation `registry` chose, or null when the formulation
-// has no unknowns outside the grid points (every formulation but MixedHybridFormulation). Built on the first call.
-[[nodiscard]] const FormulationModel* formulationModelOf(const SnapshotIndex& index, const ElementRegistry& registry);
+// has no unknowns outside the grid points (every formulation but MixedHybridFormulation). Built on the first call,
+// with the threads of `pool` when it gives one (null: on the calling thread; the same model either way).
+[[nodiscard]] const FormulationModel* formulationModelOf(const SnapshotIndex& index, const ElementRegistry& registry,
+                                                         base::ThreadPool* pool = nullptr);
 
 // The entities that formulation numbers for an analysis of `kind` (FormulationModel::layout), or null without one:
 // what the element set and the DOF map of an analysis take (assembly::ElementSet, assembly::DofMap).

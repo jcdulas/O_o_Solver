@@ -3,6 +3,8 @@
 #include "BudgetedGrowingArray.hpp"
 #include "ElementMatrixSource.hpp"
 
+#include "oos/base/threading/Stopwatch.hpp"
+
 #include <algorithm>
 #include <cstddef>
 #include <utility>
@@ -17,6 +19,39 @@ namespace
 // Pieces formed in parallel before they are appended: bounds the memory of a wave to
 // PIECES_PER_WAVE × ELEMENTS_PER_PIECE element groups.
 constexpr std::size_t PIECES_PER_WAVE = 64;
+
+// The elements formed to judge the cost of the matrices of a set, and the work from which its pieces are cut fine:
+// handing pieces to the threads has a price of its own (a third of a second for a run of the WebAssembly package
+// with threads), which half a second of matrices pays.
+constexpr std::size_t COST_SAMPLES = 4;
+constexpr double COSTLY_WORK_SECONDS = 0.5;
+
+// The elements of one piece.
+// PERFORMANCE: a mixed hybrid element condenses its own unknowns, tens of milliseconds for a hexahedron of degree 4: a
+// piece of ELEMENTS_PER_PIECE was 12 s of work on one thread, and a model of fewer elements ran on one thread whatever
+// the pool. The elements of a formulation with entities are cut in pieces of COSTLY_ELEMENTS_PER_PIECE when their
+// matrices are worth it: COST_SAMPLES of them, spread over the list, are formed once to be timed (those whose kernel
+// their formulation keeps cost little again, and then the pass itself is light). The size of the pieces changes no
+// bit: the groups and the matrices are appended in element order.
+// Measured on twelve threads: the preparation of a block of 2 744 hexahedra of degree 4 from 43 s to 39 s (130 s on
+// one thread).
+std::size_t pieceSizeOf(const ElementSet& set, const ElementMatrixSource& source, const base::ThreadPool* pool)
+{
+    const auto usual = static_cast<std::size_t>(ElementConnectivity::ELEMENTS_PER_PIECE);
+    const auto costly = static_cast<std::size_t>(ElementConnectivity::COSTLY_ELEMENTS_PER_PIECE);
+    const std::size_t count = source.elementCount();
+    if (!set.hasEntities() || pool == nullptr || pool->threadCount() <= 1 || count <= costly)
+        return usual;
+    base::Stopwatch watch;
+    elements::ElementMatrixBlock block;
+    for (std::size_t sample = 0; sample < COST_SAMPLES; ++sample)
+    {
+        const std::size_t element = sample * count / COST_SAMPLES;
+        source.compute(element, element + 1, block, [](std::size_t, const elements::ElementMatrixBlock&) {});
+    }
+    const double whole = watch.lap() / static_cast<double>(COST_SAMPLES) * static_cast<double>(count);
+    return whole >= COSTLY_WORK_SECONDS ? costly : usual;
+}
 
 // The node groups of the elements of one piece, in element order, and the stiffness matrices to keep.
 struct PieceGroups
@@ -65,7 +100,7 @@ ElementConnectivity::ElementConnectivity(const ElementSet& set, const DofMap& do
         });
 
     const std::size_t elementCount = source.elementCount();
-    const auto pieceSize = static_cast<std::size_t>(ELEMENTS_PER_PIECE);
+    const std::size_t pieceSize = pieceSizeOf(set, source, pool);
     const std::size_t pieceCount = (elementCount + pieceSize - 1) / pieceSize;
     BudgetedGrowingArray<std::int64_t> offsets(budget, "element node groups");
     BudgetedGrowingArray<std::int32_t> nodes(budget, "element node groups");

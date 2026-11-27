@@ -10,7 +10,7 @@ namespace oos::assembly
 
 ElementSet::ElementSet(const elements::SnapshotIndex& index, const elements::ElementRegistry& registry,
                        const elements::EntityLayout* entities)
-    : m_index(&index)
+    : m_index(&index), m_hasEntities(entities != nullptr)
 {
     const elements::FormulationModel* formulation =
         entities != nullptr ? elements::formulationModelOf(index, registry) : nullptr;

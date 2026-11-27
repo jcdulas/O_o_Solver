@@ -36,8 +36,11 @@ namespace oos::assembly
 class ElementConnectivity
 {
 public:
-    // Elements formed per task of the pool.
+    // Elements formed per task of the pool: the size for elements of a few microseconds each, so that a task is worth
+    // its scheduling; COSTLY_ELEMENTS_PER_PIECE for the elements of a formulation with entities when their matrices
+    // are worth it (ElementConnectivity.cpp, pieceSizeOf).
     static constexpr std::int64_t ELEMENTS_PER_PIECE = 256;
+    static constexpr std::int64_t COSTLY_ELEMENTS_PER_PIECE = 8;
 
     // Precondition: the set passed its check (the facets throw on an element the check refuses). stiffnessStore: when
     // given (and kept), receives the stiffness matrices of the elements, in the order of StiffnessAssembler. Throws

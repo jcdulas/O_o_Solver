@@ -174,9 +174,9 @@ void readBeams(const ElementBatchView& view, std::vector<MixedLine>& lines, std:
 
 } // namespace
 
-const MixedHybridModel& MixedHybridModel::of(const SnapshotIndex& index)
+const MixedHybridModel& MixedHybridModel::of(const SnapshotIndex& index, base::ThreadPool* pool)
 {
-    return index.computedOnce<MixedHybridModel>([&] { return MixedHybridModel(index); });
+    return index.computedOnce<MixedHybridModel>([&] { return MixedHybridModel(index, nullptr, pool); });
 }
 
 void MixedHybridModel::readDegree(const SnapshotIndex& index)
@@ -216,7 +216,8 @@ void MixedHybridModel::readDegree(const SnapshotIndex& index)
     m_problems.push_back(std::move(diagnostic));
 }
 
-MixedHybridModel::MixedHybridModel(const SnapshotIndex& index, const std::set<std::int32_t>* quarticShells)
+MixedHybridModel::MixedHybridModel(const SnapshotIndex& index, const std::set<std::int32_t>* quarticShells,
+                                   base::ThreadPool* pool)
 {
     readDegree(index);
     readDeclarations(index);
@@ -227,7 +228,7 @@ MixedHybridModel::MixedHybridModel(const SnapshotIndex& index, const std::set<st
     buildGridsAndEdges(index);
     buildShellPart(index, quarticShells);
     buildAloneEdges(index);
-    buildSolidPart(index);
+    buildSolidPart(index, pool);
     reportUnknownDeclarations();
     holdUnstiffenedShellDofs();
     findUnstiffenedLineRotations();
@@ -977,11 +978,12 @@ std::optional<FormulationModel::FormulationFace> MixedHybridModel::faceOf(std::s
 namespace oos::elements
 {
 
-const FormulationModel* formulationModelOf(const SnapshotIndex& index, const ElementRegistry& registry)
+const FormulationModel* formulationModelOf(const SnapshotIndex& index, const ElementRegistry& registry,
+                                           base::ThreadPool* pool)
 {
     if (!registry.isMixedHybrid())
         return nullptr;
-    return &mixedHybrid::MixedHybridModel::of(index);
+    return &mixedHybrid::MixedHybridModel::of(index, pool);
 }
 
 const EntityLayout* formulationEntitiesOf(const SnapshotIndex& index, const ElementRegistry& registry,

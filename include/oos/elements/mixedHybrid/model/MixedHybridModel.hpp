@@ -135,13 +135,14 @@ struct MixedEdge
 class MixedHybridModel final : public FormulationModel
 {
 public:
-    // The model of the snapshot of `index`, built on the first call. Must not be called from inside another
-    // SnapshotIndex::computedOnce build of the same index.
-    [[nodiscard]] static const MixedHybridModel& of(const SnapshotIndex& index);
+    // The model of the snapshot of `index`, built on the first call (with the threads of `pool`, when given: the
+    // same model). Must not be called from inside another SnapshotIndex::computedOnce build of the same index.
+    [[nodiscard]] static const MixedHybridModel& of(const SnapshotIndex& index, base::ThreadPool* pool = nullptr);
 
     // An analysis may initialise its own fresh index with a cubic pilot or a frozen enrichment.
-    // Solid interfaces retain their full trace degree in both passes.
-    explicit MixedHybridModel(const SnapshotIndex& index, const std::set<std::int32_t>* quarticShells = nullptr);
+    // Solid interfaces retain their full trace degree in both passes. `pool`: the threads that validate the solids.
+    explicit MixedHybridModel(const SnapshotIndex& index, const std::set<std::int32_t>* quarticShells = nullptr,
+                              base::ThreadPool* pool = nullptr);
 
     // FormulationModel.
     [[nodiscard]] const EntityLayout& layout(EntityLayout::Kind kind) const override;
@@ -344,7 +345,7 @@ private:
     void readSolids(const SnapshotIndex& index);
     // The SolidPart of the solids, its entities in both layouts (the interior fields of a modal analysis apart:
     // addModalInteriors), the grid points that only solids have, and their mid-side grid points.
-    void buildSolidPart(const SnapshotIndex& index);
+    void buildSolidPart(const SnapshotIndex& index, base::ThreadPool* pool);
     // The interior fields of the solids, in the modal layout only, after every other entity (so that the rows of the
     // other entities are the same in both layouts).
     void addModalInteriors(const SnapshotIndex& index);

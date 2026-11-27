@@ -4,6 +4,8 @@
 // along their skin, the affine fields on their unknowns).
 
 #include "oos/base/errors/ErrorMessage.hpp"
+#include "oos/base/threading/ParallelFor.hpp"
+#include "oos/base/threading/Stopwatch.hpp"
 #include "oos/base/errors/SolverError.hpp"
 #include "oos/elements/core/ElementBatchView.hpp"
 #include "oos/elements/core/ElementFamily.hpp"
@@ -414,7 +416,7 @@ std::optional<base::Diagnostic> ignoredMidSidesWarning(const SolidPart& solids, 
 
 } // namespace
 
-void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
+void MixedHybridModel::buildSolidPart(const SnapshotIndex& index, base::ThreadPool* pool)
 {
     if (m_solids.empty())
         return;
@@ -484,9 +486,34 @@ void MixedHybridModel::buildSolidPart(const SnapshotIndex& index)
     // The kernels refuse what the reading accepts (a folded element...): one kernel each, which the part keeps. A skin
     // read as a smooth surface across an edge where the solid folds (an edge of a block that the declarations do not
     // say sharp) bends the elements along it: the message says where to look.
+    // PERFORMANCE: the validations run on the pool (each builds the kernel of its solid while the part has room to
+    // keep it: tens of milliseconds for a hexahedron of degree 4), their problems reported in the order of the solids
+    // afterwards. Serially they were half of the time of a model of 216 such hexahedra on twelve threads.
+    // Measured on twelve threads: that model's preparation from 5.3 s to 2.0 s, that of a block of 2 744 hexahedra
+    // from 39 s to 25 s.
+    // The first solid is validated alone and timed: the others go to the pool only when as many times its cost is
+    // worth the price of handing tasks to the threads (light solids, as tetrahedra, stay on this thread), and then in
+    // pieces of a few solids.
+    constexpr std::size_t VALIDATION_PIECES = 64;
+    constexpr double WORTH_THE_POOL_SECONDS = 0.5;
+    const std::size_t solidCount = m_solids.size();
+    std::vector<std::optional<SolidPartProblem>> refusals(solidCount);
+    const auto validate = [&](std::size_t first, std::size_t last)
+    {
+        for (std::size_t s = first; s < last; ++s)
+            if (m_solidPart->usable(s))
+                refusals[s] = m_solidPart->validate(s);
+    };
+    base::Stopwatch firstWatch;
+    validate(0, 1);
+    const bool isWorthThePool = firstWatch.lap() * static_cast<double>(solidCount) >= WORTH_THE_POOL_SECONDS;
+    const std::size_t remaining = solidCount - 1;
+    base::parallelFor(isWorthThePool ? pool : nullptr, remaining,
+                      std::max<std::size_t>(1, remaining / VALIDATION_PIECES),
+                      [&](std::size_t first, std::size_t last) { validate(first + 1, last + 1); });
     for (std::size_t s = 0; s < m_solids.size(); ++s)
         if (m_solidPart->usable(s))
-            if (std::optional<SolidPartProblem> problem = m_solidPart->validate(s))
+            if (const std::optional<SolidPartProblem>& problem = refusals[s])
             {
                 std::string message = problem->message;
                 if (message.find("folds") != std::string::npos)

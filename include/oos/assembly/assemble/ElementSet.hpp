@@ -49,8 +49,13 @@ public:
     // The batches whose family offers `facet`, by index in batches().
     [[nodiscard]] std::vector<std::size_t> batchesWith(elements::Facet facet) const;
 
+    // Whether the elements are those of a formulation with entities (the mixed hybrid one), whose matrices may cost
+    // tens of milliseconds each: the pass that forms them cuts its work finer then (ElementConnectivity).
+    [[nodiscard]] bool hasEntities() const noexcept { return m_hasEntities; }
+
 private:
     const elements::SnapshotIndex* m_index;
+    bool m_hasEntities = false; // the views carry the entities of a formulation (the mixed hybrid one)
     std::vector<AssemblyBatch> m_batches; // bounded by the number of card types
 };
 

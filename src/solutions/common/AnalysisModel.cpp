@@ -167,7 +167,7 @@ AnalysisModel::AnalysisModel(const input::ModelSnapshot& snapshot, AnalysisKind 
     // element views carry and the DOF map numbers.
     m_layoutKind =
         analysis == AnalysisKind::Modes ? elements::EntityLayout::Kind::Modal : elements::EntityLayout::Kind::Static;
-    m_formulation = elements::formulationModelOf(*m_index, m_registry);
+    m_formulation = elements::formulationModelOf(*m_index, m_registry, pool);
     const elements::EntityLayout* entities = nullptr;
     if (m_formulation != nullptr)
     {
