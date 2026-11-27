@@ -36,8 +36,8 @@ and reads the results as arrays.
 
 | Interface | Install |
 | --- | --- |
-| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.4/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.6/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
-| Python | Run `python -m pip install oo-solver==0.2.6` to get the Solver and its `oo-model` dependency. |
+| JavaScript / WebAssembly | Extract the [Model ZIP](https://github.com/jcdulas/O_o_Model/releases/download/v0.2.4/O_o_Model-wasm.zip) and [Solver ZIP](https://github.com/jcdulas/O_o_Solver/releases/download/v0.2.7/O_o_Solver-wasm.zip) into `model/` and `solver/`, respectively, next to your script. Use Node.js 24+ or a browser with Memory64 support. |
+| Python | Run `python -m pip install oo-solver==0.2.7` to get the Solver and its `oo-model` dependency. |
 | C++20 / vcpkg | Add `oo-solver` from the [O_o vcpkg registry](https://github.com/jcdulas/O_o_vcpkg) and link `oos::api`. [Native CMake example](https://github.com/jcdulas/O_o_vcpkg/tree/main/examples/rod) |
 
 Each [release](https://github.com/jcdulas/O_o_Solver/releases) also holds `O_o_Solver-wasm-threads.zip`, the
@@ -47,7 +47,7 @@ Applications can link an external optimizer to the [JavaScript, Python or C++ ev
 
 ## Couple an external aerodynamic solver
 
-Use Solver 0.2.6 to couple a structural model to an external aerodynamic solver. Prepare the transfer once per model geometry.
+Use Solver 0.2.7 to couple a structural model to an external aerodynamic solver. Prepare the transfer once per model geometry.
 
 | Operation | JavaScript / WebAssembly | Python | C++20 |
 | --- | --- | --- | --- |

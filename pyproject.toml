@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "oo-solver"
-version = "0.2.6"
+version = "0.2.7"
 description = "Linear finite element solver: statics, normal modes, buckling and aeroelastic trim, laminated shells, direct and adjoint design sensitivities, a multithreaded sparse direct solver. Native Python interface to a C++20 library, also for JavaScript/WebAssembly."
 readme = "README.md"
 license = "MIT"
