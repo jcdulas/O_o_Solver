@@ -106,6 +106,12 @@ for full and streamed statics, for the mass of a real eigenvalue analysis and fo
   count; frequencies converted to λ = sign(f)·(2πf)²).
 - `common/EigenvectorScaling`: NORM = MASS (sign: the largest component positive), MAX, GeomPoint (falling back to MAX
   with a warning).
+- `common/FullPathEigen`: the eigenvalue solver of the full path of normal modes and buckling
+  (`EigenSolverOptions`, from `api::AnalysisSettings::eigenSolver`): the block Lanczos solver on a factor in memory,
+  multilevel substructuring (approximate to its cut-off), or the Lanczos solver with its factor out of core. The last
+  two take their pencil from the elements by default (`common/ElementPencil`, `EigenPencil::Elements`): no matrix of
+  the analysis set is assembled, and the outputs that need Kgg or Mgg (the constraint forces, the modal effective
+  mass, the grid point weight) are not produced, which an information diagnostic says.
 - `common/ModeRecovery`: the tables of one mode (eigenvectors, SinglePointConstr and MultiPointConstr forces from the residual
   Kgg·φ − λ·Mgg·φ, or Kgg·φ + λ·K_d·φ for a buckling shape, element stresses, strains, forces, ESE), stamped with the
   analysis, the mode number (`step`) and the eigenvalue.

@@ -27,7 +27,16 @@ with tempfile.TemporaryDirectory() as temporary:
         assert list(run["report"]["stages"]) == ["setup", "assembly", "eigenvalues", "recovery"]
         assert run["report"]["factorisations"] >= 1 and run["report"]["peak_budget_bytes"] > 0
         np.testing.assert_array_equal(single["eigenvalues"][0]["rows"]["eigenvalue"], modes["eigenvalue"])
-        del model, single, run
+        assert run["report"]["eigen_solver"] == "lanczos"
+        # The solvers of large models: the factor in scratch files gives the same roots, the substructuring
+        # approximate ones.
+        on_disk = model.run("modes", eigen_solver="out_of_core", scratch_dir=str(directory))
+        assert on_disk["report"]["eigen_solver"] == "out_of_core"
+        np.testing.assert_allclose(on_disk["eigenvalues"][0]["rows"]["eigenvalue"], modes["eigenvalue"], rtol=1e-8)
+        reduced = model.run("modes", eigen_solver="substructuring")
+        assert reduced["report"]["eigen_solver"] == "substructuring"
+        np.testing.assert_allclose(reduced["eigenvalues"][0]["rows"]["eigenvalue"], modes["eigenvalue"], rtol=5e-3)
+        del model, single, run, on_disk, reduced
         gc.collect()
         np.testing.assert_allclose(modes["cycles"][0], expected, rtol=2e-9)
 

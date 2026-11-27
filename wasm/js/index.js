@@ -131,8 +131,9 @@ const CONDENSATION_QUERIES = {
 // runSuperelements and of a condensation given as an object: another key is refused (requireKnownKeys).
 const MODEL_OPTION_KEYS = ["elementFormulations", "elementFormulation", "formulationGeometry", "condensation"];
 const GEOMETRY_KEYS = ["smoothEdges", "sharpEdges", "rawEdges", "rawElements", "lineContinuations", "lineEnds"];
-const RUN_SETTING_KEYS = ["subcases", "memoryBytes", "threads", "condensation", "streamed", "externalUnits",
-  "envelopes", "keepsCaseTables"];
+const RUN_SETTING_KEYS = ["subcases", "memoryBytes", "threads", "condensation", "streamed", "eigenSolver",
+  "externalUnits", "envelopes", "keepsCaseTables"];
+const EIGEN_SOLVER_KEYS = ["solver", "scratchFolder", "cutoffFactor"];
 const CONDENSATION_KEYS = ["units", "fullUnits", "retainedNodes", "modeCount", "memoryMode", "cache",
   "cacheModelTag"];
 const SUPERELEMENT_SETTING_KEYS = ["subcases", "memoryBytes", "threads"];
@@ -452,11 +453,16 @@ export class OosSolver {
   // cache?: CondensationCache, cacheModelTag?: string }; the units are the components of the reader. Statics and the
   // trim condense their units statically; modes and buckling reduce them by Craig-Bampton (modeCount fixed-interface
   // modes per unit, 0: those below a cut-off). streamed (statics): the full path without a factor of the whole model.
+  // eigenSolver (modes and buckling on the full path): "lanczos" (the default), "substructuring" (approximate roots,
+  // far less memory and time on a large model) or "outOfCore" (the Lanczos solver with its factor in scratch files),
+  // or { solver, scratchFolder?: string, cutoffFactor?: number }.
   // Gives { nodalTables, elementTables, gridPointForces, eigenvalues, diagnostics, condensation } (condensation: null,
   // or { condensedUnits, fullUnits, interfaceDofs, note } when a condensation was asked).
   run(model, analysis = "statics", settings = {}) {
     requireKnownKeys(settings, RUN_SETTING_KEYS, "run settings");
     requireKnownKeys(settings?.condensation, CONDENSATION_KEYS, "run settings.condensation");
+    if (typeof settings?.eigenSolver === "object")
+      requireKnownKeys(settings.eigenSolver, EIGEN_SOLVER_KEYS, "run settings.eigenSolver");
     return this.core.runAnalysis(model, analysis, { threads: this.defaultThreads, ...settings });
   }
 

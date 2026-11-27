@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <span>
 #include <stdexcept>
 #include <string_view>
@@ -203,6 +204,68 @@ std::shared_ptr<const reduction::ExternalUnit> externalUnitOf(const ExternalUnit
     }
 }
 
+// The eigenvalue solver of the settings for normal modes or buckling (`analysis` names it in the messages): refused
+// with a condensation, whose reduced problem has its own solver.
+solutions::EigenSolverOptions eigenSolverOf(const AnalysisSettings& settings, std::string_view analysis)
+{
+    solutions::EigenSolverOptions options;
+    const EigenSolverSettings& chosen = settings.eigenSolver;
+    switch (chosen.solver)
+    {
+    case EigenSolver::Lanczos:
+        options.solver = solutions::EigenSolver::Lanczos;
+        break;
+    case EigenSolver::Substructuring:
+        options.solver = solutions::EigenSolver::Substructuring;
+        break;
+    case EigenSolver::OutOfCore:
+        options.solver = solutions::EigenSolver::OutOfCore;
+        break;
+    }
+    if (chosen.solver == EigenSolver::Lanczos)
+        return options;
+    if (settings.condensation.units != CondensedUnits::None)
+        throw base::SolverError(base::concatenate(
+            {"expected the full path for the eigenvalue solver chosen for ", analysis,
+             ", found a condensation too: the condensed path solves its reduced problem itself; leave one of "
+             "settings.condensation and settings.eigenSolver out"}));
+    if (!(chosen.cutoffFactor >= 0.0))
+        throw base::SolverError(base::concatenate(
+            {"expected a cut-off factor of the substructuring of 0 (the default) or more, found ",
+             std::to_string(chosen.cutoffFactor)}));
+    options.substructuringCutoffFactor = chosen.cutoffFactor;
+    options.scratchFolder = chosen.scratchFolder;
+    if (options.scratchFolder.empty() && chosen.solver == EigenSolver::OutOfCore)
+        if (const char* folder = std::getenv("OOS_SCRATCH"); folder != nullptr)
+            options.scratchFolder = folder;
+    return options;
+}
+
+// The name of the eigenvalue solver that ran, for the report.
+std::string eigenSolverName(solutions::AnalysisPath path)
+{
+    switch (path)
+    {
+    case solutions::AnalysisPath::Substructuring:
+        return "substructuring";
+    case solutions::AnalysisPath::OutOfCore:
+        return "outOfCore";
+    case solutions::AnalysisPath::Full:
+        return "lanczos";
+    default:
+        return "condensed";
+    }
+}
+
+// An eigenvalue solver asked of an analysis that solves no eigenvalue problem.
+void refuseEigenSolver(const AnalysisSettings& settings, std::string_view analysis)
+{
+    if (settings.eigenSolver.solver != EigenSolver::Lanczos)
+        throw base::SolverError(base::concatenate({"expected no eigenvalue solver for ", analysis,
+                                                   ": it is chosen for normal modes and buckling only; leave "
+                                                   "settings.eigenSolver out"}));
+}
+
 // The report of a static run: its sizes and stages (StaticTimings), the kernel family it was given.
 RunReport staticReport(const solutions::StaticResults& results, linalg::KernelKind kernel)
 {
@@ -235,6 +298,7 @@ RunReport modesReport(const solutions::ModesResults& results, linalg::KernelKind
     report.dofs = results.gSetSize;
     report.solvedDofs = results.largestAnalysisSetSize;
     report.factorisations = factorisationsOf(results.solves);
+    report.eigenSolver = eigenSolverName(results.path);
     const solutions::ModesTimings& t = results.timings;
     report.stages = {{"setup", t.setup}, {"assembly", t.assembly}, {"eigenvalues", t.eigenvalues},
                      {"recovery", t.recovery}};
@@ -250,6 +314,7 @@ RunReport bucklingReport(const solutions::BucklingResults& results, linalg::Kern
     report.solvedDofs = std::max(results.preload.largestFsetSize, results.largestAnalysisSetSize);
     report.factorisations =
         static_cast<std::size_t>(results.preload.constraintSetCount) + factorisationsOf(results.solves);
+    report.eigenSolver = eigenSolverName(results.path);
     const solutions::BucklingTimings& t = results.timings;
     report.stages = {{"preload", t.preload}, {"assembly", t.assembly}, {"eigenvalues", t.eigenvalues},
                      {"recovery", t.recovery}};
@@ -335,6 +400,8 @@ AnalysisOutput runModes(const input::ModelSnapshot& snapshot, const AnalysisSett
                         base::MemoryBudget& budget, base::ThreadPool* pool)
 {
     solutions::ModesOptions options;
+    // First: a solver refused with a condensation is refused before the plan of the condensation is made.
+    options.eigenSolver = eigenSolverOf(settings, "normal modes");
     options.subcases = settings.subcases;
     options.pool = pool;
     options.kernel = linalg::KernelSelection::selectForThisProcess().kind();
@@ -360,6 +427,8 @@ AnalysisOutput runBuckling(const input::ModelSnapshot& snapshot, const AnalysisS
                            base::MemoryBudget& budget, base::ThreadPool* pool)
 {
     solutions::BucklingOptions options;
+    // First: a solver refused with a condensation is refused before the plan of the condensation is made.
+    options.eigenSolver = eigenSolverOf(settings, "buckling");
     options.subcases = settings.subcases;
     options.pool = pool;
     options.kernel = linalg::KernelSelection::selectForThisProcess().kind();
@@ -437,6 +506,7 @@ SuperelementAnalysisOutput runSuperelements(const input::ModelSnapshot& residual
         throw base::SolverError(
             "expected no condensation, streamed path or external unit with superelements; leave "
             "them out of the settings");
+    refuseEigenSolver(settings, "an analysis with superelements");
     const auto pool = acquireThreadPool(settings.threads);
     auto budget = std::make_shared<base::MemoryBudget>(budgetBytes(settings));
     solutions::SuperelementOptions options;
@@ -590,6 +660,7 @@ AnalysisOutput runAnalysis(const input::ModelSnapshot& snapshot, Analysis analys
     switch (analysis)
     {
     case Analysis::Statics:
+        refuseEigenSolver(settings, "statics");
         output = runStatics(snapshot, settings, *budget, pool.get());
         break;
     case Analysis::Modes:
@@ -602,6 +673,7 @@ AnalysisOutput runAnalysis(const input::ModelSnapshot& snapshot, Analysis analys
         break;
     case Analysis::Aeroelastic:
         refuseStreamed(settings, "the aeroelastic trim");
+        refuseEigenSolver(settings, "the aeroelastic trim");
         output = runTrim(snapshot, settings, *budget, pool.get());
         break;
     }

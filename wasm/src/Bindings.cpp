@@ -643,6 +643,7 @@ val runReportObject(const api::RunReport& report)
     object.set("dofs", static_cast<double>(report.dofs));
     object.set("solvedDofs", static_cast<double>(report.solvedDofs));
     object.set("factorisations", static_cast<double>(report.factorisations));
+    object.set("eigenSolver", report.eigenSolver);
     object.set("seconds", report.seconds);
     object.set("stages", stages);
     object.set("peakBudgetBytes", static_cast<double>(report.peakBudgetBytes));
@@ -712,9 +713,35 @@ val coupledObject(const api::AeroCoupledResult& run)
     return result;
 }
 
+// settings.eigenSolver: "lanczos", "substructuring" or "outOfCore", or { solver, scratchFolder?: string,
+// cutoffFactor?: number } (api::EigenSolverSettings); undefined or null: the Lanczos solver.
+api::EigenSolverSettings eigenSolverSettingsOf(const val& given)
+{
+    api::EigenSolverSettings settings;
+    if (given.isUndefined() || given.isNull())
+        return settings;
+    const bool isName = given.typeOf().as<std::string>() == "string";
+    const val solver = isName ? given : given["solver"];
+    const std::string name = solver.isUndefined() || solver.isNull() ? "lanczos" : solver.as<std::string>();
+    if (name == "substructuring")
+        settings.solver = api::EigenSolver::Substructuring;
+    else if (name == "outOfCore")
+        settings.solver = api::EigenSolver::OutOfCore;
+    else if (name != "lanczos")
+        throw std::invalid_argument("eigenSolver must be \"lanczos\", \"substructuring\" or \"outOfCore\", found \"" +
+                                    name + "\"");
+    if (isName)
+        return settings;
+    if (const val folder = given["scratchFolder"]; !folder.isUndefined() && !folder.isNull())
+        settings.scratchFolder = folder.as<std::string>();
+    if (const val factor = given["cutoffFactor"]; !factor.isUndefined() && !factor.isNull())
+        settings.cutoffFactor = factor.as<double>();
+    return settings;
+}
+
 // runAnalysis(model, analysis, settings): settings is { subcases?: number[], memoryBytes?: number, threads?: number,
-// condensation?: see condensationSettingsOf, streamed?: boolean, externalUnits?: see externalUnitsOf, envelopes?: see
-// envelopesOf, keepsCaseTables?: boolean }.
+// condensation?: see condensationSettingsOf, streamed?: boolean, eigenSolver?: see eigenSolverSettingsOf,
+// externalUnits?: see externalUnitsOf, envelopes?: see envelopesOf, keepsCaseTables?: boolean }.
 val runAnalysis(Model& model, const std::string& analysis, const val& settings)
 {
     return guarded(
@@ -730,6 +757,7 @@ val runAnalysis(Model& model, const std::string& analysis, const val& settings)
                 chosen.condensation = condensationSettingsOf(settings["condensation"]);
                 if (const val streamed = settings["streamed"]; !streamed.isUndefined() && !streamed.isNull())
                     chosen.isStreamed = streamed.as<bool>();
+                chosen.eigenSolver = eigenSolverSettingsOf(settings["eigenSolver"]);
                 chosen.externalUnits = externalUnitsOf(settings["externalUnits"]);
                 chosen.envelopes = envelopesOf(settings["envelopes"]);
                 if (const val keeps = settings["keepsCaseTables"]; !keeps.isUndefined() && !keeps.isNull())

@@ -79,7 +79,9 @@ MemoryReservation MemoryBudget::reserve(std::uint64_t bytes, const std::string& 
                 separator = ", ";
             }
         }
-        message.append(". Raise memory=, condense more units, or restrict the requested outputs");
+        message.append(". Raise the memory of the run, condense more units, restrict the requested outputs, or take a "
+                       "path that needs less memory (the streamed path for statics; the substructuring or the "
+                       "out-of-core eigenvalue solver for normal modes and buckling)");
         throw MemoryBudgetError(message, std::move(shortfall));
     }
     // The label is counted first: if its map node cannot be allocated, nothing has changed.

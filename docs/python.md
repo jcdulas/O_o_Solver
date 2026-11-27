@@ -62,6 +62,12 @@ each stage (`stages`), and the largest memory the solver's budget held (`peak_bu
 with a message. `streamed=True` solves a static analysis without a factor of the whole
 model, region by region, for a model whose factor would not fit ([large models](large-models.md)).
 
+`eigen_solver` chooses the eigenvalue solver of `modes` and `buckling`: `"lanczos"` (the default), `"substructuring"`
+(approximate roots with a fraction of the memory) or `"out_of_core"` (the roots of `"lanczos"` with the factor in
+scratch files of `scratch_dir`, by default a folder of the temporary one). `cutoff_factor` raises the accuracy of the
+substructuring. The `report` names the solver that ran in `eigen_solver`
+([large models](large-models.md#modes-and-buckling-of-a-model-whose-factor-does-not-fit)).
+
 The analysis names are `statics`, `modes`, `buckling` and `aeroelastic`. Result groups
 include `nodal_tables`, `element_tables`, `grid_point_forces`, `eigenvalues` and
 `diagnostics`. Trim runs also expose pressures, box forces, box moments and trim variables.

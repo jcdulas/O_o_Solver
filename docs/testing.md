@@ -75,10 +75,18 @@ hand. They run in the fast suite with its watchdog.
 | [Design](../wasm/test/cases/review-design.mjs) | The gradients of modes with a selected mass set, differenced Hessian-vector products at bounds, a mass fraction by property, an objective that is one item of its response, refused responses |
 | [JavaScript interface](../wasm/test/cases/review-bindings.mjs) | The grid point forces of a study archive, option objects with a key the interface does not have, a deleted design problem |
 
+Two more suites of the fast suite state their values by hand:
+
+| Suite | Main checks |
+| --- | --- |
+| [Laminated shells](../wasm/test/cases/composites.mjs) | The coupling of a symmetric stack whose ply heights are not exact in binary, the transverse shear of a stack of equal plies, the failure indices and strength ratios of the four criteria, the warning of a failure theory without strengths, the transverse shear of an `AnisoMat2D` ply in each formulation |
+| [Eigenvalue solvers](../wasm/test/cases/eigen-solvers.mjs) | The roots of normal modes and buckling by the Lanczos solver with its factor in scratch files and by multilevel substructuring against the Lanczos solver in memory, the solver named in the report, the refusals of the setting |
+
 The native checks (`checks/`, built with `-DOOS_BUILD_NATIVE_CHECKS=ON`) cover what the package does not reach from
 JavaScript: the block Lanczos solver at the edges of its request, the pivot test and the out-of-core solve of the
-factor, the files and locks of the condensation cache, the supports of the mixed hybrid shells, the transverse shear
-modulus of a ply and the footprint weights of a fastener.
+factor, the order of the tasks of the factorisation (the postorder against the parallel order, the same bits), the
+files and locks of the condensation cache, the supports of the mixed hybrid shells, the transverse shear modulus of a
+ply and the footprint weights of a fastener.
 
 ## Validation of the mixed hybrid formulation
 

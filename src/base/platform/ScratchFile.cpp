@@ -105,8 +105,9 @@ ScratchFile::ScratchFile(const std::filesystem::path& folder, bool isUnbuffered)
     HANDLE handle = CreateFileW(m_path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, CREATE_NEW, flags, nullptr);
     if (handle == INVALID_HANDLE_VALUE)
         throw FileError(concatenate({"cannot create the scratch file '", m_path.string(), "': ", systemMessage(),
-                                     "; give a scratch folder that exists and is writable (scratch_dir=, or the "
-                                     "OOS_SCRATCH environment variable)"}));
+                                     "; give a scratch folder that exists and is writable (the scratch "
+                                     "folder of the eigenvalue solver settings, or the OOS_SCRATCH environment "
+                                     "variable)"}));
     m_handle = handle;
 #else
     int flags = O_RDWR | O_CREAT | O_EXCL;
@@ -117,8 +118,9 @@ ScratchFile::ScratchFile(const std::filesystem::path& folder, bool isUnbuffered)
     m_descriptor = ::open(m_path.c_str(), flags, S_IRUSR | S_IWUSR);
     if (m_descriptor < 0)
         throw FileError(concatenate({"cannot create the scratch file '", m_path.string(), "': ", systemMessage(),
-                                     "; give a scratch folder that exists and is writable (scratch_dir=, or the "
-                                     "OOS_SCRATCH environment variable)"}));
+                                     "; give a scratch folder that exists and is writable (the scratch "
+                                     "folder of the eigenvalue solver settings, or the OOS_SCRATCH environment "
+                                     "variable)"}));
     // Removed from the folder at once: the file lives as long as its descriptor, whatever the end of the process.
     ::unlink(m_path.c_str());
 #endif
@@ -217,7 +219,8 @@ void ScratchFile::write(std::uint64_t offset, const void* data, std::size_t byte
         if (failure)
             throw FileError(concatenate({"cannot write ", std::to_string(part), " bytes at ", std::to_string(offset),
                                          " of the scratch file '", m_path.string(), "': ", *failure,
-                                         "; free disk space there or give another scratch folder (scratch_dir=)"}));
+                                         "; free disk space there or give another scratch folder (the scratch "
+                                         "folder of the eigenvalue solver settings)"}));
         from += part;
         offset += part;
         bytes -= part;

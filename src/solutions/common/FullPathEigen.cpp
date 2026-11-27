@@ -119,8 +119,8 @@ OutOfCorePlan planOutOfCore(const EigenSolverOptions& options, const linalg::Sym
                  base::formatBytes(SCRATCH_MARGIN_BYTES), ", found ", base::formatBytes(record.freeDiskBytes),
                  options.scratchLimitBytes > 0 ? " free or allowed (the options' scratch limit) in '" : " free in '",
                  folder.string(),
-                 "'; give a scratch folder on a larger disk (scratch_dir=, or the OOS_SCRATCH "
-                 "environment variable), or ask fewer modes"}),
+                 "'; give a scratch folder on a larger disk (the scratch folder of the eigenvalue solver "
+                 "settings, or the OOS_SCRATCH environment variable), or ask fewer modes"}),
             record.plannedDiskBytes, record.freeDiskBytes);
     plan.resident = resident;
     plan.spool.isOnDisk = true;

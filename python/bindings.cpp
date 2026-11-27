@@ -263,6 +263,8 @@ py::dict results(api::AnalysisOutput&& run)
                           "solved_dofs"_a = r.report.solvedDofs, "factorisations"_a = r.report.factorisations,
                           "seconds"_a = r.report.seconds, "stages"_a = stages,
                           "peak_budget_bytes"_a = r.report.peakBudgetBytes);
+    // Normal modes and buckling: "lanczos", "substructuring", "out_of_core" or "condensed"; "" otherwise.
+    report["eigen_solver"] = r.report.eigenSolver == "outOfCore" ? std::string("out_of_core") : r.report.eigenSolver;
     py::dict out("nodal_tables"_a = nodal, "element_tables"_a = elements, "grid_point_forces"_a = forces,
                  "eigenvalues"_a = eigen, "diagnostics"_a = diagnostics, "report"_a = report);
     if (r.selectedQuarticShells)
@@ -416,7 +418,8 @@ PYBIND11_MODULE(_native, m)
         .def(
             "run",
             [](const Model& model, const std::string& name, std::optional<std::size_t> threads,
-               const std::vector<std::int32_t>& subcases, std::uint64_t memoryBytes, bool streamed)
+               const std::vector<std::int32_t>& subcases, std::uint64_t memoryBytes, bool streamed,
+               const std::string& eigenSolver, const std::optional<std::string>& scratchDir, double cutoffFactor)
             {
                 auto kind = analysis(name);
                 api::AnalysisSettings settings;
@@ -426,6 +429,16 @@ PYBIND11_MODULE(_native, m)
                 settings.memoryBytes = memoryBytes;
                 // Statics only: the equations solved without a factor of the whole model (a factor too large).
                 settings.isStreamed = streamed;
+                // Normal modes and buckling: the eigenvalue solver (api::EigenSolverSettings).
+                if (eigenSolver == "substructuring")
+                    settings.eigenSolver.solver = api::EigenSolver::Substructuring;
+                else if (eigenSolver == "out_of_core")
+                    settings.eigenSolver.solver = api::EigenSolver::OutOfCore;
+                else if (eigenSolver != "lanczos")
+                    throw py::value_error("Unknown eigen_solver: " + eigenSolver +
+                                          " (expected lanczos, substructuring or out_of_core)");
+                settings.eigenSolver.scratchFolder = scratchDir.value_or(std::string());
+                settings.eigenSolver.cutoffFactor = cutoffFactor;
                 auto run = [&]
                 {
                     py::gil_scoped_release unlock;
@@ -435,7 +448,8 @@ PYBIND11_MODULE(_native, m)
             },
             py::arg("analysis") = "statics", py::kw_only(), py::arg("threads") = py::none(),
             py::arg("subcases") = std::vector<std::int32_t>{}, py::arg("memory_bytes") = 0,
-            py::arg("streamed") = false)
+            py::arg("streamed") = false, py::arg("eigen_solver") = "lanczos", py::arg("scratch_dir") = py::none(),
+            py::arg("cutoff_factor") = 0.0)
         .def("_optimization",
              [](const Model& model, const py::dict& tables, const py::object& analyses,
                 std::optional<std::size_t> threads)

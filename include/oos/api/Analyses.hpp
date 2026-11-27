@@ -80,6 +80,35 @@ struct ExternalUnitSettings
     std::vector<double> mass;      // M*, labels × labels; empty: not given
 };
 
+// The eigenvalue solver of normal modes and buckling on the full path (solutions::EigenSolverOptions).
+enum class EigenSolver : std::uint8_t
+{
+    // The block shift-invert Lanczos solver on a factor held in memory (the default): the roots of the request, each
+    // confirmed by the Sturm counts of the shifts.
+    Lanczos,
+    // Multilevel substructuring on the elimination tree of the model: the tree's subtrees reduced to their lowest
+    // modes, then the reduced problem solved. Its roots are approximate, as accurate as its cut-off allows (the lowest
+    // ones best); it factorises no matrix of the whole model, so it takes far less memory and time on a large one.
+    Substructuring,
+    // The Lanczos solver with its factor on a scratch disk: the roots of Lanczos, the memory of the factor traded for
+    // disk space and the time of its reads.
+    OutOfCore
+};
+
+// The eigenvalue solver and what it needs. Substructuring and OutOfCore take their matrices from the elements, front
+// by front: no matrix of the whole model is assembled, so the outputs that need one (the constraint forces, the modal
+// effective mass, the grid point weight) are not produced; the run says so in an information diagnostic.
+struct EigenSolverSettings
+{
+    EigenSolver solver = EigenSolver::Lanczos;
+    // The folder of the scratch files. Empty: OutOfCore takes the folder named by the OOS_SCRATCH environment
+    // variable, else a folder of the system's temporary one; Substructuring keeps its scratch data in memory.
+    std::string scratchFolder;
+    // Substructuring: the cut-off of the modes kept in each subtree, as a factor of the highest root asked for
+    // (a higher factor keeps more modes: more accurate, slower). 0: the solver's default.
+    double cutoffFactor = 0.0;
+};
+
 // What an analysis is asked to do. Every field has a default that runs the deck as it is written.
 struct AnalysisSettings
 {
@@ -97,6 +126,8 @@ struct AnalysisSettings
     // whole model, the outputs made region by region), for a model whose factor would not fit the memory. Refused with
     // a condensation.
     bool isStreamed = false;
+    // Normal modes and buckling only, on the full path: the eigenvalue solver (refused with a condensation).
+    EigenSolverSettings eigenSolver;
     // Statics only: the external units whose matrices replace zones of elements (empty: none).
     std::vector<ExternalUnitSettings> externalUnits;
     // Statics only: the envelopes computed over the load cases (output::EnvelopeAccumulator; empty: none), and whether
@@ -137,6 +168,9 @@ struct RunReport
     std::int64_t dofs = 0;     // the degrees of freedom of the model (six per grid point, one per scalar point)
     std::int64_t solvedDofs = 0; // the equations of the largest system factorised (the free set, or the interface's)
     std::size_t factorisations = 0; // the sparse factorisations made (0 when the analysis does not count them)
+    // Normal modes and buckling: the eigenvalue solver that ran ("lanczos", "substructuring", "outOfCore"; "condensed"
+    // on the condensed path); empty for the other analyses.
+    std::string eigenSolver;
     double seconds = 0.0;           // the wall time of the run
     std::vector<RunStage> stages;
     // The largest memory the run's budget held at once, in bytes: the matrices, factors and result tables the solver

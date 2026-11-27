@@ -190,10 +190,13 @@ Import ``model_from_reader(deck, *, formulation=None)`` and
 ``prepare_optimization(deck, *, analysis="statics", formulation=None, threads=None)`` from ``oo_solver``.
 ``threads=None`` runs on every core of the machine, with the results of one thread.
 
-* ``Model.run(analysis="statics", *, threads=None, subcases=[], memory_bytes=0, streamed=False)`` returns a
+* ``Model.run(analysis="statics", *, threads=None, subcases=[], memory_bytes=0, streamed=False,
+  eigen_solver="lanczos", scratch_dir=None, cutoff_factor=0.0)`` returns a
   dictionary with read-only NumPy result arrays and a ``report`` of what the run cost (threads, kernel family,
-  degrees of freedom, factorisations, wall time per stage, peak budgeted memory). Analyses are ``statics``,
-  ``modes``, ``buckling`` and ``aeroelastic``; ``streamed`` applies to ``statics``.
+  degrees of freedom, factorisations, wall time per stage, peak budgeted memory, eigenvalue solver). Analyses are
+  ``statics``, ``modes``, ``buckling`` and ``aeroelastic``; ``streamed`` applies to ``statics``; ``eigen_solver``
+  (``lanczos``, ``substructuring`` or ``out_of_core``), ``scratch_dir`` and ``cutoff_factor`` to ``modes`` and
+  ``buckling``.
 * ``OptimizationProblem.variables`` and ``initial_values`` give the independent variables in vector order.
   ``problem.evaluate(x)`` returns a retained ``DesignPoint``.
 * ``point.objective``, ``point.constraints`` and ``point.responses`` describe that evaluation.

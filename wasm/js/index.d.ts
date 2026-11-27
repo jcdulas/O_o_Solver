@@ -166,7 +166,7 @@ export interface NodalTable {
 
 // One element table: one element type, one step; values row-major (rows x components).
 export interface ElementTable {
-  kind: string; // "stress", "strain", "forces", "strainEnergy", "failureIndices"
+  kind: string; // "stress", "strain", "forces", "strainEnergy", "failureIndices", "strengthRatios"
   // The result element type of O_o_Model: the exact neutral card type ("ShellQuad4",
   // "ShellTria3"), or a layout of its own ("ShellQuad4Composite": the plies of a laminate).
   elementType: string;
@@ -222,6 +222,21 @@ export interface AnalysisResult {
   report: RunReport;
 }
 
+// The eigenvalue solver of normal modes and buckling on the full path:
+// - "lanczos" (the default): block shift-invert Lanczos on a factor in memory, the roots confirmed by Sturm counts;
+// - "substructuring": multilevel substructuring on the elimination tree. Approximate roots (the lowest ones best), no
+//   factor of the whole model: far less memory and time on a large model;
+// - "outOfCore": the Lanczos solver with its factor in scratch files (in a browser the module's file system is
+//   memory: useful where a real folder is mounted).
+// "substructuring" and "outOfCore" assemble no matrix of the whole model: the constraint forces, the modal effective
+// mass and the grid point weight are not produced (an information diagnostic says so).
+export type EigenSolverName = "lanczos" | "substructuring" | "outOfCore";
+export interface EigenSolverSettings {
+  solver?: EigenSolverName;
+  scratchFolder?: string; // of the scratch files; default: a folder of the temporary one ("outOfCore"), memory
+  cutoffFactor?: number;  // "substructuring": more modes kept in each subtree above 1; 0: the default
+}
+
 // What a run cost. The stages are those the analysis measures, in the order it runs them (statics: setup, assembly,
 // loadBasis, factorisation, solve, recovery; modes: setup, assembly, eigenvalues, recovery; buckling: preload,
 // assembly, eigenvalues, recovery; aeroelastic: setup, assembly, factorisation, flexibility, aerodynamics, trim).
@@ -231,6 +246,7 @@ export interface RunReport {
   dofs: number;            // the degrees of freedom of the model
   solvedDofs: number;      // the equations of the largest system factorised
   factorisations: number;  // the sparse factorisations made (0 when the analysis does not count them)
+  eigenSolver: string;     // modes and buckling: "lanczos", "substructuring", "outOfCore" or "condensed"; "" otherwise
   seconds: number;         // the wall time of the run
   stages: Record<string, number>; // seconds per stage
   peakBudgetBytes: number; // the largest memory the solver's budget held at once (not the process memory)
@@ -347,6 +363,8 @@ export declare class OosSolver {
   run(model: Model, analysis?: Analysis,
       settings?: { subcases?: number[]; memoryBytes?: number; threads?: number;
                    condensation?: CondensationSettings; streamed?: boolean;
+                   // modes and buckling on the full path: the eigenvalue solver
+                   eigenSolver?: EigenSolverName | EigenSolverSettings;
                    externalUnits?: ExternalUnitSettings[];
                    // statics: envelopes over the load cases, and whether the per-case tables of their kinds are kept
                    envelopes?: EnvelopeSpec[]; keepsCaseTables?: boolean }): AnalysisResult;
